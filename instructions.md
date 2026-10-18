@@ -27,8 +27,6 @@ root (`<repo>/moonlight/__init__.py`). Lint/type-check/test on `.` (the repo roo
 | File | Task | Note |
 |------|------|------|
 | `scripts.py` | T27.D | User .py script loader — **legit, still to implement** |
-| `perception/` | T12/T19/T21/T23 | vitals.py, battle.py, minimap.py, floor.py, sprites.py, cursor.py DONE; loot.py is a stub — see `perception/instructions.md` |
-| `decision/` | T22/T23/T25 | looting is a stub; cavebot (T22), healing (T14), targeting (T20), buffs (T26) and alarms (T25) are DONE — see `decision/instructions.md` |
 
 ### ⛔ DECLINED (evasion) — REMOVED
 `humanize.py` (T17.B) and `stealth.py` (T27.B) were empty placeholders created
@@ -38,7 +36,7 @@ and **deleted both files on 2026-10-14**. Do not recreate them.
 ## How to test / check
 ```bash
 cd <repo-root>
-python -m pytest tests/          # 673 pass, 13 skip (golden tests skip until T08 data)
+python -m pytest tests/          # 685 pass, 13 skip (golden tests skip until T08 data)
 ruff check .                       # clean
 mypy .                             # clean (36 files)
 ```
@@ -67,6 +65,16 @@ readings) and compares against the reading from ~`fast_hp_drop_window`
 Configurable via `AlarmConfig` (validated fail-fast). Pure module: clock
 injectable, no input backend. Unit tests: `tests/unit/test_alarms.py`
 (58 tests).
+
+## ✅ perception/loot.py + decision/looting.py (T23) — first pass (2026-10-18)
+`LootReader(templates, profile).read_loot_window(frame) -> LootWindow | None`:
+title-bar template (`"loot_window"` key) in the calibrated `loot_window`
+region, then a 5x5 grid of 34 px slots below it, each matched against the
+item templates (count is always 1 for now). No templates/region -> None.
+`Looting.step(snap)`: press `loot_hotkey` -> `move_all_hotkey` (if set) ->
+`loot_hotkey` to close; gives up after 10 ticks without a window. Free cap
+= `100 - capacity.percent`; unknown cap does not block. Per-item drags and
+`max_items_per_loot` land in T24. Tests: `tests/unit/test_looting.py` (12).
 
 ## ✅ decision/cavebot.py (T22) — DONE (2026-10-18)
 Route format: `data/waypoints/README.md` (JSON, `RouteFileLoader` validates).

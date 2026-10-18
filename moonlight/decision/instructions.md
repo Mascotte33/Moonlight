@@ -11,8 +11,7 @@ Decision modules. Priority order: **HEAL > ALARM > ATTACK > LOOT > WALK**.
   `input.py` to execute.
 
 ## Status
-`healing.py`, `buffs.py`, `targeting.py`, `alarms.py` and `cavebot.py` are
-implemented; `looting.py` is still a docstring placeholder.
+All modules are implemented; `looting.py` is a first pass (per-item drags in T24).
 
 | Module | Task | Responsibility | Status |
 |--------|------|----------------|--------|
@@ -20,7 +19,7 @@ implemented; `looting.py` is still a docstring placeholder.
 | `targeting.py` | T20 | Target priority list, selection, attack rotation | ✅ done (2026-10-15) |
 | `buffs.py` | T26 | Buff recast tracking (missing / expiring soon) | ✅ done (2026-10-15) |
 | `cavebot.py` | T22 | Waypoint execution (walk/rope/shovel/ladder/label/goto), stuck detection | ✅ done (2026-10-18) |
-| `looting.py` | T23 | Open corpse, move items by templates, cap check | ⬜ stub |
+| `looting.py` | T23 | Open corpse, move items by templates, cap check | ✅ first pass (2026-10-18) |
 | `alarms.py` | T25 | Player on screen / PM / fast HP drop → alarm + sound | ✅ done (2026-10-15) |
 
 ## How to test / check

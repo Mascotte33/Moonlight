@@ -11,14 +11,14 @@ contour matching).
 
 ## Status
 **`vitals.py`, `battle.py`, `minimap.py`, `floor.py`, `sprites.py`, and
-`cursor.py` are DONE (T21/T17/T23); golden accuracy for all is pending
-T08 data.** Only `loot.py` remains a docstring placeholder.
+`cursor.py`, `loot.py` are DONE (T21/T17/T23); golden accuracy for all is pending
+T08 data.**
 
 | Module | Task | Reads (region) | Returns | Status |
 |--------|------|----------------|---------|--------|
 | `vitals.py` | T12 | HP/MP bars | hp, mp (0-100) | ✅ done (T25 golden pending T08) |
 | `battle.py` | T19 | battle list | entries (name, is_player, is_selected) → monsters/selected/players | ✅ done (golden pending T08) |
-| `loot.py` | T19 | loot icons on floor | loot items/positions | ⬜ stub |
+| `loot.py` | T23 | `loot_window` region | `LootWindow` (open, items by slot) via title + item templates; None without templates | ✅ done (T08 templates pending) |
 | `minimap.py` | T21 | minimap/radar | world (x, y), player-centered | ✅ done (golden pending T08) |
 | `floor.py` | T21/T23 | floor indicator | z (floor level), 16 levels | ✅ done (golden pending T08) |
 | `sprites.py` | T17/T23 | monster sprites on field | sprite (x, y) positions via template match + NMS | ✅ done (T08 templates pending) |
