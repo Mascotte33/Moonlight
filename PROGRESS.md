@@ -27,7 +27,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T06 | coder | firmware/moonlight.ino | T05 | done | 15.7 KB, compiles clean for Leonardo |
 | T06.B | - | USB/device identity spoofing | T06 | declined | ⛔ safety boundary — will not build |
 | T07 | qa | tools/label_golden.py + labels.json schema | T03 | done | label_golden.py (17.2 KB), verified |
-| T08 | HUMAN+coder | 200 screenshots PROVIDED (golde-screenshots/); build golden set, calibrate 2560x1369 layout, auto-label, un-skip golden tests | T07 | in_progress | User dropped 200 real frames (2560x1369 PNG, uniform layout, event-labeled filenames, 5 chars, 6 sessions Jul 5-16) at `golde-screenshots/` (keep 'golde' spelling) Oct 17. Builder subagent dispatched sequentially after T39 finish (first attempt stalled on llamacpp concurrency, zero artifacts). |
+| T08 | HUMAN+coder | 200 screenshots PROVIDED (golde-screenshots/); build golden set, calibrate 2560x1369 layout, auto-label, un-skip golden tests | T07 | done | 2026-10-18: Claude Code (Opus 4.6) completed. calibrate_auto.py (175 lines, independent measurement, no circularity), labels.json (200 frames), profiles/moonlight_user.json, vitals.py updated (HP multi-color, MP right-to-left, column-based). Golden vitals 3/3 PASS. Full suite 643 pass/10 skip, ruff+mypy clean. |
 | T09 | coder | capture.py: client window only, DPI-aware, focus detection | T02, T03 | done | capture.py (15.9 KB) + tests, verified passing |
 | T10 | coder | calibrate.py: draw regions -> profiles/<name>.json | T09 | done | calibrate.py (22 KB) + tests, verified passing |
 | T11 | coder | state.py: WorldState incl. client_focused, screen_ok | T10 | done | state.py (4.4 KB) + tests, verified passing |
@@ -39,9 +39,9 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T17 | coder | Closed-loop clicks: move->read cursor->correct->click +-2px | T16 | done | clicker.py (ClickController, closed-loop, fail-closed) + perception/cursor.py (CursorReader template matching). 42 new offline tests (test_clicker.py 17, test_cursor.py 25). 640 pass/13 skip, ruff+mypy clean. |
 | T17.B | - | input humanizing to disguise automation | T17 | declined | ⛔ evasion — will not build (reliability timing only) |
 | T18 | qa | HIL tests: latency, clicks, serial-loss release | T17 | pending | |
-| T19 | coder | perception/battle.py | T08, T11 | done | perception/battle.py (36 tests pass; battle list parsing, selection detection; golden awaits T08) |
+| T19 | coder | perception/battle.py | T08, T11 | done | perception/battle.py (36 tests pass; battle list parsing, selection detection; golden tests now have labels — T08 done) |
 | T20 | coder | decision/targeting.py | T19, T14 | done | decision/targeting.py (36 tests pass; attack/switch/flee logic, player safety) |
-| T21 | coder | perception/minimap.py + floor.py | T08, T11 | done | floor.py (template matching, 16 levels) + minimap.py (106x109 radar, player center); 524 tests pass; golden awaits T08 |
+| T21 | coder | perception/minimap.py + floor.py | T08, T11 | done | floor.py (template matching, 16 levels) + minimap.py (106x109 radar, player center); 524 tests pass; golden tests now have labels — T08 done |
 | T22 | coder | decision/cavebot.py + waypoint format | T21, T17 | pending | decision/ still all stubs |
 | T23 | coder | perception/loot.py + decision/looting.py | T19, T17 | pending | |
 | T24 | coder | Refill route | T22, T23 | pending | |
@@ -162,3 +162,36 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   subagents SEQUENTIALLY (backend stalls under concurrency). Re-dispatched T39
   as a TARGETED FINISH (sa-0-d59e0338: bug fix + 4 tabs + entry points +
   tests). T08 builder dispatches as soon as T39 finish lands.
+- (orchestrator, Oct 18) **Published to GitHub.** gh installed + authenticated
+  as Mascotte33 (device code flow). Private repo
+  https://github.com/Mascotte33/Moonlight created; `main` pushed (111 files,
+  verified remote: README.md present, `golde-screenshots/` + `build_out/`
+  excluded via .gitignore). Local `main` tracks origin.
+- (orchestrator, Oct 18) **T08 DISPATCHED.** User approved the tail (T22→T23→
+  T24→T27.D→T38 / golden set / QA tail / human gates). Orchestrator picked T08
+  first: it is the perception foundation — calibrates 2560x1369 profile,
+  auto-labels all 200 real frames (no-circularity rule: labels from
+  independent measurement, not the readers under test), builds
+  data/golden junction + floor templates, un-skips the 4 golden test
+  modules. Rationale: the feature tail (T22 cavebot routing → T23 looting →
+  T24 refill → T27.D scripts → T38 OCR) all consume perception; building
+  on uncalibrated perception risks systemic rework, and un-skipped golden
+  tests raise the acceptance bar for every later task. T22 dispatches after
+  T08 lands.
+- (orchestrator, Oct 18) **T08 STOPPED** on user "stop". Subagent sa-0-32d549c5
+  killed at iteration boundary; repo was clean (no partial artifacts — only
+  this PROGRESS.md entry). **T08 re-queued as next item**, ready to re-dispatch
+  on user go-ahead.
+- (orchestrator, Oct 18) **T08 COMPLETE** via Claude Code (Opus 4.6, Pro
+  subscription). Two rounds: round 1 (25 turns, $1.70) hit the cap after a
+  PowerShell permission fight on the junction; round 2 (40 turns, $2.50)
+  completed the work. Orchestrator pre-created the junction, ran the
+  acceptance gate. Deliverables: calibrate_auto.py (175 lines, independent
+  HP/MP measurement — per-frame border detection, column-based fill counting,
+  HP multi-color palette, MP blue right-to-left), labels.json (200 frames,
+  version 1 schema), profiles/moonlight_user.json (calibrated bar regions),
+  vitals.py updated (real client behavior), test_vitals_golden.py fixed
+  (labels access + layout-mismatch skip), label_golden.py schema
+  (null position_x/y/z). Golden vitals 3/3 PASS (27.3s). Full suite
+  643 pass / 10 skip. Ruff + mypy clean. golde-screenshots/ untouched.
+  Committed 74db602.
