@@ -20,6 +20,7 @@ All modules are implemented; `looting.py` is a first pass (per-item drags in T24
 | `buffs.py` | T26 | Buff recast tracking (missing / expiring soon) | ✅ done (2026-10-15) |
 | `cavebot.py` | T22 | Waypoint execution (walk/rope/shovel/ladder/label/goto), stuck detection | ✅ done (2026-10-18) |
 | `looting.py` | T23 | Open corpse, move items by templates, cap check | ✅ first pass (2026-10-18) |
+| `refill.py` | T24 | Cap full → refill route to storage, deposit, walk back | ✅ done (2026-10-18) |
 | `alarms.py` | T25 | Player on screen / PM / fast HP drop → alarm + sound | ✅ done (2026-10-15) |
 
 ## How to test / check
