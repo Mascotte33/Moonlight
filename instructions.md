@@ -19,7 +19,10 @@ root (`<repo>/moonlight/__init__.py`). Lint/type-check/test on `.` (the repo roo
 | `input.py` | 9.6 KB | `InputBackend`, `ArduinoInput` (pyserial), `FakeInput`, protocol encoder | `tests/unit/test_input.py` ✅ |
 | `state.py` | 4.4 KB | `WorldState` container (hp/mp/targets/pos/alarms/screen_ok) | `tests/unit/test_state.py` ✅ |
 | `calibrate.py` | 22 KB | Region calibration -> `profiles/<name>.json` | `tests/unit/test_calibrate.py` ✅ |
-| `loop.py` | 25.7 KB | 20 Hz main loop, priority state machine, F12 kill switch | `tests/unit/test_loop.py` ✅ |
+| `loop.py` | 25.7 KB | 20 Hz main loop, priority state machine, F12 kill switch; calls the decision modules (`DecisionModules`, T40) | `tests/unit/test_loop.py`, `test_loop_wiring.py` ✅ |
+| `config.py` | — | `BotConfig` (T40): profile, serial port, `LoopConfig`, spell hotkeys, per-module configs; `load(path)` JSON / `default()`; fail-closed | `tests/unit/test_config.py` ✅ |
+| `profile.py` | — | `ProfileManager` (T40): `list_profiles()` / `load(name)` over `profiles/<name>.json`; `ui.ProfileSelector` delegates | `tests/unit/test_ui.py` ✅ |
+| `cli.py` / `__main__.py` | — | `python -m moonlight` / `moonlight` (T40): `run [profile]`, `profiles`, `calibrate`, `check`; `build_loop()` integration seam | `tests/unit/test_cli.py` ✅ |
 | `ui.py` | 22 KB | Terminal UI: `BotController`, `ProfileSelector`, `StateDisplay`, `LogViewer`, command loop + CLI | `tests/unit/test_ui.py` ✅ |
 | `clicker.py` | 7.5 KB | Closed-loop clicking: `ClickController` — move → verify cursor via `CursorReader` → correct → click once (fail-closed) | `tests/unit/test_clicker.py` ✅ |
 
@@ -84,8 +87,9 @@ it is split into two legs that the existing `Cavebot` runs (route swapped
 in, restored on finish). DEPOSIT: `storage_hotkey` opens, `deposit_hotkey`
 every 1 s until cap <= `stop_cap`, `storage_hotkey` closes; 5 s without a
 cap drop → alarm `deposit_failed` (no per-item drags: no backpack reader,
-no mouse-hold primitive). Cavebot alarms abort the refill. Not wired into
-`loop.py` yet. Tests: `tests/unit/test_refill.py` (12).
+no mouse-hold primitive). Cavebot alarms abort the refill. Wired into
+`loop.py` (T40): REFILL state runs `start()`/`step()`, then resumes the
+cavebot route. Tests: `tests/unit/test_refill.py` (12).
 
 ## ✅ decision/cavebot.py (T22) — DONE (2026-10-18)
 Route format: `data/waypoints/README.md` (JSON, `RouteFileLoader` validates).
@@ -94,8 +98,9 @@ by clicking the minimap (1 px = 1 tile) via `ClickController`, does
 rope/shovel (hotkey + tile click) and ladder (right-click) on the 15x11
 game grid, then waits for the floor change. No movement for 5 s → stops,
 `alarm = "stuck"`; unexpected floor → resync to next waypoint on that floor
-or `alarm = "lost"`. Wire into the loop with
-`move_provider=lambda _s: bot.is_active(), move_action=bot.step`.
+or `alarm = "lost"`. Wired into the loop (T40): a cavebot in
+`DecisionModules` is the default `move_provider`/`move_action`
+(`is_active` / `step`); `cli.build_loop` starts it.
 Unit tests: `tests/unit/test_cavebot.py` (33 tests).
 
 ## ✅ clicker.py (T17) — DONE (2026-10-16)
@@ -133,12 +138,28 @@ the loop stops exactly one tick after KILL.
 Terminal UI with **zero new dependencies** (stdlib only; no GUI toolkit,
 no `rich`). `BotController` runs `GameLoop` on a daemon thread (with an
 optional `loop_factory` for restarts after kill/stop, since a `GameLoop`
-can only run once). `ProfileSelector` wraps `calibrate.CalibrationProfile`
+can only run once). `ProfileSelector` delegates to `profile.ProfileManager`
 over `profiles/<name>.json`. `MoonlightUI.run()` takes injectable
 `input_fn`/`output`, so it is fully testable offline (scripted lines).
 CLI: `python -m moonlight.ui` (needs the package importable, e.g.
 `PYTHONPATH=<parent-of-repo>` or pytest's conftest path). `main()` uses
 `FakeInput` until T16 ships `ArduinoInput`.
+
+## ✅ Integration layer (T40) — DONE (2026-10-18)
+`python -m moonlight` / `moonlight` (console script) → `cli.main(argv)`.
+`cli.build_loop(config, profile, backend, frame_provider=...)` assembles
+perception (`make_perceive`: vitals/battle/floor/minimap → WorldState
+under `state.lock()`, fail-closed `screen_ok`) + the enabled modules from
+`BotConfig` into one `GameLoop` (single thread: perceive → decide → act).
+Loop wiring (`loop.DecisionModules`, all optional): critical alarm /
+targeting flee → ALARM; healing `decide`+`send` first in every non-KILL
+state; targeting attack/switch → ATTACK; buffs `track`+`send` in
+ATTACK/LOOT/REFILL/MOVE/IDLE; selected target vanished → `Looting.on_target_died`
+→ LOOT (`step`); REFILL (`should_refill`/`start`/`step`, then
+`cavebot.start()`); cavebot = MOVE. BotState order is now KILL, ALARM,
+EMERGENCY_HEAL, NORMAL_HEAL, ATTACK, LOOT, REFILL, MOVE, IDLE.
+Config file: `moonlight_config.json` (format in `config.py` docstring).
+`gui/config_bridge.py` keeps its own tolerant GUI config (not merged).
 
 ## Agent notes
 - **Do NOT** implement `humanize.py` or `stealth.py` evasion behavior. See the

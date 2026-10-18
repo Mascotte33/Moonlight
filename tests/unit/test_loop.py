@@ -117,6 +117,8 @@ class TestBotStatePriority:
             BotState.EMERGENCY_HEAL,
             BotState.NORMAL_HEAL,
             BotState.ATTACK,
+            BotState.LOOT,
+            BotState.REFILL,
             BotState.MOVE,
             BotState.IDLE,
         ]
@@ -124,7 +126,7 @@ class TestBotStatePriority:
 
     def test_priority_ranks(self) -> None:
         assert BotState.KILL.priority == 0
-        assert BotState.IDLE.priority == 6
+        assert BotState.IDLE.priority == 8
         assert BotState.ALARM.priority < BotState.EMERGENCY_HEAL.priority
 
 

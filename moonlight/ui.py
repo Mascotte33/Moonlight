@@ -56,11 +56,11 @@ from moonlight.calibrate import (
     CalibrationApp,
     CalibrationError,
     CalibrationProfile,
-    default_profiles_dir,
     load_image_bgr,
 )
 from moonlight.input import FakeInput
 from moonlight.loop import GameLoop
+from moonlight.profile import ProfileManager
 from moonlight.state import Monster, Position, WorldState
 
 __all__ = [
@@ -161,36 +161,23 @@ class LogViewerHandler(logging.Handler):
 
 
 class ProfileSelector:
-    """Lists and loads calibration profiles from ``profiles/<name>.json``."""
+    """UI-facing name for :class:`moonlight.profile.ProfileManager`."""
 
     def __init__(self, directory: str | Path | None = None) -> None:
-        self._dir = Path(directory) if directory is not None else default_profiles_dir()
+        self._manager = ProfileManager(directory)
 
     @property
     def directory(self) -> Path:
         """The profiles directory this selector reads from."""
-        return self._dir
+        return self._manager.directory
 
     def list_profiles(self) -> list[str]:
         """Return profile names (file stems) in the profiles directory."""
-        if not self._dir.is_dir():
-            return []
-        return sorted(p.stem for p in self._dir.glob("*.json"))
+        return self._manager.list_profiles()
 
     def select_profile(self, name: str) -> CalibrationProfile:
-        """Load and validate the profile *name*.
-
-        Raises:
-            ValueError: If the profile does not exist.
-            CalibrationError: If the profile file is malformed or incomplete.
-        """
-        available = self.list_profiles()
-        if name not in available:
-            listing = ", ".join(available) if available else "(none)"
-            raise ValueError(f"Unknown profile {name!r}. Available: {listing}")
-        profile = CalibrationProfile.load(self._dir / f"{name}.json")
-        profile.validate()
-        return profile
+        """Load and validate the profile *name* (see :meth:`ProfileManager.load`)."""
+        return self._manager.load(name)
 
 
 # ---------------------------------------------------------------------------

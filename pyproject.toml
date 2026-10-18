@@ -18,6 +18,9 @@ dependencies = [
     "pytesseract>=0.3.10",
 ]
 
+[project.scripts]
+moonlight = "moonlight.cli:main"
+
 [project.optional-dependencies]
 # dxcam is optional, Windows only, for lower-latency capture
 dxcam = [

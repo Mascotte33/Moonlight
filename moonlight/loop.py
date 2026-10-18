@@ -9,11 +9,35 @@ state the bot is in, using a strict priority order (highest wins):
                    attack/loot/walk; healing continues.
 3. EMERGENCY_HEAL  HP at or below the critical threshold.
 4. NORMAL_HEAL     HP at or below the normal threshold.
-5. ATTACK          A target is selected. Perception only ever selects a
-                   target that is in range and attackable; attack
-                   rotation/cooldowns arrive with T20.
-6. MOVE            A waypoint route is active (provided by T22).
-7. IDLE            Nothing to do.
+5. ATTACK          A target is selected (or, with targeting wired, the
+                   targeting module chose one).
+6. LOOT            A kill is waiting to be looted (looting wired).
+7. REFILL          Cap is full or a refill trip is running (refill wired).
+8. MOVE            A waypoint route is active (cavebot / move_provider).
+9. IDLE            Nothing to do.
+
+Decision modules (T40): an optional :class:`DecisionModules` bundle wires
+the ``moonlight.decision`` engines into the tick. Each one is optional;
+without it the loop keeps its built-in behaviour.
+
+* **alarms** -- ``AlarmDecision.decide`` every tick; a critical alarm -> ALARM.
+* **targeting** -- ``TargetingDecision.decide`` every tick; attack/switch
+  -> ATTACK, flee -> ALARM (disengage).
+* **healing** -- ``HealingDecision.decide`` + ``send`` first in every
+  non-KILL state (healing continues through ALARM); replaces the
+  built-in heal combos.
+* **buffs** -- ``BuffManager.track`` + ``send`` of the top cast in the
+  ATTACK/LOOT/REFILL/MOVE/IDLE states.
+* **looting** -- a selected target that vanishes from the battle list is
+  reported via ``Looting.on_target_died``; ``should_loot`` -> LOOT,
+  which runs ``Looting.step``.
+* **refill** -- ``should_refill`` / ``start`` / ``step``; when the trip
+  is done the cavebot route is resumed.
+* **cavebot** -- default ``move_provider``/``move_action``
+  (``is_active`` / ``step``).
+
+An optional ``perceive`` callback runs at the start of every tick (before
+the snapshot) so one thread does capture -> perception -> decision.
 
 Safety invariants (re-checked on every tick, never just at startup):
 
@@ -55,13 +79,24 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from moonlight.input import InputBackend
 from moonlight.state import WorldState
 
+if TYPE_CHECKING:
+    from moonlight.decision.alarms import AlarmAction, AlarmDecision
+    from moonlight.decision.buffs import BuffManager
+    from moonlight.decision.cavebot import Cavebot
+    from moonlight.decision.healing import HealingDecision
+    from moonlight.decision.looting import Looting
+    from moonlight.decision.refill import Refill
+    from moonlight.decision.targeting import TargetingAction, TargetingDecision
+
 __all__ = [
     "VK_F12",
     "BotState",
+    "DecisionModules",
     "F12Monitor",
     "GameLoop",
     "LoopConfig",
@@ -132,6 +167,8 @@ class BotState(StrEnum):
     EMERGENCY_HEAL = "emergency_heal"
     NORMAL_HEAL = "normal_heal"
     ATTACK = "attack"
+    LOOT = "loot"
+    REFILL = "refill"
     MOVE = "move"
     IDLE = "idle"
 
@@ -139,6 +176,19 @@ class BotState(StrEnum):
     def priority(self) -> int:
         """Priority rank: 0 = highest. Derived from declaration order."""
         return list(BotState).index(self)
+
+
+@dataclass
+class DecisionModules:
+    """Decision engines the loop calls every tick; ``None`` = not wired."""
+
+    healing: HealingDecision | None = None
+    targeting: TargetingDecision | None = None
+    buffs: BuffManager | None = None
+    alarms: AlarmDecision | None = None
+    cavebot: Cavebot | None = None
+    looting: Looting | None = None
+    refill: Refill | None = None
 
 
 class RateLimiter:
@@ -279,6 +329,8 @@ class GameLoop:
         move_provider: Callable[[WorldState], bool] | None = None,
         move_action: Callable[[], None] | None = None,
         f12_monitor: F12Monitor | None = None,
+        modules: DecisionModules | None = None,
+        perceive: Callable[[], None] | None = None,
     ) -> None:
         """Create the loop.
 
@@ -294,6 +346,10 @@ class GameLoop:
                 once per tick while the route is active (continuous motion).
             f12_monitor: Monitor override; when ``None``, the default is
                 built unless the config disables it.
+            modules: Decision engines to call each tick (see the module
+                docstring); a wired cavebot is the default move provider.
+            perceive: Called at the start of every tick, before the
+                snapshot (capture -> perception -> WorldState).
         """
         cfg = config if config is not None else LoopConfig()
         self._validate_config(cfg)
@@ -304,8 +360,18 @@ class GameLoop:
         self._clock = clock if clock is not None else time.monotonic
         self._sleep_fn = sleep_fn if sleep_fn is not None else time.sleep
         self._pm_open_check = pm_open_check
+        self.modules = modules if modules is not None else DecisionModules()
+        self._perceive = perceive
+        cavebot = self.modules.cavebot
+        if cavebot is not None and move_provider is None and move_action is None:
+            move_provider = lambda _s: cavebot.is_active()  # noqa: E731
+            move_action = cavebot.step
         self._move_provider = move_provider
         self._move_action = move_action
+        # Per-tick module decisions (refreshed by _observe each tick).
+        self._alarm: AlarmAction | None = None
+        self._target: TargetingAction | None = None
+        self._last_target: str | None = None
         self._f12_monitor = f12_monitor
         if self._f12_monitor is None and cfg.enable_f12_monitor:
             self._f12_monitor = F12Monitor(
@@ -414,6 +480,8 @@ class GameLoop:
             self._record_tick_time(t0)
             return
 
+        if self._perceive is not None:
+            self._perceive()
         snap = self.state.snapshot()
 
         # Stop gate: !screen_ok halts the loop (fail-closed).
@@ -424,6 +492,7 @@ class GameLoop:
             return
 
         self._record_hp(snap)
+        self._observe(snap)
         new_state = self._decide_state(snap)
         if new_state is not self._state:
             self._enter_state(new_state, self._transition_reason(snap, new_state))
@@ -431,6 +500,23 @@ class GameLoop:
         self._record_tick_time(t0)
 
     # -- state machine -----------------------------------------------------
+
+    def _observe(self, snap: WorldState) -> None:
+        """Run the per-tick decision modules (alarms, targeting, kill check)."""
+        m = self.modules
+        alarm = m.alarms.decide(snap) if m.alarms is not None else None
+        # Only critical alarms stop the bot; warnings are advisory.
+        self._alarm = alarm if alarm is not None and alarm.severity == "critical" else None
+        self._target = m.targeting.decide(snap) if m.targeting is not None else None
+        if m.looting is not None:
+            # ponytail: "selected target vanished from the battle list" = kill
+            # (a target lost out of range counts too); use the server-log OCR
+            # (perception/logocr.py) if false loot attempts matter.
+            prev = self._last_target
+            cur = snap.selected_target
+            self._last_target = cur.name if cur is not None else None
+            if prev and cur is None and all(mon.name != prev for mon in snap.monsters):
+                m.looting.on_target_died(prev)
 
     def _decide_state(self, snap: WorldState) -> BotState:
         """Priority state machine: the first matching condition wins.
@@ -445,26 +531,40 @@ class GameLoop:
             return BotState.EMERGENCY_HEAL
         if 0.0 < hp <= self.config.normal_hp:
             return BotState.NORMAL_HEAL
-        if snap.selected_target is not None:
-            # Perception only selects targets that are in range and
-            # attackable; rotation/cooldowns arrive with T20.
+        m = self.modules
+        if m.targeting is not None:
+            if self._target is not None:  # flee was already handled as ALARM
+                return BotState.ATTACK
+        elif snap.selected_target is not None:
+            # Perception only selects targets that are in range and attackable.
             return BotState.ATTACK
+        if m.looting is not None and m.looting.should_loot(snap):
+            return BotState.LOOT
+        if m.refill is not None and (m.refill.is_active() or m.refill.should_refill(snap)):
+            return BotState.REFILL
         if self._move_provider is not None and self._move_provider(snap):
             return BotState.MOVE
         return BotState.IDLE
 
     def _is_alarm(self, snap: WorldState) -> bool:
-        """ALARM: player on screen, PM open, or fast HP drop."""
-        if snap.players_on_screen > 0:
+        """ALARM: player on screen, PM open, fast HP drop, critical module alarm or flee."""
+        if snap.players_on_screen > 0 or self._alarm is not None or self._fleeing():
             return True
         if self._pm_open_check is not None and self._pm_open_check(snap):
             return True
         return self._hp_drop_fast(snap)
 
+    def _fleeing(self) -> bool:
+        return self._target is not None and self._target.action == "flee"
+
     def _transition_reason(self, snap: WorldState, new_state: BotState) -> str:
         """Short human-readable reason for a transition (for logs)."""
         match new_state:
             case BotState.ALARM:
+                if self._alarm is not None:
+                    return f"alarm {self._alarm.type.value}: {self._alarm.message}"
+                if self._target is not None and self._fleeing():
+                    return f"targeting flee: {self._target.reason}"
                 if snap.players_on_screen > 0:
                     return f"players on screen: {snap.players_on_screen}"
                 if self._pm_open_check is not None and self._pm_open_check(snap):
@@ -475,8 +575,14 @@ class GameLoop:
             case BotState.NORMAL_HEAL:
                 return f"hp {snap.hp_percent:.0f}% <= normal {self.config.normal_hp:.0f}%"
             case BotState.ATTACK:
+                if self._target is not None:
+                    return f"target: {self._target.target_name} ({self._target.reason})"
                 name = snap.selected_target.name if snap.selected_target is not None else "?"
                 return f"target: {name}"
+            case BotState.LOOT:
+                return "loot pending"
+            case BotState.REFILL:
+                return "cap full / refill trip running"
             case BotState.MOVE:
                 return "waypoint route active"
             case BotState.IDLE:
@@ -517,9 +623,16 @@ class GameLoop:
     # -- actions -------------------------------------------------------------
 
     def _dispatch(self, snap: WorldState) -> None:
+        if self._state is BotState.KILL:
+            self._act_kill()
+            return
+        # Healing continues through every state (including ALARM).
+        if self.modules.healing is not None and self._heal(snap):
+            return
+        busy = (BotState.ALARM, BotState.EMERGENCY_HEAL, BotState.NORMAL_HEAL)
+        if self.modules.buffs is not None and self._state not in busy and self._buff(snap):
+            return
         match self._state:
-            case BotState.KILL:
-                self._act_kill()
             case BotState.ALARM:
                 self._act_alarm(snap)
             case BotState.EMERGENCY_HEAL:
@@ -528,6 +641,10 @@ class GameLoop:
                 self._act_heal(snap, self.config.normal_heal_combo, "normal")
             case BotState.ATTACK:
                 self._act_attack(snap)
+            case BotState.LOOT:
+                self._act_loot(snap)
+            case BotState.REFILL:
+                self._act_refill(snap)
             case BotState.MOVE:
                 self._act_move(snap)
             case BotState.IDLE:
@@ -536,7 +653,7 @@ class GameLoop:
     def _send(
         self,
         snap: WorldState,
-        action: Callable[[], None],
+        action: Callable[[], object],
         *,
         rate_limited: bool = True,
     ) -> bool:
@@ -547,6 +664,8 @@ class GameLoop:
         The rate-limit bypass is reserved for the kill switch's
         release-all (an emergency release must not wait for a token) and
         the MOVE waypoint step (continuous motion, one per tick).
+        An *action* returning ``False`` (a module declined to send) is not
+        counted as sent.
         """
         if not (snap.client_focused and snap.screen_ok):
             self._actions_dropped_unfocused += 1
@@ -554,7 +673,8 @@ class GameLoop:
         if rate_limited and not self._rate_limiter.try_acquire(1.0):
             self._actions_dropped_rate += 1
             return False
-        action()
+        if action() is False:
+            return False
         self._actions_sent += 1
         return True
 
@@ -575,17 +695,68 @@ class GameLoop:
         elif 0.0 < hp <= self.config.normal_hp:
             self._act_heal(snap, self.config.normal_heal_combo, "normal (alarm)")
 
+    def _heal(self, snap: WorldState) -> bool:
+        """Healing module: decide + send; True when a heal was sent."""
+        healing = self.modules.healing
+        assert healing is not None
+        action = healing.decide(snap)
+        return action is not None and self._send(snap, lambda: healing.send(action, self.input))
+
+    def _buff(self, snap: WorldState) -> bool:
+        """Buff module: send the top-priority due cast; True when sent."""
+        buffs = self.modules.buffs
+        assert buffs is not None
+        actions = buffs.track(snap)
+        return bool(actions) and self._send(snap, lambda: buffs.send(actions[0], self.input))
+
     def _act_heal(self, snap: WorldState, combo: str, label: str) -> None:
+        if self.modules.healing is not None:
+            return  # the healing module already ran in _dispatch
         if self._send(snap, lambda: self.input.press_combo(combo)):
             logger.debug("heal [%s] combo=%s", label, combo)
 
     def _act_attack(self, snap: WorldState) -> None:
-        """ATTACK: tap the attack key while a target is selected."""
-        if snap.selected_target is None:
+        """ATTACK: tap the attack key on the selected / chosen target.
+
+        With targeting wired and nothing selected yet, the attack key is
+        what selects a target in the client.
+        """
+        # ponytail: the attack key takes the client's next target, not
+        # necessarily targeting's target_name; click the battle-list row
+        # once picking a specific monster matters.
+        if snap.selected_target is None and self._target is None:
             return  # decided from a stale snapshot; skip this tick
         combo = self.config.attack_combo
         if self._send(snap, lambda: self.input.press_combo(combo)):
             logger.debug("attack combo=%s", combo)
+
+    def _act_loot(self, snap: WorldState) -> None:
+        """LOOT: one looting step per tick (rate-limited: it presses keys)."""
+        looting = self.modules.looting
+        assert looting is not None
+
+        def step() -> None:
+            looting.step(snap)
+
+        self._send(snap, step)
+
+    def _act_refill(self, snap: WorldState) -> None:
+        """REFILL: start the trip, then one step per tick (gated like MOVE).
+
+        When the trip is done, the cavebot's farming route is resumed; a
+        refill alarm leaves the route stopped (fail closed).
+        """
+        refill = self.modules.refill
+        assert refill is not None
+        cavebot = self.modules.cavebot
+
+        def step() -> None:
+            if not refill.is_active():
+                refill.start()
+            if not refill.step(snap) and refill.phase == "done" and cavebot is not None:
+                cavebot.start()
+
+        self._send(snap, step, rate_limited=False)
 
     def _act_move(self, snap: WorldState) -> None:
         """MOVE: hand control to the waypoint runner (T22).

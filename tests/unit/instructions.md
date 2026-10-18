@@ -15,6 +15,9 @@ Fast, offline unit tests. Each module in the package has a `test_<module>.py`.
 | `test_calibrate.py` | `calibrate.py` | ✅ |
 | `test_loop.py` | `loop.py` | ✅ |
 | `test_ui.py` | `ui.py` | ✅ |
+| `test_config.py` | `config.py` | ✅ |
+| `test_cli.py` | `cli.py` (dispatch + headless `build_loop` smoke) | ✅ |
+| `test_loop_wiring.py` | `loop.py` decision-module wiring | ✅ |
 
 **Not yet present:** tests for `perception/`, `decision/`, `scripts.py`.
 

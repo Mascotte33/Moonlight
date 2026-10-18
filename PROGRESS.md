@@ -14,6 +14,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 - **Layout:** the `moonlight` package lives in `moonlight/` under the repo root
   (`<repo>/moonlight/__init__.py`). Lint/type/test on `.` from root.
 - **Every folder has an `instructions.md`** — agents MUST read it before working.
+- **2026-10-18 BUILD-TO-HUMAN-TEST plan** (user: "do everything until Human testing"): T24 refill DONE (merged PR #2); then T40 integration layer → T28 replay tests → T29 safety suite + T30 timing report → T31 arch/safety review → T32 fix findings. **Stop at T33** (human server test).
 
 ## Task queue
 
@@ -44,7 +45,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T21 | coder | perception/minimap.py + floor.py | T08, T11 | done | floor.py (template matching, 16 levels) + minimap.py (106x109 radar, player center); 524 tests pass; golden tests now have labels — T08 done |
 | T22 | coder | decision/cavebot.py + waypoint format | T21, T17 | done | 2026-10-18: Claude Code (Opus 4.6). cavebot.py (398 lines): Waypoint/Route/RouteFileLoader/Cavebot. Walk (minimap click, 1px=1tile, re-click after 1s idle), rope/shovel (hotkey+tile, wait floor change, retry), ladder (right-click, wait up), label/goto (route loops), stuck detection (5s no movement, alarm flag), floor resync. 33 tests. 673 full suite pass/13 skip, ruff+mypy clean. |
 | T23 | coder | perception/loot.py + decision/looting.py | T19, T17 | done | 2026-10-18: Claude Code (Opus 4.6). loot.py (139 lines): LootWindow + LootReader (template-based window/item detection, graceful None on missing templates). looting.py (110 lines): LootingConfig + Looting (3-tick open->move->close, should_loot cap gate, fails closed). 12 tests. 685 full suite pass/13 skip, ruff+mypy clean. |
-| T24 | coder | Refill route | T22, T23 | pending | |
+| T24 | coder | Refill route | T22, T23 | done | 2026-10-18: Claude Code. Refill (cap-full: detect low cap, route to storage, deposit, walk back); 11 tests (tests/unit/test_refill.py). Merged in PR #2. |
 | T25 | coder | decision/alarms.py | T19, T14 | done | decision/alarms.py (58 tests pass; player/HP-drop/low-HP/PM alarms with history tracking) |
 | T26 | coder | Buffs: recast on expiry | T14 | done | decision/buffs.py (50 tests pass; missing/expiring recast + priorities + cooldowns) |
 | T27 | coder | ui: start/stop, profile select, WorldState, log view | T13 | done | ui.py (terminal UI, zero new deps; +calibrate command opens the CalibrationApp window in-app; 52 UI tests pass) |
@@ -64,15 +65,47 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T37 | coder | perception/sprites.py: monster sprite detection via cv2.matchTemplate | T09, T10 | done | sprites.py + test_sprites.py (27 tests). Fills gap: bot now knows monster SCREEN POSITIONS, not just battle-list names. Prereq for T17 + T23. 598 pass/13 skip, ruff+mypy clean. (Adopted from Oct 16 CV directive.) |
 | T38 | coder | perception/logocr.py: OCR server-log parsing (Tesseract) for loot/damage | T09, T10, T37 | done (2026-10-18) | LogOCR/LogFrame/LogEvent, fail-closed, dedupe; 27 offline tests (Tesseract mocked); pytesseract dep added |
 | T39 | coder | tibiaeye-style tabbed GUI (10 tabs, customtkinter) | T13, T16, T27, T37 | done | User ask (Oct 16): tibiaeye-style GUI w/ MOONLIGHT features. Tabs: Dashboard/Settings/Cavebot/Healing/Targeting/Spell/Hardware/Recorder/Status/Diagnostics. New `gui/` pkg + `python -m moonlight.gui`; adds customtkinter dep. Cavebot tab = JSON route data layer (T22 logic later); Recorder = new waypoint->JSON. DONE Oct 18: finish subagent (sa-0-d59e0338) interrupted at ~80%, orchestrator recovered + completed. All 10 tabs build; smoke OK; 640 pass/13 skip (baseline); ruff 0; mypy 0 (65 files); --help exit 0. |
+| T40 | coder | **Integration layer:** config.py (BotConfig), profile.py, cli.py, __main__.py; wire decision modules (healing/targeting/buffs/alarms/cavebot/looting/refill) into loop.py; `python -m moonlight` entry + console script | T24, T27.D | done | 2026-10-18: BUILT + VERIFIED (Claude Code opus). New LOOT/REFILL states, IDLE priority 8, all 7 modules wired + perceive seam; 44 new tests; 811 pass/13 skip, ruff+mypy clean; CLI verified (--version/profiles/check finds COM5). |
 | CT1 | - | HWID/MAC/disk-serial fingerprint changes | - | declined | ⛔ safety boundary — will not build |
 | CT2 | - | official CipSoft servers | - | declined | ⛔ safety boundary — will not build |
 
 ## Current Task
-- **T37 DONE** (Oct 16): Monster sprite detection via template matching
-  (perception/sprites.py + 27 tests). Adopted from user's CV directive. Bot now
-  detects monster sprites on the game field and returns screen positions — closing
-  the gap where it only knew monsters from the battle list. Prereq for T17 + T23.
-  598 pass / 13 skip, ruff+mypy clean.
+- **T40 Integration layer — DONE** (2026-10-18). Built + verified the glue that makes the
+  bot runnable end-to-end: `moonlight/config.py` (BotConfig), `moonlight/profile.py`
+  (ProfileManager — `ui.ProfileSelector` now delegates to it, no duplication),
+  `moonlight/cli.py` (argparse subcommands run/profiles/calibrate/check),
+  `moonlight/__main__.py` (`python -m moonlight`), and the `moonlight` console script.
+  All 7 decision modules (healing/targeting/buffs/alarms/cavebot/looting/refill) are
+  wired into `loop.py` through an optional `DecisionModules` bundle — new LOOT/REFILL
+  states (priority between ATTACK and MOVE), IDLE now priority 8, a `perceive` seam for
+  capture→perception→decision. Backward compatible: an empty bundle = old built-in
+  behavior, so every pre-existing loop test is untouched. Verified independently:
+  811 pass/13 skip (was 768; +44 tests — test_config 22, test_cli 11, test_loop_wiring
+  11), ruff clean, mypy clean (84 files); `python -m moonlight --help`, `moonlight --help`,
+  `moonlight profiles`, `moonlight --version` all exit 0; `moonlight check` self-test
+  finds the Arduino on COM5 and fail-closes on the missing `default` profile (expected —
+  the real profile is `moonlight_user`). Profiles live at `moonlight/profiles/`.
+
+## Build-to-Human-Test queue (2026-10-18, user: "do everything until Human testing")
+1. **T40 integration layer** — DONE 2026-10-18 (verified; see Current Task).
+2. **T28** — replay tests for every module from recorded video/frame sequences.
+3. **T29 + T30** — full safety suite + timing report (may run in parallel).
+4. **T31** — architecture + safety review → findings list (senior).
+5. **T32** — fix senior findings (coder).
+6. **STOP at T33** — long test session on private server (HUMAN gate). T34/T36 come after.
+
+## Recently Completed (this build phase)
+- **T24 DONE** (2026-10-18): refill route (cap-full → storage deposit → walk back);
+  11 tests; merged in PR #2.
+- **T27.D DONE** (2026-10-18): `moonlight/scripts.py` script runner; 35 tests.
+- **T38 DONE** (2026-10-18): `perception/logocr.py` server-log OCR; 27 tests.
+- **T18 DONE** (2026-10-18): HIL harness `tools/hil_harness.py`; 9 offline + real COM5.
+- PR #2 merged (rebase, commit `3703a50`); baseline 768 pass/13 skip, ruff+mypy clean.
+
+## Next
+- **NOW dispatching T28** (replay tests for every module from recorded video/frame
+  sequences). Then T29 safety + T30 timing → T31 review → T32 fixes.
+  Then hand off to Human testing (T33).
 - **T17 DONE** (Oct 16): Closed-loop clicking. clicker.py (ClickController:
   move -> read rendered cursor via CursorReader -> correct -> click once,
   fail-closed) + perception/cursor.py (CursorReader, template matching in
