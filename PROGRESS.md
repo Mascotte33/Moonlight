@@ -42,7 +42,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T19 | coder | perception/battle.py | T08, T11 | done | perception/battle.py (36 tests pass; battle list parsing, selection detection; golden tests now have labels — T08 done) |
 | T20 | coder | decision/targeting.py | T19, T14 | done | decision/targeting.py (36 tests pass; attack/switch/flee logic, player safety) |
 | T21 | coder | perception/minimap.py + floor.py | T08, T11 | done | floor.py (template matching, 16 levels) + minimap.py (106x109 radar, player center); 524 tests pass; golden tests now have labels — T08 done |
-| T22 | coder | decision/cavebot.py + waypoint format | T21, T17 | pending | decision/ still all stubs |
+| T22 | coder | decision/cavebot.py + waypoint format | T21, T17 | done | 2026-10-18: Claude Code (Opus 4.6). cavebot.py (398 lines): Waypoint/Route/RouteFileLoader/Cavebot. Walk (minimap click, 1px=1tile, re-click after 1s idle), rope/shovel (hotkey+tile, wait floor change, retry), ladder (right-click, wait up), label/goto (route loops), stuck detection (5s no movement, alarm flag), floor resync. 33 tests. 673 full suite pass/13 skip, ruff+mypy clean. |
 | T23 | coder | perception/loot.py + decision/looting.py | T19, T17 | pending | |
 | T24 | coder | Refill route | T22, T23 | pending | |
 | T25 | coder | decision/alarms.py | T19, T14 | done | decision/alarms.py (58 tests pass; player/HP-drop/low-HP/PM alarms with history tracking) |
@@ -195,3 +195,13 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   (null position_x/y/z). Golden vitals 3/3 PASS (27.3s). Full suite
   643 pass / 10 skip. Ruff + mypy clean. golde-screenshots/ untouched.
   Committed 74db602.
+- (orchestrator, Oct 18) **T22 COMPLETE** via Claude Code (Opus 4.6).
+  Cavebot routing: cavebot.py (398 lines, was a 3-line stub) with Waypoint,
+  Route, RouteFileLoader, RouteError, Cavebot. Walk via minimap click
+  (1px=1tile, re-click after 1s idle), rope/shovel (hotkey + tile click on
+  15x11 game grid, wait for floor change, retry), ladder (right-click, wait
+  up), label/goto (route looping), stuck detection (5s no movement, alarm
+  flag not exception), floor resync (jump to waypoint on new floor or
+  alarm='lost'). data/waypoints/ created with README.md (format doc + valid
+  example). 33 tests. 673 full suite pass/13 skip. Ruff + mypy clean.
+  Committed 997d5dc.
