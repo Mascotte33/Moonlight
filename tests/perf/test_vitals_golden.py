@@ -14,10 +14,10 @@ output against human-labelled golden screenshots:
 
 Accuracy target: within +/-2 percentage points of the labelled value.
 
-IMPORTANT: no golden data exists yet (T08 pending -- the user will provide
-screenshots). Until then, every test in this module skips cleanly. We
-deliberately do NOT fabricate golden images or fake percentages; the skip
-logic below is the only thing that runs without data.
+Labels come from ``tools/calibrate_auto.py``, which measures the bars with
+its own per-frame border detection and hue classification (not
+VitalsReader), so this is a genuine cross-check. Without data, every test
+in this module skips cleanly.
 """
 
 from __future__ import annotations
@@ -42,6 +42,10 @@ LABELS_CANDIDATES = (
 )
 
 PROFILE_DIR = REPO_ROOT / "profiles"
+
+#: Note prefix tools/calibrate_auto.py puts on frames whose bar layout differs
+#: from the profile's (one profile cannot cover two layouts).
+LAYOUT_MISMATCH_NOTE = "layout-mismatch"
 
 #: Required accuracy: within +/-2 percentage points.
 ACCURACY_TOLERANCE = 2.0
@@ -125,7 +129,10 @@ class TestVitalsGolden:
 
         labels = json.loads(labels_path.read_text(encoding="utf-8"))
         cases: list[tuple[str, Path, float, float]] = []
-        for name, entry in labels.items():
+        for name, entry in labels["frames"].items():
+            # Frames from another client layout need their own profile.
+            if entry.get("notes", "").startswith(LAYOUT_MISMATCH_NOTE):
+                continue
             image = golden_dir / name
             hp = entry.get("hp_percent")
             mp = entry.get("mp_percent")

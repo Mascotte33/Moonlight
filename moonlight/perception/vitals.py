@@ -5,18 +5,22 @@ colour-filled pixels of the status-bar widgets.
 
 How it works
 ------------
-The 1.2+ Flash-style status bar shows HP and MP as horizontal bars with a
-fixed width. Each bar is drawn as:
+HP and MP are horizontal bars with a fixed width. Each bar is drawn as:
 
-* a **fill** colour from the left edge (HP red / MP blue), and
+* a **fill** colour (HP red / MP blue on the 1.2+ widget; on the current
+  client HP is green/yellow-green/yellow/dark-red by health and MP is dark
+  blue), and
 * an **empty/background** grey filling the remainder.
 
-So the percentage is simply::
+The current client fills HP from the left but MP from the *right*, and draws
+white ``cur/max`` text over both. So we count fill *columns* (a column is
+filled if any pixel in it matches a fill colour), which is independent of
+fill direction and of text covering some rows::
 
-    percent = filled_pixels / bar_width * 100
+    percent = filled_columns / bar_width * 100
 
-which is exactly what the production bots do (see
-``docs/ui_layout.md`` sections 1 & 2).
+(see ``docs/ui_layout.md`` sections 1 & 2; client palette measured on the
+T08 golden frames).
 
 We do NOT hard-code absolute pixel coordinates: the caller passes a
 calibrated region ``Rect = (x, y, w, h)`` (from ``calibrate.py`` /
@@ -45,6 +49,8 @@ __all__ = [
     "RGB",
     "HP_FILL_RGB",
     "MP_FILL_RGB",
+    "HP_FILL_COLOURS",
+    "MP_FILL_COLOURS",
     "BAR_BACKGROUND_RGB",
     "DEFAULT_TOLERANCE",
     "VitalsReader",
@@ -62,6 +68,21 @@ HP_FILL_RGB: RGB = (241, 97, 97)
 
 #: MP bar fill colour (1.2+ widget) -- RGB (83, 80, 218). See ui_layout.md #2.
 MP_FILL_RGB: RGB = (83, 80, 218)
+
+#: Every HP fill colour read_hp accepts: the 1.2+ widget colour plus the
+#: current client's health stages (mid-bar row, measured on T08 golden frames).
+HP_FILL_COLOURS: tuple[RGB, ...] = (
+    HP_FILL_RGB,
+    (0, 181, 0),  # green (high HP)
+    (104, 151, 4),  # yellow-green
+    (190, 145, 8),  # yellow
+    (90, 0, 0),  # dark red (low HP)
+)
+
+#: Every MP fill colour read_mp accepts (1.2+ widget + current client).
+#: The client MP gradient needs two refs: the upper rows are the only ones
+#: never hidden by text or the purple magic-shield overlay.
+MP_FILL_COLOURS: tuple[RGB, ...] = (MP_FILL_RGB, (0, 70, 155), (0, 54, 120))
 
 #: Bar empty/background grey. See ui_layout.md #1/#2.
 BAR_BACKGROUND_RGB: RGB = (95, 95, 95)
@@ -94,7 +115,7 @@ def _clip_region(frame: np.ndarray, region: Rect) -> tuple[np.ndarray, int] | No
 def bar_percent(
     frame: np.ndarray,
     region: Rect,
-    fill_rgb: RGB,
+    fill_rgb: RGB | Sequence[RGB],
     tolerance: int = DEFAULT_TOLERANCE,
 ) -> float:
     """Return the filled percentage of a single horizontal bar in 0..100.
@@ -103,7 +124,8 @@ def bar_percent(
         frame: RGB ``(H, W, 3)`` ``uint8`` capture (as produced by
             ``moonlight.capture``).
         region: Bar region ``(x, y, w, h)`` in frame coordinates.
-        fill_rgb: The fill colour of the bar (e.g. :data:`HP_FILL_RGB`).
+        fill_rgb: The fill colour of the bar (e.g. :data:`HP_FILL_RGB`), or
+            several accepted colours (e.g. :data:`HP_FILL_COLOURS`).
         tolerance: Per-channel colour tolerance for compression artifacts.
 
     Returns:
@@ -114,27 +136,18 @@ def bar_percent(
     if clipped is None:
         return 0.0
     crop, width = clipped
-    rows, _ = crop.shape[:2]
-    if rows <= 0 or width <= 0:
-        return 0.0
 
-    # Restrict to the central band of the region so we read rows that are
-    # safely *inside* the bar (matching the production single-row approach)
-    # and never touch the game UI directly above/below the widget.
-    lo = rows // 4
-    hi = min(rows, (3 * rows) // 4)
-    if hi <= lo:
-        hi = lo + 1
-    band = crop[lo:hi]
+    # Every row of the region is read: text and the magic-shield overlay can
+    # hide the middle rows, so the edge rows are needed. ponytail: assumes the
+    # region is calibrated tight to the bar; UI pixels inside a loose region
+    # that happen to match a fill colour would be counted.
+    refs = np.array(fill_rgb, dtype=np.int16).reshape(-1, 1, 1, 3)
+    diff = np.abs(crop.astype(np.int16)[None] - refs)
+    fill_mask = (diff.max(axis=3) <= tolerance).any(axis=0)  # per-pixel bool
 
-    ref = np.array(fill_rgb, dtype=np.int16)
-    diff = np.abs(band.astype(np.int16) - ref)
-    fill_mask = diff.max(axis=2) <= tolerance  # per-pixel bool
-
-    # Per-row filled-pixel counts; take the median for robustness against a
-    # single noisy row from compression.
-    row_counts = fill_mask.sum(axis=1)
-    filled = float(np.median(row_counts)) if row_counts.size else 0.0
+    # A column is filled if any row matches: independent of fill direction
+    # and of overlaid text hiding some rows.
+    filled = float(fill_mask.any(axis=0).sum())
 
     percent = 100.0 * filled / width
     return max(0.0, min(100.0, percent))
@@ -212,7 +225,7 @@ class VitalsReader:
         region = region if region is not None else self._hp_region
         if region is None:
             return 0.0
-        return bar_percent(frame, region, HP_FILL_RGB, self.tolerance)
+        return bar_percent(frame, region, HP_FILL_COLOURS, self.tolerance)
 
     def read_mp(
         self,
@@ -228,7 +241,7 @@ class VitalsReader:
         region = region if region is not None else self._mp_region
         if region is None:
             return 0.0
-        return bar_percent(frame, region, MP_FILL_RGB, self.tolerance)
+        return bar_percent(frame, region, MP_FILL_COLOURS, self.tolerance)
 
     def read_vitals(
         self,

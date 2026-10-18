@@ -1,0 +1,2006 @@
+{
+  "version": 1,
+  "frames": {
+    "2026-07-05_204708386_Kielbasa Szatana_LevelUp_4.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 89.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_204708386_Kielbasa Szatana_LevelUp_5.png": {
+      "hp_percent": 78.42,
+      "mp_percent": 89.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_204708386_Kielbasa Szatana_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_215927797_Kielbasa Szatana_LevelUp_1.png": {
+      "hp_percent": 99.2,
+      "mp_percent": 62.2,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_215927797_Kielbasa Szatana_LevelUp_2.png": {
+      "hp_percent": 96.5,
+      "mp_percent": 62.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_215927797_Kielbasa Szatana_LevelUp_3.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 67.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_215927797_Kielbasa Szatana_LevelUp_4.png": {
+      "hp_percent": 88.71,
+      "mp_percent": 73.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_215927797_Kielbasa Szatana_LevelUp_5.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_215927797_Kielbasa Szatana_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_222543174_Kielbasa Szatana_LevelUp_1.png": {
+      "hp_percent": 75.82,
+      "mp_percent": 64.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_222543174_Kielbasa Szatana_LevelUp_2.png": {
+      "hp_percent": 97.0,
+      "mp_percent": 58.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_222543174_Kielbasa Szatana_LevelUp_3.png": {
+      "hp_percent": 67.73,
+      "mp_percent": 59.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_222543174_Kielbasa Szatana_LevelUp_4.png": {
+      "hp_percent": 94.81,
+      "mp_percent": 55.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_222543174_Kielbasa Szatana_LevelUp_5.png": {
+      "hp_percent": 73.33,
+      "mp_percent": 55.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_222543174_Kielbasa Szatana_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_225737873_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 44.76,
+      "mp_percent": 6.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_225737873_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 65.63,
+      "mp_percent": 19.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_225737873_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 75.92,
+      "mp_percent": 37.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_225737873_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 96.5,
+      "mp_percent": 21.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_225737873_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 82.72,
+      "mp_percent": 21.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_225737873_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230348719_Secco Cio_SkillUp_1.png": {
+      "hp_percent": 56.64,
+      "mp_percent": 73.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230348719_Secco Cio_SkillUp_2.png": {
+      "hp_percent": 71.23,
+      "mp_percent": 82.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230348719_Secco Cio_SkillUp_3.png": {
+      "hp_percent": 74.93,
+      "mp_percent": 70.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230348719_Secco Cio_SkillUp_4.png": {
+      "hp_percent": 79.02,
+      "mp_percent": 92.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230348719_Secco Cio_SkillUp_5.png": {
+      "hp_percent": 79.82,
+      "mp_percent": 92.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230348719_Secco Cio_SkillUp_6.png": {
+      "hp_percent": 92.71,
+      "mp_percent": 81.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230513101_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 82.72,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230513101_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 94.61,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230513101_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 88.51,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230513101_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 84.82,
+      "mp_percent": 82.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230513101_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 83.72,
+      "mp_percent": 82.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_230513101_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231222903_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 84.32,
+      "mp_percent": 58.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231222903_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 82.72,
+      "mp_percent": 58.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231222903_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 89.31,
+      "mp_percent": 47.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231222903_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 98.4,
+      "mp_percent": 39.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231222903_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 97.6,
+      "mp_percent": 51.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231222903_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231254331_Secco Cio_LowHealth_1.png": {
+      "hp_percent": 40.86,
+      "mp_percent": 73.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231254331_Secco Cio_LowHealth_2.png": {
+      "hp_percent": 31.77,
+      "mp_percent": 89.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231254331_Secco Cio_LowHealth_3.png": {
+      "hp_percent": 50.25,
+      "mp_percent": 78.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231254331_Secco Cio_LowHealth_4.png": {
+      "hp_percent": 52.05,
+      "mp_percent": 89.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231254331_Secco Cio_LowHealth_5.png": {
+      "hp_percent": 38.36,
+      "mp_percent": 89.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_231254331_Secco Cio_LowHealth_6.png": {
+      "hp_percent": 2.9,
+      "mp_percent": 89.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233204608_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 88.01,
+      "mp_percent": 84.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233204608_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 62.04,
+      "mp_percent": 84.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233204608_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 86.31,
+      "mp_percent": 56.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233204608_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 78.22,
+      "mp_percent": 75.2,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233204608_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 99.7,
+      "mp_percent": 89.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233204608_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233924763_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 90.31,
+      "mp_percent": 89.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233924763_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 73.53,
+      "mp_percent": 89.2,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233924763_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 91.21,
+      "mp_percent": 78.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233924763_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 50.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233924763_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 51.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_233924763_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_234619094_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 76.82,
+      "mp_percent": 62.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_234619094_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 94.91,
+      "mp_percent": 75.2,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_234619094_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 84.32,
+      "mp_percent": 75.2,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_234619094_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 88.31,
+      "mp_percent": 70.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_234619094_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 89.01,
+      "mp_percent": 70.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_234619094_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235316830_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 92.21,
+      "mp_percent": 67.2,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235316830_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 93.31,
+      "mp_percent": 75.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235316830_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 88.41,
+      "mp_percent": 75.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235316830_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 88.41,
+      "mp_percent": 70.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235316830_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 63.04,
+      "mp_percent": 70.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235316830_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235730866_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 91.71,
+      "mp_percent": 95.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235730866_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 92.41,
+      "mp_percent": 95.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235730866_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 82.62,
+      "mp_percent": 79.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235730866_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 80.62,
+      "mp_percent": 80.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235730866_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 72.83,
+      "mp_percent": 69.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-05_235730866_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_000610277_Secco Cio_SkillUp_1.png": {
+      "hp_percent": 83.32,
+      "mp_percent": 77.2,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_000610277_Secco Cio_SkillUp_2.png": {
+      "hp_percent": 85.71,
+      "mp_percent": 72.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_000610277_Secco Cio_SkillUp_3.png": {
+      "hp_percent": 85.71,
+      "mp_percent": 72.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_000610277_Secco Cio_SkillUp_4.png": {
+      "hp_percent": 84.52,
+      "mp_percent": 92.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_000610277_Secco Cio_SkillUp_5.png": {
+      "hp_percent": 86.01,
+      "mp_percent": 76.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_000610277_Secco Cio_SkillUp_6.png": {
+      "hp_percent": 86.01,
+      "mp_percent": 76.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001144414_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 92.11,
+      "mp_percent": 60.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001144414_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 92.11,
+      "mp_percent": 60.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001144414_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 94.91,
+      "mp_percent": 46.2,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001144414_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 94.91,
+      "mp_percent": 46.2,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001144414_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 85.41,
+      "mp_percent": 66.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001144414_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001905674_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 91.81,
+      "mp_percent": 20.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001905674_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 91.81,
+      "mp_percent": 20.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001905674_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 91.01,
+      "mp_percent": 20.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001905674_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 97.2,
+      "mp_percent": 13.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001905674_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 97.2,
+      "mp_percent": 31.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_001905674_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_002639274_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 96.4,
+      "mp_percent": 55.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_002639274_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 97.1,
+      "mp_percent": 72.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_002639274_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 86.91,
+      "mp_percent": 47.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_002639274_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 86.91,
+      "mp_percent": 47.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_002639274_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_002639274_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_004730924_Old Wrath_LevelUp_1.png": {
+      "hp_percent": 63.64,
+      "mp_percent": 61.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_004730924_Old Wrath_LevelUp_2.png": {
+      "hp_percent": 99.6,
+      "mp_percent": 61.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_004730924_Old Wrath_LevelUp_3.png": {
+      "hp_percent": 95.0,
+      "mp_percent": 62.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_004730924_Old Wrath_LevelUp_4.png": {
+      "hp_percent": 95.8,
+      "mp_percent": 62.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_004730924_Old Wrath_LevelUp_5.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_004730924_Old Wrath_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_005659257_Old Wrath_LevelUp_1.png": {
+      "hp_percent": 74.83,
+      "mp_percent": 49.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_005659257_Old Wrath_LevelUp_2.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 45.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_005659257_Old Wrath_LevelUp_3.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 47.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_005659257_Old Wrath_LevelUp_4.png": {
+      "hp_percent": 80.12,
+      "mp_percent": 49.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_005659257_Old Wrath_LevelUp_5.png": {
+      "hp_percent": 80.12,
+      "mp_percent": 55.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_005659257_Old Wrath_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011233197_Old Wrath_LevelUp_1.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 73.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011233197_Old Wrath_LevelUp_2.png": {
+      "hp_percent": 98.2,
+      "mp_percent": 76.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011233197_Old Wrath_LevelUp_3.png": {
+      "hp_percent": 98.2,
+      "mp_percent": 77.2,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011233197_Old Wrath_LevelUp_4.png": {
+      "hp_percent": 77.42,
+      "mp_percent": 81.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011233197_Old Wrath_LevelUp_5.png": {
+      "hp_percent": 74.33,
+      "mp_percent": 81.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011233197_Old Wrath_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011715335_Old Wrath_SkillUp_1.png": {
+      "hp_percent": 94.81,
+      "mp_percent": 65.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011715335_Old Wrath_SkillUp_2.png": {
+      "hp_percent": 92.31,
+      "mp_percent": 65.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011715335_Old Wrath_SkillUp_3.png": {
+      "hp_percent": 68.53,
+      "mp_percent": 61.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011715335_Old Wrath_SkillUp_4.png": {
+      "hp_percent": 90.11,
+      "mp_percent": 58.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011715335_Old Wrath_SkillUp_5.png": {
+      "hp_percent": 90.91,
+      "mp_percent": 53.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_011715335_Old Wrath_SkillUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 49.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_012005562_Old Wrath_LevelUp_1.png": {
+      "hp_percent": 94.11,
+      "mp_percent": 56.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_012005562_Old Wrath_LevelUp_2.png": {
+      "hp_percent": 67.33,
+      "mp_percent": 64.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_012005562_Old Wrath_LevelUp_3.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 60.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_012005562_Old Wrath_LevelUp_4.png": {
+      "hp_percent": 97.2,
+      "mp_percent": 60.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_012005562_Old Wrath_LevelUp_5.png": {
+      "hp_percent": 97.2,
+      "mp_percent": 60.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_012005562_Old Wrath_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_225640318_Kielbasa Szatana_Achievement_1.png": {
+      "hp_percent": 84.92,
+      "mp_percent": 76.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_225640318_Kielbasa Szatana_Achievement_2.png": {
+      "hp_percent": 84.92,
+      "mp_percent": 76.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_225640318_Kielbasa Szatana_Achievement_3.png": {
+      "hp_percent": 84.92,
+      "mp_percent": 76.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_225640318_Kielbasa Szatana_Achievement_4.png": {
+      "hp_percent": 85.51,
+      "mp_percent": 76.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_225640318_Kielbasa Szatana_Achievement_5.png": {
+      "hp_percent": 85.51,
+      "mp_percent": 76.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-06_225640318_Kielbasa Szatana_Achievement_6.png": {
+      "hp_percent": 85.51,
+      "mp_percent": 76.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-07_221324687_Secco Cio_SkillUp.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 46.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-07_221517352_Secco Cio_LevelUp_1.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 55.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-07_221517352_Secco Cio_LevelUp_2.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 55.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-07_221517352_Secco Cio_LevelUp_3.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 55.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-07_221517352_Secco Cio_LevelUp_4.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 55.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-07_221517352_Secco Cio_LevelUp_5.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 56.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-07_221517352_Secco Cio_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_174554398_Secco Cio_SkillUp.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 93.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_174618779_Propeica_SkillUp.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null,
+      "notes": "layout-mismatch: hp_bar=[188, 5, 1089, 12] mp_bar=[1284, 5, 1088, 12]"
+    },
+    "2026-07-08_194609995_Kielbasa Szatana_SkillUp_1.png": {
+      "hp_percent": 96.0,
+      "mp_percent": 37.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_194609995_Kielbasa Szatana_SkillUp_2.png": {
+      "hp_percent": 96.0,
+      "mp_percent": 37.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_194609995_Kielbasa Szatana_SkillUp_3.png": {
+      "hp_percent": 96.0,
+      "mp_percent": 38.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_194609995_Kielbasa Szatana_SkillUp_4.png": {
+      "hp_percent": 96.3,
+      "mp_percent": 32.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_194609995_Kielbasa Szatana_SkillUp_5.png": {
+      "hp_percent": 96.2,
+      "mp_percent": 32.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_194609995_Kielbasa Szatana_SkillUp_6.png": {
+      "hp_percent": 96.2,
+      "mp_percent": 32.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_195530252_Kielbasa Szatana_TreasureFound_1.png": {
+      "hp_percent": 79.32,
+      "mp_percent": 40.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_195530252_Kielbasa Szatana_TreasureFound_2.png": {
+      "hp_percent": 74.53,
+      "mp_percent": 40.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_195530252_Kielbasa Szatana_TreasureFound_3.png": {
+      "hp_percent": 74.53,
+      "mp_percent": 40.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_195530252_Kielbasa Szatana_TreasureFound_4.png": {
+      "hp_percent": 74.53,
+      "mp_percent": 40.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_195530252_Kielbasa Szatana_TreasureFound_5.png": {
+      "hp_percent": 71.73,
+      "mp_percent": 40.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_195530252_Kielbasa Szatana_TreasureFound_6.png": {
+      "hp_percent": 67.73,
+      "mp_percent": 40.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_201320207_Kielbasa Szatana_TreasureFound_1.png": {
+      "hp_percent": 92.61,
+      "mp_percent": 45.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_201320207_Kielbasa Szatana_TreasureFound_2.png": {
+      "hp_percent": 92.51,
+      "mp_percent": 45.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_201320207_Kielbasa Szatana_TreasureFound_3.png": {
+      "hp_percent": 92.81,
+      "mp_percent": 45.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_201320207_Kielbasa Szatana_TreasureFound_4.png": {
+      "hp_percent": 92.81,
+      "mp_percent": 45.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_201320207_Kielbasa Szatana_TreasureFound_5.png": {
+      "hp_percent": 92.81,
+      "mp_percent": 45.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_201320207_Kielbasa Szatana_TreasureFound_6.png": {
+      "hp_percent": 93.01,
+      "mp_percent": 45.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_210702920_Kielbasa Szatana_SkillUp_1.png": {
+      "hp_percent": 97.0,
+      "mp_percent": 55.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_210702920_Kielbasa Szatana_SkillUp_2.png": {
+      "hp_percent": 97.3,
+      "mp_percent": 55.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_210702920_Kielbasa Szatana_SkillUp_3.png": {
+      "hp_percent": 97.3,
+      "mp_percent": 51.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_210702920_Kielbasa Szatana_SkillUp_4.png": {
+      "hp_percent": 97.3,
+      "mp_percent": 51.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_210702920_Kielbasa Szatana_SkillUp_5.png": {
+      "hp_percent": 97.5,
+      "mp_percent": 51.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_210702920_Kielbasa Szatana_SkillUp_6.png": {
+      "hp_percent": 97.5,
+      "mp_percent": 51.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_212523293_Kielbasa Szatana_Achievement_1.png": {
+      "hp_percent": 96.6,
+      "mp_percent": 73.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_212523293_Kielbasa Szatana_Achievement_2.png": {
+      "hp_percent": 96.6,
+      "mp_percent": 73.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_212523293_Kielbasa Szatana_Achievement_3.png": {
+      "hp_percent": 96.8,
+      "mp_percent": 73.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_212523293_Kielbasa Szatana_Achievement_4.png": {
+      "hp_percent": 96.8,
+      "mp_percent": 73.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_212523293_Kielbasa Szatana_Achievement_5.png": {
+      "hp_percent": 97.1,
+      "mp_percent": 73.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_212523293_Kielbasa Szatana_Achievement_6.png": {
+      "hp_percent": 97.1,
+      "mp_percent": 73.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_213606089_Kielbasa Szatana_TreasureFound_1.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 86.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_213606089_Kielbasa Szatana_TreasureFound_2.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 86.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_213606089_Kielbasa Szatana_TreasureFound_3.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 86.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_213606089_Kielbasa Szatana_TreasureFound_4.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 86.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_213606089_Kielbasa Szatana_TreasureFound_5.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 86.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_213606089_Kielbasa Szatana_TreasureFound_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 86.9,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_214416458_Kielbasa Szatana_BossDefeated_1.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 58.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_214416458_Kielbasa Szatana_BossDefeated_2.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 58.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_214416458_Kielbasa Szatana_BossDefeated_3.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 57.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_214416458_Kielbasa Szatana_BossDefeated_4.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 56.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_214416458_Kielbasa Szatana_BossDefeated_5.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 58.3,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-08_214416458_Kielbasa Szatana_BossDefeated_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 54.2,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-14_094500190_Quattro Cioccolata_SkillUp.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 54.1,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-14_094743586_Kielbasa Szatana_SkillUp.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 98.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_221913692_Kielbasa Szatana_Achievement_1.png": {
+      "hp_percent": 90.41,
+      "mp_percent": 29.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_221913692_Kielbasa Szatana_Achievement_2.png": {
+      "hp_percent": 91.41,
+      "mp_percent": 29.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_221913692_Kielbasa Szatana_Achievement_3.png": {
+      "hp_percent": 99.7,
+      "mp_percent": 31.5,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_221913692_Kielbasa Szatana_Achievement_4.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 29.7,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_221913692_Kielbasa Szatana_Achievement_5.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 29.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_221913692_Kielbasa Szatana_Achievement_6.png": {
+      "hp_percent": 90.71,
+      "mp_percent": 29.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_222918162_Kielbasa Szatana_LevelUp_1.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 72.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_222918162_Kielbasa Szatana_LevelUp_2.png": {
+      "hp_percent": 86.11,
+      "mp_percent": 72.8,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_222918162_Kielbasa Szatana_LevelUp_3.png": {
+      "hp_percent": 98.4,
+      "mp_percent": 70.6,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_222918162_Kielbasa Szatana_LevelUp_4.png": {
+      "hp_percent": 81.92,
+      "mp_percent": 70.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_222918162_Kielbasa Szatana_LevelUp_5.png": {
+      "hp_percent": 79.52,
+      "mp_percent": 70.4,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    },
+    "2026-07-16_222918162_Kielbasa Szatana_LevelUp_6.png": {
+      "hp_percent": 100.0,
+      "mp_percent": 100.0,
+      "monster_count": 0,
+      "selected_target": null,
+      "players_on_screen_count": 0,
+      "position_x": null,
+      "position_y": null,
+      "position_z": null
+    }
+  }
+}
