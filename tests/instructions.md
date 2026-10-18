@@ -7,7 +7,7 @@ Last verified: 2026-10-14.
 The test suite. Structure:
 - `unit/` — fast, offline unit tests (synthetic frames, `FakeInput`, mocked serial).
 - `replay/` — golden-frame replay tests (planned, not yet present).
-- `hil/` — human-in-the-loop / real-client tests (planned, not yet present).
+- `hil/` — HIL suite (T18): latency, click accuracy, serial-loss release. Offline via `mock_serial.py` (`MockBus`/`MockSerial`, drop/re-plug); real device via `tools/hil_harness.py --real` (skips if absent).
 - `golden/` — golden-frame dataset + `labels.json` (planned, not yet present).
 
 ## Status
@@ -19,7 +19,7 @@ The test suite. Structure:
 | `unit/test_calibrate.py` | ✅ DONE (8.9 KB) |
 | `unit/test_loop.py` | ✅ DONE (14.9 KB) |
 | `unit/test_ui.py` | ✅ DONE (17 KB) |
-| `replay/`, `hil/`, `golden/` | ⬜ not created yet |
+| `replay/`, `golden/` | ⬜ not created yet |
 
 Current baseline: **339 passed, 4 skipped** (the loop kill-switch test was
 fixed in `loop.py` on 2026-10-15).
