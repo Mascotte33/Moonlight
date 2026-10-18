@@ -7,10 +7,8 @@ Last verified: 2026-10-14 by orchestrator (after merging two divergent session s
 The core `moonlight` package. Pipeline:
 `capture -> perception -> WorldState -> decision -> input -> Arduino -> OS`.
 
-**Layout note (important):** This repo uses a **flat layout** — the package
-lives at the repo root (`moonlight/__init__.py`), not in a nested
-`moonlight/moonlight/`. Tests import it via `conftest.py`; lint/type-check on
-`.` (the repo root), NOT on `moonlight/`.
+**Layout note (important):** the package lives in `moonlight/` under the repo
+root (`<repo>/moonlight/__init__.py`). Lint/type-check/test on `.` (the repo root).
 
 ## Status (verified by test run + file sizes, not PROGRESS.md)
 

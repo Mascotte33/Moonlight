@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+
 from moonlight.calibrate import CalibrationProfile, Region
 from moonlight.perception import CursorReader, CursorTemplates
 

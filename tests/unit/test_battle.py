@@ -18,6 +18,7 @@ from typing import TypedDict
 
 import numpy as np
 import pytest
+
 from moonlight.calibrate import CalibrationProfile, Region
 from moonlight.perception.battle import (
     BattleEntry,

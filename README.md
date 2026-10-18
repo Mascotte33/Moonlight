@@ -80,7 +80,6 @@ pip install customtkinter        # only for the GUI
 
 # 3. Calibrate: draw the screen regions for your client window
 #    opens an OpenCV window; click the landmark, drag each region, Esc cancels
-cd ..                            # repo's PARENT dir — see note below
 python -m moonlight.ui           # → command: calibrate <profile-name>
 
 # 4. Run
@@ -88,10 +87,8 @@ python -m moonlight.ui           # terminal bot: start / state / stats / kill
 python -m moonlight.gui          # 10-tab GUI (--help, --profile <name>, --no-bot)
 ```
 
-**Import note:** the repo root *is* the `moonlight` package (flat layout,
-`__init__.py` at the root), so `python -m moonlight.*` must be run from the
-repo's **parent** directory. `pytest` / `ruff` / `mypy` run from the repo
-**root** (pytest's conftest inserts the parent dir on `sys.path` automatically).
+**Layout note:** the package lives in `moonlight/` under the repo root. Run
+everything (`python -m moonlight.*`, `pytest`, `ruff`, `mypy`) from the repo root.
 
 ## Hardware: Arduino Leonardo
 
@@ -128,7 +125,6 @@ regions (details in `docs/perf_profile.md`).
 ## Testing & CI
 
 ```bash
-cd moonlight/        # repo root
 ruff check .         # line-length 100, py312, tools/ excluded
 mypy .               # strict, py312
 pytest -q            # baseline: 640 passed, 13 skipped

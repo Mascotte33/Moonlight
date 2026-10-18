@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
 from moonlight.calibrate import CalibrationProfile, Region
 from moonlight.perception.floor import (
     FLOOR_LEVELS,

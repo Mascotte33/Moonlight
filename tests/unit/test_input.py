@@ -10,6 +10,7 @@ No serial port or hardware is used anywhere in this file.
 """
 
 import pytest
+
 from moonlight.input import ClickSide, FakeInput, InputBackend, ProtocolEncoder
 
 COMBO = "ctrl+alt+t"

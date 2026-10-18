@@ -12,6 +12,7 @@ import sys
 
 import numpy as np
 import pytest
+
 from moonlight.capture import CaptureError, ScreenCapture, WindowNotFoundError
 
 _IS_WINDOWS = sys.platform == "win32"

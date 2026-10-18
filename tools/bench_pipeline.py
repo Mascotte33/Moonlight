@@ -18,8 +18,8 @@ import time
 
 import numpy as np
 
-# The repo root is the `moonlight` package; its PARENT dir must be on the path.
-_PKG_PARENT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# The `moonlight` package lives in the repo root; put the repo root on the path.
+_PKG_PARENT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _PKG_PARENT)
 
 

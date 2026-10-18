@@ -47,7 +47,7 @@ __all__ = [
 
 
 def repo_root() -> Path:
-    """The repository root (the ``moonlight`` package directory)."""
+    """The ``moonlight`` package directory."""
     return Path(__file__).resolve().parents[1]
 
 

@@ -11,6 +11,7 @@ from dataclasses import FrozenInstanceError, replace
 from typing import Any, cast
 
 import pytest
+
 from moonlight.decision.alarms import (
     ALARM_PRIORITY,
     AlarmAction,

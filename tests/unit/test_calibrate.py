@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from moonlight.calibrate import (
     GAME_GRID_COLS,
     GAME_GRID_ROWS,
