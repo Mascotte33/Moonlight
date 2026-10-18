@@ -73,8 +73,6 @@ logger = logging.getLogger("moonlight.loop")
 #: Win32 virtual-key code for F12.
 VK_F12 = 0x7B
 
-_IS_WINDOWS = sys.platform == "win32"
-
 
 def default_key_state(vk: int) -> bool:
     """Return True if virtual key *vk* is currently held down.
@@ -82,7 +80,7 @@ def default_key_state(vk: int) -> bool:
     Uses Win32 ``GetAsyncKeyState`` polling on Windows; always False
     elsewhere (the programmatic kill switch still works everywhere).
     """
-    if not _IS_WINDOWS:
+    if sys.platform != "win32":
         return False
     state = ctypes.windll.user32.GetAsyncKeyState(vk)
     return bool(state & 0x0001)
