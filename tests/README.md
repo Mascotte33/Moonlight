@@ -11,7 +11,7 @@ Arduino, no GPU.
 | `unit/` | Per-module unit tests (synthetic frames, FakeInput) | ✅ 525 tests |
 | `perf/` | Golden-frame accuracy + per-read performance tests | ✅ 12 tests (skip until T08 data) |
 | `replay/` | Video-replay tests for every module (T28) | ⬜ planned |
-| `hil/` | Human-in-the-loop / real-client tests (T18) | ⬜ planned |
+| `hil/` | HIL suite (T18): click latency / accuracy / serial-loss release, all offline via `mock_serial.py`; `python tools/hil_harness.py [--real]` runs them on hardware | ✅ 9 tests |
 
 Baseline (2026-10-15): **524 passed, 13 skipped**. All 13 skips are expected:
 12 golden-frame tests wait for the T08 screenshot dataset, 1 is a dxcam test
