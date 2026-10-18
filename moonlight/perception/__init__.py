@@ -6,6 +6,7 @@ Readers:
     - MinimapReader:   player position x, y, z (minimap.py)
     - FloorReader:     current z-level / floor index (floor.py)
     - SpriteDetector:  monster sprite positions (sprites.py)
+    - LogOCR:          server-log OCR via Tesseract (logocr.py)
     - CursorReader:    mouse-cursor position for closed-loop clicking (cursor.py)
 
 Example:
@@ -37,6 +38,13 @@ from moonlight.perception.floor import (
     FloorReader,
     TemplateSet,
 )
+from moonlight.perception.logocr import (
+    EventKind,
+    LogEvent,
+    LogFrame,
+    LogOCR,
+    LogOCRConfig,
+)
 from moonlight.perception.minimap import (
     MapMatcher,
     MinimapReader,
@@ -56,9 +64,14 @@ __all__ = [
     "BattleReader",
     "CursorReader",
     "CursorTemplates",
+    "EventKind",
     "FLOOR_LEVELS",
     "FloorReader",
     "GROUND_FLOOR",
+    "LogEvent",
+    "LogFrame",
+    "LogOCR",
+    "LogOCRConfig",
     "MapMatcher",
     "MinimapReader",
     "MonsterTemplates",

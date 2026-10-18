@@ -19,6 +19,7 @@ T08 data.**
 | `vitals.py` | T12 | HP/MP bars | hp, mp (0-100) | ✅ done (T25 golden pending T08) |
 | `battle.py` | T19 | battle list | entries (name, is_player, is_selected) → monsters/selected/players | ✅ done (golden pending T08) |
 | `loot.py` | T23 | `loot_window` region | `LootWindow` (open, items by slot) via title + item templates; None without templates | ✅ done (T08 templates pending) |
+| `logocr.py` | T38 | server-log OCR (Tesseract) for loot/damage | ✅ done (2026-10-18) |
 | `minimap.py` | T21 | minimap/radar | world (x, y), player-centered | ✅ done (golden pending T08) |
 | `floor.py` | T21/T23 | floor indicator | z (floor level), 16 levels | ✅ done (golden pending T08) |
 | `sprites.py` | T17/T23 | monster sprites on field | sprite (x, y) positions via template match + NMS | ✅ done (T08 templates pending) |
