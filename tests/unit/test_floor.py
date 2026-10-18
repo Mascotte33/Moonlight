@@ -235,8 +235,10 @@ class TestFloorReader:
             FloorReader(floor_region=(1, 2, 3))  # type: ignore[arg-type]
 
     def test_custom_threshold(self) -> None:
-        frame, region = make_frame(7)
-        strict = FloorReader(template_set=make_templates(), match_threshold=0.9999999)
+        # Noisy icon scores ~0.96: clear margins either side, unlike a perfect
+        # match (~1.0 +/- float rounding, which differs across OpenCV builds).
+        frame, region = make_frame(7, noise=40)
+        strict = FloorReader(template_set=make_templates(), match_threshold=0.99)
         assert strict.read_floor(frame, region) is None
         loose = FloorReader(template_set=make_templates(), match_threshold=0.5)
         assert loose.read_floor(frame, region) == 7
