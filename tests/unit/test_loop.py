@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable
 
 import pytest
+
 from moonlight.input import FakeInput
 from moonlight.loop import (
     VK_F12,

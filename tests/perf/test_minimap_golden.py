@@ -161,6 +161,7 @@ class TestMinimapGolden:
     def test_marker_detection(self) -> None:
         """Player marker detected exactly when the label says it is visible."""
         import cv2
+
         from moonlight.perception.minimap import MinimapReader
 
         reader = MinimapReader(_usable_profile())
@@ -202,6 +203,7 @@ class TestMinimapZGolden:
     def test_z_accuracy(self) -> None:
         """Position.z matches the labelled floor for every golden frame."""
         import cv2
+
         from moonlight.perception.floor import FloorReader
         from moonlight.perception.minimap import MinimapReader
 

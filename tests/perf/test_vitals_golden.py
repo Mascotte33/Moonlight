@@ -146,6 +146,7 @@ class TestVitalsGolden:
     def test_hp_accuracy(self) -> None:
         """HP% within +/-2 of the labelled value for every golden frame."""
         import cv2
+
         from moonlight.perception.vitals import VitalsReader
 
         reader = VitalsReader(_usable_profile())
@@ -161,6 +162,7 @@ class TestVitalsGolden:
     def test_mp_accuracy(self) -> None:
         """MP% within +/-2 of the labelled value for every golden frame."""
         import cv2
+
         from moonlight.perception.vitals import VitalsReader
 
         reader = VitalsReader(_usable_profile())

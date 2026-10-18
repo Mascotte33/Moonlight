@@ -18,6 +18,7 @@ import time
 
 import numpy as np
 import pytest
+
 from moonlight.calibrate import CalibrationProfile, Region
 from moonlight.perception.minimap import (
     DEFAULT_MARKER_TOLERANCE,

@@ -12,6 +12,7 @@ import time
 
 import numpy as np
 import pytest
+
 from moonlight.calibrate import CalibrationProfile, Region
 from moonlight.perception.vitals import (
     BAR_BACKGROUND_RGB,

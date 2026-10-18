@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+
 from moonlight.clicker import ClickController
 from moonlight.input import ClickSide, FakeInput
 from moonlight.perception import CursorReader

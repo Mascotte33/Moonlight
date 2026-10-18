@@ -11,6 +11,7 @@ import time
 from dataclasses import FrozenInstanceError
 
 import pytest
+
 from moonlight.state import Capacity, Monster, Position, WorldState
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError
 
 import pytest
+
 from moonlight.decision.targeting import (
     TargetingAction,
     TargetingActionKind,

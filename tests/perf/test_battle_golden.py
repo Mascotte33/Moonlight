@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 import pytest
+
 from moonlight.perception.battle import BattleEntry
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -162,6 +163,7 @@ class TestBattleGolden:
     def _entries(frame: Path) -> list[BattleEntry]:
         """Read battle-list entries from a BGR golden frame via the profile."""
         import cv2
+
         from moonlight.perception.battle import BattleReader
 
         profile = _usable_profile()

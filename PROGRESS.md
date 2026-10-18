@@ -11,8 +11,8 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 - **2026-10-14 ORCHESTRATOR TAKEOVER.** A second concurrent orchestrator session
   was editing this repo in parallel (flat package layout, extra batches Oct 14).
   The primary orchestrator took over, reconciled state, and is now the sole writer.
-- **Layout:** flat — the `moonlight` package lives at the repo root
-  (`moonlight/__init__.py`), not nested. Lint/type/test on `.` from root.
+- **Layout:** the `moonlight` package lives in `moonlight/` under the repo root
+  (`<repo>/moonlight/__init__.py`). Lint/type/test on `.` from root.
 - **Every folder has an `instructions.md`** — agents MUST read it before working.
 
 ## Task queue

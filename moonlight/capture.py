@@ -43,7 +43,6 @@ __all__ = [
 #: exact-or-prefix, so this also matches "Tibia - <ServerName>".
 TIBIA_WINDOW_TITLE = "Tibia"
 
-_IS_WINDOWS = sys.platform == "win32"
 
 #: Backends accepted by :class:`ScreenCapture`.
 _BACKENDS = ("mss", "dxcam")
@@ -74,7 +73,7 @@ def _set_dpi_aware() -> None:
     No-op off Windows. Tries per-monitor-v2 first (best for multi-monitor with
     mixed DPI), then falls back to system DPI awareness.
     """
-    if not _IS_WINDOWS:
+    if sys.platform != "win32":
         return
     try:
         # PER_MONITOR_AWARE_V2 = -4 as a DPI_AWARENESS_CONTEXT handle.
@@ -86,11 +85,6 @@ def _set_dpi_aware() -> None:
             pass
 
 
-def _user32() -> ctypes.WinDLL:
-    """Return the ``user32`` WinDLL (Windows only)."""
-    return ctypes.windll.user32
-
-
 def _find_window_hwnd(title: str) -> int | None:
     """Find a visible top-level window by title and return its handle.
 
@@ -99,9 +93,9 @@ def _find_window_hwnd(title: str) -> int | None:
     starts with it (to cover "Tibia - <ServerName>"). Returns ``None`` if no
     match, or off Windows.
     """
-    if not _IS_WINDOWS:
+    if sys.platform != "win32":
         return None
-    user32 = _user32()
+    user32 = ctypes.windll.user32
     user32.FindWindowW.restype = ctypes.c_void_p
 
     hwnd = user32.FindWindowW(None, title)
@@ -134,9 +128,9 @@ def _find_window_hwnd(title: str) -> int | None:
 
 def _window_rect(hwnd: int) -> tuple[int, int, int, int] | None:
     """Return ``(left, top, width, height)`` for *hwnd*, or ``None``."""
-    if not _IS_WINDOWS:
+    if sys.platform != "win32":
         return None
-    user32 = _user32()
+    user32 = ctypes.windll.user32
     user32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(_RECT)]
     user32.GetWindowRect.restype = ctypes.c_bool
     rect = _RECT()
@@ -182,7 +176,7 @@ class ScreenCapture:
         """
         if backend not in _BACKENDS:
             raise CaptureError(f"Unknown backend {backend!r}; expected one of {_BACKENDS}")
-        if backend == "dxcam" and not _IS_WINDOWS:
+        if backend == "dxcam" and sys.platform != "win32":
             raise CaptureError("The 'dxcam' backend is only available on Windows")
 
         self.backend = backend
@@ -262,12 +256,12 @@ class ScreenCapture:
         A window is "focused" here when it is the current foreground window.
         Off Windows (or if the window is not found) this returns ``False``.
         """
-        if not _IS_WINDOWS:
+        if sys.platform != "win32":
             return False
         hwnd = _find_window_hwnd(self.window_title)
         if hwnd is None:
             return False
-        user32 = _user32()
+        user32 = ctypes.windll.user32
         user32.GetForegroundWindow.restype = ctypes.c_void_p
         if not user32.IsWindowVisible(hwnd):
             return False

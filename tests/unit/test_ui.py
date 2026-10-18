@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
+
 from moonlight.calibrate import REGIONS, CalibrationProfile, Region
 from moonlight.input import FakeInput
 from moonlight.loop import GameLoop, LoopConfig

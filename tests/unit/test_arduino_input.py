@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from moonlight.input import (
     ARDUINO_LEONARDO_VID,
     ArduinoInput,

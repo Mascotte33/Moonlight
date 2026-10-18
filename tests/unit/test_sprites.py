@@ -34,6 +34,7 @@ import time
 import cv2
 import numpy as np
 import pytest
+
 from moonlight.calibrate import CalibrationProfile, Region
 from moonlight.perception.sprites import (
     DEFAULT_MATCH_THRESHOLD,

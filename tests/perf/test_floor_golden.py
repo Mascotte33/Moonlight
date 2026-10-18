@@ -157,6 +157,7 @@ class TestFloorGolden:
     def test_floor_accuracy(self) -> None:
         """read_floor matches the labelled level for every golden frame."""
         import cv2
+
         from moonlight.perception.floor import FloorReader
 
         reader = FloorReader(_usable_profile())

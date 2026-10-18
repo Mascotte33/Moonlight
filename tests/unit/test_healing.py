@@ -10,6 +10,7 @@ from dataclasses import FrozenInstanceError
 from typing import Any
 
 import pytest
+
 from moonlight.decision.healing import (
     EMERGENCY_COOLDOWN_KEY,
     NORMAL_COOLDOWN_KEY,
