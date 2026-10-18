@@ -43,7 +43,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T20 | coder | decision/targeting.py | T19, T14 | done | decision/targeting.py (36 tests pass; attack/switch/flee logic, player safety) |
 | T21 | coder | perception/minimap.py + floor.py | T08, T11 | done | floor.py (template matching, 16 levels) + minimap.py (106x109 radar, player center); 524 tests pass; golden tests now have labels — T08 done |
 | T22 | coder | decision/cavebot.py + waypoint format | T21, T17 | done | 2026-10-18: Claude Code (Opus 4.6). cavebot.py (398 lines): Waypoint/Route/RouteFileLoader/Cavebot. Walk (minimap click, 1px=1tile, re-click after 1s idle), rope/shovel (hotkey+tile, wait floor change, retry), ladder (right-click, wait up), label/goto (route loops), stuck detection (5s no movement, alarm flag), floor resync. 33 tests. 673 full suite pass/13 skip, ruff+mypy clean. |
-| T23 | coder | perception/loot.py + decision/looting.py | T19, T17 | pending | |
+| T23 | coder | perception/loot.py + decision/looting.py | T19, T17 | done | 2026-10-18: Claude Code (Opus 4.6). loot.py (139 lines): LootWindow + LootReader (template-based window/item detection, graceful None on missing templates). looting.py (110 lines): LootingConfig + Looting (3-tick open->move->close, should_loot cap gate, fails closed). 12 tests. 685 full suite pass/13 skip, ruff+mypy clean. |
 | T24 | coder | Refill route | T22, T23 | pending | |
 | T25 | coder | decision/alarms.py | T19, T14 | done | decision/alarms.py (58 tests pass; player/HP-drop/low-HP/PM alarms with history tracking) |
 | T26 | coder | Buffs: recast on expiry | T14 | done | decision/buffs.py (50 tests pass; missing/expiring recast + priorities + cooldowns) |
@@ -205,3 +205,11 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   alarm='lost'). data/waypoints/ created with README.md (format doc + valid
   example). 33 tests. 673 full suite pass/13 skip. Ruff + mypy clean.
   Committed 997d5dc.
+- (orchestrator, Oct 18) **T23 COMPLETE** via Claude Code (Opus 4.6).
+  Looting: loot.py (139 lines): LootWindow + LootReader (template-based
+  window/item detection, graceful None on missing templates). looting.py
+  (110 lines): LootingConfig (loot_hotkey, move_all_hotkey,
+  min_cap_to_loot) + Looting (3-tick open->move->close state machine,
+  should_loot cap gate, on_target_died, fails closed — no input unless
+  focused). 12 tests. 685 full suite pass/13 skip. Ruff + mypy clean.
+  Committed d11257f.
