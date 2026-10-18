@@ -38,7 +38,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T16 | coder | ArduinoInput: pyserial, 1s heartbeat, reconnect, stop on lost PONG | T15 | done | ArduinoInput in input.py + tests/unit/test_arduino_input.py. 566 pass/13 skip, ruff+mypy clean. **Verified against real Arduino (COM5):** auto-detect, P->PONG heartbeat 3/3, X->OK, and a physical ScrollLock keypress. |
 | T17 | coder | Closed-loop clicks: move->read cursor->correct->click +-2px | T16 | done | clicker.py (ClickController, closed-loop, fail-closed) + perception/cursor.py (CursorReader template matching). 42 new offline tests (test_clicker.py 17, test_cursor.py 25). 640 pass/13 skip, ruff+mypy clean. |
 | T17.B | - | input humanizing to disguise automation | T17 | declined | ⛔ evasion — will not build (reliability timing only) |
-| T18 | qa | HIL tests: latency, clicks, serial-loss release | T17 | pending | |
+| T18 | qa | HIL tests: latency, clicks, serial-loss release | T17 | done (2026-10-18) | tests/hil/ + tools/hil_harness.py; 9 offline tests + real COM5 check (latency p95 2.0 ms, accuracy+safety PASS) |
 | T19 | coder | perception/battle.py | T08, T11 | done | perception/battle.py (36 tests pass; battle list parsing, selection detection; golden tests now have labels — T08 done) |
 | T20 | coder | decision/targeting.py | T19, T14 | done | decision/targeting.py (36 tests pass; attack/switch/flee logic, player safety) |
 | T21 | coder | perception/minimap.py + floor.py | T08, T11 | done | floor.py (template matching, 16 levels) + minimap.py (106x109 radar, player center); 524 tests pass; golden tests now have labels — T08 done |
@@ -50,7 +50,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T27 | coder | ui: start/stop, profile select, WorldState, log view | T13 | done | ui.py (terminal UI, zero new deps; +calibrate command opens the CalibrationApp window in-app; 52 UI tests pass) |
 | T27.B | - | hiding/disguising bot process, window, files, traffic | T27 | declined | ⛔ evasion — will not build |
 | T27.C | - | automated replies (unapproved, garbled spec) | T27 | declined | ⛔ GATED — needs approval + clear spec |
-| T27.D | coder | decision/scripts.py: .py script runner | T22, T13 | pending | scripts.py is a stub |
+| T27.D | coder | moonlight/scripts.py: .py script runner | T22, T13 | done (2026-10-18) | ScriptRunner/BotScript/Condition/Trigger + fail-closed guard; 35 tests; scripts/example.py |
 | T28 | qa | Replay tests for every module from recorded videos | T14..T27.D | pending | |
 | T29 | qa | Full safety suite | T28 | pending | |
 | T30 | qa | Timing report | T28 | pending | |
@@ -62,7 +62,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T35 | qa | Audit all folders for README.md; fill gaps; verify cross-agent docs | T34 | done | All 11 folders have README.md. Fixed stale status: perception minimap/floor→done, firmware kill-switch desc, tools/ list, decision test-dir refs, root instructions |
 | T36 | HUMAN | Review final report and approve completion | - | pending | |
 | T37 | coder | perception/sprites.py: monster sprite detection via cv2.matchTemplate | T09, T10 | done | sprites.py + test_sprites.py (27 tests). Fills gap: bot now knows monster SCREEN POSITIONS, not just battle-list names. Prereq for T17 + T23. 598 pass/13 skip, ruff+mypy clean. (Adopted from Oct 16 CV directive.) |
-| T38 | coder | perception/logocr.py: OCR server-log parsing (Tesseract) for loot/damage | T09, T10, T37 | pending | Queued from Oct 16 CV directive. Adds Tesseract dep (lightweight, not EasyOCR). Feeds T23 looting. |
+| T38 | coder | perception/logocr.py: OCR server-log parsing (Tesseract) for loot/damage | T09, T10, T37 | done (2026-10-18) | LogOCR/LogFrame/LogEvent, fail-closed, dedupe; 27 offline tests (Tesseract mocked); pytesseract dep added |
 | T39 | coder | tibiaeye-style tabbed GUI (10 tabs, customtkinter) | T13, T16, T27, T37 | done | User ask (Oct 16): tibiaeye-style GUI w/ MOONLIGHT features. Tabs: Dashboard/Settings/Cavebot/Healing/Targeting/Spell/Hardware/Recorder/Status/Diagnostics. New `gui/` pkg + `python -m moonlight.gui`; adds customtkinter dep. Cavebot tab = JSON route data layer (T22 logic later); Recorder = new waypoint->JSON. DONE Oct 18: finish subagent (sa-0-d59e0338) interrupted at ~80%, orchestrator recovered + completed. All 10 tabs build; smoke OK; 640 pass/13 skip (baseline); ruff 0; mypy 0 (65 files); --help exit 0. |
 | CT1 | - | HWID/MAC/disk-serial fingerprint changes | - | declined | ⛔ safety boundary — will not build |
 | CT2 | - | official CipSoft servers | - | declined | ⛔ safety boundary — will not build |

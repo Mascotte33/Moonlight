@@ -26,7 +26,7 @@ root (`<repo>/moonlight/__init__.py`). Lint/type-check/test on `.` (the repo roo
 ### STUBS (docstring only — no logic yet)
 | File | Task | Note |
 |------|------|------|
-| `scripts.py` | T27.D | User .py script loader — **legit, still to implement** |
+| scripts.py | T27.D | User .py script loader — **done (2026-10-18)**: ScriptRunner/BotScript/Condition/Trigger, 35 tests |
 
 ### ⛔ DECLINED (evasion) — REMOVED
 `humanize.py` (T17.B) and `stealth.py` (T27.B) were empty placeholders created
@@ -75,6 +75,17 @@ item templates (count is always 1 for now). No templates/region -> None.
 `loot_hotkey` to close; gives up after 10 ticks without a window. Free cap
 = `100 - capacity.percent`; unknown cap does not block. Per-item drags and
 `max_items_per_loot` land in T24. Tests: `tests/unit/test_looting.py` (12).
+
+## ✅ decision/refill.py (T24) — DONE (2026-10-18)
+`Refill.should_refill(snap)` (used cap >= `trigger_cap`, route loaded, no
+pending loot, no alarm) → `start()` → `step(snap)` per tick. The route
+`data/waypoints/<route_name>.json` needs labels `storage` then `farming`;
+it is split into two legs that the existing `Cavebot` runs (route swapped
+in, restored on finish). DEPOSIT: `storage_hotkey` opens, `deposit_hotkey`
+every 1 s until cap <= `stop_cap`, `storage_hotkey` closes; 5 s without a
+cap drop → alarm `deposit_failed` (no per-item drags: no backpack reader,
+no mouse-hold primitive). Cavebot alarms abort the refill. Not wired into
+`loop.py` yet. Tests: `tests/unit/test_refill.py` (12).
 
 ## ✅ decision/cavebot.py (T22) — DONE (2026-10-18)
 Route format: `data/waypoints/README.md` (JSON, `RouteFileLoader` validates).
