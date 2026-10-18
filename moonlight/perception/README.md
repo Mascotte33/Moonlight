@@ -11,6 +11,7 @@ each module returns structured data consumed by state.py.
 | floor.py | T21 | Floor indicator icon | z (floor level) via template match, 16 levels | ✅ done (golden pending T08) |
 | sprites.py | T17/T23 | Monster sprites on field | sprite (x, y) positions via template match + NMS | ✅ done (T08 templates pending) |
 | cursor.py | T17 | Cursor region | cursor (x, y) center via template match (None = not found) | ✅ done (T08 templates pending) |
+| logocr.py | T38 | Server log | OCR (Tesseract) → loot/damage/kill events; disabled until calibrated | ✅ done |
 | loot.py | T23 | Corpse/container | items by templates | ⬜ stub |
 
 Requirements: perception step < 10 ms (T30 timing report); OCR only when
