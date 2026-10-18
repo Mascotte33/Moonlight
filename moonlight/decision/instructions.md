@@ -11,15 +11,15 @@ Decision modules. Priority order: **HEAL > ALARM > ATTACK > LOOT > WALK**.
   `input.py` to execute.
 
 ## Status
-`healing.py`, `buffs.py` and `targeting.py` are implemented; the rest are
-still docstring placeholders.
+`healing.py`, `buffs.py`, `targeting.py`, `alarms.py` and `cavebot.py` are
+implemented; `looting.py` is still a docstring placeholder.
 
 | Module | Task | Responsibility | Status |
 |--------|------|----------------|--------|
 | `healing.py` | T14 | Emergency/normal heal, mana, cures, cooldowns | ✅ done (2026-10-15) |
 | `targeting.py` | T20 | Target priority list, selection, attack rotation | ✅ done (2026-10-15) |
 | `buffs.py` | T26 | Buff recast tracking (missing / expiring soon) | ✅ done (2026-10-15) |
-| `cavebot.py` | T22 | Waypoint execution (walk/rope/shovel/ladder), stuck detection | ⬜ stub |
+| `cavebot.py` | T22 | Waypoint execution (walk/rope/shovel/ladder/label/goto), stuck detection | ✅ done (2026-10-18) |
 | `looting.py` | T23 | Open corpse, move items by templates, cap check | ⬜ stub |
 | `alarms.py` | T25 | Player on screen / PM / fast HP drop → alarm + sound | ✅ done (2026-10-15) |
 

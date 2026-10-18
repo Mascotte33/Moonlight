@@ -9,7 +9,7 @@ ALARM mode). Rate limit 10 actions/s; never emit input unless client_focused.
 | healing.py | T14 | Emergency/normal heal, mana, cures, cooldowns | ✅ done |
 | targeting.py | T20 | Target selection: attack/switch/flee, player safety | ✅ done |
 | buffs.py | T26 | Buff recast tracking (missing / expiring soon) | ✅ done |
-| cavebot.py | T22 | Waypoint execution (walk/rope/shovel/ladder/label/goto), stuck detection | ⬜ stub |
+| cavebot.py | T22 | Waypoint execution (walk/rope/shovel/ladder/label/goto), stuck detection | ✅ done |
 | looting.py | T23 | Open corpse, move items by templates, cap check | ⬜ stub |
 | alarms.py | T25 | Player on screen / PM / fast HP drop -> alarm mode + sound | ✅ done |
 

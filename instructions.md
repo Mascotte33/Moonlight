@@ -28,7 +28,7 @@ root (`<repo>/moonlight/__init__.py`). Lint/type-check/test on `.` (the repo roo
 |------|------|------|
 | `scripts.py` | T27.D | User .py script loader — **legit, still to implement** |
 | `perception/` | T12/T19/T21/T23 | vitals.py, battle.py, minimap.py, floor.py, sprites.py, cursor.py DONE; loot.py is a stub — see `perception/instructions.md` |
-| `decision/` | T22/T23/T25 | cavebot/looting are stubs; healing (T14), targeting (T20), buffs (T26) and alarms (T25) are DONE — see `decision/instructions.md` |
+| `decision/` | T22/T23/T25 | looting is a stub; cavebot (T22), healing (T14), targeting (T20), buffs (T26) and alarms (T25) are DONE — see `decision/instructions.md` |
 
 ### ⛔ DECLINED (evasion) — REMOVED
 `humanize.py` (T17.B) and `stealth.py` (T27.B) were empty placeholders created
@@ -38,7 +38,7 @@ and **deleted both files on 2026-10-14**. Do not recreate them.
 ## How to test / check
 ```bash
 cd <repo-root>
-python -m pytest tests/          # 640 pass, 13 skip (golden tests skip until T08 data)
+python -m pytest tests/          # 673 pass, 13 skip (golden tests skip until T08 data)
 ruff check .                       # clean
 mypy .                             # clean (36 files)
 ```
@@ -67,6 +67,17 @@ readings) and compares against the reading from ~`fast_hp_drop_window`
 Configurable via `AlarmConfig` (validated fail-fast). Pure module: clock
 injectable, no input backend. Unit tests: `tests/unit/test_alarms.py`
 (58 tests).
+
+## ✅ decision/cavebot.py (T22) — DONE (2026-10-18)
+Route format: `data/waypoints/README.md` (JSON, `RouteFileLoader` validates).
+`Cavebot.step()` reads x/y from `MinimapReader`, z from `FloorReader`, walks
+by clicking the minimap (1 px = 1 tile) via `ClickController`, does
+rope/shovel (hotkey + tile click) and ladder (right-click) on the 15x11
+game grid, then waits for the floor change. No movement for 5 s → stops,
+`alarm = "stuck"`; unexpected floor → resync to next waypoint on that floor
+or `alarm = "lost"`. Wire into the loop with
+`move_provider=lambda _s: bot.is_active(), move_action=bot.step`.
+Unit tests: `tests/unit/test_cavebot.py` (33 tests).
 
 ## ✅ clicker.py (T17) — DONE (2026-10-16)
 Closed-loop clicking: `ClickController.click_at(target)` first reads the
