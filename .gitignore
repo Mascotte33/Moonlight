@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Environments
+.venv/
+venv/
+
+# Local artifacts
+*.log
+
+# Golden calibration set (200 real frames, ~585 MB — intentionally local)
+golde-screenshots/
+
+# arduino-cli build output
+build_out/
+
+# arduino-cli toolchain + build artifacts
+tools/arduino-cli/
+*.elf
+*.hex

@@ -1,0 +1,351 @@
+"""Battle list reading (T19).
+
+Extracts the creatures from the Tibia client's battle/combat list widget
+(bottom-right of the window) and provides the data for
+``WorldState.monsters``, ``selected_target`` and ``players_on_screen``.
+
+Layout facts (``docs/ui_layout.md`` section 3, measured from the tibiaeye /
+PyTibia production bots):
+
+* one creature per 22 px slot (:data:`SLOT_HEIGHT`), max ~20 rows
+  (:data:`MAX_SLOTS`);
+* content width 156 px (:data:`CONTENT_WIDTH`);
+* the first slot starts 11 px below the widget top (:data:`TOP_PADDING`);
+* the creature name starts at x=23 (:data:`NAME_START_X`) and spans ~115 px;
+* text is bright pixels on a dark background: grayscale > 150 = text pixel
+  (:data:`TEXT_THRESHOLD`; real text grays are ~192 / 247);
+* the selected target's slot carries the attack-highlight grey at the
+  corners of its 20 px box: grayscale 76 / 166 (:data:`HIGHLIGHT_GRAYS`).
+
+A row counts as a creature entry when its name area contains at least
+``min_text_pixels`` text pixels. Everything is vectorised with NumPy, so a
+full read of a 20-row list is well under the 15 ms per-read budget (T30
+timing requirement; see ``perception/README.md``).
+
+Name resolution (template matching or OCR) is pluggable via
+:class:`NameResolver`. Until the golden dataset ships (T08) the default
+reader returns empty names and never fabricates OCR output. ``is_player``
+is derived from the resolved name when a monster-name set is provided
+(unknown name = likely a player; ui_layout.md section 8, technique 3).
+
+Frames are RGB ``(H, W, 3)`` ``uint8`` arrays as produced by
+``moonlight.capture``.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Protocol
+
+import cv2
+import numpy as np
+
+from moonlight.state import Monster
+
+__all__ = [
+    "Rect",
+    "SLOT_HEIGHT",
+    "CONTENT_WIDTH",
+    "TOP_PADDING",
+    "NAME_START_X",
+    "NAME_WIDTH",
+    "MAX_SLOTS",
+    "TEXT_THRESHOLD",
+    "HIGHLIGHT_GRAYS",
+    "BattleEntry",
+    "NameResolver",
+    "BattleReader",
+    "entries_to_state",
+]
+
+#: A rectangle as ``(x, y, width, height)`` (matches ``calibrate.Rect``).
+Rect = tuple[int, int, int, int]
+
+#: Battle-list slot height in pixels (ui_layout.md #3).
+SLOT_HEIGHT = 22
+
+#: Battle-list content width in pixels (ui_layout.md #3).
+CONTENT_WIDTH = 156
+
+#: Vertical padding above the first slot (ui_layout.md #3).
+TOP_PADDING = 11
+
+#: X offset of the creature name within a slot (ui_layout.md #3).
+NAME_START_X = 23
+
+#: Approximate name width in pixels within a slot (ui_layout.md #3).
+NAME_WIDTH = 115
+
+#: Maximum rows the battle-list widget can show (156x440 / 22 ~ 20).
+MAX_SLOTS = 20
+
+#: Grayscale threshold: pixels strictly greater are text (ui_layout.md #3).
+TEXT_THRESHOLD = 150
+
+#: Attack-highlight greys at the selected row's box corners (ui_layout.md #3).
+HIGHLIGHT_GRAYS: tuple[int, int] = (76, 166)
+
+#: Per-channel tolerance for the highlight greys (compression artifacts).
+DEFAULT_HIGHLIGHT_TOLERANCE = 30
+
+#: Minimum text pixels in the name area for a row to be a creature entry.
+DEFAULT_MIN_TEXT_PIXELS = 3
+
+
+@dataclass(frozen=True)
+class BattleEntry:
+    """One creature row of the battle list.
+
+    Attributes:
+        name: Creature name (via :class:`NameResolver`); empty string when
+            no resolver is configured or the name is unknown.
+        index: 0-based row position in the battle list.
+        is_player: True when the name is not a known monster name.
+        is_selected: True when this row is the currently attacked target.
+        hp_percent: Creature HP percent when visible; None otherwise.
+    """
+
+    name: str
+    index: int = 0
+    is_player: bool = False
+    is_selected: bool = False
+    hp_percent: float | None = None
+
+
+class NameResolver(Protocol):
+    """Resolves the creature name of one battle-list slot.
+
+    Implementations perform template matching or OCR on the slot's
+    grayscale crop. Return an empty string for unknown names.
+    """
+
+    def resolve(self, row: int, slot_gray: np.ndarray) -> str:  # pragma: no cover
+        """Return the creature name for *row* (empty string if unknown)."""
+
+
+class BattleReader:
+    """Read the battle list from captured frames using calibrated regions.
+
+    Construct from a :class:`moonlight.calibrate.CalibrationProfile` (which
+    stores the ``battle_list`` region) and/or an explicit region tuple. The
+    stored region is the default used when :meth:`read_battle_list` is
+    called without an explicit region.
+
+    Example:
+        >>> profile = CalibrationProfile.load("profiles/default.json")
+        >>> reader = BattleReader(profile, monster_names={"wolf", "rat"})
+        >>> frame = capture.get_frame()            # RGB (H, W, 3)
+        >>> entries = reader.read_battle_list(frame)
+        >>> monsters, selected, players = entries_to_state(entries)
+    """
+
+    def __init__(
+        self,
+        profile: object | None = None,
+        name_resolver: NameResolver | None = None,
+        monster_names: set[str] | None = None,
+        *,
+        battle_region: Rect | None = None,
+        slot_height: int = SLOT_HEIGHT,
+        top_padding: int = TOP_PADDING,
+        content_width: int = CONTENT_WIDTH,
+        text_threshold: int = TEXT_THRESHOLD,
+        highlight_tolerance: int = DEFAULT_HIGHLIGHT_TOLERANCE,
+        min_text_pixels: int = DEFAULT_MIN_TEXT_PIXELS,
+    ) -> None:
+        """Create a reader.
+
+        Args:
+            profile: Optional ``CalibrationProfile``. Its ``battle_list``
+                region is used as the default region.
+            name_resolver: Optional resolver for creature names.
+            monster_names: Known monster names; resolved names not in this
+                set are classified as players (None disables the check).
+            battle_region: Explicit battle-list region; overrides the
+                profile.
+            slot_height: Pixel height of one battle-list slot.
+            top_padding: Pixels between the region top and the first slot.
+            content_width: Pixel width of the slot content.
+            text_threshold: Grayscale threshold for text pixels.
+            highlight_tolerance: Tolerance for the highlight greys.
+            min_text_pixels: Minimum text pixels for a row to be an entry.
+
+        Raises:
+            ValueError: If a region is not a 4-element tuple.
+        """
+        self._slot_height = int(slot_height)
+        self._top_padding = int(top_padding)
+        self._content_width = int(content_width)
+        self._text_threshold = int(text_threshold)
+        self._highlight_tolerance = int(highlight_tolerance)
+        self._min_text_pixels = int(min_text_pixels)
+        self._name_resolver = name_resolver
+        self._monster_names = monster_names
+        self._battle_region: Rect | None = None
+
+        if profile is not None:
+            regions = getattr(profile, "regions", None)
+            if regions:
+                battle = regions.get("battle_list")
+                if battle is not None:
+                    self._battle_region = self._as_rect(battle.to_tuple)
+
+        # Explicit region takes priority.
+        if battle_region is not None:
+            self._battle_region = self._as_rect(battle_region)
+
+    # -- public API ---------------------------------------------------------
+
+    def read_battle_list(
+        self,
+        frame: np.ndarray,
+        region: Rect | None = None,
+    ) -> list[BattleEntry]:
+        """Return the creature entries visible in the battle list.
+
+        Args:
+            frame: RGB ``(H, W, 3)`` ``uint8`` capture.
+            region: Battle-list region ``Rect``; defaults to the region
+                stored in the constructor.
+
+        Returns:
+            The creature entries in list order (empty when no region is
+            known, the region is out of bounds, or no text is detected).
+        """
+        region = region if region is not None else self._battle_region
+        if region is None:
+            return []
+        crop = self._crop(frame, region)
+        if crop is None:
+            return []
+        gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+        entries: list[BattleEntry] = []
+        height, width = gray.shape
+        for row in range(MAX_SLOTS):
+            top = self._top_padding + row * self._slot_height
+            if top >= height:
+                break
+            bottom = min(top + self._slot_height, height)
+            slot = gray[top:bottom, : min(self._content_width, width)]
+            if slot.size == 0:
+                continue
+            if not self._has_text(slot):
+                continue
+            name = self._resolve_name(row, slot)
+            entries.append(
+                BattleEntry(
+                    name=name,
+                    index=row,
+                    is_player=self._is_player(name),
+                    is_selected=self._is_selected(slot),
+                )
+            )
+        return entries
+
+    # -- helpers ------------------------------------------------------------
+
+    def _has_text(self, slot: np.ndarray) -> bool:
+        """Return True when the slot's name area holds enough text pixels."""
+        width = slot.shape[1]
+        x0 = min(NAME_START_X, width)
+        x1 = min(width, NAME_START_X + NAME_WIDTH)
+        if x1 <= x0:
+            return False
+        text = slot[:, x0:x1]
+        pixels = int(np.count_nonzero(text > self._text_threshold))
+        return pixels >= self._min_text_pixels
+
+    def _is_selected(self, slot: np.ndarray) -> bool:
+        """Detect the attack-highlight box corners of a slot.
+
+        The selected row's 20 px box corners (0,0), (19,0), (0,19), (19,19)
+        carry the highlight grey (76/166) instead of the background. At
+        least three matching corners are required to survive a single noisy
+        corner from compression.
+        """
+        box_h = min(20, slot.shape[0])
+        box_w = min(20, slot.shape[1])
+        if box_h < 4 or box_w < 4:
+            return False
+        corners = (
+            int(slot[0, 0]),
+            int(slot[0, box_w - 1]),
+            int(slot[box_h - 1, 0]),
+            int(slot[box_h - 1, box_w - 1]),
+        )
+        matches = 0
+        for value in corners:
+            if any(abs(value - grey) <= self._highlight_tolerance for grey in HIGHLIGHT_GRAYS):
+                matches += 1
+        return matches >= 3
+
+    def _resolve_name(self, row: int, slot: np.ndarray) -> str:
+        """Resolve the slot's creature name via the configured resolver."""
+        if self._name_resolver is None:
+            return ""
+        return str(self._name_resolver.resolve(row, slot))
+
+    def _is_player(self, name: str) -> bool:
+        """Classify a resolved name as player when it is not a monster."""
+        if not name or self._monster_names is None:
+            return False
+        return name not in self._monster_names
+
+    @staticmethod
+    def _crop(frame: np.ndarray, region: Rect) -> np.ndarray | None:
+        """Clip *region* to the frame bounds and return a view of the crop.
+
+        Returns ``None`` if the region is empty or lies entirely outside
+        the frame.
+        """
+        h, w = frame.shape[:2]
+        x, y, rw, rh = region
+        x0 = max(0, int(x))
+        y0 = max(0, int(y))
+        x1 = min(w, int(x) + int(rw))
+        y1 = min(h, int(y) + int(rh))
+        if x1 <= x0 or y1 <= y0:
+            return None
+        return frame[y0:y1, x0:x1, :3]
+
+    @staticmethod
+    def _as_rect(rect: object) -> Rect:
+        """Validate and coerce a region to a ``Rect`` (as in vitals.py)."""
+        if not isinstance(rect, Sequence) or isinstance(rect, (str, bytes)):
+            raise ValueError(f"Region must be a 4-element sequence, got {rect!r}")
+        if len(rect) != 4:
+            raise ValueError(f"Region must have 4 values, got {len(rect)}")
+        return (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+
+
+def entries_to_state(
+    entries: Sequence[BattleEntry],
+) -> tuple[list[Monster], Monster | None, int]:
+    """Convert battle-list entries into WorldState combat fields.
+
+    Args:
+        entries: Battle-list entries in list order.
+
+    Returns:
+        ``(monsters, selected_target, players_on_screen)`` where
+        ``monsters`` holds the non-player entries (``hp_percent`` defaults
+        to 100.0 when the entry has none), ``selected_target`` is the
+        Monster of the selected entry (None when nothing is selected), and
+        ``players_on_screen`` counts the player entries.
+    """
+    monsters: list[Monster] = []
+    selected: Monster | None = None
+    players_on_screen = 0
+    for entry in entries:
+        hp = 100.0 if entry.hp_percent is None else entry.hp_percent
+        if entry.is_player:
+            players_on_screen += 1
+            if entry.is_selected and selected is None:
+                selected = Monster(name=entry.name, hp_percent=hp, is_player=True)
+            continue
+        monster = Monster(name=entry.name, hp_percent=hp)
+        monsters.append(monster)
+        if entry.is_selected and selected is None:
+            selected = monster
+    return monsters, selected, players_on_screen

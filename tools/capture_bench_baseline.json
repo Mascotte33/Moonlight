@@ -1,0 +1,176 @@
+{
+  "machine": {
+    "cpu": "AMD Ryzen 7 7800X3D (8C/16T) @ 4201MHz",
+    "ram_gb": 67.8,
+    "gpu": "NVIDIA GeForce RTX 4090 (24564 MiB)",
+    "primary_monitor": "2560x1440"
+  },
+  "llm_loaded": true,
+  "llm_pid": 26444,
+  "llm_rss_gb": 11.05,
+  "phases": [
+    {
+      "backend": "mss",
+      "region": "1280x960",
+      "frames": 683,
+      "wall_s": 5.001,
+      "fps": 136.58,
+      "latency": {
+        "n": 683,
+        "min_ms": 4.717,
+        "avg_ms": 7.32,
+        "p50_ms": 7.111,
+        "p99_ms": 13.102
+      },
+      "phase_window_s": 5.79,
+      "cpu_process_percent": 33.6,
+      "cpu_system_percent": 11.0,
+      "cpu_llm_percent": 0.0,
+      "gpu": {
+        "gpu_util_avg": 15.4,
+        "gpu_util_max": 59,
+        "vram_used_mib_avg": 21245.0,
+        "vram_used_mib_max": 21245
+      }
+    },
+    {
+      "backend": "mss",
+      "region": "1280x720",
+      "frames": 680,
+      "wall_s": 5.001,
+      "fps": 135.98,
+      "latency": {
+        "n": 680,
+        "min_ms": 4.174,
+        "avg_ms": 7.353,
+        "p50_ms": 7.099,
+        "p99_ms": 11.756
+      },
+      "phase_window_s": 5.76,
+      "cpu_process_percent": 28.2,
+      "cpu_system_percent": 12.1,
+      "cpu_llm_percent": 0.0,
+      "gpu": {
+        "gpu_util_avg": 24.3,
+        "gpu_util_max": 33,
+        "vram_used_mib_avg": 21249.0,
+        "vram_used_mib_max": 21250
+      }
+    },
+    {
+      "backend": "mss",
+      "region": "1024x768",
+      "frames": 701,
+      "wall_s": 5.001,
+      "fps": 140.18,
+      "latency": {
+        "n": 701,
+        "min_ms": 3.53,
+        "avg_ms": 7.133,
+        "p50_ms": 6.985,
+        "p99_ms": 11.029
+      },
+      "phase_window_s": 5.75,
+      "cpu_process_percent": 16.8,
+      "cpu_system_percent": 11.1,
+      "cpu_llm_percent": 0.0,
+      "gpu": {
+        "gpu_util_avg": 24.7,
+        "gpu_util_max": 26,
+        "vram_used_mib_avg": 21251.0,
+        "vram_used_mib_max": 21253
+      }
+    },
+    {
+      "backend": "dxcam",
+      "region": "1280x960",
+      "mode": "tight-grab, desktop-active (MouseMover simulating a game)",
+      "new_frames": 972,
+      "grab_calls": 80582,
+      "wall_s": 5.005,
+      "new_frame_fps": 194.22,
+      "grab_call_rate": 16101.16,
+      "latency_new_frame": {
+        "n": 972,
+        "min_ms": 0.546,
+        "avg_ms": 1.546,
+        "p50_ms": 1.493,
+        "p99_ms": 4.559
+      },
+      "note": "new_frame_fps tracks desktop presentation rate; latency is per delivered frame",
+      "phase_window_s": 6.71,
+      "cpu_process_percent": 183.5,
+      "cpu_system_percent": 23.3,
+      "cpu_llm_percent": 0.7,
+      "gpu": {
+        "gpu_util_avg": 27.8,
+        "gpu_util_max": 44,
+        "vram_used_mib_avg": 21139.0,
+        "vram_used_mib_max": 21262
+      }
+    },
+    {
+      "backend": "dxcam",
+      "region": "1280x720",
+      "mode": "tight-grab, desktop-active (MouseMover simulating a game)",
+      "new_frames": 942,
+      "grab_calls": 76694,
+      "wall_s": 5.003,
+      "new_frame_fps": 188.3,
+      "grab_call_rate": 15330.72,
+      "latency_new_frame": {
+        "n": 942,
+        "min_ms": 0.851,
+        "avg_ms": 1.79,
+        "p50_ms": 1.635,
+        "p99_ms": 4.96
+      },
+      "note": "new_frame_fps tracks desktop presentation rate; latency is per delivered frame",
+      "phase_window_s": 6.45,
+      "cpu_process_percent": 148.4,
+      "cpu_system_percent": 19.9,
+      "cpu_llm_percent": 0.0,
+      "gpu": {
+        "gpu_util_avg": 35.2,
+        "gpu_util_max": 45,
+        "vram_used_mib_avg": 21115.0,
+        "vram_used_mib_max": 21118
+      }
+    },
+    {
+      "backend": "dxcam",
+      "region": "1024x768",
+      "mode": "tight-grab, desktop-active (MouseMover simulating a game)",
+      "new_frames": 951,
+      "grab_calls": 82359,
+      "wall_s": 5.008,
+      "new_frame_fps": 189.9,
+      "grab_call_rate": 16445.49,
+      "latency_new_frame": {
+        "n": 951,
+        "min_ms": 0.756,
+        "avg_ms": 1.662,
+        "p50_ms": 1.504,
+        "p99_ms": 4.887
+      },
+      "note": "new_frame_fps tracks desktop presentation rate; latency is per delivered frame",
+      "phase_window_s": 6.49,
+      "cpu_process_percent": 135.1,
+      "cpu_system_percent": 19.7,
+      "cpu_llm_percent": 0.2,
+      "gpu": {
+        "gpu_util_avg": 36.9,
+        "gpu_util_max": 43,
+        "vram_used_mib_avg": 21130.0,
+        "vram_used_mib_max": 21133
+      }
+    }
+  ],
+  "system_ram": {
+    "total_gb": 67.8,
+    "used_gb": 36.5,
+    "available_gb": 31.3,
+    "percent": 53.8
+  },
+  "llm_rss_gb_after": 11.05
+}

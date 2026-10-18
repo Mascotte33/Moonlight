@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moonlight"
+version = "0.1.0"
+description = "Screen-capture automation bot for Tibia (OTS servers)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+
+dependencies = [
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "pyserial>=3.5",
+    "mss>=9.0",
+]
+
+[project.optional-dependencies]
+# dxcam is optional, Windows only, for lower-latency capture
+dxcam = [
+    "dxcam>=0.3.0 ; sys_platform=='win32'",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-benchmark>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["moonlight*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = ["tools"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "UP",     # pyupgrade
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+exclude = ["^tools/"]
+
+
+[[tool.mypy.overrides]]
+module = ["customtkinter"]
+ignore_missing_imports = true
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
