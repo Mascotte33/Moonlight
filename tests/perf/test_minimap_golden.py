@@ -7,24 +7,25 @@ against human-labelled golden screenshots:
              ``tests/golden/*.png`` (the default output of
              ``tools/label_golden.py``)
 * labels:    ``tests/golden/labels.json`` or ``data/golden/labels.json``
-             (stores ``minimap_visible`` per frame; optional
-             ``floor_level`` for z-checks)
-* regions:   the calibrated ``minimap`` rect from ``profiles/<name>.json``
+             (``position_x`` / ``position_y`` / ``position_z`` per frame;
+             null = the labeller could not place the player -> skipped)
+* regions:   the calibrated ``minimap`` rect from ``moonlight/profiles/<name>.json``
              (produced by ``tools/calibrate.py``)
 
 What is verifiable before world-mapping (T23):
 
-* the player marker is detected whenever the label says the minimap is
-  visible (``read_position`` returns a Position instead of None);
-* the z-level matches the labelled floor when floor templates exist.
+* the player marker is detected on every frame with a labelled position
+  (``read_position`` returns a Position instead of None);
+* the z-level matches the labelled ``position_z`` when floor templates
+  exist.
 
 Absolute x/y accuracy needs a MapMatcher + labelled world coordinates
 (T23) and is intentionally not asserted here yet.
 
-IMPORTANT: no golden data exists yet (T08 pending -- the user will provide
-screenshots). Until then, every test in this module skips cleanly. We
-deliberately do NOT fabricate golden images or labels; the skip logic below
-is the only thing that runs without data.
+Status (T28): the 200 frames load, but every frame's position is null
+(``tools/calibrate_auto.py`` does not measure position), so the accuracy
+tests skip with that reason. The marker detection rate over all frames is
+reported by ``test_golden_smoke.py`` instead. We never fabricate labels.
 """
 
 from __future__ import annotations
@@ -33,6 +34,11 @@ import json
 from pathlib import Path
 
 import pytest
+
+from moonlight.calibrate import default_profiles_dir
+from moonlight.perception.floor import FloorReader
+from moonlight.perception.minimap import MinimapReader
+from moonlight.state import Position
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -48,7 +54,8 @@ LABELS_CANDIDATES = (
     REPO_ROOT / "data" / "golden" / "labels.json",
 )
 
-PROFILE_DIR = REPO_ROOT / "profiles"
+#: Same directory the app loads profiles from (moonlight/profiles/).
+PROFILE_DIR = default_profiles_dir()
 
 #: Where per-level floor icons may live (for the z-check).
 TEMPLATE_DIR = REPO_ROOT / "data" / "templates" / "floorLevels"
@@ -125,61 +132,61 @@ _SKIP_DECORATOR = pytest.mark.skipif(
 )
 
 
+Case = tuple[str, Path, int | None, int | None, int | None]
+
+
+def _cases() -> list[Case]:
+    """Return (name, image_path, x, y, z) for every labelled golden frame."""
+    golden_dir = _golden_dir()
+    labels_path = _labels_path()
+    assert golden_dir is not None  # guaranteed by skipif
+    assert labels_path is not None  # guaranteed by skipif
+
+    frames = json.loads(labels_path.read_text(encoding="utf-8"))["frames"]
+    cases: list[Case] = []
+    for name, entry in frames.items():
+        image = golden_dir / name
+        if image.is_file():
+            cases.append(
+                (name, image, entry.get("position_x"), entry.get("position_y"),
+                 entry.get("position_z"))
+            )
+    return cases
+
+
+def _read(reader: MinimapReader, image: Path) -> Position | None:
+    """Run ``reader.read_position`` on one golden frame (RGB)."""
+    import cv2
+
+    bgr = cv2.imread(str(image))
+    assert bgr is not None, f"could not decode golden frame {image.name!r}"
+    return reader.read_position(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+
+
 @_SKIP_DECORATOR
 class TestMinimapGolden:
     """Marker detection of MinimapReader on labelled golden frames (T08)."""
 
-    @staticmethod
-    def _cases() -> list[tuple[str, Path, bool, int | None]]:
-        """Return (name, image_path, minimap_visible, floor_level) cases."""
-        golden_dir = _golden_dir()
-        labels_path = _labels_path()
-        assert golden_dir is not None  # guaranteed by skipif
-        assert labels_path is not None  # guaranteed by skipif
-
-        labels = json.loads(labels_path.read_text(encoding="utf-8"))
-        cases: list[tuple[str, Path, bool, int | None]] = []
-        for name, entry in labels.items():
-            image = golden_dir / name
-            visible = entry.get("minimap_visible")
-            floor = entry.get("floor_level")
-            if image.is_file() and visible is not None:
-                floor_value = int(floor) if floor is not None else None
-                cases.append((name, image, bool(visible), floor_value))
-        return cases
-
     def test_frames_loaded(self) -> None:
-        """Sanity check: at least one labelled golden frame is loadable."""
+        """Sanity check: every labelled golden frame is loadable."""
         import cv2
 
-        cases = self._cases()
-        assert cases, "labels.json exists but no minimap-labelled golden images"
-        for name, image, _, _ in cases:
-            frame = cv2.imread(str(image))
-            assert frame is not None, f"could not decode golden frame {name!r}"
+        cases = _cases()
+        assert cases, "labels.json exists but no matching golden images found"
+        for name, image, *_ in cases:
+            assert cv2.imread(str(image)) is not None, f"could not decode {name!r}"
 
     def test_marker_detection(self) -> None:
-        """Player marker detected exactly when the label says it is visible."""
-        import cv2
-
-        from moonlight.perception.minimap import MinimapReader
-
+        """Player marker detected on every frame with a labelled position."""
+        placed = [c for c in _cases() if c[2] is not None and c[3] is not None]
+        if not placed:
+            pytest.skip("no frame has a labelled position_x/position_y")
         reader = MinimapReader(_usable_profile())
-        for name, image, visible, _ in self._cases():
-            bgr = cv2.imread(str(image))
-            assert bgr is not None, f"could not decode golden frame {name!r}"
-            frame = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            pos = reader.read_position(frame)
-            if visible:
-                assert pos is not None, (
-                    f"{name!r}: minimap labelled visible but no player marker "
-                    "detected"
-                )
-            else:
-                assert pos is None, (
-                    f"{name!r}: minimap labelled not visible but a marker was "
-                    "detected"
-                )
+        for name, image, *_ in placed:
+            reader.reset()
+            assert _read(reader, image) is not None, (
+                f"{name!r}: position labelled but no player marker detected"
+            )
 
 
 @_SKIP_DECORATOR
@@ -201,23 +208,13 @@ class TestMinimapZGolden:
 
     @pytest.mark.skipif(_Z_SKIP is not None, reason=_Z_SKIP or "")
     def test_z_accuracy(self) -> None:
-        """Position.z matches the labelled floor for every golden frame."""
-        import cv2
-
-        from moonlight.perception.floor import FloorReader
-        from moonlight.perception.minimap import MinimapReader
-
+        """Position.z matches the labelled position_z for every golden frame."""
+        cases = [c for c in _cases() if c[4] is not None]
+        if not cases:
+            pytest.skip("no frame has a labelled position_z")
         profile = _usable_profile()
-        floor_reader = FloorReader(profile)
-        reader = MinimapReader(profile, floor_reader=floor_reader)
-        for name, image, visible, expected_floor in TestMinimapGolden._cases():
-            if not visible or expected_floor is None:
-                continue
-            bgr = cv2.imread(str(image))
-            assert bgr is not None, f"could not decode golden frame {name!r}"
-            frame = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            pos = reader.read_position(frame)
+        reader = MinimapReader(profile, floor_reader=FloorReader(profile))
+        for name, image, _, _, expected_z in cases:
+            pos = _read(reader, image)
             assert pos is not None, f"{name!r}: expected a position"
-            assert pos.z == expected_floor, (
-                f"{name!r}: z={pos.z} but label says floor {expected_floor}"
-            )
+            assert pos.z == expected_z, f"{name!r}: z={pos.z} but label says {expected_z}"

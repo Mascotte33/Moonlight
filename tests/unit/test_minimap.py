@@ -33,13 +33,17 @@ from moonlight.state import Position
 
 REGION_X, REGION_Y = 100, 80
 
-MARKER_RGB = PLAYER_MARKER_RGB  # (0, 192, 0)
+MARKER_RGB = PLAYER_MARKER_RGB  # (255, 255, 255)
 
 
 def make_terrain(seed: int, shift: tuple[int, int] = (0, 0)) -> np.ndarray:
-    """A 106x109 grayscale terrain image (uniform noise, shifted)."""
+    """A 106x109 grayscale terrain image (uniform noise, shifted).
+
+    Capped below the white-cross marker's tolerance band so random terrain
+    never passes for the player marker.
+    """
     rng = np.random.RandomState(seed)
-    terrain = rng.uniform(0, 255, (RADAR_HEIGHT, RADAR_WIDTH))
+    terrain = rng.uniform(0, 180, (RADAR_HEIGHT, RADAR_WIDTH))
     terrain = terrain.astype(np.uint8)
     if shift:
         terrain = np.roll(np.roll(terrain, shift[0], axis=1), shift[1], axis=0)
@@ -110,20 +114,26 @@ class TestMarkerValidation:
         frame, region = make_frame(1, marker=False)
         assert make_reader().read_position(frame, region) is None
 
+    def test_old_green_dot_is_not_the_marker(self) -> None:
+        # Regression (T28): this client's marker is a white cross; the old
+        # green-dot default matched none of the 200 golden frames.
+        frame, region = make_frame(1, marker=True, marker_rgb=(0, 192, 0))
+        assert make_reader().read_position(frame, region) is None
+
     def test_wrong_marker_color_returns_none(self) -> None:
         # A red dot at the center is not the player marker.
         frame, region = make_frame(1, marker=True, marker_rgb=(200, 20, 20))
         assert make_reader().read_position(frame, region) is None
 
     def test_marker_within_tolerance(self) -> None:
-        # Green dot off by less than the per-channel tolerance: accepted.
-        frame, region = make_frame(1, marker=True, marker_rgb=(5, 200, 10))
+        # White cross off by less than the per-channel tolerance: accepted.
+        frame, region = make_frame(1, marker=True, marker_rgb=(250, 245, 242))
         pos = make_reader(marker_tolerance=15).read_position(frame, region)
         assert pos is not None
 
     def test_marker_outside_tolerance(self) -> None:
-        # Green dot off by more than a strict tolerance: rejected.
-        frame, region = make_frame(1, marker=True, marker_rgb=(80, 255, 90))
+        # Light grey off by more than a strict tolerance: rejected.
+        frame, region = make_frame(1, marker=True, marker_rgb=(230, 230, 230))
         assert make_reader(marker_tolerance=10).read_position(frame, region) is None
 
 

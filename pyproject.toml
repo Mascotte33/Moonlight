@@ -56,6 +56,8 @@ select = [
 python_version = "3.12"
 strict = true
 warn_unused_configs = true
+explicit_package_bases = true
+mypy_path = "tests/hil"
 exclude = ["^tools/"]
 
 
@@ -67,3 +69,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = ["slow: full 200-frame replay (tens of seconds)"]

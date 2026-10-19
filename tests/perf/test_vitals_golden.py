@@ -10,7 +10,7 @@ output against human-labelled golden screenshots:
              (produced by ``tools/label_golden.py``; stores ``hp_percent``
              / ``mp_percent`` per frame)
 * regions:   the calibrated ``hp_bar`` / ``mp_bar`` rects from
-             ``profiles/<name>.json`` (produced by ``tools/calibrate.py``)
+             ``moonlight/profiles/<name>.json`` (produced by ``tools/calibrate.py``)
 
 Accuracy target: within +/-2 percentage points of the labelled value.
 
@@ -18,6 +18,9 @@ Labels come from ``tools/calibrate_auto.py``, which measures the bars with
 its own per-frame border detection and hue classification (not
 VitalsReader), so this is a genuine cross-check. Without data, every test
 in this module skips cleanly.
+
+Run ``pytest tests/perf -rs``: the mean/max error lands in the "golden
+accuracy" section at the end of the run (tests/perf/conftest.py).
 """
 
 from __future__ import annotations
@@ -26,6 +29,8 @@ import json
 from pathlib import Path
 
 import pytest
+
+from moonlight.calibrate import default_profiles_dir
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -41,7 +46,8 @@ LABELS_CANDIDATES = (
     REPO_ROOT / "data" / "golden" / "labels.json",
 )
 
-PROFILE_DIR = REPO_ROOT / "profiles"
+#: Same directory the app loads profiles from (moonlight/profiles/).
+PROFILE_DIR = default_profiles_dir()
 
 #: Note prefix tools/calibrate_auto.py puts on frames whose bar layout differs
 #: from the profile's (one profile cannot cover two layouts).
@@ -150,34 +156,38 @@ class TestVitalsGolden:
             frame = cv2.imread(str(image))
             assert frame is not None, f"could not decode golden frame {name!r}"
 
-    def test_hp_accuracy(self) -> None:
+    @classmethod
+    def _check(cls, kind: str, golden_summary: list[str]) -> None:
+        """Read *kind* ("hp" / "mp") on every frame; record MAE, then assert."""
+        import cv2
+
+        from moonlight.perception.vitals import VitalsReader
+
+        reader = VitalsReader(_usable_profile())
+        errors: list[float] = []
+        failures: list[str] = []
+        for name, image, expected_hp, expected_mp in cls._cases():
+            bgr = cv2.imread(str(image))
+            assert bgr is not None, f"could not decode golden frame {name!r}"
+            frame = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            if kind == "hp":
+                got, expected = reader.read_hp(frame), expected_hp
+            else:
+                got, expected = reader.read_mp(frame), expected_mp
+            errors.append(abs(got - expected))
+            if errors[-1] > ACCURACY_TOLERANCE:
+                failures.append(f"{name!r}: {kind}={got:.1f}% label {expected:.1f}%")
+        golden_summary.append(
+            f"vitals {kind}: {len(errors)} frames, mean abs err "
+            f"{sum(errors) / len(errors):.2f} pp, max {max(errors):.2f} pp, "
+            f"{len(errors) - len(failures)}/{len(errors)} within +/-{ACCURACY_TOLERANCE:g}"
+        )
+        assert not failures, "\n".join(failures)
+
+    def test_hp_accuracy(self, golden_summary: list[str]) -> None:
         """HP% within +/-2 of the labelled value for every golden frame."""
-        import cv2
+        self._check("hp", golden_summary)
 
-        from moonlight.perception.vitals import VitalsReader
-
-        reader = VitalsReader(_usable_profile())
-        for name, image, expected_hp, _ in self._cases():
-            bgr = cv2.imread(str(image))
-            assert bgr is not None, f"could not decode golden frame {name!r}"
-            frame = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            got = reader.read_hp(frame)
-            assert abs(got - expected_hp) <= ACCURACY_TOLERANCE, (
-                f"{name!r}: HP={got:.1f}% but label says {expected_hp:.1f}%"
-            )
-
-    def test_mp_accuracy(self) -> None:
+    def test_mp_accuracy(self, golden_summary: list[str]) -> None:
         """MP% within +/-2 of the labelled value for every golden frame."""
-        import cv2
-
-        from moonlight.perception.vitals import VitalsReader
-
-        reader = VitalsReader(_usable_profile())
-        for name, image, _, expected_mp in self._cases():
-            bgr = cv2.imread(str(image))
-            assert bgr is not None, f"could not decode golden frame {name!r}"
-            frame = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            got = reader.read_mp(frame)
-            assert abs(got - expected_mp) <= ACCURACY_TOLERANCE, (
-                f"{name!r}: MP={got:.1f}% but label says {expected_mp:.1f}%"
-            )
+        self._check("mp", golden_summary)

@@ -16,10 +16,10 @@ How the position is obtained
 ----------------------------
 
 * **Validation**: the radar is only trusted when the player marker (a small
-  green dot, color configurable) is present at the center. If the marker is
-  missing the region is not a valid radar and :meth:`read_position` returns
-  ``None``. The marker color/tolerance must be confirmed against T08
-  screenshots; the default is the classic green dot.
+  white cross, color configurable) is present at the center. If the marker
+  is missing (or covered by a map mark icon) the region is not a valid radar
+  and :meth:`read_position` returns ``None``. The white cross was confirmed
+  on the 200 T08 golden frames (T28).
 * **(x, y) — absolute**: a pluggable :class:`MapMatcher` converts the radar
   image to world coordinates (map matching against a known map). When
   configured it is authoritative: a ``None`` result yields ``None`` here.
@@ -81,8 +81,10 @@ PLAYER_CENTER_X = 53
 #: Player y in local minimap coordinates (center; ui_layout.md #4).
 PLAYER_CENTER_Y = 54
 
-#: Classic radar player-marker color (green dot). Verify via T08.
-PLAYER_MARKER_RGB: RGB = (0, 192, 0)
+#: Player-marker color: this client draws a white cross at the radar center
+#: (measured on the T08 golden frames; the old green-dot default never
+#: matched). Snow-white terrain under the center can false-positive.
+PLAYER_MARKER_RGB: RGB = (255, 255, 255)
 
 #: Per-channel tolerance for the player marker (compression artifacts).
 DEFAULT_MARKER_TOLERANCE = 60

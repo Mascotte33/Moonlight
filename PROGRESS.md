@@ -52,7 +52,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T27.B | - | hiding/disguising bot process, window, files, traffic | T27 | declined | ⛔ evasion — will not build |
 | T27.C | - | automated replies (unapproved, garbled spec) | T27 | declined | ⛔ GATED — needs approval + clear spec |
 | T27.D | coder | moonlight/scripts.py: .py script runner | T22, T13 | done (2026-10-18) | ScriptRunner/BotScript/Condition/Trigger + fail-closed guard; 35 tests; scripts/example.py |
-| T28 | qa | Replay tests for every module from recorded videos | T14..T27.D | pending | |
+| T28 | qa | Replay tests for every module from recorded videos | T14..T27.D | in_progress | 2026-10-19: DISPATCHED (claude -p opus, bg). Scope (from claude_brief_t28.md): make the 4 existing golden suites in tests/perf/ RUN+PASS on the 200 real frames — fix Blocker A (profile path → default_profiles_dir()) + Blocker B (add battle_list/minimap/floor_indicator regions to moonlight_user.json, calibrated against real frames) — + smoke tests for sprites/cursor/loot/logocr. Baseline to not regress: 811 pass/13 skip. |
 | T29 | qa | Full safety suite | T28 | pending | |
 | T30 | qa | Timing report | T28 | pending | |
 | T31 | senior | Architecture + safety review -> findings list | T29, T30 | pending | |
@@ -246,3 +246,12 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   should_loot cap gate, on_target_died, fails closed — no input unless
   focused). 12 tests. 685 full suite pass/13 skip. Ruff + mypy clean.
   Committed d11257f.
+- (orchestrator, Oct 19) **T28 DISPATCHED** via `claude -p` (opus, background).
+  Re-dispatched after the first attempt (Oct 19 00:00) died with an empty log and no
+  committed artifacts. Confirmed both blockers live: `moonlight/profiles/moonlight_user.json`
+  has only hp_bar/mp_bar (missing battle_list/minimap/floor_indicator), and the golden suites
+  point at the dead `<repo>/profiles/` path. Brief: claude_brief_t28.md. On completion:
+  verify gate myself (tests/perf run+pass on real frames, full suite ≥811 pass, ruff+mypy
+  clean), then commit + record per-module accuracy here. **Speed plan for the tail: fire
+  T29 (safety) + T30 (timing) as two parallel `claude -p` jobs once T28 lands (they're
+  independent) — do not serialize them.**

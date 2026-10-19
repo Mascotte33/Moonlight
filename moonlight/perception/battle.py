@@ -14,11 +14,18 @@ PyTibia production bots):
 * the creature name starts at x=23 (:data:`NAME_START_X`) and spans ~115 px;
 * text is bright pixels on a dark background: grayscale > 150 = text pixel
   (:data:`TEXT_THRESHOLD`; real text grays are ~192 / 247);
-* the selected target's slot carries the attack-highlight grey at the
-  corners of its 20 px box: grayscale 76 / 166 (:data:`HIGHLIGHT_GRAYS`).
+* every creature row has an HP bar under its name whose black outline is a
+  long dark run on slot rows 14..21 (:data:`HP_BAR_ROWS`); a text row
+  without it is some other panel's text, not a creature (T28: on the golden
+  frames whose layout puts another widget at the calibrated rect, every
+  phantom row lacked it and every real entry had it);
+* the selected target's creature icon is framed by a pure-red 20x20 px
+  outline at slot x 1..20, y 0..19 (:data:`SELECTED_RGB`; measured on the
+  T08 golden frames in T28 -- the older grey-corner rule (76/166) matched
+  the client's stone panel background and flagged every row).
 
 A row counts as a creature entry when its name area contains at least
-``min_text_pixels`` text pixels. Everything is vectorised with NumPy, so a
+``min_text_pixels`` text pixels and an HP-bar outline. Everything is vectorised with NumPy, so a
 full read of a 20-row list is well under the 15 ms per-read budget (T30
 timing requirement; see ``perception/README.md``).
 
@@ -52,7 +59,8 @@ __all__ = [
     "NAME_WIDTH",
     "MAX_SLOTS",
     "TEXT_THRESHOLD",
-    "HIGHLIGHT_GRAYS",
+    "SELECTED_RGB",
+    "HP_BAR_ROWS",
     "BattleEntry",
     "NameResolver",
     "BattleReader",
@@ -83,10 +91,22 @@ MAX_SLOTS = 20
 #: Grayscale threshold: pixels strictly greater are text (ui_layout.md #3).
 TEXT_THRESHOLD = 150
 
-#: Attack-highlight greys at the selected row's box corners (ui_layout.md #3).
-HIGHLIGHT_GRAYS: tuple[int, int] = (76, 166)
+#: Slot rows (start, stop) that hold the HP bar's outline (T28).
+HP_BAR_ROWS: tuple[int, int] = (14, 22)
 
-#: Per-channel tolerance for the highlight greys (compression artifacts).
+#: Grayscale below which a pixel belongs to the HP bar's black outline.
+HP_BAR_DARK = 30
+
+#: Minimum dark run (px) of the outline; real bars span ~130 px.
+HP_BAR_MIN_RUN = 80
+
+#: Attack-target outline color around the selected row's icon (T28).
+SELECTED_RGB: tuple[int, int, int] = (255, 0, 0)
+
+#: Red pixels each horizontal edge of the 20 px outline must carry (of 20).
+SELECTED_MIN_EDGE_PIXELS = 15
+
+#: Per-channel tolerance for the outline color (compression artifacts).
 DEFAULT_HIGHLIGHT_TOLERANCE = 30
 
 #: Minimum text pixels in the name area for a row to be a creature entry.
@@ -168,7 +188,8 @@ class BattleReader:
             top_padding: Pixels between the region top and the first slot.
             content_width: Pixel width of the slot content.
             text_threshold: Grayscale threshold for text pixels.
-            highlight_tolerance: Tolerance for the highlight greys.
+            highlight_tolerance: Per-channel tolerance for the red
+                target outline.
             min_text_pixels: Minimum text pixels for a row to be an entry.
 
         Raises:
@@ -227,10 +248,11 @@ class BattleReader:
             if top >= height:
                 break
             bottom = min(top + self._slot_height, height)
-            slot = gray[top:bottom, : min(self._content_width, width)]
+            cols = min(self._content_width, width)
+            slot = gray[top:bottom, :cols]
             if slot.size == 0:
                 continue
-            if not self._has_text(slot):
+            if not self._has_text(slot) or not self._has_hp_bar(slot):
                 continue
             name = self._resolve_name(row, slot)
             entries.append(
@@ -238,7 +260,7 @@ class BattleReader:
                     name=name,
                     index=row,
                     is_player=self._is_player(name),
-                    is_selected=self._is_selected(slot),
+                    is_selected=self._is_selected(crop[top:bottom, :cols]),
                 )
             )
         return entries
@@ -256,29 +278,33 @@ class BattleReader:
         pixels = int(np.count_nonzero(text > self._text_threshold))
         return pixels >= self._min_text_pixels
 
-    def _is_selected(self, slot: np.ndarray) -> bool:
-        """Detect the attack-highlight box corners of a slot.
+    @staticmethod
+    def _has_hp_bar(slot: np.ndarray) -> bool:
+        """Return True when the slot shows an HP-bar outline under the name."""
+        bar = slot[HP_BAR_ROWS[0] : HP_BAR_ROWS[1], NAME_START_X:] < HP_BAR_DARK
+        for row in bar:
+            # Longest run of True: distance between a run's start and end.
+            edges = np.flatnonzero(np.diff(np.concatenate(([0], row.view(np.int8), [0]))))
+            if edges.size and int((edges[1::2] - edges[::2]).max()) >= HP_BAR_MIN_RUN:
+                return True
+        return False
 
-        The selected row's 20 px box corners (0,0), (19,0), (0,19), (19,19)
-        carry the highlight grey (76/166) instead of the background. At
-        least three matching corners are required to survive a single noisy
-        corner from compression.
+    def _is_selected(self, slot_rgb: np.ndarray) -> bool:
+        """Detect the red target outline around the slot's creature icon.
+
+        Both horizontal edges (rows 0 and 19, left of the name) must carry
+        at least :data:`SELECTED_MIN_EDGE_PIXELS` outline-red pixels; the
+        red HP bar (rows ~16-18, right of x=23) and red icons do not.
         """
-        box_h = min(20, slot.shape[0])
-        box_w = min(20, slot.shape[1])
-        if box_h < 4 or box_w < 4:
+        if slot_rgb.shape[0] < 20:
             return False
-        corners = (
-            int(slot[0, 0]),
-            int(slot[0, box_w - 1]),
-            int(slot[box_h - 1, 0]),
-            int(slot[box_h - 1, box_w - 1]),
+        icon = slot_rgb[:20, :NAME_START_X, :3].astype(np.int16)
+        ref = np.array(SELECTED_RGB, dtype=np.int16)
+        red = (np.abs(icon - ref) <= self._highlight_tolerance).all(axis=2)
+        return bool(
+            red[0].sum() >= SELECTED_MIN_EDGE_PIXELS
+            and red[19].sum() >= SELECTED_MIN_EDGE_PIXELS
         )
-        matches = 0
-        for value in corners:
-            if any(abs(value - grey) <= self._highlight_tolerance for grey in HIGHLIGHT_GRAYS):
-                matches += 1
-        return matches >= 3
 
     def _resolve_name(self, row: int, slot: np.ndarray) -> str:
         """Resolve the slot's creature name via the configured resolver."""

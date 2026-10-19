@@ -11,7 +11,7 @@ output against human-labelled golden screenshots:
              ``monster_count``, ``selected_target`` and
              ``players_on_screen_count`` per frame)
 * region:    the calibrated ``battle_list`` rect from
-             ``profiles/<name>.json`` (produced by ``tools/calibrate.py``)
+             ``moonlight/profiles/<name>.json`` (produced by ``tools/calibrate.py``)
 
 Label mapping (0-based, list order):
 
@@ -20,13 +20,14 @@ Label mapping (0-based, list order):
   entries, or null when nothing is selected
 * ``players_on_screen_count``: number of player entries in the list
 
-IMPORTANT: no golden data exists yet (T08 pending -- the user will provide
-screenshots). Until then, every test in this module skips cleanly. We
-deliberately do NOT fabricate golden images or fake OCR results; the skip
-logic below is the only thing that runs without data. When real frames
-arrive, a template-based NameResolver must be wired into BattleReader and
-the player-count semantics (own character appears in the list) confirmed
-with the user's screenshots.
+Status (T28): the 200 frames are present and load, but labels.json carries
+NO measured battle data -- ``tools/calibrate_auto.py`` (which produced it)
+only measures HP/MP and writes the label_golden defaults (0 / null / 0) for
+every frame, while many frames visibly show monsters in the battle list.
+The accuracy tests therefore skip until at least one frame carries a
+non-default battle label (``tools/label_golden.py``); then every frame's
+battle fields are asserted. We never assert the placeholder zeros. A
+template-based NameResolver is still needed for player classification.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ from typing import TypedDict, cast
 
 import pytest
 
+from moonlight.calibrate import default_profiles_dir
 from moonlight.perception.battle import BattleEntry
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -53,7 +55,8 @@ LABELS_CANDIDATES = (
     REPO_ROOT / "data" / "golden" / "labels.json",
 )
 
-PROFILE_DIR = REPO_ROOT / "profiles"
+#: Same directory the app loads profiles from (moonlight/profiles/).
+PROFILE_DIR = default_profiles_dir()
 
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp"}
 
@@ -120,7 +123,34 @@ def _skip_reason() -> str | None:
     return None
 
 
+#: label_golden.py defaults: (monster_count, selected_target, players).
+_UNLABELLED_BATTLE = (0, None, 0)
+
+
+def _battle_labels_reason() -> str | None:
+    """Why battle accuracy can't be asserted (no frame has a real label)."""
+    labels_path = _labels_path()
+    if labels_path is None:
+        return None  # _skip_reason already covers it
+    frames = json.loads(labels_path.read_text(encoding="utf-8")).get("frames", {})
+    for entry in frames.values():
+        battle = (
+            entry.get("monster_count"),
+            entry.get("selected_target"),
+            entry.get("players_on_screen_count"),
+        )
+        if battle != _UNLABELLED_BATTLE:
+            return None
+    return (
+        "labels.json has no measured battle labels (every frame holds the "
+        "calibrate_auto.py placeholder 0/null/0, yet frames show monsters) -- "
+        "label the battle list with tools/label_golden.py"
+    )
+
+
 _SKIP_REASON = _skip_reason()
+_LABEL_REASON = _battle_labels_reason()
+_LABEL_SKIP = pytest.mark.skipif(_LABEL_REASON is not None, reason=_LABEL_REASON or "")
 
 _SKIP_DECORATOR = pytest.mark.skipif(
     _SKIP_REASON is not None,
@@ -173,6 +203,7 @@ class TestBattleGolden:
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         return BattleReader(profile).read_battle_list(rgb)
 
+    @_LABEL_SKIP
     def test_monster_count(self) -> None:
         """Non-player entry count matches the labelled monster_count."""
         for name, image, label in _cases():
@@ -185,6 +216,7 @@ class TestBattleGolden:
                 f"{name!r}: {len(monsters)} monster entries but label says {expected}"
             )
 
+    @_LABEL_SKIP
     def test_selected_target(self) -> None:
         """The labelled selected target is the flagged monster entry."""
         for name, image, label in _cases():
@@ -205,6 +237,7 @@ class TestBattleGolden:
                 f"{name!r}: selected monster at index {monster_index} but label says {expected}"
             )
 
+    @_LABEL_SKIP
     def test_players_on_screen_count(self) -> None:
         """Player entry count matches the labelled players_on_screen_count."""
         for name, image, label in _cases():

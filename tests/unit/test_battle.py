@@ -7,8 +7,9 @@ provided (T08).
 
 The synthetic frames mimic the measured layout from docs/ui_layout.md #3:
 22 px slots, 156 px content width, 11 px top padding, bright text
-(grayscale ~247) on a dark background, and the selected row's 20 px box
-corners carrying the attack-highlight grey (76/166).
+(grayscale ~247) on a dark background, and the selected row's creature
+icon framed by a pure-red 20x20 outline at slot x 1..20, y 0..19 (as
+measured on the T08 golden frames, T28).
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from moonlight.perception.battle import (
 )
 
 BG: tuple[int, int, int] = (40, 40, 40)  # dark battle-list background
+STONE: tuple[int, int, int] = (72, 72, 72)  # real client panel grey (T28)
 TEXT_RGB: tuple[int, int, int] = (247, 247, 247)  # grayscale 247 > 150
 
 SLOT_H = 22
@@ -38,8 +40,9 @@ class RowSpec(TypedDict, total=False):
     """Optional flags for one synthetic battle-list slot."""
 
     text: bool
+    bar: bool
     highlight: bool
-    highlight_gray: int
+    highlight_rgb: tuple[int, int, int]
 
 
 class FakeResolver:
@@ -64,9 +67,12 @@ def make_frame(
     """Build a synthetic frame containing a battle list at *offset*.
 
     Each row spec may set:
-        text: draw a synthetic word in the name area (x 25..44)
-        highlight: paint the 20 px box corners with the highlight grey
-        highlight_gray: highlight grey to use (default 76)
+        text: draw a synthetic word in the name area (x 25..44) and the
+            black HP-bar outline under it (row 16, x 24..153)
+        bar: HP bar on/off (defaults to *text*; False = another panel's
+            text, True without text = a bar-only row)
+        highlight: paint the 20x20 target outline around the icon
+        highlight_rgb: outline color to use (default pure red)
 
     Returns ``(frame, region)`` where *region* covers exactly the widget.
     """
@@ -82,13 +88,17 @@ def make_frame(
         top = oy + TOP_PAD + i * SLOT_H
         slot = frame[top : top + SLOT_H, ox : ox + CONTENT_W]
         if spec.get("highlight"):
-            grey = int(spec.get("highlight_gray", 76))
-            for r, c in ((0, 0), (0, 19), (19, 0), (19, 19)):
-                slot[r, c] = (grey, grey, grey)
+            rgb = spec.get("highlight_rgb", (255, 0, 0))
+            slot[0, 1:21] = rgb
+            slot[19, 1:21] = rgb
+            slot[0:20, 1] = rgb
+            slot[0:20, 20] = rgb
         if spec.get("text"):
             for c in range(25, 45):
                 if c % 2 == 0:
                     slot[7:15, c] = TEXT_RGB
+        if spec.get("bar", spec.get("text")):
+            slot[16, 24:154] = (0, 0, 0)
     region = (ox, oy, CONTENT_W, TOP_PAD + n * SLOT_H)
     return frame, region
 
@@ -118,6 +128,19 @@ class TestEntryDetection:
 
     def test_empty_list(self) -> None:
         frame, region = make_frame([])
+        assert read_default(frame, region) == []
+
+    def test_text_without_hp_bar_is_not_an_entry(self) -> None:
+        # Regression (T28): another widget's text at the calibrated rect
+        # (no HP bar under it) was read as phantom creatures.
+        frame, region = make_frame([{"text": True, "bar": False}, {"text": True}])
+        entries = read_default(frame, region)
+        assert [e.index for e in entries] == [1]
+
+    def test_short_dark_run_is_not_an_hp_bar(self) -> None:
+        frame, region = make_frame([{"text": True, "bar": False}])
+        top, left = slot_origin((0, 0), 0)
+        frame[top + 16, left + 24 : left + 24 + 40] = (0, 0, 0)
         assert read_default(frame, region) == []
 
     def test_single_entry(self) -> None:
@@ -159,7 +182,7 @@ class TestEntryDetection:
 
     def test_at_min_text_pixels_accepted(self) -> None:
         # Exactly 3 text pixels: meets the default minimum.
-        frame, region = make_frame([])
+        frame, region = make_frame([{"bar": True}])
         offset = (0, 0)
         paint_pixels(frame, offset, 0, range(25, 30, 2), range(8, 9), TEXT_RGB)
         entries = read_default(frame, region)
@@ -167,12 +190,12 @@ class TestEntryDetection:
 
     def test_threshold_is_strictly_greater(self) -> None:
         # Pixels at exactly 150 are NOT text (threshold is > 150).
-        frame, region = make_frame([])
+        frame, region = make_frame([{"bar": True}])
         offset = (0, 0)
         paint_pixels(frame, offset, 0, range(25, 32, 2), range(8, 9), (150, 150, 150))
         assert read_default(frame, region) == []
         # The same pixels at 151 ARE text.
-        frame2, region2 = make_frame([])
+        frame2, region2 = make_frame([{"bar": True}])
         paint_pixels(frame2, offset, 0, range(25, 32, 2), range(8, 9), (151, 151, 151))
         assert len(read_default(frame2, region2)) == 1
 
@@ -184,18 +207,31 @@ class TestEntryDetection:
 
 
 class TestSelectedTarget:
-    """Attack-highlight detection at the slot box corners."""
+    """Red target-outline detection around the slot's creature icon."""
 
-    def test_selected_detected_gray_76(self) -> None:
+    def test_selected_detected(self) -> None:
         frame, region = make_frame([{"text": True}, {"text": True, "highlight": True}])
         entries = read_default(frame, region)
         assert [e.is_selected for e in entries] == [False, True]
 
-    def test_selected_detected_gray_166(self) -> None:
-        spec: RowSpec = {"text": True, "highlight": True, "highlight_gray": 166}
-        frame, region = make_frame([spec])
+    def test_stone_background_not_selected(self) -> None:
+        # Regression (T28): the old grey-corner rule (76 +/- 30) matched the
+        # client's stone panel grey (~64-75) and flagged every row selected.
+        frame, region = make_frame([{"text": True}] * 2)
+        widget = frame[: region[3], : region[2]]  # offset (0, 0)
+        widget[(widget == BG).all(axis=2)] = STONE
         entries = read_default(frame, region)
-        assert entries[0].is_selected is True
+        assert len(entries) == 2
+        assert all(not e.is_selected for e in entries)
+
+    def test_red_hp_bar_not_selected(self) -> None:
+        # A low-HP red bar under the name (rows 16-18, x >= 24) is not the
+        # target outline.
+        frame, region = make_frame([{"text": True}])
+        top, left = slot_origin((0, 0), 0)
+        frame[top + 16 : top + 19, left + 24 : left + 60] = (255, 0, 0)
+        entries = read_default(frame, region)
+        assert entries[0].is_selected is False
 
     def test_no_selection_without_highlight(self) -> None:
         frame, region = make_frame([{"text": True}] * 2)
@@ -203,24 +239,23 @@ class TestSelectedTarget:
         assert all(not e.is_selected for e in entries)
 
     def test_partial_highlight_not_selected(self) -> None:
-        # Only two of the four corners highlighted: not the target row.
+        # Only the top edge is red (e.g. a red icon touching the box): no.
         frame, region = make_frame([{"text": True}])
         top, left = slot_origin((0, 0), 0)
-        frame[top, left] = (76, 76, 76)
-        frame[top, left + 19] = (76, 76, 76)
+        frame[top, left + 1 : left + 21] = (255, 0, 0)
         entries = read_default(frame, region)
         assert entries[0].is_selected is False
 
     def test_highlight_within_tolerance(self) -> None:
-        # 76 + 15 = 91 is within the default tolerance of 30.
-        spec: RowSpec = {"text": True, "highlight": True, "highlight_gray": 91}
+        # (235, 20, 15) is within the default per-channel tolerance of 30.
+        spec: RowSpec = {"text": True, "highlight": True, "highlight_rgb": (235, 20, 15)}
         frame, region = make_frame([spec])
         entries = read_default(frame, region)
         assert entries[0].is_selected is True
 
     def test_highlight_outside_tolerance(self) -> None:
-        # 120 is >30 away from both 76 and 166: not a highlight.
-        spec: RowSpec = {"text": True, "highlight": True, "highlight_gray": 120}
+        # A green (follow) outline is not the attack target.
+        spec: RowSpec = {"text": True, "highlight": True, "highlight_rgb": (0, 255, 0)}
         frame, region = make_frame([spec])
         entries = read_default(frame, region)
         assert entries[0].is_selected is False
@@ -288,11 +323,18 @@ class TestRegionHandling:
         assert len(entries) == 1
 
     def test_partial_last_row_readable(self) -> None:
-        # Region cut off mid-slot: the visible text still forms an entry.
+        # Region cut off mid-slot below the HP bar: still an entry.
         frame, region = make_frame([{"text": True}])
         ox, oy, rw, rh = region
-        entries = read_default(frame, (ox, oy, rw, TOP_PAD + 10))
+        entries = read_default(frame, (ox, oy, rw, TOP_PAD + 18))
         assert len(entries) == 1
+
+    def test_row_cut_above_hp_bar_not_an_entry(self) -> None:
+        # Fail closed: without its HP bar a row cannot be told apart from
+        # another panel's text (T28), so a row cut above the bar is dropped.
+        frame, region = make_frame([{"text": True}])
+        ox, oy, rw, rh = region
+        assert read_default(frame, (ox, oy, rw, TOP_PAD + 10)) == []
 
 
 class TestReaderApi:
@@ -396,6 +438,7 @@ class TestPerformance:
             for c in range(25, 45):
                 if c % 2 == 0:
                     frame[top + 7 : top + 15, ox + c] = TEXT_RGB
+            frame[top + 16, ox + 24 : ox + 154] = (0, 0, 0)
         region = (ox, oy, CONTENT_W, TOP_PAD + n * SLOT_H)
 
         reader = BattleReader(name_resolver=FakeResolver({i: "wolf" for i in range(n)}))

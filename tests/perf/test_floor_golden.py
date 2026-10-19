@@ -7,17 +7,17 @@ against human-labelled golden screenshots:
              ``tests/golden/*.png`` (the default output of
              ``tools/label_golden.py``)
 * labels:    ``tests/golden/labels.json`` or ``data/golden/labels.json``
-             (stores ``floor_level`` 0-15 per frame)
+             (``position_z`` 0-15 per frame; null = unlabelled, skipped)
 * regions:   the calibrated ``floor_indicator`` rect from
-             ``profiles/<name>.json`` (produced by ``tools/calibrate.py``)
+             ``moonlight/profiles/<name>.json`` (produced by ``tools/calibrate.py``)
 * templates: ``<level>.png`` icons in ``data/templates/floorLevels/``
 
 Accuracy target: exact level match (template matching is categorical).
 
-IMPORTANT: no golden data exists yet (T08 pending -- the user will provide
-screenshots). Until then, every test in this module skips cleanly. We
-deliberately do NOT fabricate golden images, labels, or templates; the skip
-logic below is the only thing that runs without data.
+Status (T28): the 200 frames, labels and the ``floor_indicator`` rect (the
+level slider right of the minimap) are present, but no floor templates exist
+and every frame's ``position_z`` is null, so this module skips with that
+reason. We deliberately do NOT fabricate labels or templates.
 """
 
 from __future__ import annotations
@@ -26,6 +26,8 @@ import json
 from pathlib import Path
 
 import pytest
+
+from moonlight.calibrate import default_profiles_dir
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -41,7 +43,8 @@ LABELS_CANDIDATES = (
     REPO_ROOT / "data" / "golden" / "labels.json",
 )
 
-PROFILE_DIR = REPO_ROOT / "profiles"
+#: Same directory the app loads profiles from (moonlight/profiles/).
+PROFILE_DIR = default_profiles_dir()
 
 #: Where per-level floor icons may live.
 TEMPLATE_DIR = REPO_ROOT / "data" / "templates" / "floorLevels"
@@ -135,11 +138,11 @@ class TestFloorGolden:
         assert golden_dir is not None  # guaranteed by skipif
         assert labels_path is not None  # guaranteed by skipif
 
-        labels = json.loads(labels_path.read_text(encoding="utf-8"))
+        frames = json.loads(labels_path.read_text(encoding="utf-8"))["frames"]
         cases: list[tuple[str, Path, int]] = []
-        for name, entry in labels.items():
+        for name, entry in frames.items():
             image = golden_dir / name
-            floor = entry.get("floor_level")
+            floor = entry.get("position_z")
             if image.is_file() and floor is not None:
                 cases.append((name, image, int(floor)))
         return cases
@@ -149,7 +152,8 @@ class TestFloorGolden:
         import cv2
 
         cases = self._cases()
-        assert cases, "labels.json exists but no floor-labelled golden images"
+        if not cases:
+            pytest.skip("no frame has a labelled position_z")
         for name, image, _ in cases:
             frame = cv2.imread(str(image))
             assert frame is not None, f"could not decode golden frame {name!r}"
@@ -160,8 +164,11 @@ class TestFloorGolden:
 
         from moonlight.perception.floor import FloorReader
 
+        cases = self._cases()
+        if not cases:
+            pytest.skip("no frame has a labelled position_z")
         reader = FloorReader(_usable_profile())
-        for name, image, expected in self._cases():
+        for name, image, expected in cases:
             bgr = cv2.imread(str(image))
             assert bgr is not None, f"could not decode golden frame {name!r}"
             frame = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
