@@ -104,7 +104,7 @@ def test_run_dispatch(tmp_path: Path) -> None:
         assert cli.main(["--profiles-dir", str(tmp_path), "run"]) == 0
     build.assert_called_once()
     loop.run.assert_called_once()
-    arduino.return_value.release_all.assert_called_once()
+    arduino.return_value.close.assert_called_once()  # releases + stops heartbeat
 
 
 # -- headless smoke ---------------------------------------------------------------

@@ -266,25 +266,29 @@ class TestMaxMonstersToEngage:
         assert action is not None
         assert action.action is TargetingActionKind.ATTACK
 
-    def test_too_many_monsters_flee_with_default_config(self) -> None:
-        state = make_state(
-            monsters=[Monster(name="Wolf"), Monster(name="Rat")],
-            selected_target=None,
-        )
-        action = make_targeting().decide(state)
-        assert action is not None
-        assert action.action is TargetingActionKind.FLEE
-        assert "2" in action.reason
+    def test_crowd_keeps_attacking_and_warns_once(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # F-08: no flee route exists yet, so a crowd only logs a warning.
+        state = make_state(monsters=[Monster(name=n) for n in "ABCDE"], selected_target=None)
+        targeting = make_targeting()
+        with caplog.at_level("WARNING"):
+            for _ in range(3):
+                action = targeting.decide(state)
+                assert action is not None
+                assert action.action is TargetingActionKind.ATTACK
+        assert sum("exceed max_monsters_to_engage" in r.message for r in caplog.records) == 1
 
-    def test_flee_wins_over_existing_selection(self) -> None:
+    def test_crowd_keeps_existing_selection(self) -> None:
         wolf = Monster(name="Wolf")
         state = make_state(
-            monsters=[wolf, Monster(name="Rat")],
+            monsters=[wolf, *(Monster(name=n) for n in "ABCD")],
             selected_target=wolf,
         )
         action = make_targeting().decide(state)
         assert action is not None
-        assert action.action is TargetingActionKind.FLEE
+        assert action.action is TargetingActionKind.ATTACK
+        assert action.target_name == "Wolf"
 
     def test_at_limit_engaged(self) -> None:
         config = TargetingConfig(max_monsters_to_engage=3)
@@ -295,7 +299,7 @@ class TestMaxMonstersToEngage:
         assert action is not None
         assert action.action is TargetingActionKind.ATTACK
 
-    def test_above_limit_flees(self) -> None:
+    def test_above_limit_still_attacks(self) -> None:
         config = TargetingConfig(max_monsters_to_engage=3)
         state = make_state(
             monsters=[
@@ -307,7 +311,7 @@ class TestMaxMonstersToEngage:
         )
         action = make_targeting(config).decide(state)
         assert action is not None
-        assert action.action is TargetingActionKind.FLEE
+        assert action.action is TargetingActionKind.ATTACK
 
     def test_player_entries_do_not_count_towards_limit(self) -> None:
         # Players are not monsters; they must not block engagement.
@@ -330,7 +334,7 @@ class TestConfigValidation:
 
     def test_default_values_match_spec(self) -> None:
         config = TargetingConfig()
-        assert config.max_monsters_to_engage == 1
+        assert config.max_monsters_to_engage == 4
         assert config.prefer_low_hp is True
         assert config.player_protection is True
 

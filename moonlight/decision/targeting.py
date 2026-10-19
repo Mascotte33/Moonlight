@@ -8,8 +8,8 @@ Decides which creature to attack, given :class:`moonlight.state.WorldState`:
 * **SWITCH** (reason ``"switching from ..."``): the currently selected
   target is not a usable monster (a player, or no longer in the battle
   list) -> change the attack target.
-* **FLEE** (reasons: players on screen / too many monsters): the situation
-  is unsafe -> the loop should disengage instead of fighting.
+* **FLEE** (reason: players on screen): the situation is unsafe -> the
+  loop should disengage instead of fighting.
 
 ``decide()`` returns ``None`` (idle) when the battle list holds no
 creatures at all.
@@ -22,7 +22,9 @@ Safety rules (hard, non-negotiable):
 * ``players_on_screen > 0`` with :attr:`TargetingConfig.player_protection`
   enabled -> ``FLEE``.
 * More monsters in the battle list than
-  :attr:`TargetingConfig.max_monsters_to_engage` -> ``FLEE``.
+  :attr:`TargetingConfig.max_monsters_to_engage` -> a logged warning; the
+  bot keeps attacking. Fleeing from a crowd needs a real flee route
+  (later work); until then FLEE would only stall the bot while being hit.
 
 Target selection order:
 
@@ -70,8 +72,8 @@ class TargetingActionKind(StrEnum):
 class TargetingConfig:
     """Tunable targeting parameters (defaults are the T20 spec values)."""
 
-    max_monsters_to_engage: int = 1
-    """Do not engage when more monsters than this are in the battle list."""
+    max_monsters_to_engage: int = 4
+    """Warn (once per crowd) when more monsters than this are in the battle list."""
 
     prefer_low_hp: bool = True
     """When picking a target, prefer the monster with the lowest HP percent."""
@@ -138,6 +140,7 @@ class TargetingDecision:
         cfg = config if config is not None else TargetingConfig()
         cfg.validate()
         self.config = cfg
+        self._crowded = False  # warn once per "too many monsters" episode
 
     # -- decision ------------------------------------------------------------
 
@@ -149,9 +152,9 @@ class TargetingDecision:
             ``flee``, or ``None`` when the battle list is empty (idle).
 
         Safety rules are checked first and win over any selection logic:
-        players on screen (with protection enabled) -> ``flee``; more
-        monsters than ``max_monsters_to_engage`` -> ``flee``; a player is
-        never returned as ``target_name``.
+        players on screen (with protection enabled) -> ``flee``; a player
+        is never returned as ``target_name``. More monsters than
+        ``max_monsters_to_engage`` only logs a warning.
         """
         if self.config.player_protection and state.players_on_screen > 0:
             logger.debug(
@@ -171,20 +174,15 @@ class TargetingDecision:
             logger.debug("no monsters in battle list; idle")
             return None
 
-        if len(monsters) > self.config.max_monsters_to_engage:
-            logger.debug(
-                "fleeing: %d monsters exceed max_monsters_to_engage=%d",
+        crowded = len(monsters) > self.config.max_monsters_to_engage
+        if crowded and not self._crowded:
+            logger.warning(
+                "%d monsters exceed max_monsters_to_engage=%d; still attacking "
+                "(no flee route)",
                 len(monsters),
                 self.config.max_monsters_to_engage,
             )
-            return TargetingAction(
-                target_name="",
-                action=TargetingActionKind.FLEE,
-                reason=(
-                    f"{len(monsters)} monsters in battle list exceed "
-                    f"max_monsters_to_engage={self.config.max_monsters_to_engage}"
-                ),
-            )
+        self._crowded = crowded
 
         selected = self._valid_selected(state.selected_target, monsters)
         if selected is not None:

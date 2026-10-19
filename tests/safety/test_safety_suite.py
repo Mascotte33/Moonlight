@@ -2,20 +2,28 @@
 
 Offline: ``FakeInput`` captures every wire line, ``WorldState`` is set by hand,
 the loop clock is fake. ``python -m pytest tests/safety/ -v``.
+
+Tests 13-18 (T32a / F-19) run the production wiring instead: ``cli.build_loop``
++ ``make_perceive`` over a real golden frame with a toggleable focus check.
 """
 
 from __future__ import annotations
 
 import json
 import threading
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest import mock
 
+import cv2
 import numpy as np
 import pytest
 
+from moonlight.calibrate import CalibrationProfile, default_profiles_dir
+from moonlight.cli import build_loop
+from moonlight.config import BotConfig
 from moonlight.decision.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
 from moonlight.decision.healing import HealingConfig, HealingDecision, HealType
 from moonlight.decision.looting import Looting, LootingConfig
@@ -74,6 +82,7 @@ def idle_module(**overrides: Any) -> mock.Mock:
     m.should_refill.return_value = False
     m.is_active.return_value = False
     m.send.return_value = True
+    m.alarm = None
     m.configure_mock(**overrides)
     return m
 
@@ -113,9 +122,11 @@ def test_3_fail_closed_when_screen_not_ok() -> None:
     ws = make_state(screen_ok=False, hp_percent=10.0, selected_target=Monster("Wolf"))
     inp = FakeInput()
     gl, _ = make_loop(ws, inp)
-    gl.tick()
-    assert gl.stop_requested  # loop halts
-    assert inp.sent_lines == []
+    for _ in range(5):
+        gl.tick()
+    assert gl.current_state is BotState.PAUSED  # loop pauses (F-05)...
+    assert not gl.stop_requested
+    assert inp.sent_lines == ["X"]  # ...releasing once and sending nothing else
 
 
 class _NoMinimap:
@@ -213,7 +224,7 @@ def test_8_low_mp_stops_casting_spells() -> None:
 
 
 def test_9_rate_limit_never_exceeds_20hz() -> None:
-    ws = make_state(selected_target=Monster("Wolf"))
+    ws = make_state(hp_percent=50.0)  # a heal is wanted on every tick
     inp = FakeInput()
     gl, clock = make_loop(ws, inp)
     start = clock.now
@@ -222,7 +233,7 @@ def test_9_rate_limit_never_exceeds_20hz() -> None:
         clock.sleep(1.0 / 20.0)
     stats = gl.get_stats()
     assert cast(int, stats["tick_count"]) <= 21  # 20 Hz (+ the t=0 tick)
-    assert len(inp.sent_lines) <= 11  # and input is capped at 10/s (+1 burst)
+    assert len(inp.sent_lines) <= 12  # and input is capped at 10/s (+2 burst)
     assert cast(int, stats["actions_dropped_rate_limit"]) > 0
 
 
@@ -307,3 +318,120 @@ def test_12_refill_only_starts_above_cap_threshold(tmp_path: Path) -> None:
     gl, _ = make_loop(above, FakeInput(), refill=refill, cavebot=cavebot)
     gl.tick()
     assert gl.current_state is BotState.REFILL
+
+
+# -- F-19: the production wiring (cli.build_loop + make_perceive + focus) ---------
+
+GOLDEN_LOW_HP = (
+    Path(__file__).resolve().parents[2]
+    / "tests"
+    / "golden"
+    / "2026-07-05_231254331_Secco Cio_LowHealth_1.png"
+)
+USER_PROFILE = default_profiles_dir() / "moonlight_user.json"
+needs_golden = pytest.mark.skipif(
+    not GOLDEN_LOW_HP.is_file() or not USER_PROFILE.is_file(),
+    reason="no golden frame or user profile",
+)
+
+
+class Built:
+    """A loop built by ``cli.build_loop`` over a real golden frame (HP ~41%)."""
+
+    def __init__(self, **frame_overrides: Any) -> None:
+        bgr = cv2.imread(str(GOLDEN_LOW_HP))
+        assert bgr is not None
+        self.frame = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        self.focused = True
+        self.frame_error = False
+        self.inp = FakeInput()
+        self.clock = Clock()
+        self.alerts: list[str] = []
+        config = replace(BotConfig.default(), loop=LoopConfig(enable_f12_monitor=False))
+        self.gl = build_loop(
+            config,
+            CalibrationProfile.load(USER_PROFILE),
+            self.inp,
+            frame_provider=self._frame,
+            focus_check=lambda: self.focused,
+            clock=self.clock,
+            sleep_fn=self.clock.sleep,
+            alert=self.alerts.append,
+        )
+
+    def _frame(self) -> np.ndarray:
+        if self.frame_error:
+            raise OSError("capture failed")
+        return self.frame
+
+
+@needs_golden
+def test_13_built_loop_heals_from_golden_frame() -> None:
+    b = Built()
+    b.gl.tick()
+    assert b.gl.current_state is BotState.NORMAL_HEAL
+    assert b.inp.sent_lines and "X" not in b.inp.sent_lines  # a real heal went out
+
+
+@needs_golden
+def test_14_built_kill_while_unfocused_releases() -> None:
+    b = Built()
+    b.focused = False
+    b.gl.kill()
+    b.gl.tick()
+    assert b.gl.stop_requested
+    assert b.inp.sent_lines == ["X"]  # release is not gated by focus
+
+
+@needs_golden
+def test_15_built_screen_not_ok_pauses_then_stop_releases() -> None:
+    b = Built()
+    b.frame_error = True  # perception fails -> screen_ok False
+    b.gl.run()  # pauses, then stops after pause_timeout
+    assert b.gl.stop_requested
+    assert set(b.inp.sent_lines) == {"X"} and len(b.inp.sent_lines) >= 2
+    assert len(b.alerts) == 1
+
+
+@needs_golden
+def test_16_built_module_exception_releases_and_stops() -> None:
+    b = Built()
+    healing = b.gl.modules.healing
+    assert healing is not None
+    with mock.patch.object(healing, "decide", side_effect=RuntimeError("boom")):
+        b.gl.run()
+    assert b.gl.stop_requested
+    assert b.gl.get_stats()["tick_count"] == LoopConfig().max_consecutive_errors
+    assert set(b.inp.sent_lines) == {"X"}  # released, never acted
+    assert len(b.alerts) == 1
+
+
+@needs_golden
+def test_17_built_perceive_exception_releases_and_stops() -> None:
+    b = Built()
+    with mock.patch.object(b.gl, "_perceive", side_effect=RuntimeError("boom")):
+        b.gl.run()
+    assert b.gl.stop_requested
+    assert set(b.inp.sent_lines) == {"X"}
+
+
+@needs_golden
+def test_18_built_pause_on_unfocus_resume_on_refocus() -> None:
+    b = Built()
+    b.gl.tick()
+    heals = len(b.inp.sent_lines)
+    assert heals >= 1
+
+    b.focused = False
+    for _ in range(10):
+        b.clock.sleep(0.05)
+        b.gl.tick()
+    assert b.gl.current_state is BotState.PAUSED
+    assert b.inp.sent_lines[heals:] == ["X"]  # one release, then silence
+
+    b.focused = True
+    b.clock.sleep(5.0)  # past any heal cooldown
+    b.gl.tick()
+    assert b.gl.get_stats()["state"] == BotState.NORMAL_HEAL.value
+    assert not b.gl.stop_requested
+    assert len(b.inp.sent_lines) > heals + 1 and b.inp.sent_lines[-1] != "X"

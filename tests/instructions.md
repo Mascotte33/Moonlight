@@ -21,8 +21,8 @@ The test suite. Structure:
 | `unit/test_ui.py` | ✅ DONE (17 KB) |
 | `replay/`, `golden/` | ⬜ not created yet |
 
-Current baseline: **339 passed, 4 skipped** (the loop kill-switch test was
-fixed in `loop.py` on 2026-10-15).
+Current baseline: **857 passed, 8 skipped** (T32a, 2026-10-19: loop-safety
+fixes; `safety/` now has 18 invariants incl. 6 over `cli.build_loop`).
 
 ## How to run
 ```bash

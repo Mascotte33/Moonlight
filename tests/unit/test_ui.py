@@ -337,8 +337,13 @@ class TestBotController:
         c.kill()
 
     def test_exhausted_loop_raises_without_factory(self) -> None:
-        # default state -> screen_ok is False -> loop exits after one tick
-        c = BotController(make_loop())
+        # default state -> screen_ok is False -> PAUSED -> stops after pause_timeout
+        loop = GameLoop(
+            WorldState.default(),
+            FakeInput(),
+            LoopConfig(enable_f12_monitor=False, pause_timeout=0.01),
+        )
+        c = BotController(loop)
         c.start()
         assert c.wait(2.0)
         assert not c.is_running()

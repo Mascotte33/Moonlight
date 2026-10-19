@@ -59,6 +59,8 @@ def idle_module(**overrides: object) -> mock.Mock:
     m.should_refill.return_value = False
     m.is_active.return_value = False
     m.send.return_value = True
+    m.alarm = None
+    m.config = HealingConfig()
     m.configure_mock(**overrides)
     return m
 

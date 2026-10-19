@@ -29,7 +29,7 @@ import numpy as np
 from moonlight.calibrate import CalibrationProfile
 from moonlight.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
 from moonlight.input import InputBackend
-from moonlight.loop import DecisionModules, GameLoop
+from moonlight.loop import DecisionModules, GameLoop, beep_alert
 from moonlight.profile import ProfileManager
 from moonlight.state import WorldState
 
@@ -106,7 +106,7 @@ def make_perceive(
                 state.position = position
             if z is not None:
                 state.position = replace(state.position, z=int(z))
-            state.last_update = time.time()
+            state.last_update = time.monotonic()
 
     return perceive
 
@@ -133,6 +133,7 @@ def build_loop(
     state: WorldState | None = None,
     clock: Callable[[], float] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
+    alert: Callable[[str], None] | None = beep_alert,
 ) -> GameLoop:
     """Assemble the bot: perception + the enabled decision modules + loop.
 
@@ -209,6 +210,7 @@ def build_loop(
         perceive=make_perceive(state, profile, frame_provider, focus_check),
         clock=clock,
         sleep_fn=sleep_fn,
+        alert=alert,
     )
 
 
@@ -246,7 +248,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(f"moonlight {_version()}: running profile {name!r}; F12 = kill switch")
         loop.run()
     finally:
-        backend.release_all()
+        backend.close()  # releases all inputs and stops the heartbeat
     return 0
 
 

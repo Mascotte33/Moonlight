@@ -5,24 +5,35 @@ state the bot is in, using a strict priority order (highest wins):
 
 1. KILL            F12 pressed or the kill switch activated: release all
                    inputs and stop.
-2. ALARM           Player on screen, PM open, or fast HP drop: stop
-                   attack/loot/walk; healing continues.
-3. EMERGENCY_HEAL  HP at or below the critical threshold.
-4. NORMAL_HEAL     HP at or below the normal threshold.
-5. ATTACK          A target is selected (or, with targeting wired, the
+2. PAUSED          screen_ok is False (client unfocused / perception
+                   failed) or the last tick raised: inputs released, the
+                   loop keeps ticking (perceive only) and resumes on its own
+                   once perception is healthy again.
+3. ALARM           Player on screen, PM open, fast HP drop, a critical
+                   alarm, or a cavebot/refill alarm: stop attack/loot/walk;
+                   healing continues. Entering ALARM alerts the operator.
+4. EMERGENCY_HEAL  HP at or below the critical threshold.
+5. NORMAL_HEAL     HP at or below the normal threshold.
+6. ATTACK          A target is selected (or, with targeting wired, the
                    targeting module chose one).
-6. LOOT            A kill is waiting to be looted (looting wired).
-7. REFILL          Cap is full or a refill trip is running (refill wired).
-8. MOVE            A waypoint route is active (cavebot / move_provider).
-9. IDLE            Nothing to do.
+7. LOOT            A kill is waiting to be looted (looting wired).
+8. REFILL          Cap is full or a refill trip is running (refill wired).
+9. MOVE            A waypoint route is active (cavebot / move_provider).
+10. IDLE           Nothing to do.
+
+Heal thresholds come from the healing module when it is wired (single
+source of truth); ``LoopConfig.critical_hp``/``normal_hp`` (defaulting to
+the healing defaults) only drive the built-in heal combos.
 
 Decision modules (T40): an optional :class:`DecisionModules` bundle wires
 the ``moonlight.decision`` engines into the tick. Each one is optional;
 without it the loop keeps its built-in behaviour.
 
 * **alarms** -- ``AlarmDecision.decide`` every tick; a critical alarm -> ALARM.
+  PM detection is *not* wired in production (no PM perception exists);
+  ``pm_open_check`` stays injectable for when it does.
 * **targeting** -- ``TargetingDecision.decide`` every tick; attack/switch
-  -> ATTACK, flee -> ALARM (disengage).
+  -> ATTACK, flee (players on screen) -> ALARM (disengage).
 * **healing** -- ``HealingDecision.decide`` + ``send`` first in every
   non-KILL state (healing continues through ALARM); replaces the
   built-in heal combos.
@@ -41,19 +52,23 @@ the snapshot) so one thread does capture -> perception -> decision.
 
 Safety invariants (re-checked on every tick, never just at startup):
 
-* **Stop on !screen_ok** -- as soon as the world state reports
-  ``screen_ok == False`` the loop halts (``run()`` returns).
-* **No input unless focused** -- no wire command is sent unless the
-  snapshot has both ``client_focused`` and ``screen_ok`` True. This also
-  applies to the kill-switch release; the Arduino kill pin (T06 firmware)
-  provides independent hardware-level release.
+* **Pause on !screen_ok** -- ``screen_ok == False`` (or a tick that
+  raised) pauses the loop: inputs are released once on entry, nothing is
+  sent, and the loop resumes automatically when perception is healthy.
+  It stops for good after ``pause_timeout`` seconds paused or
+  ``max_consecutive_errors`` consecutive tick exceptions (operator alert).
+* **No input unless focused** -- no action is sent unless the snapshot
+  has both ``client_focused`` and ``screen_ok`` True. The one exception is
+  ``release_all``: kill, pause, tick exceptions and shutdown call it
+  directly (ungated, errors logged and swallowed), so a stop can never
+  leave a key held. ``run()`` closes the backend on exit (stops the
+  Arduino heartbeat so the firmware watchdog can fire).
 * **Rate limit** -- at most ``max_actions_per_second`` input actions
-  (default 10/s). A 20 Hz tick can therefore only send input on every
-  second tick; the limiter enforces the cap, not the tick rate. Two
-  deliberate exceptions: the kill switch's release-all (an emergency
-  release must not wait for a token) and the MOVE waypoint step (a
-  continuous motion handed to the waypoint runner once per tick, which
-  owns its own cadence). Both remain subject to the focus gate.
+  (default 10/s sustained). Heals have priority: non-heal actions leave
+  one token in reserve, so a heal never waits behind an attack (worst
+  case 12 actions in the first second, 10/s after). The MOVE/REFILL
+  steps are not rate-limited (continuous motion handed to the runner
+  once per tick) but stay focus-gated.
 * **F12 kill switch** -- a daemon thread polls the keyboard (10 ms,
   GetAsyncKeyState, no hook) and triggers the kill switch on a rising
   edge; :meth:`GameLoop.kill` does the same programmatically (UI button,
@@ -81,6 +96,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from moonlight.decision.healing import HealingConfig
 from moonlight.input import InputBackend
 from moonlight.state import WorldState
 
@@ -101,6 +117,7 @@ __all__ = [
     "GameLoop",
     "LoopConfig",
     "RateLimiter",
+    "beep_alert",
 ]
 
 logger = logging.getLogger("moonlight.loop")
@@ -118,7 +135,22 @@ def default_key_state(vk: int) -> bool:
     if sys.platform != "win32":
         return False
     state = ctypes.windll.user32.GetAsyncKeyState(vk)
-    return bool(state & 0x0001)
+    return bool(state & 0x8000)  # "currently down"; 0x0001 is unreliable
+
+
+def beep_alert(message: str) -> None:
+    """Operator alert sink: a non-blocking system beep (Windows). Never raises.
+
+    The loop logs every alert itself; this only adds the sound.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import winsound
+
+        winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+    except Exception:  # noqa: BLE001 - an alert must never take the loop down
+        logger.debug("alert beep failed", exc_info=True)
 
 
 @dataclass(frozen=True)
@@ -131,11 +163,11 @@ class LoopConfig:
     max_actions_per_second: float = 10.0
     """Hard cap on input actions per second."""
 
-    critical_hp: float = 30.0
-    """HP % at or below which EMERGENCY_HEAL triggers."""
+    critical_hp: float = HealingConfig.emergency_hp_percent
+    """HP % at or below which EMERGENCY_HEAL triggers (without healing module)."""
 
-    normal_hp: float = 60.0
-    """HP % at or below which NORMAL_HEAL triggers (above critical)."""
+    normal_hp: float = HealingConfig.normal_hp_percent
+    """HP % at or below which NORMAL_HEAL triggers (without healing module)."""
 
     hp_drop_alarm_delta: float = 30.0
     """HP % drop within the window that raises ALARM."""
@@ -158,11 +190,23 @@ class LoopConfig:
     enable_f12_monitor: bool = True
     """Whether :meth:`GameLoop.run` starts the F12 polling thread."""
 
+    pause_timeout: float = 30.0
+    """Seconds PAUSED (unfocused / bad frames) before the loop stops for good.
+    30 s covers an alt-tab or a loading screen; longer means a human took over."""
+
+    max_consecutive_errors: int = 5
+    """Consecutive tick exceptions (each one pauses) before the loop stops.
+    5 ticks = 250 ms: rides out a one-off glitch, not a dead device."""
+
+    attack_repress_cooldown: float = 1.0
+    """Minimum seconds between two attack-key presses."""
+
 
 class BotState(StrEnum):
     """Priority states, declared from highest to lowest priority."""
 
     KILL = "kill"
+    PAUSED = "paused"
     ALARM = "alarm"
     EMERGENCY_HEAL = "emergency_heal"
     NORMAL_HEAL = "normal_heal"
@@ -225,14 +269,14 @@ class RateLimiter:
         """Maximum stored tokens."""
         return self._capacity
 
-    def try_acquire(self, tokens: float = 1.0) -> bool:
-        """Consume *tokens* if available; never blocks."""
+    def try_acquire(self, tokens: float = 1.0, reserve: float = 0.0) -> bool:
+        """Consume *tokens* if available, leaving *reserve* behind; never blocks."""
         now = self._clock()
         elapsed = now - self._last_refill
         if elapsed > 0:
             self._tokens = min(self._capacity, self._tokens + elapsed * self._rate)
             self._last_refill = now
-        if tokens > self._tokens:
+        if tokens + reserve > self._tokens:
             return False
         self._tokens -= tokens
         return True
@@ -331,6 +375,7 @@ class GameLoop:
         f12_monitor: F12Monitor | None = None,
         modules: DecisionModules | None = None,
         perceive: Callable[[], None] | None = None,
+        alert: Callable[[str], None] | None = None,
     ) -> None:
         """Create the loop.
 
@@ -350,6 +395,8 @@ class GameLoop:
                 docstring); a wired cavebot is the default move provider.
             perceive: Called at the start of every tick, before the
                 snapshot (capture -> perception -> WorldState).
+            alert: Operator alert sink (e.g. :func:`beep_alert`), called on
+                ALARM entry and on a failure stop; alerts are always logged.
         """
         cfg = config if config is not None else LoopConfig()
         self._validate_config(cfg)
@@ -362,6 +409,7 @@ class GameLoop:
         self._pm_open_check = pm_open_check
         self.modules = modules if modules is not None else DecisionModules()
         self._perceive = perceive
+        self._alert_sink = alert
         cavebot = self.modules.cavebot
         if cavebot is not None and move_provider is None and move_action is None:
             move_provider = lambda _s: cavebot.is_active()  # noqa: E731
@@ -372,6 +420,12 @@ class GameLoop:
         self._alarm: AlarmAction | None = None
         self._target: TargetingAction | None = None
         self._last_target: str | None = None
+        # Attack-key bookkeeping: when and for which selection it was pressed.
+        self._attack_pressed_at: float | None = None
+        self._attack_pressed_for: str | None = None
+        # Pause bookkeeping (reset by every healthy, exception-free tick).
+        self._paused_since: float | None = None
+        self._consecutive_errors = 0
         self._f12_monitor = f12_monitor
         if self._f12_monitor is None and cfg.enable_f12_monitor:
             self._f12_monitor = F12Monitor(
@@ -379,9 +433,9 @@ class GameLoop:
                 poll_interval=cfg.f12_poll_interval,
             )
 
-        # Capacity 1 (not rate): with 20 Hz ticks this yields exactly
-        # 10 actions/s sustained and never more than 11 in any second.
-        self._rate_limiter = RateLimiter(rate=cfg.max_actions_per_second, capacity=1.0, clock=clock)
+        # Capacity 2 with one token reserved for heals: non-heal actions
+        # still pace at exactly 10/s, and a heal never waits behind them.
+        self._rate_limiter = RateLimiter(rate=cfg.max_actions_per_second, capacity=2.0, clock=clock)
         self._kill_event = threading.Event()
         self._stop_event = threading.Event()
         self._state = BotState.IDLE
@@ -420,8 +474,7 @@ class GameLoop:
         """Activate the kill switch (F12, UI button, Arduino kill pin).
 
         Thread-safe: sets an event the loop thread picks up on its next
-        tick, which releases all inputs (subject to the focus gate) and
-        stops the loop.
+        tick, which releases all inputs (ungated) and stops the loop.
         """
         if not self._kill_event.is_set():
             logger.warning("KILL SWITCH ACTIVATED")
@@ -436,10 +489,12 @@ class GameLoop:
     # -- main loop ---------------------------------------------------------
 
     def run(self) -> None:
-        """Run the 20 Hz loop until kill, ``stop()``, or !screen_ok.
+        """Run the 20 Hz loop until kill, ``stop()``, or a pause/error limit.
 
-        Blocks the calling thread. Returns cleanly on every exit path and
-        always shuts the F12 monitor down.
+        Blocks the calling thread. Returns cleanly on every exit path; a
+        tick exception is logged and pauses the loop (see
+        ``max_consecutive_errors``). On exit the F12 monitor is stopped,
+        inputs are released and the backend is closed.
         """
         if self._kill_event.is_set() or self._stop_event.is_set():
             return
@@ -450,7 +505,11 @@ class GameLoop:
         next_tick = self._clock()
         try:
             while not self._stop_event.is_set():
-                self.tick()
+                try:
+                    self.tick()
+                except Exception:
+                    logger.exception("tick raised")
+                    self._on_tick_error()
                 if self._stop_event.is_set():
                     break
                 next_tick += period
@@ -484,10 +543,9 @@ class GameLoop:
             self._perceive()
         snap = self.state.snapshot()
 
-        # Stop gate: !screen_ok halts the loop (fail-closed).
+        # Pause gate: !screen_ok (unfocused / bad frame) pauses, fail-closed.
         if not snap.screen_ok:
-            logger.warning("screen_ok is false -> stopping the loop")
-            self._stop_event.set()
+            self._pause("screen not ok (client unfocused or perception failed)")
             self._record_tick_time(t0)
             return
 
@@ -497,7 +555,50 @@ class GameLoop:
         if new_state is not self._state:
             self._enter_state(new_state, self._transition_reason(snap, new_state))
         self._dispatch(snap)
+        self._paused_since = None
+        self._consecutive_errors = 0
         self._record_tick_time(t0)
+
+    # -- pause / release / alert ---------------------------------------------
+
+    def _pause(self, reason: str) -> None:
+        """Enter (or stay in) PAUSED; stop for good after ``pause_timeout``."""
+        now = self._clock()
+        if self._state is not BotState.PAUSED:
+            self._enter_state(BotState.PAUSED, reason)
+            self._release("pause")
+        if self._paused_since is None:
+            self._paused_since = now
+        elif now - self._paused_since > self.config.pause_timeout:
+            self._fail_stop(f"paused for more than {self.config.pause_timeout:.0f}s ({reason})")
+
+    def _on_tick_error(self) -> None:
+        """A tick raised: release + pause; stop after too many in a row."""
+        self._consecutive_errors += 1
+        self._pause("tick raised an exception")
+        if self._consecutive_errors >= self.config.max_consecutive_errors:
+            self._fail_stop(f"{self._consecutive_errors} consecutive tick exceptions")
+
+    def _fail_stop(self, reason: str) -> None:
+        self._release("failure stop")
+        self._alert(f"loop stopping: {reason}")
+        self._stop_event.set()
+
+    def _release(self, why: str) -> None:
+        """``release_all`` directly: ungated, never raises (safety path)."""
+        try:
+            self.input.release_all()
+        except Exception:  # noqa: BLE001 - a failed release must not mask the stop
+            logger.exception("release_all failed (%s)", why)
+
+    def _alert(self, message: str) -> None:
+        """Operator alert: always a log line, plus the sink (never raises)."""
+        logger.warning("OPERATOR ALERT: %s", message)
+        if self._alert_sink is not None:
+            try:
+                self._alert_sink(message)
+            except Exception:  # noqa: BLE001
+                logger.exception("alert sink failed")
 
     # -- state machine -----------------------------------------------------
 
@@ -527,9 +628,10 @@ class GameLoop:
         if self._is_alarm(snap):
             return BotState.ALARM
         hp = snap.hp_percent
-        if 0.0 < hp <= self.config.critical_hp:
+        critical, normal = self._heal_thresholds()
+        if 0.0 < hp <= critical:
             return BotState.EMERGENCY_HEAL
-        if 0.0 < hp <= self.config.normal_hp:
+        if 0.0 < hp <= normal:
             return BotState.NORMAL_HEAL
         m = self.modules
         if m.targeting is not None:
@@ -546,9 +648,26 @@ class GameLoop:
             return BotState.MOVE
         return BotState.IDLE
 
+    def _heal_thresholds(self) -> tuple[float, float]:
+        """(critical, normal) HP %: the healing module's when wired."""
+        healing = self.modules.healing
+        if healing is not None:
+            return healing.config.emergency_hp_percent, healing.config.normal_hp_percent
+        return self.config.critical_hp, self.config.normal_hp
+
+    def _module_alarm(self) -> str | None:
+        """A cavebot/refill alarm (``"stuck"``, ``"lost"``, ...), or None."""
+        for name, module in (("cavebot", self.modules.cavebot), ("refill", self.modules.refill)):
+            alarm = getattr(module, "alarm", None)
+            if alarm:
+                return f"{name} alarm: {alarm}"
+        return None
+
     def _is_alarm(self, snap: WorldState) -> bool:
-        """ALARM: player on screen, PM open, fast HP drop, critical module alarm or flee."""
+        """ALARM: player on screen, PM open, fast HP drop, critical/module alarm or flee."""
         if snap.players_on_screen > 0 or self._alarm is not None or self._fleeing():
+            return True
+        if self._module_alarm() is not None:
             return True
         if self._pm_open_check is not None and self._pm_open_check(snap):
             return True
@@ -567,13 +686,16 @@ class GameLoop:
                     return f"targeting flee: {self._target.reason}"
                 if snap.players_on_screen > 0:
                     return f"players on screen: {snap.players_on_screen}"
+                module_alarm = self._module_alarm()
+                if module_alarm is not None:
+                    return module_alarm
                 if self._pm_open_check is not None and self._pm_open_check(snap):
                     return "PM window open"
                 return "fast HP drop"
             case BotState.EMERGENCY_HEAL:
-                return f"hp {snap.hp_percent:.0f}% <= critical {self.config.critical_hp:.0f}%"
+                return f"hp {snap.hp_percent:.0f}% <= critical {self._heal_thresholds()[0]:.0f}%"
             case BotState.NORMAL_HEAL:
-                return f"hp {snap.hp_percent:.0f}% <= normal {self.config.normal_hp:.0f}%"
+                return f"hp {snap.hp_percent:.0f}% <= normal {self._heal_thresholds()[1]:.0f}%"
             case BotState.ATTACK:
                 if self._target is not None:
                     return f"target: {self._target.target_name} ({self._target.reason})"
@@ -595,6 +717,10 @@ class GameLoop:
         self._state = new_state
         self._state_transitions[new_state] = self._state_transitions.get(new_state, 0) + 1
         logger.info("state %s -> %s (%s)", old.value, new_state.value, reason)
+        if old is BotState.PAUSED:
+            logger.info("resumed after pause")
+        if new_state is BotState.ALARM:
+            self._alert(f"ALARM: {reason}")
 
     # -- fast HP drop tracking ---------------------------------------------
 
@@ -656,21 +782,23 @@ class GameLoop:
         action: Callable[[], object],
         *,
         rate_limited: bool = True,
+        heal: bool = False,
     ) -> bool:
         """Gate (and, when *rate_limited*, rate-limit) one input action.
 
         Never sends input unless the snapshot has both ``client_focused``
         and ``screen_ok`` True, and never faster than the rate limit.
-        The rate-limit bypass is reserved for the kill switch's
-        release-all (an emergency release must not wait for a token) and
-        the MOVE waypoint step (continuous motion, one per tick).
+        The rate-limit bypass is reserved for the MOVE/REFILL steps
+        (continuous motion, one per tick). Non-*heal* actions leave one
+        token in reserve so heals never wait behind them.
         An *action* returning ``False`` (a module declined to send) is not
         counted as sent.
         """
         if not (snap.client_focused and snap.screen_ok):
             self._actions_dropped_unfocused += 1
             return False
-        if rate_limited and not self._rate_limiter.try_acquire(1.0):
+        reserve = 0.0 if heal else 1.0
+        if rate_limited and not self._rate_limiter.try_acquire(1.0, reserve=reserve):
             self._actions_dropped_rate += 1
             return False
         if action() is False:
@@ -679,20 +807,17 @@ class GameLoop:
         return True
 
     def _act_kill(self) -> None:
-        """KILL: release all inputs (gated; rate-limit bypassed) and stop."""
-        snap = self.state.snapshot()
-        self._send(snap, self.input.release_all, rate_limited=False)
+        """KILL: release all inputs (ungated, even when unfocused) and stop."""
+        self._release("kill switch")
         self._stop_event.set()
 
     def _act_alarm(self, snap: WorldState) -> None:
-        """ALARM: no attack/move/loot; healing continues.
-
-        (The audible/visual alarm itself is T25's job.)
-        """
+        """ALARM: no attack/move/loot; healing continues (alert sent on entry)."""
         hp = snap.hp_percent
-        if 0.0 < hp <= self.config.critical_hp:
+        critical, normal = self._heal_thresholds()
+        if 0.0 < hp <= critical:
             self._act_heal(snap, self.config.emergency_heal_combo, "emergency (alarm)")
-        elif 0.0 < hp <= self.config.normal_hp:
+        elif 0.0 < hp <= normal:
             self._act_heal(snap, self.config.normal_heal_combo, "normal (alarm)")
 
     def _heal(self, snap: WorldState) -> bool:
@@ -700,7 +825,9 @@ class GameLoop:
         healing = self.modules.healing
         assert healing is not None
         action = healing.decide(snap)
-        return action is not None and self._send(snap, lambda: healing.send(action, self.input))
+        return action is not None and self._send(
+            snap, lambda: healing.send(action, self.input), heal=True
+        )
 
     def _buff(self, snap: WorldState) -> bool:
         """Buff module: send the top-priority due cast; True when sent."""
@@ -712,22 +839,34 @@ class GameLoop:
     def _act_heal(self, snap: WorldState, combo: str, label: str) -> None:
         if self.modules.healing is not None:
             return  # the healing module already ran in _dispatch
-        if self._send(snap, lambda: self.input.press_combo(combo)):
+        if self._send(snap, lambda: self.input.press_combo(combo), heal=True):
             logger.debug("heal [%s] combo=%s", label, combo)
 
     def _act_attack(self, snap: WorldState) -> None:
-        """ATTACK: tap the attack key on the selected / chosen target.
+        """ATTACK: tap the attack key when nothing (or a new target) is selected.
 
         With targeting wired and nothing selected yet, the attack key is
-        what selects a target in the client.
+        what selects a target in the client. While the same target stays
+        selected the key is not pressed again (it would cycle targets),
+        and presses are at least ``attack_repress_cooldown`` apart.
         """
         # ponytail: the attack key takes the client's next target, not
         # necessarily targeting's target_name; click the battle-list row
         # once picking a specific monster matters.
-        if snap.selected_target is None and self._target is None:
+        selected = snap.selected_target
+        if selected is None and self._target is None:
             return  # decided from a stale snapshot; skip this tick
+        key = selected.name if selected is not None else None
+        if selected is not None and key == self._attack_pressed_for:
+            return  # already attacking this target
+        now = self._clock()
+        last = self._attack_pressed_at
+        if last is not None and now - last < self.config.attack_repress_cooldown:
+            return
         combo = self.config.attack_combo
         if self._send(snap, lambda: self.input.press_combo(combo)):
+            self._attack_pressed_at = now
+            self._attack_pressed_for = key
             logger.debug("attack combo=%s", combo)
 
     def _act_loot(self, snap: WorldState) -> None:
@@ -735,10 +874,7 @@ class GameLoop:
         looting = self.modules.looting
         assert looting is not None
 
-        def step() -> None:
-            looting.step(snap)
-
-        self._send(snap, step)
+        self._send(snap, lambda: looting.step(snap))
 
     def _act_refill(self, snap: WorldState) -> None:
         """REFILL: start the trip, then one step per tick (gated like MOVE).
@@ -780,6 +916,12 @@ class GameLoop:
     def _shutdown(self) -> None:
         if self._f12_monitor is not None:
             self._f12_monitor.stop()
+        self._release("loop stopped")
+        try:
+            # Stops the Arduino heartbeat so the firmware watchdog can fire.
+            self.input.close()
+        except Exception:  # noqa: BLE001
+            logger.exception("closing the input backend failed")
         uptime = 0.0
         if self._start_time is not None:
             uptime = self._clock() - self._start_time
@@ -803,6 +945,8 @@ class GameLoop:
             )
         if cfg.hp_drop_alarm_delta <= 0.0 or cfg.hp_drop_alarm_window <= 0.0:
             raise ValueError("hp_drop_alarm_delta and hp_drop_alarm_window must be > 0")
+        if cfg.pause_timeout <= 0.0 or cfg.max_consecutive_errors < 1:
+            raise ValueError("pause_timeout must be > 0 and max_consecutive_errors >= 1")
 
     def get_stats(self) -> dict[str, object]:
         """Performance and safety stats for the UI (T27) and T30 report."""
