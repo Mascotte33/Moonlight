@@ -57,7 +57,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T30 | qa | Timing report | T28 | done | 2026-10-19: commit b10fe0c. tests/perf/test_timing_report.py — full tick 2.5 ms mean / 3.4 ms p95 (budget 50 ms ✅). ⚠️ FINDING: perception p95 SUM 55.5 ms > 50 ms budget — bottlenecks sprites 29.5 ms, logocr 19.1 ms (Tesseract not installed → slow path). Carried to T31 review. Orchestrator-verified. |
 | T31 | senior | Architecture + safety review -> findings list | T29, T30 | done | 2026-10-19: commit c8aa239. docs/senior_review_findings.md — 27 findings (3 critical / 17 major / 7 minor), each with file:line refs. Verdict: NO-SHIP as wired; conditional SHIP of a SUPERVISED T33 (healing + alarms; attack only if G4) gated on G1-G7 (see doc). Criticals: F-01 no player detection in production (nameless battle entries), F-02 stop paths don't release inputs (Arduino heartbeat keeps firmware watchdog fed), F-03 relative minimap position vs absolute routes + two diverging trackers. Baseline re-verified 843 pass/8 skip, ruff+mypy clean. First dispatch died at the doc write (permission prompt; missing --dangerously-skip-permissions) — round 2 succeeded. |
 | T31.B | - | anti-cheat evasion, VMs, kernel drivers | T31 | declined | ⛔ safety boundary — will not build |
-| T32a | coder | T31 fixes: loop safety (G1+G3+G4 core) — F-02, F-04, F-05, F-07, F-08, F-12, F-26, F-23, F-24, F-22 + F-19 build_loop safety tests | T31 | pending | |
+| T32a | coder | T31 fixes: loop safety (G1+G3+G4 core) — F-02, F-04, F-05, F-07, F-08, F-12, F-26, F-23, F-24, F-22 + F-19 build_loop safety tests | T31 | done | 2026-10-19: commit f0312d6. All 11 findings fixed: PAUSED state (pause-not-stop on unfocus, 30s timeout / 3 consecutive tick errors), ungated release_all on kill/shutdown/pause/exception, tick error guard, attack re-press cooldown (only when no/changed target, 1s), crowd warning (max_monsters default 4, no flee dead-end), beep_alert sink (winsound, never raises), heal-reserved rate token, last_update monotonic, F12 bit 0x8000, healing-module thresholds as single source; 6 new build_loop safety invariants (tests 13-18). 857 pass/8 skip, ruff+mypy clean. Orchestrator-verified (diff + full gate re-run). |
 | T32b | coder | T31 fixes: wiring+config (G2, G5, G6) — F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27 | T32a | pending | |
 | T32c | coder | T31 fixes: perf+data quality — P1-P7, F-14, F-15, F-16 (HP-fill code), F-17, F-21, F-18 (test tightening) | T32b | pending | |
 | T33 | HUMAN | Long test session on private server; log issues here | T32c | pending | |
@@ -92,11 +92,17 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   land the gates. Criticals: F-01 (no player detection — nameless battle entries), F-02
   (stop paths don't release inputs; Arduino heartbeat feeds the firmware watchdog), F-03
   (relative minimap position vs absolute routes, two diverging trackers).
-- **NOW dispatching T32a** (coder, `claude -p` opus): loop-safety fixes — F-02/F-04/F-05
-  (release_all on every stop path; exception guard; PAUSE-not-stop on unfocus), F-07/F-08
-  (attack spam + flee default), F-12 (operator alerts), F-22/F-23/F-24/F-26 + F-19
-  (safety invariants exercised through cli.build_loop). Then T32b (wiring+config) →
-  T32c (perf+data) → STOP at T33 (Human server test).
+- **T32a DONE** (2026-10-19, commit f0312d6): all 11 loop-safety findings fixed —
+  PAUSED state with ungated release on every stop path, tick exception guard, attack
+  de-spam, crowd warning, beep alerts, heal-priority rate token, monotonic last_update,
+  F12 0x8000 bit, 6 new build_loop safety invariants. 857 pass / 8 skip, ruff+mypy clean,
+  orchestrator-verified (diff + full gate).
+- **NOW dispatching T32b** (coder, `claude -p` opus): wiring+config — F-01 interim
+  (no-resolver → no auto-attack, enforced), F-03 (single absolute-position tracker),
+  F-06 (stuck timer reset), F-09 (validate guards for looting/refill), F-10 (buff
+  defaults), F-11 (default profile + per-module calibration report), F-13 (GUI via
+  build_loop + simulation toggle), F-20 (backend rate limit), F-25 (cavebot
+  nearest-waypoint resume), F-27 (repo hygiene). Then T32c (perf+data) → STOP at T33.
 
 ## Build-to-Human-Test queue (2026-10-18, user: "do everything until Human testing")
 1. **T40 integration layer** — DONE 2026-10-18 (verified; see Current Task).
@@ -105,7 +111,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
    perception p95 sum 55.5 ms > 50 ms budget — sprites + logocr).
 4. **T31** — DONE 2026-10-19 (commit c8aa239): 27 findings + T33 gates G1-G7.
 5. **T32** — fix senior findings (coder), split into 3 sequential jobs: **T32a loop safety
-   (DISPATCHING NOW)**, T32b wiring+config, T32c perf+data quality.
+   DONE (f0312d6)**, **T32b wiring+config DISPATCHING NOW**, T32c perf+data quality.
 6. **STOP at T33** — long test session on private server (HUMAN gate). T34/T36 come after.
 
 ## Recently Completed (this build phase)
@@ -117,9 +123,9 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 - PR #2 merged (rebase, commit `3703a50`); baseline 768 pass/13 skip, ruff+mypy clean.
 
 ## Next
-- **NOW dispatching T32a** (loop-safety fixes for T31 findings F-02/F-04/F-05/F-07/F-08/
-  F-12/F-22/F-23/F-24/F-26 + F-19 build_loop safety tests). Then T32b (wiring/config),
-  T32c (perf/data) → hand off to Human testing (T33).
+- **NOW dispatching T32b** (wiring/config fixes for T31 findings F-01-interim, F-03,
+  F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27). Then T32c (perf/data) → hand off to
+  Human testing (T33).
 - **T17 DONE** (Oct 16): Closed-loop clicking. clicker.py (ClickController:
   move -> read rendered cursor via CursorReader -> correct -> click once,
   fail-closed) + perception/cursor.py (CursorReader, template matching in
@@ -289,5 +295,13 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   file:line refs, plus T33 ship gates G1-G7 (verdict: NO-SHIP as wired; conditional SHIP of
   a supervised healing+alarms session). Orchestrator-verified: git tree clean of code
   changes, full suite 843 pass / 8 skip, ruff+mypy clean. Committed c8aa239. **T32 split
-  into 3 sequential coder jobs** (T32a loop safety → T32b wiring/config → T32c perf/data);
-  T32a dispatched next.
+  into 3 sequential coder jobs** (T32a loop safety → T32b wiring/config → T32c perf/data).
+- (orchestrator, Oct 19) **T32a DISPATCHED → DONE + VERIFIED.** `claude -p` opus with
+  --dangerously-skip-permissions; completed all 11 scope items. Orchestrator verified the
+  actual diff (loop.py +282: PAUSED state, _pause/_fail_stop with 30s/3-error limits,
+  ungated release_all, tick guard, cooldown; cli.py finally → backend.close(); targeting
+  default max_monsters 4; F12 0x8000; monotonic last_update) and re-ran the full gate:
+  857 pass / 8 skip (109 s), ruff clean, mypy clean (89 files). Notes carried to T32b:
+  GUI backend reuse must reopen after close(); worst-case burst now 12 inputs in the
+  first second (heal reservation). Committed f0312d6. **T32b dispatched** (brief
+  claude_brief_t32b.md).
