@@ -55,10 +55,12 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T28 | qa | Replay tests for every module from recorded videos | T14..T27.D | done | 2026-10-19: commit 1bf7b9b. tests/replay/test_replay_perception.py (all 8 perception modules on the 200 real frames) + tests/perf/test_golden_smoke.py + the 4 golden suites now RUN. Vitals 199/199 within ±2pp (HP mean err 0.00, MP 0.06); battle reader fixed for real frames (80/200 frames w/ entries, 67 selected targets); minimap marker 173/200; floor stable; cursor/sprites/loot type-validated; logocr fail-closed (Tesseract binary absent). battle.py + minimap.py reader fixes; battle_list/minimap/floor_indicator regions added to moonlight_user.json. Orchestrator-verified. |
 | T29 | qa | Full safety suite | T28 | done | 2026-10-19: commit b10fe0c. tests/safety/test_safety_suite.py — 12 safety invariants (kill-switch, fail-closed focus/screen, stuck/lost detection, release-all on exit, HP/MP emergency, rate limit, IDLE no-input, loot window focus, refill cap gate); all pass in 0.14 s. Orchestrator-verified. |
 | T30 | qa | Timing report | T28 | done | 2026-10-19: commit b10fe0c. tests/perf/test_timing_report.py — full tick 2.5 ms mean / 3.4 ms p95 (budget 50 ms ✅). ⚠️ FINDING: perception p95 SUM 55.5 ms > 50 ms budget — bottlenecks sprites 29.5 ms, logocr 19.1 ms (Tesseract not installed → slow path). Carried to T31 review. Orchestrator-verified. |
-| T31 | senior | Architecture + safety review -> findings list | T29, T30 | pending | |
+| T31 | senior | Architecture + safety review -> findings list | T29, T30 | done | 2026-10-19: commit c8aa239. docs/senior_review_findings.md — 27 findings (3 critical / 17 major / 7 minor), each with file:line refs. Verdict: NO-SHIP as wired; conditional SHIP of a SUPERVISED T33 (healing + alarms; attack only if G4) gated on G1-G7 (see doc). Criticals: F-01 no player detection in production (nameless battle entries), F-02 stop paths don't release inputs (Arduino heartbeat keeps firmware watchdog fed), F-03 relative minimap position vs absolute routes + two diverging trackers. Baseline re-verified 843 pass/8 skip, ruff+mypy clean. First dispatch died at the doc write (permission prompt; missing --dangerously-skip-permissions) — round 2 succeeded. |
 | T31.B | - | anti-cheat evasion, VMs, kernel drivers | T31 | declined | ⛔ safety boundary — will not build |
-| T32 | coder | Fix senior findings | T31 | pending | |
-| T33 | HUMAN | Long test session on private server; log issues here | T32 | pending | |
+| T32a | coder | T31 fixes: loop safety (G1+G3+G4 core) — F-02, F-04, F-05, F-07, F-08, F-12, F-26, F-23, F-24, F-22 + F-19 build_loop safety tests | T31 | pending | |
+| T32b | coder | T31 fixes: wiring+config (G2, G5, G6) — F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27 | T32a | pending | |
+| T32c | coder | T31 fixes: perf+data quality — P1-P7, F-14, F-15, F-16 (HP-fill code), F-17, F-21, F-18 (test tightening) | T32b | pending | |
+| T33 | HUMAN | Long test session on private server; log issues here | T32c | pending | |
 | T34 | coder | Fix issues from T33 | T33 | pending | |
 | T35 | qa | Audit all folders for README.md; fill gaps; verify cross-agent docs | T34 | done | All 11 folders have README.md. Fixed stale status: perception minimap/floor→done, firmware kill-switch desc, tools/ list, decision test-dir refs, root instructions |
 | T36 | HUMAN | Review final report and approve completion | - | pending | |
@@ -84,17 +86,26 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   - **T30**: timing report (`tests/perf/test_timing_report.py`): full tick 2.5 ms mean /
     3.4 ms p95 (budget 50 ms ✅) — **but perception p95 SUM is 55.5 ms, over budget**:
     sprites 29.5 ms + logocr 19.1 ms (Tesseract missing → slow path). Carried to T31.
-- **NOW dispatching T31** (architecture + safety review → findings list, senior,
-  `claude -p` opus). Inputs: T30's perf finding + the logocr Tesseract gap. After T31 →
-  T32 (fix findings) → STOP at T33 (Human server test).
+- **T31 DONE** (2026-10-19, commit c8aa239): docs/senior_review_findings.md — 27 findings
+  (3 critical / 17 major / 7 minor) + T33 ship gates G1-G7. Verdict: NO-SHIP as wired;
+  conditional SHIP of a SUPERVISED T33 (healing + alarms; attack only if G4) once T32a/b/c
+  land the gates. Criticals: F-01 (no player detection — nameless battle entries), F-02
+  (stop paths don't release inputs; Arduino heartbeat feeds the firmware watchdog), F-03
+  (relative minimap position vs absolute routes, two diverging trackers).
+- **NOW dispatching T32a** (coder, `claude -p` opus): loop-safety fixes — F-02/F-04/F-05
+  (release_all on every stop path; exception guard; PAUSE-not-stop on unfocus), F-07/F-08
+  (attack spam + flee default), F-12 (operator alerts), F-22/F-23/F-24/F-26 + F-19
+  (safety invariants exercised through cli.build_loop). Then T32b (wiring+config) →
+  T32c (perf+data) → STOP at T33 (Human server test).
 
 ## Build-to-Human-Test queue (2026-10-18, user: "do everything until Human testing")
 1. **T40 integration layer** — DONE 2026-10-18 (verified; see Current Task).
 2. **T28** — DONE 2026-10-19 (commit 1bf7b9b, orchestrator-verified).
 3. **T29 + T30** — DONE 2026-10-19 (commit b10fe0c, orchestrator-verified; T30 found
    perception p95 sum 55.5 ms > 50 ms budget — sprites + logocr).
-4. **T31** — architecture + safety review → findings list (senior). **DISPATCHING NOW.**
-5. **T32** — fix senior findings (coder).
+4. **T31** — DONE 2026-10-19 (commit c8aa239): 27 findings + T33 gates G1-G7.
+5. **T32** — fix senior findings (coder), split into 3 sequential jobs: **T32a loop safety
+   (DISPATCHING NOW)**, T32b wiring+config, T32c perf+data quality.
 6. **STOP at T33** — long test session on private server (HUMAN gate). T34/T36 come after.
 
 ## Recently Completed (this build phase)
@@ -106,8 +117,9 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 - PR #2 merged (rebase, commit `3703a50`); baseline 768 pass/13 skip, ruff+mypy clean.
 
 ## Next
-- **NOW dispatching T31** (architecture + safety review → findings list, senior).
-  Then T32 (fix findings) → hand off to Human testing (T33).
+- **NOW dispatching T32a** (loop-safety fixes for T31 findings F-02/F-04/F-05/F-07/F-08/
+  F-12/F-22/F-23/F-24/F-26 + F-19 build_loop safety tests). Then T32b (wiring/config),
+  T32c (perf/data) → hand off to Human testing (T33).
 - **T17 DONE** (Oct 16): Closed-loop clicking. clicker.py (ClickController:
   move -> read rendered cursor via CursorReader -> correct -> click once,
   fail-closed) + perception/cursor.py (CursorReader, template matching in
@@ -261,11 +273,21 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   11:06) and b10fe0c (T29+T30, 11:12) are the deliverables of the 10:31 `claude -p`
   re-dispatch (whose log was left empty). Orchestrator re-ran the gates: 843 pass /
   8 skip (119 s), ruff clean, mypy clean (89 files), replay+safety 14/14. Real-frame
-  results: vitals 199/199 within ±2pp; minimap marker 173/200 (17 misses — label or
-  reader, for T31); battle 80/200 frames with entries; logocr fail-closed (Tesseract
+  results: vitals 199/199 within ±2pp; minimap marker 173/200 (27 misses — map-mark
+  icons covering the radar centre, per T31 F-17); battle 80/200 frames with entries; logocr fail-closed (Tesseract
   binary absent here). **New findings for T31:** (a) perception p95 sum 55.5 ms >
   50 ms budget (sprites 29.5 ms, logocr 19.1 ms); (b) Tesseract must be installed on
   the deployment target for logocr to function. Removed stale dispatch artifacts
   (claude_brief_t28.md, claude_t28_replay.log); added missing READMEs
   (tests/golden, tests/hil, tests/replay, tests/safety). **T31 dispatched**
   (claude -p opus, brief claude_brief_t31.md).
+- (orchestrator, Oct 19) **T31 DISPATCHED → DONE.** First `claude -p` run (opus) completed
+  the review in-context (26 findings) but the final doc write stalled on a permission prompt
+  and exited 0 with no artifact — root cause: missing --dangerously-skip-permissions
+  (headless runs cannot answer prompts). Re-dispatched with the flag: round 2 produced
+  docs/senior_review_findings.md — 27 findings (3 critical / 17 major / 7 minor), each with
+  file:line refs, plus T33 ship gates G1-G7 (verdict: NO-SHIP as wired; conditional SHIP of
+  a supervised healing+alarms session). Orchestrator-verified: git tree clean of code
+  changes, full suite 843 pass / 8 skip, ruff+mypy clean. Committed c8aa239. **T32 split
+  into 3 sequential coder jobs** (T32a loop safety → T32b wiring/config → T32c perf/data);
+  T32a dispatched next.
