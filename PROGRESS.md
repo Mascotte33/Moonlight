@@ -52,9 +52,9 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T27.B | - | hiding/disguising bot process, window, files, traffic | T27 | declined | ⛔ evasion — will not build |
 | T27.C | - | automated replies (unapproved, garbled spec) | T27 | declined | ⛔ GATED — needs approval + clear spec |
 | T27.D | coder | moonlight/scripts.py: .py script runner | T22, T13 | done (2026-10-18) | ScriptRunner/BotScript/Condition/Trigger + fail-closed guard; 35 tests; scripts/example.py |
-| T28 | qa | Replay tests for every module from recorded videos | T14..T27.D | in_progress | 2026-10-19: DISPATCHED (claude -p opus, bg). Scope (from claude_brief_t28.md): make the 4 existing golden suites in tests/perf/ RUN+PASS on the 200 real frames — fix Blocker A (profile path → default_profiles_dir()) + Blocker B (add battle_list/minimap/floor_indicator regions to moonlight_user.json, calibrated against real frames) — + smoke tests for sprites/cursor/loot/logocr. Baseline to not regress: 811 pass/13 skip. |
-| T29 | qa | Full safety suite | T28 | pending | |
-| T30 | qa | Timing report | T28 | pending | |
+| T28 | qa | Replay tests for every module from recorded videos | T14..T27.D | done | 2026-10-19: commit 1bf7b9b. tests/replay/test_replay_perception.py (all 8 perception modules on the 200 real frames) + tests/perf/test_golden_smoke.py + the 4 golden suites now RUN. Vitals 199/199 within ±2pp (HP mean err 0.00, MP 0.06); battle reader fixed for real frames (80/200 frames w/ entries, 67 selected targets); minimap marker 173/200; floor stable; cursor/sprites/loot type-validated; logocr fail-closed (Tesseract binary absent). battle.py + minimap.py reader fixes; battle_list/minimap/floor_indicator regions added to moonlight_user.json. Orchestrator-verified. |
+| T29 | qa | Full safety suite | T28 | done | 2026-10-19: commit b10fe0c. tests/safety/test_safety_suite.py — 12 safety invariants (kill-switch, fail-closed focus/screen, stuck/lost detection, release-all on exit, HP/MP emergency, rate limit, IDLE no-input, loot window focus, refill cap gate); all pass in 0.14 s. Orchestrator-verified. |
+| T30 | qa | Timing report | T28 | done | 2026-10-19: commit b10fe0c. tests/perf/test_timing_report.py — full tick 2.5 ms mean / 3.4 ms p95 (budget 50 ms ✅). ⚠️ FINDING: perception p95 SUM 55.5 ms > 50 ms budget — bottlenecks sprites 29.5 ms, logocr 19.1 ms (Tesseract not installed → slow path). Carried to T31 review. Orchestrator-verified. |
 | T31 | senior | Architecture + safety review -> findings list | T29, T30 | pending | |
 | T31.B | - | anti-cheat evasion, VMs, kernel drivers | T31 | declined | ⛔ safety boundary — will not build |
 | T32 | coder | Fix senior findings | T31 | pending | |
@@ -70,27 +70,30 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | CT2 | - | official CipSoft servers | - | declined | ⛔ safety boundary — will not build |
 
 ## Current Task
-- **T40 Integration layer — DONE** (2026-10-18). Built + verified the glue that makes the
-  bot runnable end-to-end: `moonlight/config.py` (BotConfig), `moonlight/profile.py`
-  (ProfileManager — `ui.ProfileSelector` now delegates to it, no duplication),
-  `moonlight/cli.py` (argparse subcommands run/profiles/calibrate/check),
-  `moonlight/__main__.py` (`python -m moonlight`), and the `moonlight` console script.
-  All 7 decision modules (healing/targeting/buffs/alarms/cavebot/looting/refill) are
-  wired into `loop.py` through an optional `DecisionModules` bundle — new LOOT/REFILL
-  states (priority between ATTACK and MOVE), IDLE now priority 8, a `perceive` seam for
-  capture→perception→decision. Backward compatible: an empty bundle = old built-in
-  behavior, so every pre-existing loop test is untouched. Verified independently:
-  811 pass/13 skip (was 768; +44 tests — test_config 22, test_cli 11, test_loop_wiring
-  11), ruff clean, mypy clean (84 files); `python -m moonlight --help`, `moonlight --help`,
-  `moonlight profiles`, `moonlight --version` all exit 0; `moonlight check` self-test
-  finds the Arduino on COM5 and fail-closes on the missing `default` profile (expected —
-  the real profile is `moonlight_user`). Profiles live at `moonlight/profiles/`.
+- **T28 + T29 + T30 — DONE (2026-10-19, orchestrator-verified).** The QA tail of the
+  build-to-Human-Test plan landed in two commits (1bf7b9b, b10fe0c) via `claude -p`
+  (a 10:31 re-dispatch left an empty `claude_t28_replay.log`, but the commits are the
+  deliverable). Gates re-run by the orchestrator: full suite **843 pass / 8 skip**
+  (119 s), `ruff check .` clean, `mypy .` clean (89 files); replay+safety 14/14.
+  - **T28**: replay tests for all 8 perception modules on the 200 real golden frames
+    (`tests/replay/test_replay_perception.py`, `tests/perf/test_golden_smoke.py`, the
+    4 golden suites now RUN instead of skip). Vitals 199/199 within ±2pp; battle reader
+    fixed for real frames (80/200 frames have entries); minimap marker 173/200; floor
+    stable; logocr fail-closed (Tesseract binary not installed here).
+  - **T29**: 12 safety-invariant tests (`tests/safety/test_safety_suite.py`), all green.
+  - **T30**: timing report (`tests/perf/test_timing_report.py`): full tick 2.5 ms mean /
+    3.4 ms p95 (budget 50 ms ✅) — **but perception p95 SUM is 55.5 ms, over budget**:
+    sprites 29.5 ms + logocr 19.1 ms (Tesseract missing → slow path). Carried to T31.
+- **NOW dispatching T31** (architecture + safety review → findings list, senior,
+  `claude -p` opus). Inputs: T30's perf finding + the logocr Tesseract gap. After T31 →
+  T32 (fix findings) → STOP at T33 (Human server test).
 
 ## Build-to-Human-Test queue (2026-10-18, user: "do everything until Human testing")
 1. **T40 integration layer** — DONE 2026-10-18 (verified; see Current Task).
-2. **T28** — replay tests for every module from recorded video/frame sequences.
-3. **T29 + T30** — full safety suite + timing report (may run in parallel).
-4. **T31** — architecture + safety review → findings list (senior).
+2. **T28** — DONE 2026-10-19 (commit 1bf7b9b, orchestrator-verified).
+3. **T29 + T30** — DONE 2026-10-19 (commit b10fe0c, orchestrator-verified; T30 found
+   perception p95 sum 55.5 ms > 50 ms budget — sprites + logocr).
+4. **T31** — architecture + safety review → findings list (senior). **DISPATCHING NOW.**
 5. **T32** — fix senior findings (coder).
 6. **STOP at T33** — long test session on private server (HUMAN gate). T34/T36 come after.
 
@@ -103,9 +106,8 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 - PR #2 merged (rebase, commit `3703a50`); baseline 768 pass/13 skip, ruff+mypy clean.
 
 ## Next
-- **NOW dispatching T28** (replay tests for every module from recorded video/frame
-  sequences). Then T29 safety + T30 timing → T31 review → T32 fixes.
-  Then hand off to Human testing (T33).
+- **NOW dispatching T31** (architecture + safety review → findings list, senior).
+  Then T32 (fix findings) → hand off to Human testing (T33).
 - **T17 DONE** (Oct 16): Closed-loop clicking. clicker.py (ClickController:
   move -> read rendered cursor via CursorReader -> correct -> click once,
   fail-closed) + perception/cursor.py (CursorReader, template matching in
@@ -254,4 +256,16 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   verify gate myself (tests/perf run+pass on real frames, full suite ≥811 pass, ruff+mypy
   clean), then commit + record per-module accuracy here. **Speed plan for the tail: fire
   T29 (safety) + T30 (timing) as two parallel `claude -p` jobs once T28 lands (they're
-  independent) — do not serialize them.**
+  independent) — do not serialize them.** (Executed: they landed in one commit, b10fe0c.)
+- (orchestrator, Oct 19) **T28 + T29 + T30 VERIFIED DONE.** Commits 1bf7b9b (T28,
+  11:06) and b10fe0c (T29+T30, 11:12) are the deliverables of the 10:31 `claude -p`
+  re-dispatch (whose log was left empty). Orchestrator re-ran the gates: 843 pass /
+  8 skip (119 s), ruff clean, mypy clean (89 files), replay+safety 14/14. Real-frame
+  results: vitals 199/199 within ±2pp; minimap marker 173/200 (17 misses — label or
+  reader, for T31); battle 80/200 frames with entries; logocr fail-closed (Tesseract
+  binary absent here). **New findings for T31:** (a) perception p95 sum 55.5 ms >
+  50 ms budget (sprites 29.5 ms, logocr 19.1 ms); (b) Tesseract must be installed on
+  the deployment target for logocr to function. Removed stale dispatch artifacts
+  (claude_brief_t28.md, claude_t28_replay.log); added missing READMEs
+  (tests/golden, tests/hil, tests/replay, tests/safety). **T31 dispatched**
+  (claude -p opus, brief claude_brief_t31.md).
