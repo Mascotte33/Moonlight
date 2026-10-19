@@ -69,4 +69,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-markers = ["slow: full 200-frame replay (tens of seconds)"]
+markers = [
+    "slow: full 200-frame replay (tens of seconds)",
+    "safety: safety invariants (T29)",
+]
