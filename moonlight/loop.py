@@ -63,12 +63,13 @@ Safety invariants (re-checked on every tick, never just at startup):
   directly (ungated, errors logged and swallowed), so a stop can never
   leave a key held. ``run()`` closes the backend on exit (stops the
   Arduino heartbeat so the firmware watchdog can fire).
-* **Rate limit** -- at most ``max_actions_per_second`` input actions
-  (default 10/s sustained). Heals have priority: non-heal actions leave
-  one token in reserve, so a heal never waits behind an attack (worst
-  case 12 actions in the first second, 10/s after). The MOVE/REFILL
-  steps are not rate-limited (continuous motion handed to the runner
-  once per tick) but stay focus-gated.
+* **Rate limit** -- at most ``max_actions_per_second`` serial commands
+  (default 10/s sustained), counted at the wire by
+  :class:`RateLimitedInput`, so multi-command actions (clicker moves,
+  rope hotkey + click, MOVE/REFILL steps) cannot exceed it. Heals have
+  priority: non-heal commands leave one token in reserve, so a heal never
+  waits behind an attack (worst case 12 commands in the first second,
+  10/s after). Releases are never rate-limited.
 * **F12 kill switch** -- a daemon thread polls the keyboard (10 ms,
   GetAsyncKeyState, no hook) and triggers the kill switch on a rising
   edge; :meth:`GameLoop.kill` does the same programmatically (UI button,
@@ -97,7 +98,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from moonlight.decision.healing import HealingConfig
-from moonlight.input import InputBackend
+from moonlight.input import ClickSide, InputBackend
 from moonlight.state import WorldState
 
 if TYPE_CHECKING:
@@ -116,6 +117,7 @@ __all__ = [
     "F12Monitor",
     "GameLoop",
     "LoopConfig",
+    "RateLimitedInput",
     "RateLimiter",
     "beep_alert",
 ]
@@ -287,6 +289,62 @@ class RateLimiter:
         self._last_refill = self._clock()
 
 
+class RateLimitedInput(InputBackend):
+    """Wire-level rate limit: every serial command pays one token (F-20).
+
+    Wraps the real backend so the 10/s invariant holds for what reaches
+    the device, not for "actions" (one clicker or tile action is several
+    commands). ``press_combo``/``hold_combo``/``mouse_move``/``click``
+    leave :attr:`reserve` tokens behind and are **dropped** (never
+    blocked, so a tick never stalls) when the bucket is empty. Releases,
+    ``ping`` and ``close`` always pass: a stop must never be rate-limited.
+    The Arduino heartbeat (``P``) is internal to the backend and not an
+    input. :attr:`dropped` counts dropped commands.
+    """
+
+    def __init__(self, backend: InputBackend, limiter: RateLimiter) -> None:
+        self.backend = backend
+        self.limiter = limiter
+        #: Tokens to leave in the bucket (the loop sets 0 for heals).
+        self.reserve = 1.0
+        self.dropped = 0
+
+    def _pay(self, op: str) -> bool:
+        if self.limiter.try_acquire(1.0, reserve=self.reserve):
+            return True
+        self.dropped += 1
+        logger.debug("wire rate limit: dropped %s", op)
+        return False
+
+    def press_combo(self, combo: str) -> None:
+        if self._pay("press_combo"):
+            self.backend.press_combo(combo)
+
+    def hold_combo(self, combo: str) -> None:
+        if self._pay("hold_combo"):
+            self.backend.hold_combo(combo)
+
+    def release_combo(self, combo: str) -> None:
+        self.backend.release_combo(combo)
+
+    def mouse_move(self, dx: int, dy: int) -> None:
+        if self._pay("mouse_move"):
+            self.backend.mouse_move(dx, dy)
+
+    def click(self, side: ClickSide) -> None:
+        if self._pay("click"):
+            self.backend.click(side)
+
+    def ping(self) -> bool:
+        return self.backend.ping()
+
+    def release_all(self) -> None:
+        self.backend.release_all()
+
+    def close(self) -> None:
+        self.backend.close()
+
+
 class F12Monitor:
     """Daemon thread that polls F12 and fires ``on_press`` on a rising edge.
 
@@ -387,7 +445,7 @@ class GameLoop:
             sleep_fn: Sleep override (tests).
             pm_open_check: True when the PM window is open (T25/perception).
             move_provider: True while a waypoint route is active (T22).
-            move_action: Called (gated, not rate-limited) in the MOVE state:
+            move_action: Called (gated, wire rate-limited) in the MOVE state:
                 once per tick while the route is active (continuous motion).
             f12_monitor: Monitor override; when ``None``, the default is
                 built unless the config disables it.
@@ -402,7 +460,14 @@ class GameLoop:
         self._validate_config(cfg)
 
         self.state = state
-        self.input = input_backend
+        # Every serial command goes through the wire limiter (F-20); build_loop
+        # passes one in so the modules it builds share the same budget.
+        if not isinstance(input_backend, RateLimitedInput):
+            input_backend = RateLimitedInput(
+                input_backend,
+                RateLimiter(rate=cfg.max_actions_per_second, capacity=2.0, clock=clock),
+            )
+        self.input: RateLimitedInput = input_backend
         self.config = cfg
         self._clock = clock if clock is not None else time.monotonic
         self._sleep_fn = sleep_fn if sleep_fn is not None else time.sleep
@@ -433,9 +498,9 @@ class GameLoop:
                 poll_interval=cfg.f12_poll_interval,
             )
 
-        # Capacity 2 with one token reserved for heals: non-heal actions
+        # Capacity 2 with one token reserved for heals: non-heal commands
         # still pace at exactly 10/s, and a heal never waits behind them.
-        self._rate_limiter = RateLimiter(rate=cfg.max_actions_per_second, capacity=2.0, clock=clock)
+        self._rate_limiter = self.input.limiter
         self._kill_event = threading.Event()
         self._stop_event = threading.Event()
         self._state = BotState.IDLE
@@ -637,8 +702,9 @@ class GameLoop:
         if m.targeting is not None:
             if self._target is not None:  # flee was already handled as ALARM
                 return BotState.ATTACK
-        elif snap.selected_target is not None:
-            # Perception only selects targets that are in range and attackable.
+        elif snap.selected_target is not None and snap.selected_target.name:
+            # Perception only selects targets that are in range and attackable;
+            # a nameless (unresolved) selection may be a player (F-01).
             return BotState.ATTACK
         if m.looting is not None and m.looting.should_loot(snap):
             return BotState.LOOT
@@ -721,6 +787,8 @@ class GameLoop:
             logger.info("resumed after pause")
         if new_state is BotState.ALARM:
             self._alert(f"ALARM: {reason}")
+        if new_state is BotState.MOVE and self.modules.cavebot is not None:
+            self.modules.cavebot.resume()  # fight/loot time is not "stuck" (F-06)
 
     # -- fast HP drop tracking ---------------------------------------------
 
@@ -776,32 +844,36 @@ class GameLoop:
             case BotState.IDLE:
                 pass
 
-    def _send(
-        self,
-        snap: WorldState,
-        action: Callable[[], object],
-        *,
-        rate_limited: bool = True,
-        heal: bool = False,
-    ) -> bool:
-        """Gate (and, when *rate_limited*, rate-limit) one input action.
+    def _send(self, snap: WorldState, action: Callable[[], object], *, heal: bool = False) -> bool:
+        """Gate one input action; the wire limiter paces its commands.
 
         Never sends input unless the snapshot has both ``client_focused``
-        and ``screen_ok`` True, and never faster than the rate limit.
-        The rate-limit bypass is reserved for the MOVE/REFILL steps
-        (continuous motion, one per tick). Non-*heal* actions leave one
-        token in reserve so heals never wait behind them.
-        An *action* returning ``False`` (a module declined to send) is not
-        counted as sent.
+        and ``screen_ok`` True. The action only runs when its first wire
+        command can be paid for (so a module never records a cast that
+        was not sent); every command it issues pays one token at the wire
+        (:class:`RateLimitedInput`), surplus commands are dropped.
+        Non-*heal* actions leave one token in reserve so heals never wait
+        behind them. An *action* returning ``False`` (a module declined to
+        send) or losing a command to the limit is not counted as sent.
         """
         if not (snap.client_focused and snap.screen_ok):
             self._actions_dropped_unfocused += 1
             return False
-        reserve = 0.0 if heal else 1.0
-        if rate_limited and not self._rate_limiter.try_acquire(1.0, reserve=reserve):
+        wire = self.input
+        wire.reserve = 0.0 if heal else 1.0
+        # Peek (acquire 0): is one token free above the reserve?
+        if not self._rate_limiter.try_acquire(0.0, reserve=wire.reserve + 1.0):
             self._actions_dropped_rate += 1
             return False
-        if action() is False:
+        dropped = wire.dropped
+        try:
+            result = action()
+        finally:
+            wire.reserve = 1.0
+        if wire.dropped > dropped:
+            self._actions_dropped_rate += 1
+            return False
+        if result is False:
             return False
         self._actions_sent += 1
         return True
@@ -879,7 +951,8 @@ class GameLoop:
     def _act_refill(self, snap: WorldState) -> None:
         """REFILL: start the trip, then one step per tick (gated like MOVE).
 
-        When the trip is done, the cavebot's farming route is resumed; a
+        When the trip is done, the cavebot's farming route is resumed at
+        the nearest waypoint; a
         refill alarm leaves the route stopped (fail closed).
         """
         refill = self.modules.refill
@@ -890,19 +963,19 @@ class GameLoop:
             if not refill.is_active():
                 refill.start()
             if not refill.step(snap) and refill.phase == "done" and cavebot is not None:
-                cavebot.start()
+                cavebot.start(nearest=True)
 
-        self._send(snap, step, rate_limited=False)
+        self._send(snap, step)
 
     def _act_move(self, snap: WorldState) -> None:
         """MOVE: hand control to the waypoint runner (T22).
 
-        The step is gated (focus/screen_ok) but not rate-limited: the
-        runner gets one step per 20 Hz tick and owns its input cadence.
+        The step is gated (focus/screen_ok); its clicks/keys pay at the
+        wire limiter like every other command (F-20).
         """
         if self._move_action is None:
             return
-        if self._send(snap, self._move_action, rate_limited=False):
+        if self._send(snap, self._move_action):
             logger.debug("move: waypoint step")
 
     # -- stats and lifecycle -------------------------------------------------

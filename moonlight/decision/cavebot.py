@@ -7,9 +7,9 @@ How a route is executed (one :meth:`Cavebot.step` per 20 Hz loop tick,
 wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
 ``move_action=bot.step``):
 
-* **Position**: each step grabs one frame and reads (x, y) from the
-  :class:`~moonlight.perception.minimap.MinimapReader` and z from the
-  :class:`~moonlight.perception.floor.FloorReader`. An unreadable position
+* **Position**: read from ``WorldState.position`` -- perception owns the
+  one minimap tracker (seeded with an absolute start position, F-03); the
+  cavebot never captures or tracks on its own. ``(0, 0, 0)`` (unknown)
   means no action this tick (fail closed); the stuck timer keeps running.
 * **Walking**: the minimap is 1 px = 1 tile with the player at its center,
   so the bot clicks the minimap at ``center + (dx, dy)`` (clamped to the
@@ -23,7 +23,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
 * **label / goto**: positionless. ``label`` is a jump target; ``goto``
   jumps to the waypoint after the named label (route loops).
 * **Stuck**: position unchanged for ``stuck_timeout`` seconds -> the route
-  stops and :attr:`Cavebot.alarm` is set to ``"stuck"``.
+  stops and :attr:`Cavebot.alarm` is set to ``"stuck"``. The loop calls
+  :meth:`Cavebot.resume` whenever MOVE is (re)entered, so time spent in a
+  fight/loot/pause never counts as "stuck" (F-06).
 * **Unexpected floor change** (z differs from what the route expects): the
   route re-syncs to the next waypoint on the new floor, or stops with
   alarm ``"lost"`` when no waypoint is on that floor.
@@ -41,12 +43,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import numpy as np
-
 from moonlight.clicker import ClickController
 from moonlight.input import ClickSide, InputBackend
-from moonlight.perception.floor import MAX_FLOOR, MIN_FLOOR, FloorReader
-from moonlight.perception.minimap import MinimapReader, Rect
+from moonlight.perception.floor import MAX_FLOOR, MIN_FLOOR
+from moonlight.perception.minimap import Rect
 from moonlight.state import Position, WorldState
 
 __all__ = [
@@ -178,12 +178,10 @@ class Cavebot:
     def __init__(
         self,
         route: Route,
-        minimap: MinimapReader,
-        floor: FloorReader,
+        minimap_region: Rect,
         clicker: ClickController,
         state: WorldState,
         *,
-        frame_provider: Callable[[], np.ndarray],
         game_region: Rect,
         input_backend: InputBackend | None = None,
         rope_hotkey: str = "F9",
@@ -197,12 +195,10 @@ class Cavebot:
 
         Args:
             route: The route to execute.
-            minimap: Source of (x, y); its region is also the walk-click
-                target area.
-            floor: Source of z.
+            minimap_region: The ``minimap`` region (walk-click target).
             clicker: Closed-loop clicker for minimap and game-grid clicks.
-            state: World state; the bot does nothing unless ``screen_ok``.
-            frame_provider: Returns the current RGB frame.
+            state: World state: the position source; the bot does nothing
+                unless ``screen_ok``.
             game_region: The ``game_grid`` region ``(x, y, w, h)``.
             input_backend: Presses the rope/shovel hotkeys; required when
                 the route has rope or shovel waypoints.
@@ -216,23 +212,18 @@ class Cavebot:
                 positional waypoint.
 
         Raises:
-            ValueError: On a missing minimap region, bad timings, or
-                rope/shovel waypoints without an input backend.
+            ValueError: On bad timings, or rope/shovel waypoints without
+                an input backend.
         """
-        if minimap.minimap_region is None:
-            raise ValueError("minimap reader has no region to click on")
-        self._minimap_region: Rect = minimap.minimap_region
+        self._minimap_region: Rect = minimap_region
         if stuck_timeout <= 0 or reclick_interval <= 0:
             raise ValueError("stuck_timeout and reclick_interval must be > 0")
         needs_keys = any(wp.action in ("rope", "shovel") for wp in route.waypoints)
         if needs_keys and input_backend is None:
             raise ValueError("rope/shovel waypoints need an input_backend for hotkeys")
         self.route = route
-        self._minimap = minimap
-        self._floor = floor
         self._clicker = clicker
         self._state = state
-        self._frame_provider = frame_provider
         self._game_region = game_region
         self._input = input_backend
         self._hotkeys = {"rope": rope_hotkey, "shovel": shovel_hotkey}
@@ -253,12 +244,23 @@ class Cavebot:
 
     # -- public API ---------------------------------------------------------
 
-    def start(self) -> None:
-        """Begin the route at waypoint 0 (clears any alarm)."""
-        self.route.current = 0
+    def start(self, nearest: bool = False) -> None:
+        """Begin the route (clears any alarm).
+
+        Args:
+            nearest: Resume at the positional waypoint nearest to the
+                current position on the current floor (e.g. after a refill
+                trip, F-25) instead of waypoint 0.
+        """
+        self.route.current = self._nearest_waypoint() if nearest else 0
         self.alarm = None
         self._active = True
         self._reset_tracking()
+
+    def resume(self) -> None:
+        """MOVE (re)entered: restart the stuck timer and re-click at once."""
+        self._last_move = self._clock()
+        self._last_cmd = float("-inf")
 
     def stop(self) -> None:
         """Stop the route (no further input is sent)."""
@@ -319,12 +321,20 @@ class Cavebot:
         self._active = False
 
     def _read_position(self) -> Position | None:
-        frame = self._frame_provider()
-        xy = self._minimap.read_position(frame)
-        z = self._floor.read_floor(frame)
-        if xy is None or z is None:
-            return None
-        return Position(xy.x, xy.y, z)
+        pos = self._state.snapshot().position
+        return None if pos == Position(0, 0, 0) else pos
+
+    def _nearest_waypoint(self) -> int:
+        """Index of the positional waypoint closest to us on our floor (else 0)."""
+        pos = self._read_position()
+        if pos is None:
+            return 0
+        candidates = [
+            (max(abs(wp.x - pos.x), abs(wp.y - pos.y)), i)
+            for i, wp in enumerate(self.route.waypoints)
+            if wp.action not in _JUMP_ACTIONS and wp.z == pos.z
+        ]
+        return min(candidates)[1] if candidates else 0
 
     def _resolve_jumps(self) -> bool:
         """Skip labels / follow gotos; False when the route ended or looped."""

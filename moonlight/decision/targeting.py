@@ -21,6 +21,9 @@ Safety rules (hard, non-negotiable):
   selected as target is always abandoned in favour of a monster.
 * ``players_on_screen > 0`` with :attr:`TargetingConfig.player_protection`
   enabled -> ``FLEE``.
+* **Never auto-attack an unknown creature**: an entry without a name
+  (no battle-list name resolver wired -- F-01) may be a player, so it is
+  not a candidate. Until a resolver exists, targeting stays idle.
 * More monsters in the battle list than
   :attr:`TargetingConfig.max_monsters_to_engage` -> a logged warning; the
   bot keeps attacking. Fleeing from a crowd needs a real flee route
@@ -210,8 +213,8 @@ class TargetingDecision:
 
     @staticmethod
     def _candidate_monsters(state: WorldState) -> list[Monster]:
-        """Monsters that may be targeted: never a player, even if mislabeled."""
-        return [monster for monster in state.monsters if not monster.is_player]
+        """Monsters that may be targeted: never a player, never a nameless entry."""
+        return [m for m in state.monsters if m.name and not m.is_player]
 
     @staticmethod
     def _valid_selected(
