@@ -58,7 +58,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T31 | senior | Architecture + safety review -> findings list | T29, T30 | done | 2026-10-19: commit c8aa239. docs/senior_review_findings.md — 27 findings (3 critical / 17 major / 7 minor), each with file:line refs. Verdict: NO-SHIP as wired; conditional SHIP of a SUPERVISED T33 (healing + alarms; attack only if G4) gated on G1-G7 (see doc). Criticals: F-01 no player detection in production (nameless battle entries), F-02 stop paths don't release inputs (Arduino heartbeat keeps firmware watchdog fed), F-03 relative minimap position vs absolute routes + two diverging trackers. Baseline re-verified 843 pass/8 skip, ruff+mypy clean. First dispatch died at the doc write (permission prompt; missing --dangerously-skip-permissions) — round 2 succeeded. |
 | T31.B | - | anti-cheat evasion, VMs, kernel drivers | T31 | declined | ⛔ safety boundary — will not build |
 | T32a | coder | T31 fixes: loop safety (G1+G3+G4 core) — F-02, F-04, F-05, F-07, F-08, F-12, F-26, F-23, F-24, F-22 + F-19 build_loop safety tests | T31 | done | 2026-10-19: commit f0312d6. All 11 findings fixed: PAUSED state (pause-not-stop on unfocus, 30s timeout / 3 consecutive tick errors), ungated release_all on kill/shutdown/pause/exception, tick error guard, attack re-press cooldown (only when no/changed target, 1s), crowd warning (max_monsters default 4, no flee dead-end), beep_alert sink (winsound, never raises), heal-reserved rate token, last_update monotonic, F12 bit 0x8000, healing-module thresholds as single source; 6 new build_loop safety invariants (tests 13-18). 857 pass/8 skip, ruff+mypy clean. Orchestrator-verified (diff + full gate re-run). |
-| T32b | coder | T31 fixes: wiring+config (G2, G5, G6) — F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27 | T32a | pending | |
+| T32b | coder | T31 fixes: wiring+config (G2, G5, G6) — F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27 | T32a | in_progress | 2026-10-19: dispatched 12:4x; run 1 interrupted by Claude CLI account session limit (resets 15:30 Warsaw). Partial work KEPT (cavebot F-03/F-06 refactor done in-module; suite red at 3). Re-dispatch scheduled ~15:32 with RESUME note in brief. |
 | T32c | coder | T31 fixes: perf+data quality — P1-P7, F-14, F-15, F-16 (HP-fill code), F-17, F-21, F-18 (test tightening) | T32b | pending | |
 | T33 | HUMAN | Long test session on private server; log issues here | T32c | pending | |
 | T34 | coder | Fix issues from T33 | T33 | pending | |
@@ -97,12 +97,12 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   de-spam, crowd warning, beep alerts, heal-priority rate token, monotonic last_update,
   F12 0x8000 bit, 6 new build_loop safety invariants. 857 pass / 8 skip, ruff+mypy clean,
   orchestrator-verified (diff + full gate).
-- **NOW dispatching T32b** (coder, `claude -p` opus): wiring+config — F-01 interim
-  (no-resolver → no auto-attack, enforced), F-03 (single absolute-position tracker),
-  F-06 (stuck timer reset), F-09 (validate guards for looting/refill), F-10 (buff
-  defaults), F-11 (default profile + per-module calibration report), F-13 (GUI via
-  build_loop + simulation toggle), F-20 (backend rate limit), F-25 (cavebot
-  nearest-waypoint resume), F-27 (repo hygiene). Then T32c (perf+data) → STOP at T33.
+- **T32b run 1 INTERRUPTED** (2026-10-19 ~12:50, Claude CLI account session limit,
+  resets 15:30 Warsaw). It completed the cavebot half of F-03/F-06 (module now reads
+  WorldState.position, resume() added) before dying; suite red at 3 (old-signature
+  wiring). Partial work kept; brief gained a RESUME note; re-dispatch scheduled
+  ~15:32. Full scope unchanged: F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13,
+  F-20, F-25, F-27. Then T32c (perf+data) → STOP at T33.
 
 ## Build-to-Human-Test queue (2026-10-18, user: "do everything until Human testing")
 1. **T40 integration layer** — DONE 2026-10-18 (verified; see Current Task).
@@ -111,7 +111,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
    perception p95 sum 55.5 ms > 50 ms budget — sprites + logocr).
 4. **T31** — DONE 2026-10-19 (commit c8aa239): 27 findings + T33 gates G1-G7.
 5. **T32** — fix senior findings (coder), split into 3 sequential jobs: **T32a loop safety
-   DONE (f0312d6)**, **T32b wiring+config DISPATCHING NOW**, T32c perf+data quality.
+   DONE (f0312d6)**, **T32b wiring+config RE-DISPATCHING ~15:32** (session limit), T32c perf+data quality.
 6. **STOP at T33** — long test session on private server (HUMAN gate). T34/T36 come after.
 
 ## Recently Completed (this build phase)
@@ -123,9 +123,9 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 - PR #2 merged (rebase, commit `3703a50`); baseline 768 pass/13 skip, ruff+mypy clean.
 
 ## Next
-- **NOW dispatching T32b** (wiring/config fixes for T31 findings F-01-interim, F-03,
-  F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27). Then T32c (perf/data) → hand off to
-  Human testing (T33).
+- **T32b re-dispatching ~15:32** (run 1 interrupted by Claude CLI session limit;
+  partial cavebot refactor kept, RESUME note in brief). Then T32c (perf/data, brief
+  already prepared) → hand off to Human testing (T33).
 - **T17 DONE** (Oct 16): Closed-loop clicking. clicker.py (ClickController:
   move -> read rendered cursor via CursorReader -> correct -> click once,
   fail-closed) + perception/cursor.py (CursorReader, template matching in
@@ -303,5 +303,14 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   default max_monsters 4; F12 0x8000; monotonic last_update) and re-ran the full gate:
   857 pass / 8 skip (109 s), ruff clean, mypy clean (89 files). Notes carried to T32b:
   GUI backend reuse must reopen after close(); worst-case burst now 12 inputs in the
-  first second (heal reservation). Committed f0312d6. **T32b dispatched** (brief
-  claude_brief_t32b.md).
+  first second (heal reservation). Committed f0312d6.
+- (orchestrator, Oct 19 ~12:50) **T32b run 1 dispatched, then INTERRUPTED** by Claude
+  CLI account session limit ("resets 3:30pm Europe/Warsaw" — verified with a sonnet
+  probe: limit is account-wide, opus+sonnet both blocked). It made real partial
+  progress before dying: cavebot.py F-03/F-06 refactor (Cavebot now takes
+  minimap_region, reads WorldState.position, gained resume()), targeting.py + loop.py
+  partial. Suite red at 3 (old-signature wiring in cli.build_loop + safety 4/5).
+  Decision: KEEP the partial work (hardest part, correct direction), added a RESUME
+  note to claude_brief_t32b.md, re-dispatch scheduled ~15:32 UTC+2 via a background
+  sleep+claude job. T32c brief (P1-P7 + F-14/F-15/F-16/F-17/F-18/F-21) prepared in the
+  meantime.
