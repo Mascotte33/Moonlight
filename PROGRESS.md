@@ -58,7 +58,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T31 | senior | Architecture + safety review -> findings list | T29, T30 | done | 2026-10-19: commit c8aa239. docs/senior_review_findings.md — 27 findings (3 critical / 17 major / 7 minor), each with file:line refs. Verdict: NO-SHIP as wired; conditional SHIP of a SUPERVISED T33 (healing + alarms; attack only if G4) gated on G1-G7 (see doc). Criticals: F-01 no player detection in production (nameless battle entries), F-02 stop paths don't release inputs (Arduino heartbeat keeps firmware watchdog fed), F-03 relative minimap position vs absolute routes + two diverging trackers. Baseline re-verified 843 pass/8 skip, ruff+mypy clean. First dispatch died at the doc write (permission prompt; missing --dangerously-skip-permissions) — round 2 succeeded. |
 | T31.B | - | anti-cheat evasion, VMs, kernel drivers | T31 | declined | ⛔ safety boundary — will not build |
 | T32a | coder | T31 fixes: loop safety (G1+G3+G4 core) — F-02, F-04, F-05, F-07, F-08, F-12, F-26, F-23, F-24, F-22 + F-19 build_loop safety tests | T31 | done | 2026-10-19: commit f0312d6. All 11 findings fixed: PAUSED state (pause-not-stop on unfocus, 30s timeout / 3 consecutive tick errors), ungated release_all on kill/shutdown/pause/exception, tick error guard, attack re-press cooldown (only when no/changed target, 1s), crowd warning (max_monsters default 4, no flee dead-end), beep_alert sink (winsound, never raises), heal-reserved rate token, last_update monotonic, F12 bit 0x8000, healing-module thresholds as single source; 6 new build_loop safety invariants (tests 13-18). 857 pass/8 skip, ruff+mypy clean. Orchestrator-verified (diff + full gate re-run). |
-| T32b | coder | T31 fixes: wiring+config (G2, G5, G6) — F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27 | T32a | **PAUSED** | 2026-10-19: run 1 interrupted by Claude CLI account session limit. WIP committed d518a93 (cavebot F-03/F-06 refactor done in-module; suite red at 3 — cli.build_loop wiring + tests pending). Re-dispatch was armed for 15:32 but the user called a stop; job killed. RESUME: `claude -p "$(cat claude_brief_t32b.md)" --model opus --dangerously-skip-permissions` (brief has a RESUME note; tree is clean). |
+| T32b | coder | T31 fixes: wiring+config (G2, G5, G6) — F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27 | T32b | coder | T31 fixes: wiring+config (G2, G5, G6) — F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27 | T32a | **PAUSED** | 2026-10-19: run 1 interrupted by Claude CLI account session limit; WIP committed d518a93 (cavebot F-03/F-06 in-module; suite red at 3). RE-SPLIT into 3 coupling-aware batches, fresh agent each, verify+commit between: **r1** wiring+cavebot+F-01/F-25 (claude_brief_t32b_r1.md, unblocks suite), **r2** F-09/F-10/F-11/F-13 (claude_brief_t32b_r2.md), **r3** F-20/F-27 (claude_brief_t32b_r3.md). Resume = dispatch r1. |
 | T32c | coder | T31 fixes: perf+data quality — P1-P7, F-14, F-15, F-16 (HP-fill code), F-17, F-21, F-18 (test tightening) | T32b | pending | |
 | T33 | HUMAN | Long test session on private server; log issues here | T32c | pending | |
 | T34 | coder | Fix issues from T33 | T33 | pending | |
@@ -100,11 +100,16 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 - **STOPPED on user request (2026-10-19 ~14:00).** T32b run 1 was interrupted by the
   Claude CLI account session limit (it had completed the cavebot half of F-03/F-06).
   WIP committed d518a93 (suite red at 3 by design — mid-refactor); the armed 15:32
-  re-dispatch job was killed. To resume: `claude -p "$(cat claude_brief_t32b.md)"
-  --model opus --dangerously-skip-permissions` — the brief's RESUME note tells the
-  agent to review `git diff`/the WIP commit, finish the wiring to green, then do
-  items 1-10 (F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27).
-  Then T32c (brief claude_brief_t32c.md, P1-P7 + F-14/15/16/17/18/21) → STOP at T33.
+  re-dispatch job was killed. **T32b re-split into 3 batches** (user decision +
+  orchestrator grouping by coupling — per-task agents rejected: ~3× slower, and the
+  blocker is the ACCOUNT session limit, not context, so splitting buys no quota):
+  **r1** finish wiring + cavebot F-03/F-06 + F-01 + F-25 (claude_brief_t32b_r1.md —
+  unblocks the suite), **r2** F-09/F-10/F-11/F-13 config+GUI (claude_brief_t32b_r2.md),
+  **r3** F-20/F-27 backend+hygiene (claude_brief_t32b_r3.md). Each: `claude -p
+  "$(cat <brief>)" --model opus --dangerously-skip-permissions`, then orchestrator
+  verifies (diff + full gate) and commits before the next batch. Original
+  claude_brief_t32b.md superseded (kept for reference). Then T32c (claude_brief_t32c.md)
+  → STOP at T33.
 
 ## Build-to-Human-Test queue (2026-10-18, user: "do everything until Human testing")
 1. **T40 integration layer** — DONE 2026-10-18 (verified; see Current Task).
@@ -113,7 +118,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
    perception p95 sum 55.5 ms > 50 ms budget — sprites + logocr).
 4. **T31** — DONE 2026-10-19 (commit c8aa239): 27 findings + T33 gates G1-G7.
 5. **T32** — fix senior findings (coder), split into 3 sequential jobs: **T32a loop safety
-   DONE (f0312d6)**, **T32b wiring+config PAUSED** (CLI session limit; WIP d518a93, resume command below), T32c perf+data quality (brief ready).
+   DONE (f0312d6)**, **T32b PAUSED** (CLI session limit; WIP d518a93; 3-batch resume plan below), T32c perf+data quality (brief ready).
 6. **STOP at T33** — long test session on private server (HUMAN gate). T34/T36 come after.
 
 ## Recently Completed (this build phase)
@@ -125,10 +130,10 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 - PR #2 merged (rebase, commit `3703a50`); baseline 768 pass/13 skip, ruff+mypy clean.
 
 ## Next
-- **RESUME T32b** when the Claude CLI limit allows: `claude -p "$(cat
-  claude_brief_t32b.md)" --model opus --dangerously-skip-permissions` (brief has a
-  RESUME note; WIP at d518a93). Then T32c (`claude_brief_t32c.md`) → hand off to Human
-  testing (T33).
+- **RESUME T32b-r1** when the Claude CLI limit allows: `claude -p "$(cat
+  claude_brief_t32b_r1.md)" --model opus --dangerously-skip-permissions` — verify
+  (diff + full gate) + commit, then r2, then r3 (same pattern). Then T32c
+  (`claude_brief_t32c.md`) → hand off to Human testing (T33).
 - **T17 DONE** (Oct 16): Closed-loop clicking. clicker.py (ClickController:
   move -> read rendered cursor via CursorReader -> correct -> click once,
   fail-closed) + perception/cursor.py (CursorReader, template matching in
@@ -319,5 +324,11 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
   prepared in the meantime.
 - (orchestrator, Oct 19 ~14:00) **USER STOP.** Re-dispatch job (proc_bc020cf1ae67)
   killed; partial T32b work committed as WIP d518a93 (tree clean; suite red at 3 by
-  design — mid-refactor). T32b = PAUSED. Next session: resume command above, then
-  verify (diff + full gate), commit, then T32c, then T33 hand-off.
+  design — mid-refactor). T32b = PAUSED.
+- (orchestrator, Oct 19 ~14:10) **T32b re-split into 3 batches** after the user
+  asked about per-task agents: per-task rejected (suite must be green before any
+  other item is verifiable; F-09/10/11/13 share validate/config/GUI files; 9×
+  rehydration+verification overhead; account quota unaffected by splitting).
+  3 coupling-aware batches with fresh agent each: r1 wiring+cavebot (unblocks suite),
+  r2 config+GUI, r3 backend+hygiene. Briefs: claude_brief_t32b_r1/r2/r3.md
+  (self-contained; original claude_brief_t32b.md superseded, kept).
