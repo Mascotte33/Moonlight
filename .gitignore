@@ -27,3 +27,8 @@ build_out/
 tools/arduino-cli/
 *.elf
 *.hex
+
+# Agent workflow files (kept locally, not published)
+PROGRESS.md
+claude_brief_*.md
+instructions.md
