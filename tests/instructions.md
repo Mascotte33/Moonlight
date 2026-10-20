@@ -21,8 +21,9 @@ The test suite. Structure:
 | `unit/test_ui.py` | ✅ DONE (17 KB) |
 | `replay/`, `golden/` | ⬜ not created yet |
 
-Current baseline: **857 passed, 8 skipped** (T32a, 2026-10-19: loop-safety
-fixes; `safety/` now has 18 invariants incl. 6 over `cli.build_loop`).
+Current baseline: **874 passed, 8 skipped** (T32b-r1, 2026-10-20: F-03 absolute
+minimap seed wiring + config validation, F-06 `resume()` on MOVE re-entry,
+F-01 no-nameless-attack + no-resolver warning; `unit/` now covers all three).
 
 ## How to run
 ```bash

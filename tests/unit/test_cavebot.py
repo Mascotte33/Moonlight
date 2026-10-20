@@ -16,7 +16,7 @@ import pytest
 from moonlight.clicker import ClickController
 from moonlight.decision.cavebot import Cavebot, Route, RouteError, RouteFileLoader, Waypoint
 from moonlight.input import ClickSide, FakeInput
-from moonlight.loop import GameLoop, LoopConfig
+from moonlight.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.state import Position, WorldState
 
 MINIMAP = (10, 10, 120, 120)
@@ -362,3 +362,79 @@ def test_runs_from_game_loop_move_step() -> None:
     sim.pos = Position(110, 100, 7)
     loop.tick()
     assert not sim.bot.is_active()
+
+
+# -- F-06: stuck-timer reset on MOVE re-entry ---------------------------------
+
+
+def test_resume_resets_stuck_timer_on_move_reentry() -> None:
+    """F-06: re-entering MOVE calls resume(), which resets the stuck timer.
+
+    Time spent in a fight/IDLE (the loop is NOT in MOVE, so the cavebot's
+    step() is not called and only the clock advances) must not count toward
+    "stuck". When MOVE is (re)entered the loop calls Cavebot.resume()
+    (loop.py _enter_state), restarting _last_move so the first MOVE step
+    after re-entry does not immediately halt as stuck.
+    """
+    sim = Sim([walk(120, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()  # clock=0.05; _last_move set while in MOVE
+
+    # Simulate a >stuck_timeout fight/IDLE: the loop leaves MOVE, so the
+    # cavebot's step() is not called and only the clock advances.
+    sim.now += 6.0  # 6 s > stuck_timeout (5 s)
+
+    # The loop calls resume() when the state transitions back to MOVE.
+    sim.bot.resume()
+
+    # The first MOVE step after re-entry must NOT immediately halt as stuck.
+    sim.step()
+    assert sim.bot.alarm is None
+    assert sim.bot.is_active()
+
+
+def test_stuck_still_halts_without_resume_after_long_idle() -> None:
+    """Contrast for F-06: without resume() a long idle WOULD halt as stuck.
+
+    Proves the resume() call on MOVE re-entry (not the passage of time alone)
+    is what prevents the false stuck halt -- i.e. the fix is load-bearing.
+    """
+    sim = Sim([walk(120, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()  # clock=0.05; _last_move set
+
+    # Long fight/IDLE with NO resume() (the bug: timer not reset).
+    sim.now += 6.0
+    sim.step()
+    assert sim.bot.alarm == "stuck"
+    assert not sim.bot.is_active()
+
+
+def test_loop_calls_cavebot_resume_on_move_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """F-06 wiring: entering MOVE calls cavebot.resume() (loop._enter_state).
+
+    Closes the "verify it is actually called" requirement with a test: a MOVE
+    transition dispatches through _enter_state, which calls cavebot.resume()
+    so a long fight/loot never trips the stuck halt on the first MOVE.
+    """
+    sim = Sim([walk(110, 100)], Position(100, 100, 7))
+    loop = GameLoop(
+        sim.state,
+        sim.fake,
+        LoopConfig(enable_f12_monitor=False),
+        modules=DecisionModules(cavebot=sim.bot),
+    )
+    resumed: list[float] = []
+    original_resume = sim.bot.resume
+
+    def _spy_resume() -> None:
+        original_resume()
+        resumed.append(sim.now)
+
+    monkeypatch.setattr(sim.bot, "resume", _spy_resume)
+    sim.bot.start()
+    loop.tick()
+    assert loop.current_state is BotState.MOVE
+    assert resumed, "cavebot.resume() not called on MOVE entry"

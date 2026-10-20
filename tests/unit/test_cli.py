@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import replace
 from pathlib import Path
 from unittest import mock
@@ -151,3 +152,90 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
     assert loop.modules.cavebot is not None and loop.modules.refill is not None
     snap = state.snapshot()
     assert snap.screen_ok and snap.last_update > 0  # perception wrote WorldState
+
+
+# -- F-01: no auto-attack with unknown names (interim) -------------------------
+
+
+def test_targeting_without_resolver_warns(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """F-01: enabling targeting without a name resolver emits a visible warning.
+
+    The default config has targeting on and no name resolver is wired (T34),
+    so build_loop must emit an explicit, visible warning at start rather than
+    silently bypassing the no-nameless-attack rule.
+    """
+    cfg = BotConfig.default()
+    assert cfg.targeting is not None  # targeting is on by default
+    state = WorldState()
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+
+    def frame_provider() -> np.ndarray:
+        return frame
+
+    with caplog.at_level(logging.WARNING, logger="moonlight.cli"):
+        cli.build_loop(
+            cfg,
+            make_profile(),
+            FakeInput(),
+            frame_provider=frame_provider,
+            state=state,
+        )
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("name resolver" in m for m in messages), (
+        f"F-01 no-resolver warning did not fire; got: {messages!r}"
+    )
+
+
+def test_run_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
+    """F-03: the new --minimap-start arg is exposed and `run --help` exits 0."""
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["run", "--help"])
+    assert exc.value.code == 0
+    assert "minimap-start" in capsys.readouterr().out
+
+
+# -- F-03: absolute minimap seed wiring ----------------------------------------
+
+
+def test_minimap_start_seeds_minimap_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F-03 wiring: minimap_start flows from config into MinimapReader.
+
+    Verifies the config's absolute-start seed (F-03) reaches the perception
+    layer: make_perceive passes minimap_start through to MinimapReader as
+    initial_position, so reported positions are absolute world coordinates.
+    """
+    from moonlight.state import Position
+
+    captured: dict[str, object] = {}
+
+    class _FakeMinimap:
+        def __init__(
+            self,
+            profile: CalibrationProfile,
+            floor_reader: object | None = None,
+            initial_position: object | None = None,
+        ) -> None:
+            captured["initial_position"] = initial_position
+
+        def read_position(self, frame: np.ndarray) -> object:
+            return None
+
+    monkeypatch.setattr("moonlight.perception.minimap.MinimapReader", _FakeMinimap)
+    state = WorldState()
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+
+    def frame_provider() -> np.ndarray:
+        return frame
+
+    # With a seed: MinimapReader must receive it as initial_position.
+    cli.make_perceive(
+        state, make_profile(), frame_provider, minimap_start=(100, 200, 7)
+    )
+    assert captured["initial_position"] == Position(100, 200, 7)
+
+    # Without a seed: initial_position is None (legacy relative behavior).
+    captured.clear()
+    cli.make_perceive(state, make_profile(), frame_provider, minimap_start=None)
+    assert captured["initial_position"] is None

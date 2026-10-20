@@ -59,6 +59,35 @@ class TestDecideIdle:
         )
         assert make_targeting(config).decide(state) is None
 
+    def test_nameless_entries_never_auto_attacked(self) -> None:
+        """F-01: an entry without a name (no resolver wired) is UNKNOWN.
+
+        It may be a player, so it is never a candidate and targeting stays
+        idle rather than auto-attacking it.
+        """
+        state = make_state(monsters=[Monster(name="", hp_percent=10.0)])
+        assert make_targeting().decide(state) is None
+
+    def test_nameless_entry_is_skipped_in_favour_of_named(self) -> None:
+        """F-01: a nameless entry is skipped; only the named monster is targeted."""
+        state = make_state(
+            monsters=[
+                Monster(name="", hp_percent=1.0),
+                Monster(name="Wolf", hp_percent=100.0),
+            ]
+        )
+        action = make_targeting().decide(state)
+        assert action is not None
+        assert action.target_name == "Wolf"
+
+    def test_nameless_selection_is_not_kept(self) -> None:
+        """F-01: a nameless current selection is abandoned, never attacked."""
+        state = make_state(
+            monsters=[Monster(name="", hp_percent=1.0)],
+            selected_target=Monster(name="", hp_percent=1.0),
+        )
+        assert make_targeting().decide(state) is None
+
 
 # -- decide(): basic attack -----------------------------------------------------
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import logging
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import replace
@@ -36,6 +37,8 @@ from moonlight.state import WorldState
 __all__ = ["build_loop", "main", "make_perceive"]
 
 FrameProvider = Callable[[], np.ndarray]
+
+logger = logging.getLogger(__name__)
 
 #: Modules ``check`` imports to prove the perception stack loads.
 _PERCEPTION_MODULES = (
@@ -63,21 +66,33 @@ def make_perceive(
     profile: CalibrationProfile,
     frame_provider: FrameProvider,
     focus_check: Callable[[], bool] | None = None,
+    minimap_start: tuple[int, int, int] | None = None,
 ) -> Callable[[], None]:
     """Return a callback doing one capture -> perception -> WorldState pass.
 
     Fail closed: an unfocused client or any perception error sets
     ``screen_ok = False``, which gates every input in the loop.
+
+    *minimap_start* (F-03) optionally seeds the minimap tracker with an
+    absolute ``(x, y, z)`` start so reported positions are absolute world
+    coordinates (seed + accumulated relative offset) instead of relative to
+    wherever the bot started.
     """
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
     from moonlight.perception.vitals import VitalsReader
+    from moonlight.state import Position
 
     vitals = VitalsReader(profile)
     battle = BattleReader(profile)
     floor = FloorReader(profile)
-    minimap = MinimapReader(profile, floor_reader=floor)
+    seed = (
+        Position(minimap_start[0], minimap_start[1], minimap_start[2])
+        if minimap_start is not None
+        else None
+    )
+    minimap = MinimapReader(profile, floor_reader=floor, initial_position=seed)
 
     def perceive() -> None:
         focused = focus_check() if focus_check is not None else True
@@ -153,6 +168,15 @@ def build_loop(
         m.healing = HealingDecision(config.healing, spell_combos=combos, clock=clock)
     if config.targeting is not None:
         m.targeting = TargetingDecision(config.targeting)
+        # F-01 (interim): no name resolver is wired yet (T34), so every
+        # battle entry is a nameless/UNKNOWN creature. Targeting treats
+        # unknown entries as UNKNOWN and never auto-attacks them; say so
+        # explicitly at start rather than failing silently.
+        logger.warning(
+            "targeting is enabled but no name resolver is wired (T34); "
+            "unknown-named battle entries are treated as UNKNOWN and will "
+            "NOT be auto-attacked"
+        )
     if config.buffs is not None:
         m.buffs = BuffManager(config.buffs, spell_combos=combos, clock=clock)
     if config.alarms is not None:
@@ -202,7 +226,13 @@ def build_loop(
         backend,
         config.loop,
         modules=m,
-        perceive=make_perceive(state, profile, frame_provider, focus_check),
+        perceive=make_perceive(
+            state,
+            profile,
+            frame_provider,
+            focus_check,
+            minimap_start=config.minimap_start,
+        ),
         clock=clock,
         sleep_fn=sleep_fn,
         alert=alert,
@@ -231,6 +261,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from moonlight.input import ArduinoInput
 
     config = _load_config(args)
+    if getattr(args, "minimap_start", None) is not None:
+        config = replace(config, minimap_start=tuple(args.minimap_start))
     name = args.profile or config.profile
     profile = _profiles(args, config).load(name)
     capture = ScreenCapture()
@@ -312,6 +344,15 @@ def _parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="run the bot")
     run.add_argument("profile", nargs="?", default=None, help="profile (default: config)")
+    run.add_argument(
+        "--minimap-start",
+        nargs=3,
+        type=int,
+        default=None,
+        metavar=("X", "Y", "Z"),
+        help="absolute (x, y, z) seed for minimap position tracking (F-03); "
+        "overrides the config's minimap_start",
+    )
     run.set_defaults(func=_cmd_run)
     sub.add_parser("profiles", help="list calibration profiles").set_defaults(
         func=_cmd_profiles

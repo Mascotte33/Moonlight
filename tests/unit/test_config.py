@@ -75,6 +75,12 @@ def test_load_roundtrip(tmp_path: Path) -> None:
         lambda d: d["modules"].update(cavebot={"enabled": True}),
         lambda d: d["modules"].update(cavebot={"enabled": True, "route": "missing"}),
         lambda d: d["modules"].update(refill={"enabled": True}),
+        # F-03: minimap_start must be a (x, y, z) of non-negative ints.
+        lambda d: d.update(minimap_start=[100, 200]),
+        lambda d: d.update(minimap_start=[-1, 0, 0]),
+        lambda d: d.update(minimap_start=[True, 0, 0]),
+        lambda d: d.update(minimap_start=["abc", 0, 0]),
+        lambda d: d.update(minimap_start="not-a-tuple"),
     ],
 )
 def test_fail_closed(mutate: Any) -> None:
@@ -82,6 +88,20 @@ def test_fail_closed(mutate: Any) -> None:
     mutate(data)
     with pytest.raises(ConfigError):
         BotConfig.from_dict(data)
+
+
+def test_minimap_start_roundtrip() -> None:
+    """F-03: a valid minimap_start round-trips as an absolute (x, y, z) seed."""
+    data = raw()
+    data["minimap_start"] = [100, 200, 7]
+    cfg = BotConfig.from_dict(data)
+    assert cfg.minimap_start == (100, 200, 7)
+    assert cfg.validate() is cfg
+
+
+def test_minimap_start_default_none() -> None:
+    """F-03: minimap_start defaults to None (legacy relative behavior)."""
+    assert BotConfig.default().minimap_start is None
 
 
 def test_spell_without_hotkey_rejected() -> None:

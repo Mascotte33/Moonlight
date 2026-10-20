@@ -184,6 +184,30 @@ class TestRelativeTracking:
         pos = reader.read_position(frame, region)
         assert pos == Position(100, 200, 0)
 
+    def test_minimap_absolute_seed(self) -> None:
+        """F-03: an absolute start seed makes reported (x, y) positions absolute.
+
+        A MinimapReader constructed with a known seed reports that seed as
+        the starting absolute position (z comes from the floor reader, 0 when
+        unknown), and a known relative marker offset maps to the correct
+        absolute coordinate (seed + displacement). This is the perception
+        side of F-03: one absolute-tracked position that perception owns,
+        seeded from the config's ``minimap_start``.
+        """
+        seed = Position(100, 200, 0)
+        reader = make_reader(initial_position=seed)
+        frame1, region = make_frame(1)
+        # The first read reports the seed as the absolute starting position.
+        assert reader.read_position(frame1, region) == seed
+        # Move right by 3: the absolute position is seed + (3, 0, 0).
+        frame2, _ = make_frame(1)
+        terrain = make_terrain(1)
+        frame2[REGION_Y : REGION_Y + RADAR_HEIGHT, REGION_X : REGION_X + RADAR_WIDTH] = (
+            np.roll(terrain, -3, axis=1)[:, :, None]
+        )
+        frame2[REGION_Y + PLAYER_CENTER_Y, REGION_X + PLAYER_CENTER_X] = MARKER_RGB
+        assert reader.read_position(frame2, region) == Position(103, 200, 0)
+
     def test_move_right(self) -> None:
         # Player moves right by 3: terrain shifts left by 3 (dx = -3).
         reader = make_reader(initial_position=Position(10, 10, 0))

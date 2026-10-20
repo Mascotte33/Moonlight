@@ -73,6 +73,7 @@ _TOP_KEYS = {
     "profiles_dir",
     "templates_dir",
     "routes_dir",
+    "minimap_start",
     "loop",
     "hotkeys",
     "modules",
@@ -110,6 +111,11 @@ class BotConfig:
     cavebot: CavebotConfig | None = None
     looting: LootingConfig | None = None
     refill: RefillConfig | None = None
+    #: Absolute ``(x, y, z)`` seed for minimap position tracking (F-03).
+    #: When set, the minimap reader reports *absolute* world positions
+    #: (seed + accumulated relative offset) instead of positions relative to
+    #: wherever the bot started. ``None`` keeps the legacy relative behavior.
+    minimap_start: tuple[int, int, int] | None = None
 
     @property
     def spell_combos(self) -> dict[str, str]:
@@ -156,7 +162,14 @@ class BotConfig:
         kwargs: dict[str, Any] = {}
         if "profile" not in data:
             raise ConfigError("config: missing required key 'profile'")
-        for key in ("profile", "serial_port", "profiles_dir", "templates_dir", "routes_dir"):
+        for key in (
+            "profile",
+            "serial_port",
+            "profiles_dir",
+            "templates_dir",
+            "routes_dir",
+            "minimap_start",
+        ):
             if key in data:
                 kwargs[key] = _coerce(data[key], hints[key], key)
         if not kwargs["profile"]:
@@ -198,6 +211,15 @@ class BotConfig:
             for cfg in (self.healing, self.targeting, self.buffs, self.alarms):
                 if cfg is not None:
                     cfg.validate()
+            if self.minimap_start is not None:
+                start = self.minimap_start
+                if len(start) != 3:
+                    raise ValueError(f"minimap_start must be (x, y, z), got {start!r}")
+                for i, value in enumerate(start):
+                    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                        raise ValueError(
+                            f"minimap_start[{i}] must be a non-negative int, got {value!r}"
+                        )
             for spell, combo in self.spell_combos.items():
                 if not combo or any(ch.isspace() for ch in combo):
                     raise ValueError(f"hotkey for {spell!r} must be a combo without spaces")
