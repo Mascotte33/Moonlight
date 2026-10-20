@@ -58,7 +58,7 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 | T31 | senior | Architecture + safety review -> findings list | T29, T30 | done | 2026-10-19: commit c8aa239. docs/senior_review_findings.md — 27 findings (3 critical / 17 major / 7 minor), each with file:line refs. Verdict: NO-SHIP as wired; conditional SHIP of a SUPERVISED T33 (healing + alarms; attack only if G4) gated on G1-G7 (see doc). Criticals: F-01 no player detection in production (nameless battle entries), F-02 stop paths don't release inputs (Arduino heartbeat keeps firmware watchdog fed), F-03 relative minimap position vs absolute routes + two diverging trackers. Baseline re-verified 843 pass/8 skip, ruff+mypy clean. First dispatch died at the doc write (permission prompt; missing --dangerously-skip-permissions) — round 2 succeeded. |
 | T31.B | - | anti-cheat evasion, VMs, kernel drivers | T31 | declined | ⛔ safety boundary — will not build |
 | T32a | coder | T31 fixes: loop safety (G1+G3+G4 core) — F-02, F-04, F-05, F-07, F-08, F-12, F-26, F-23, F-24, F-22 + F-19 build_loop safety tests | T31 | done | 2026-10-19: commit f0312d6. All 11 findings fixed: PAUSED state (pause-not-stop on unfocus, 30s timeout / 3 consecutive tick errors), ungated release_all on kill/shutdown/pause/exception, tick error guard, attack re-press cooldown (only when no/changed target, 1s), crowd warning (max_monsters default 4, no flee dead-end), beep_alert sink (winsound, never raises), heal-reserved rate token, last_update monotonic, F12 bit 0x8000, healing-module thresholds as single source; 6 new build_loop safety invariants (tests 13-18). 857 pass/8 skip, ruff+mypy clean. Orchestrator-verified (diff + full gate re-run). |
-| T32b | coder | T31 fixes: wiring+config (G2, G5, G6) — F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27 | T32b | coder | T31 fixes: wiring+config (G2, G5, G6) — F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27 | T32a | **PAUSED** | 2026-10-19: run 1 interrupted by Claude CLI account session limit; WIP committed d518a93 (cavebot F-03/F-06 in-module; suite red at 3). RE-SPLIT into 3 coupling-aware batches, fresh agent each, verify+commit between: **r1** wiring+cavebot+F-01/F-25 (claude_brief_t32b_r1.md, unblocks suite), **r2** F-09/F-10/F-11/F-13 (claude_brief_t32b_r2.md), **r3** F-20/F-27 (claude_brief_t32b_r3.md). **ENGINE OVERRIDE (user, 2026-10-19): local Qwen subagents via delegate_task, NO claude -p for T32b; orchestrator stops and asks user permission between batches.** r1 dispatching. |
+| T32b | coder | T31 fixes: wiring+config (G2, G5, G6) — F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27 | T32b | coder | T31 fixes: wiring+config (G2, G5, G6) — F-01 interim, F-03, F-06, F-09, F-10, F-11, F-13, F-20, F-25, F-27 | T32a | **IN PROGRESS** (r1 DONE; awaiting user permission for r2) | 2026-10-20: **r1 DONE** — 42ac519 (finish interrupted Cavebot wiring + F-25 nearest-waypoint; suite green 857) + dd9106e (F-03 absolute minimap seed via BotConfig.minimap_start + --minimap-start, fail-closed validation; F-06 resume()-on-MOVE verified wired + tested; F-01 no-nameless-attack verified + visible no-resolver warning; +17 tests). Orchestrator independently re-verified: 874 pass/8 skip, ruff+mypy clean (89 files), CLI exposes --minimap-start. **ENGINE OVERRIDE (user, 2026-10-19): local Qwen subagents via delegate_task, NO claude -p for T32b; orchestrator stops and asks user permission between batches.** **NEXT: r2** F-09/F-10/F-11/F-13 (claude_brief_t32b_r2.md); **r3** F-20/F-27 (claude_brief_t32b_r3.md). |
 | T32c | coder | T31 fixes: perf+data quality — P1-P7, F-14, F-15, F-16 (HP-fill code), F-17, F-21, F-18 (test tightening) | T32b | pending | |
 | T33 | HUMAN | Long test session on private server; log issues here | T32c | pending | |
 | T34 | coder | Fix issues from T33 | T33 | pending | |
@@ -130,12 +130,14 @@ Legend: `pending` | `in_progress` | `done` | `done(bug)` | `stopped`(reason) | `
 - PR #2 merged (rebase, commit `3703a50`); baseline 768 pass/13 skip, ruff+mypy clean.
 
 ## Next
-- **T32b-r1 IN PROGRESS on a LOCAL agent** (delegate_task, Qwen — user override
-  2026-10-19: no claude -p for T32b while its quota is limited). Process per batch:
-  subagent works → orchestrator verifies (diff + full gate: pytest/ruff/mypy) →
-  commit → **STOP and ask user permission** → next batch. r1 → r2 → r3 (briefs
-  claude_brief_t32b_r1/r2/r3.md, self-contained), then T32c (`claude_brief_t32c.md`)
-  → hand off to Human testing (T33).
+- **T32b-r1 DONE (2026-10-20)** on a LOCAL Qwen subagent (delegate_task — user
+  override 2026-10-19: no claude -p for T32b while its quota is limited). 42ac519
+  (finish interrupted Cavebot wiring + F-25) + dd9106e (F-03 absolute minimap seed,
+  F-06 resume-on-MOVE, F-01 no-nameless-attack guard). Orchestrator independently
+  re-verified: 874 pass/8 skip, ruff+mypy clean (89 files), CLI --minimap-start
+  exposed. **NEXT: STOP — awaiting user permission before r2** (F-09/F-10/F-11/F-13,
+  claude_brief_t32b_r2.md); then r3 (F-20/F-27, claude_brief_t32b_r3.md) → T32c
+  (`claude_brief_t32c.md`) → hand off to Human testing (T33).
 - **T17 DONE** (Oct 16): Closed-loop clicking. clicker.py (ClickController:
   move -> read rendered cursor via CursorReader -> correct -> click once,
   fail-closed) + perception/cursor.py (CursorReader, template matching in
