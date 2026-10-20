@@ -13,7 +13,6 @@ import statistics
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 from unittest import mock
 
 import cv2
@@ -42,7 +41,7 @@ from moonlight.perception import (
     VitalsReader,
 )
 from moonlight.perception.loot import TITLE_TEMPLATE, LootReader, LootWindow
-from moonlight.state import Capacity, Monster, WorldState
+from moonlight.state import Capacity, Monster, Position, WorldState
 
 pytestmark = pytest.mark.slow
 
@@ -110,20 +109,17 @@ def _decision_stats(tmp: Path) -> dict[str, Stats]:
     buffs = BuffManager()
     alarms = AlarmDecision()
 
-    minimap = mock.Mock(minimap_region=(0, 0, 100, 100))
-    pos = [0]
-
-    def read_position(_f: object) -> Any:
-        pos[0] += 1  # keep moving so the stuck alarm never ends the route
-        return mock.Mock(x=100 + pos[0], y=100)
-
-    minimap.read_position = read_position
-    floor = mock.Mock()
-    floor.read_floor.return_value = 7
+    with ws.lock():
+        ws.position = Position(100, 100, 7)
     route = Route(name="r", waypoints=[Waypoint(10_000, 100, 7)])
     cavebot = Cavebot(
-        route, minimap, floor, mock.Mock(), ws,
-        frame_provider=lambda: frame, game_region=(0, 0, 150, 110), clock=clock,
+        route,
+        (0, 0, 100, 100),
+        mock.Mock(),
+        ws,
+        game_region=(0, 0, 150, 110),
+        input_backend=inp,
+        clock=clock,
     )
     cavebot.start()
 

@@ -13,7 +13,6 @@ import json
 import threading
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, cast
 from unittest import mock
 
@@ -23,6 +22,7 @@ import pytest
 
 from moonlight.calibrate import CalibrationProfile, default_profiles_dir
 from moonlight.cli import build_loop
+from moonlight.clicker import ClickController
 from moonlight.config import BotConfig
 from moonlight.decision.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
 from moonlight.decision.healing import HealingConfig, HealingDecision, HealType
@@ -31,7 +31,7 @@ from moonlight.decision.refill import Refill, RefillConfig
 from moonlight.input import FakeInput
 from moonlight.loop import BotState, DecisionModules, F12Monitor, GameLoop, LoopConfig
 from moonlight.perception.loot import LootWindow
-from moonlight.state import Capacity, Monster, WorldState
+from moonlight.state import Capacity, Monster, Position, WorldState
 
 pytestmark = pytest.mark.safety
 
@@ -129,33 +129,21 @@ def test_3_fail_closed_when_screen_not_ok() -> None:
     assert inp.sent_lines == ["X"]  # ...releasing once and sending nothing else
 
 
-class _NoMinimap:
-    minimap_region = (0, 0, 100, 100)
-
-    def __init__(self, pos: tuple[int, int]) -> None:
-        self.pos = pos
-
-    def read_position(self, _frame: object) -> SimpleNamespace:
-        return SimpleNamespace(x=self.pos[0], y=self.pos[1])
-
-
 def make_cavebot(
     clock: Clock, waypoints: list[Waypoint], pos: tuple[int, int], z: int
-) -> tuple[Cavebot, SimpleNamespace]:
-    floor = SimpleNamespace(z=z)
-    floor.read_floor = lambda _f: floor.z
+) -> tuple[Cavebot, WorldState]:
+    state = make_state(screen_ok=True)
+    state.position = Position(*pos, z)
     bot = Cavebot(
         Route(name="r", waypoints=waypoints),
-        cast(Any, _NoMinimap(pos)),
-        cast(Any, floor),
-        cast(Any, mock.Mock()),
-        make_state(),
-        frame_provider=lambda: np.zeros((4, 4, 3), np.uint8),
+        (0, 0, 100, 100),
+        cast(ClickController, mock.Mock()),
+        state,
         game_region=(0, 0, 150, 110),
         clock=clock,
     )
     bot.start()
-    return bot, floor
+    return bot, state
 
 
 def test_4_stuck_detection_sets_alarm_not_exception() -> None:
@@ -171,9 +159,9 @@ def test_4_stuck_detection_sets_alarm_not_exception() -> None:
 
 def test_5_lost_floor_detection_sets_alarm() -> None:
     clock = Clock()
-    bot, floor = make_cavebot(clock, [Waypoint(150, 150, 7)], (100, 100), 7)
+    bot, state = make_cavebot(clock, [Waypoint(150, 150, 7)], (100, 100), 7)
     bot.step()
-    floor.z = 9  # unexpected floor change; no waypoint on floor 9
+    state.position = Position(100, 100, 9)  # unexpected floor change; no waypoint on floor 9
     clock.now = 1.0
     bot.step()
     assert bot.alarm == "lost"

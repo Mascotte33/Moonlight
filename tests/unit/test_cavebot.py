@@ -11,30 +11,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from moonlight.clicker import ClickController
 from moonlight.decision.cavebot import Cavebot, Route, RouteError, RouteFileLoader, Waypoint
 from moonlight.input import ClickSide, FakeInput
 from moonlight.loop import GameLoop, LoopConfig
-from moonlight.perception.floor import FloorReader, TemplateSet
-from moonlight.perception.minimap import (
-    PLAYER_CENTER_X,
-    PLAYER_CENTER_Y,
-    PLAYER_MARKER_RGB,
-    RADAR_HEIGHT,
-    RADAR_WIDTH,
-    MinimapReader,
-)
 from moonlight.state import Position, WorldState
 
-MINIMAP = (10, 10, RADAR_WIDTH, RADAR_HEIGHT)
-FLOOR = (150, 10, 24, 24)
+MINIMAP = (10, 10, 120, 120)
 GAME = (200, 0, 480, 352)  # 32 px tiles; player tile center = (440, 176)
-FLOOR_TEMPLATES = {
-    z: np.random.RandomState(z).randint(0, 255, (16, 16)).astype(np.uint8) for z in (6, 7, 8, 9)
-}
 
 
 class RecordingClicker(ClickController):
@@ -59,42 +45,37 @@ class Sim:
     """Player position + clock + the Cavebot wired to synthetic readers."""
 
     def __init__(self, waypoints: list[Waypoint], start: Position) -> None:
-        self.pos: Position | None = start
         self.now = 0.0
         self.fake = FakeInput()
         self.clicker = RecordingClicker()
         self.state = WorldState(client_focused=True, screen_ok=True)
         self.reached: list[int] = []
-
-        sim = self
-
-        class Matcher:
-            def match(self, radar_gray: np.ndarray) -> tuple[int, int] | None:
-                return None if sim.pos is None else (sim.pos.x, sim.pos.y)
+        self._pos: Position | None = start
+        self.state.position = start
 
         self.route = Route("test", "", waypoints)
         self.bot = Cavebot(
             self.route,
-            MinimapReader(minimap_region=MINIMAP, map_matcher=Matcher()),
-            FloorReader(floor_region=FLOOR, template_set=TemplateSet(FLOOR_TEMPLATES)),
+            MINIMAP,
             self.clicker,
             self.state,
-            frame_provider=self.frame,
             game_region=GAME,
             input_backend=self.fake,
             clock=lambda: self.now,
             on_waypoint_reached=self.reached.append,
         )
 
-    def frame(self) -> np.ndarray:
-        frame = np.zeros((200, 400, 3), dtype=np.uint8)
-        if self.pos is not None:
-            frame[MINIMAP[1] + PLAYER_CENTER_Y, MINIMAP[0] + PLAYER_CENTER_X] = PLAYER_MARKER_RGB
-            tpl = FLOOR_TEMPLATES.get(self.pos.z)
-            if tpl is not None:
-                x, y = FLOOR[0] + 4, FLOOR[1] + 4
-                frame[y : y + 16, x : x + 16] = tpl[:, :, None]
-        return frame
+    @property
+    def pos(self) -> Position | None:
+        return self._pos
+
+    @pos.setter
+    def pos(self, value: Position | None) -> None:
+        self._pos = value
+        with self.state.lock():
+            self.state.position = (
+                value if value is not None else Position(0, 0, 0)
+            )
 
     def step(self, dt: float = 0.05) -> None:
         self.now += dt
@@ -176,15 +157,12 @@ def test_load_missing_and_bad_json(tmp_path: Path) -> None:
 
 
 def test_rope_route_without_input_backend_rejected() -> None:
-    reader = MinimapReader(minimap_region=MINIMAP)
     with pytest.raises(ValueError):
         Cavebot(
             Route("r", "", [Waypoint(1, 1, 7, "rope")]),
-            reader,
-            FloorReader(floor_region=FLOOR, template_set=TemplateSet(FLOOR_TEMPLATES)),
+            MINIMAP,
             RecordingClicker(),
             WorldState(),
-            frame_provider=lambda: np.zeros((1, 1, 3), np.uint8),
             game_region=GAME,
         )
 
@@ -196,7 +174,7 @@ def test_walk_clicks_minimap_toward_waypoint_then_completes() -> None:
     sim = Sim([walk(105, 98)], Position(100, 100, 7))
     sim.bot.start()
     sim.step()
-    center = (MINIMAP[0] + RADAR_WIDTH // 2, MINIMAP[1] + RADAR_HEIGHT // 2)
+    center = (MINIMAP[0] + MINIMAP[2] // 2, MINIMAP[1] + MINIMAP[3] // 2)
     assert sim.clicker.clicks == [((center[0] + 5, center[1] - 2), ClickSide.LEFT)]
 
     sim.pos = Position(104, 99, 7)  # within 1 tile counts as reached
@@ -210,7 +188,7 @@ def test_far_waypoint_click_is_clamped_to_radar() -> None:
     sim.bot.start()
     sim.step()
     (x, _y), _side = sim.clicker.clicks[0]
-    assert MINIMAP[0] < x < MINIMAP[0] + RADAR_WIDTH
+    assert MINIMAP[0] < x < MINIMAP[0] + MINIMAP[2]
 
 
 def test_no_reclick_while_moving_reclick_when_idle() -> None:
@@ -335,7 +313,7 @@ def test_unexpected_floor_change_resyncs_to_waypoint_on_new_floor() -> None:
     sim.step()
     assert sim.route.current == 2 and sim.bot.is_active()
     sim.step()
-    assert sim.clicker.clicks[-1][0][0] > MINIMAP[0] + RADAR_WIDTH // 2  # walking east
+    assert sim.clicker.clicks[-1][0][0] > MINIMAP[0] + MINIMAP[2] // 2  # walking east
 
 
 def test_floor_change_with_no_matching_waypoint_alarms_lost() -> None:

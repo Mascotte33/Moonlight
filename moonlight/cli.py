@@ -168,18 +168,13 @@ def build_loop(
         )
         if config.cavebot is not None:
             from moonlight.decision.cavebot import Cavebot
-            from moonlight.perception.floor import FloorReader
-            from moonlight.perception.minimap import MinimapReader
 
-            floor = FloorReader(profile)
             cb = config.cavebot
             m.cavebot = Cavebot(
                 cb.route,
-                MinimapReader(profile, floor_reader=floor),
-                floor,
+                profile.get_region("minimap").to_tuple,
                 clicker,
                 state,
-                frame_provider=frame_provider,
                 game_region=profile.get_region("game_grid").to_tuple,
                 input_backend=backend,
                 rope_hotkey=cb.rope_hotkey,
