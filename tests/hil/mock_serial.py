@@ -43,6 +43,10 @@ class MockSerial:
             raise OSError("device disconnected")
         return self._rx.pop(0) if self._rx else b""
 
+    @property
+    def in_waiting(self) -> int:
+        return sum(len(b) for b in self._rx)
+
     def reset_input_buffer(self) -> None:
         if self.dropped:
             raise OSError("device disconnected")

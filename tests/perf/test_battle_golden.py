@@ -40,6 +40,7 @@ import pytest
 
 from moonlight.calibrate import default_profiles_dir
 from moonlight.perception.battle import BattleEntry
+from tests.golden_labels import PlaceholderLabelsError, load_golden_labels
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -123,29 +124,16 @@ def _skip_reason() -> str | None:
     return None
 
 
-#: label_golden.py defaults: (monster_count, selected_target, players).
-_UNLABELLED_BATTLE = (0, None, 0)
-
-
 def _battle_labels_reason() -> str | None:
     """Why battle accuracy can't be asserted (no frame has a real label)."""
     labels_path = _labels_path()
     if labels_path is None:
         return None  # _skip_reason already covers it
-    frames = json.loads(labels_path.read_text(encoding="utf-8")).get("frames", {})
-    for entry in frames.values():
-        battle = (
-            entry.get("monster_count"),
-            entry.get("selected_target"),
-            entry.get("players_on_screen_count"),
-        )
-        if battle != _UNLABELLED_BATTLE:
-            return None
-    return (
-        "labels.json has no measured battle labels (every frame holds the "
-        "calibrate_auto.py placeholder 0/null/0, yet frames show monsters) -- "
-        "label the battle list with tools/label_golden.py"
-    )
+    try:
+        load_golden_labels(labels_path, require=("battle",))
+    except PlaceholderLabelsError as exc:
+        return str(exc)
+    return None
 
 
 _SKIP_REASON = _skip_reason()

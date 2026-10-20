@@ -36,6 +36,7 @@ suite -- imports cleanly without pyserial or without an Arduino attached.
 import logging
 import threading
 from abc import ABC, abstractmethod
+from collections import deque
 from enum import StrEnum
 from types import TracebackType
 from typing import Protocol
@@ -56,6 +57,10 @@ __all__ = [
 
 #: Inclusive per-axis bound for a single ``M <dx> <dy>`` command.
 MAX_MOUSE_DELTA = 127
+
+#: Fire-and-forget commands allowed in flight before a send waits for
+#: their ACKs (P6); at 10 commands/s the heartbeat drains far sooner.
+MAX_PENDING_ACKS = 8
 
 #: USB Vendor ID of the standard Arduino Leonardo (ATmega32U4).
 ARDUINO_LEONARDO_VID = 0x2341
@@ -389,6 +394,11 @@ class SerialPortLike(Protocol):
     port: str
     timeout: float
 
+    @property
+    def in_waiting(self) -> int:
+        """Bytes already received and not yet read."""
+        ...
+
     def write(self, data: bytes | bytearray | memoryview | str) -> int:
         ...
 
@@ -458,6 +468,14 @@ class ArduinoInput(InputBackend):
       halt instead of silently dropping input.
     * **Thread safety.** All serial I/O is serialized with one lock, so the
       20 Hz bot loop and the heartbeat thread never interleave wire lines.
+    * **Fire-and-forget (P6).** ``K``/``D``/``M``/``C`` do not wait for
+      their ``OK``: the write returns at once and the ACK is checked
+      later, without blocking, before the next command (and by every
+      synchronous command / heartbeat, which first drain the pending ACKs).
+      A rejected or missing ACK raises :class:`ArduinoInputError` from the
+      next command, so a disarmed board still halts the bot, one command
+      late. Releases (``U``/``X``) and ``P`` stay synchronous: a stop must
+      be confirmed.
 
     Import-safe: pyserial is imported lazily inside methods, so this module
     imports cleanly without pyserial or hardware.
@@ -530,6 +548,10 @@ class ArduinoInput(InputBackend):
 
         self._lock = threading.Lock()
         self._port: SerialPortLike | None = None
+        #: Fire-and-forget commands still awaiting their ACK (P6).
+        self._pending: deque[str] = deque()
+        #: First bad ACK seen while draining; raised by the next command.
+        self._ack_error: str | None = None
         self._device_lost = False
         self._consecutive_missed = 0
         self._closed = False
@@ -558,11 +580,11 @@ class ArduinoInput(InputBackend):
 
     def press_combo(self, combo: str) -> None:
         """Tap a key combo. Wire: ``K <combo>``."""
-        self._send_command("press_combo", self.encoder.press_combo(combo))
+        self._send_async("press_combo", self.encoder.press_combo(combo))
 
     def hold_combo(self, combo: str) -> None:
         """Hold a key combo down. Wire: ``D <combo>``."""
-        self._send_command("hold_combo", self.encoder.hold_combo(combo))
+        self._send_async("hold_combo", self.encoder.hold_combo(combo))
 
     def release_combo(self, combo: str) -> None:
         """Release a held combo. Wire: ``U <combo>``."""
@@ -570,11 +592,11 @@ class ArduinoInput(InputBackend):
 
     def mouse_move(self, dx: int, dy: int) -> None:
         """Relative mouse move. Wire: ``M <dx> <dy>``."""
-        self._send_command("mouse_move", self.encoder.mouse_move(dx, dy))
+        self._send_async("mouse_move", self.encoder.mouse_move(dx, dy))
 
     def click(self, side: ClickSide) -> None:
         """Mouse click. Wire: ``C L`` / ``C R``."""
-        self._send_command("click", self.encoder.click(side))
+        self._send_async("click", self.encoder.click(side))
 
     def ping(self) -> bool:
         """Send ``P``; True iff the device answers ``PONG`` right now."""
@@ -649,6 +671,55 @@ class ArduinoInput(InputBackend):
                 f"{op}: device rejected the command (reply: {reply!r})"
             )
 
+    def _send_async(self, op: str, line: str) -> None:
+        """Write one fire-and-forget command; its ACK is checked later (P6).
+
+        Raises:
+            DeviceLostError: When the device is known to be lost (safety).
+            ArduinoInputError: On a write failure, or when an earlier
+                command's ACK was rejected or never came (nothing is sent).
+        """
+        self._require_alive(op)
+        with self._lock:
+            ser = self._port
+            if ser is None:
+                raise ArduinoInputError(f"{op}: no serial port (link dropped?)")
+            try:
+                self._drain_acks_locked(ser, block=len(self._pending) >= MAX_PENDING_ACKS)
+                error, self._ack_error = self._ack_error, None
+                if error is None:
+                    ser.write(f"{line}\n".encode())
+                    self._pending.append(op)
+            except Exception as exc:  # USB yanked, driver error, port busy...
+                logger.warning("serial I/O failed on %s: %s", ser.port, exc)
+                self._device_lost = True
+                self._close_port_locked()
+                raise ArduinoInputError(f"{op}: serial I/O failed: {exc}") from exc
+        if error is not None:
+            raise ArduinoInputError(error)
+
+    def _drain_acks_locked(self, ser: SerialPortLike, *, block: bool) -> None:
+        """Consume pending ACKs; remember the first bad one. Hold ``_lock``.
+
+        Non-blocking reads only what has already arrived; *block* waits
+        (up to the read timeout per line) for every pending ACK.
+        """
+        while self._pending:
+            if not block and not ser.in_waiting:
+                return
+            raw = ser.readline()
+            op = self._pending.popleft()
+            reply = raw.decode(errors="replace").strip() if raw else None
+            if reply != "OK" and self._ack_error is None:
+                self._ack_error = (
+                    f"{op}: no reply from device (link dropped?)"
+                    if reply is None
+                    else f"{op}: device rejected the command (reply: {reply!r})"
+                )
+            if reply is None:
+                self._pending.clear()  # silent device: don't wait for the rest
+                return
+
     def _require_alive(self, op: str) -> None:
         if self._closed or self._device_lost:
             raise DeviceLostError(
@@ -669,6 +740,7 @@ class ArduinoInput(InputBackend):
             if ser is None:
                 return None
             try:
+                self._drain_acks_locked(ser, block=True)
                 ser.reset_input_buffer()
                 ser.write(f"{line}\n".encode())
                 raw = ser.readline()
@@ -684,6 +756,7 @@ class ArduinoInput(InputBackend):
     def _close_port_locked(self) -> None:
         """Close and forget the current port. Caller must hold ``_lock``."""
         ser, self._port = self._port, None
+        self._pending.clear()
         if ser is not None:
             self._quiet_close(ser)
 

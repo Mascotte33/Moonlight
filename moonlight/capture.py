@@ -27,6 +27,7 @@ import ctypes
 import sys
 import time
 from collections import deque
+from collections.abc import Sequence
 from typing import Any
 
 import mss
@@ -278,15 +279,16 @@ class ScreenCapture:
         :meth:`get_frame` uses it for the client window. Uses the ``mss`` backend
         directly regardless of the configured backend.
         """
+        return np.ascontiguousarray(self._grab_rgb_view(x, y, width, height))
+
+    def _grab_rgb_view(self, x: int, y: int, width: int, height: int) -> np.ndarray:
+        """One mss grab as an RGB *view* (not contiguous, no copy yet)."""
         if width <= 0 or height <= 0:
             raise CaptureError(f"Invalid region size {width}x{height}")
         sct = self._ensure_mss()
         region = {"left": x, "top": y, "width": width, "height": height}
-        shot = sct.grab(region)
-        arr = np.asarray(shot)  # (H, W, 3 or 4); BGR or BGRA from mss
-        # Reverse the first three channels: BGR(A) -> RGB.
-        rgb = arr[:, :, 2::-1]
-        return np.ascontiguousarray(rgb)
+        arr = np.asarray(sct.grab(region))  # (H, W, 3 or 4); BGR or BGRA from mss
+        return arr[:, :, 2::-1]  # reverse the first three channels: BGR(A) -> RGB
 
     def _grab_dxcam(self, rect: tuple[int, int, int, int]) -> tuple[np.ndarray, bool]:
         """Grab one frame via dxcam; return ``(frame, is_new)``.
@@ -342,11 +344,20 @@ class ScreenCapture:
             )
         return self._dxcam_cam
 
-    def get_frame(self) -> np.ndarray:
+    def get_frame(
+        self, regions: Sequence[tuple[int, int, int, int]] | None = None
+    ) -> np.ndarray:
         """Return the current client-window frame as RGB ``(H, W, 3)``.
 
         Uses the configured backend. For ``dxcam``, if no new frame has been
         presented, the last captured frame is returned instead.
+
+        *regions* (P2): window-relative ``(x, y, w, h)`` rectangles. With
+        ``mss`` only those are grabbed (one small grab each) into a
+        window-sized black frame, so readers index it exactly like a full
+        frame -- a few small grabs instead of one full-window grab. ``None``
+        (or the ``dxcam`` backend, whose full grab is already ~2 ms) grabs
+        the whole window: the fallback for uncalibrated regions.
 
         Raises:
             WindowNotFoundError: If the client window has never been found.
@@ -374,6 +385,9 @@ class ScreenCapture:
                 self._new_frames += 1
             else:
                 self._stale_frames += 1
+        elif regions is not None:
+            frame = self._grab_regions(rect, regions)
+            self._new_frames += 1
         else:
             frame = self.capture_region(*rect)
             self._new_frames += 1
@@ -390,6 +404,33 @@ class ScreenCapture:
         while self._frame_times and self._frame_times[0] < cutoff:
             self._frame_times.popleft()
 
+        return frame
+
+    def _grab_regions(
+        self,
+        rect: tuple[int, int, int, int],
+        regions: Sequence[tuple[int, int, int, int]],
+    ) -> np.ndarray:
+        """Window-sized black frame with only *regions* captured (P2).
+
+        One grab of the regions' bounding box (clipped to the window), not
+        one per region: every mss grab pays a fixed ~16 ms GDI/compositor
+        sync, so five small grabs cost more than one larger one (measured
+        2560x1369: full 43 ms, bounding box 21 ms, five regions 84 ms).
+        """
+        left, top, width, height = rect
+        frame = np.zeros((height, width, 3), dtype=np.uint8)
+        boxes = [
+            (max(0, x), max(0, y), min(width, x + w), min(height, y + h))
+            for x, y, w, h in regions
+        ]
+        boxes = [b for b in boxes if b[2] > b[0] and b[3] > b[1]]
+        if not boxes:
+            return frame
+        x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+        x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+        # Convert straight into the frame: one copy instead of two.
+        frame[y0:y1, x0:x1] = self._grab_rgb_view(left + x0, top + y0, x1 - x0, y1 - y0)
         return frame
 
     def get_stats(self) -> dict[str, object]:

@@ -138,6 +138,18 @@ def test_minimap_start_roundtrip() -> None:
     assert cfg.validate() is cfg
 
 
+def test_clicker_open_loop_switch_and_validation() -> None:
+    """F-14: open-loop clicking is a config switch; bad values fail closed."""
+    assert BotConfig.default().clicker.open_loop is False
+    data = raw()
+    data["clicker"] = {"open_loop": True, "mouse_scale": 1.5, "settle_ms": 25}
+    cfg = BotConfig.from_dict(data)
+    assert cfg.clicker.open_loop and cfg.clicker.mouse_scale == 1.5
+    data["clicker"] = {"settle_ms": 500}
+    with pytest.raises(ConfigError):
+        BotConfig.from_dict(data)
+
+
 def test_minimap_start_default_none() -> None:
     """F-03: minimap_start defaults to None (legacy relative behavior)."""
     assert BotConfig.default().minimap_start is None

@@ -283,3 +283,97 @@ class TestValidation:
         with pytest.raises(ValueError):
             clicker.click_at((100,))  # type: ignore[arg-type]
         assert fake.sent_lines == []
+
+
+# ---------------------------------------------------------------------------
+# Per-tick state machine (P5 / F-14)
+# ---------------------------------------------------------------------------
+
+
+class TestStateMachine:
+    def test_step_does_at_most_one_capture_and_one_wire_command(self) -> None:
+        fake = FakeInput(cursor=(10, 10))
+        captures: list[int] = []
+
+        def frame_provider() -> np.ndarray:
+            captures.append(1)
+            return make_frame(center=fake.cursor_position)
+
+        reader = CursorReader(cursor_region=REGION, cursor_templates=[TEMPLATE])
+        clicker = ClickController(fake, reader, frame_provider, sleep_fn=lambda s: None)
+        clicker.request((280, 190))
+        results = []
+        while clicker.busy:
+            before_caps, before_lines = len(captures), len(fake.sent_lines)
+            results.append(clicker.step())
+            assert len(captures) - before_caps <= 1
+            assert len(fake.sent_lines) - before_lines <= 1
+        assert results[-1] is True and results[:-1] == [None] * (len(results) - 1)
+        assert fake.sent_lines[-1] == "C L"
+
+    def test_reads_after_first_use_small_roi_via_roi_provider(self) -> None:
+        fake = FakeInput(cursor=(80, 80))
+        regions: list[tuple[int, int, int, int]] = []
+
+        def roi(region: tuple[int, int, int, int]) -> np.ndarray:
+            regions.append(region)
+            return make_frame(center=fake.cursor_position)
+
+        reader = CursorReader(cursor_region=REGION, cursor_templates=[TEMPLATE])
+        clicker = ClickController(
+            fake, reader, lambda: pytest.fail("full frame used"), roi_provider=roi,
+            sleep_fn=lambda s: None,
+        )
+        assert clicker.click_at((150, 90)) is True
+        assert regions[0] == REGION
+        assert regions[1] == (150 - 48, 90 - 48, 96, 96)
+        # The next click's first read starts where the cursor was last seen.
+        regions.clear()
+        assert clicker.click_at((60, 60)) is True
+        assert regions[0] == (150 - 48, 90 - 48, 96, 96)
+        # Cursor moved by someone else: the ROI misses, then the full region.
+        fake.cursor_position = (300, 20)
+        regions.clear()
+        assert clicker.click_at((250, 30)) is True
+        assert regions[:2] == [(60 - 48, 60 - 48, 96, 96), REGION]
+
+    def test_settle_delay_before_read_after_move(self) -> None:
+        now = [0.0]
+        sleeps: list[float] = []
+        fake = FakeInput(cursor=(80, 80))
+        reader = CursorReader(cursor_region=REGION, cursor_templates=[TEMPLATE])
+        clicker = ClickController(
+            fake, reader, lambda: make_frame(center=fake.cursor_position),
+            clock=lambda: now[0], sleep_fn=sleeps.append,
+        )
+        clicker.request((150, 90))
+        assert clicker.step() is None  # move sent at t=0
+        assert sleeps == []
+        assert clicker.step() is True  # read right after the move: waits 20 ms
+        assert sleeps == [pytest.approx(0.02)]
+
+    def test_failure_drops_queued_follow_up_click(self) -> None:
+        fake, clicker = build_harness(cursor=(80, 80), include_cursor=False)
+        clicker.request((150, 90))
+        clicker.request((150, 90))
+        assert clicker.step() is False
+        assert not clicker.busy and fake.sent_lines == []
+
+    def test_open_loop_homes_then_dead_reckons_scaled(self) -> None:
+        from moonlight.clicker import ClickerConfig
+
+        fake = FakeInput(cursor=(0, 0))
+        reader = CursorReader(cursor_region=REGION, cursor_templates=[TEMPLATE])
+        cfg = ClickerConfig(open_loop=True, mouse_scale=2.0, home_moves=3)
+        clicker = ClickController(
+            fake, reader, lambda: pytest.fail("open loop must not capture"),
+            config=cfg, window_origin=lambda: (100, 50), sleep_fn=lambda s: None,
+        )
+        assert clicker.click_at((60, 30)) is True
+        moves = m_lines(fake.sent_lines)
+        assert moves[:3] == [(-127, -127)] * 3
+        # From the screen corner (-100, -50) to (60, 30) is (160, 80) px at
+        # 2 px per count: 80 + 40 counts in total.
+        assert sum(m[0] for m in moves[3:]) == 80
+        assert sum(m[1] for m in moves[3:]) == 40
+        assert fake.sent_lines[-1] == "C L"

@@ -104,6 +104,28 @@ class TestGetFrame:
         assert frame.shape == (50, 100, 3)
         mock_capture.assert_called_once_with(10, 20, 100, 50)
 
+    def test_regions_grab_only_those_rects_into_window_sized_frame(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """P2: one grab of the regions' bounding box (clipped), black elsewhere."""
+        cap = ScreenCapture()
+        monkeypatch.setattr(cap, "get_window_rect", lambda: (100, 200, 80, 60))
+        calls: list[tuple[int, int, int, int]] = []
+
+        def grab(x: int, y: int, w: int, h: int) -> np.ndarray:
+            calls.append((x, y, w, h))
+            return np.full((h, w, 3), 7, dtype=np.uint8)
+
+        monkeypatch.setattr(cap, "_grab_rgb_view", grab)
+        frame = cap.get_frame(regions=[(5, 10, 20, 4), (70, 50, 30, 30), (500, 0, 5, 5)])
+        assert frame.shape == (60, 80, 3)
+        # Window-relative -> screen; the second rect is clipped, the third is off-window.
+        assert calls == [(105, 210, 75, 50)]
+        assert (frame[10:60, 5:80] == 7).all()
+        assert int(frame.sum()) == 7 * 3 * 75 * 50
+        calls.clear()
+        assert not cap.get_frame(regions=[(500, 0, 5, 5)]).any() and calls == []
+
     def test_raises_when_window_never_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cap = ScreenCapture()
         monkeypatch.setattr(cap, "get_window_rect", lambda: None)

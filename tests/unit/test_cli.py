@@ -82,7 +82,9 @@ def test_check(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         assert cli.main(["--profiles-dir", str(tmp_path), "check"]) == 0
     with mock.patch("moonlight.input.find_arduino_port", return_value=None):
         assert cli.main(["--profiles-dir", str(tmp_path), "check"]) == 1
-    assert "no Arduino found" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "no Arduino found" in out
+    assert "log OCR: tesseract" in out  # F-21 health line, OK or WARN
 
 
 def test_check_module_regions_reports_missing() -> None:
@@ -181,7 +183,7 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
     for _ in range(5):
         loop.tick()
         now[0] += 0.05
-    assert next(calls) > 0  # perception pulled frames
+    assert next(calls) == 5  # P1: exactly one capture per tick, shared by all
     assert loop.modules.cavebot is not None and loop.modules.refill is not None
     # F-20: every module that sends shares the loop's wire limiter.
     m = loop.modules
@@ -191,6 +193,31 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
         assert backend is loop.input
     snap = state.snapshot()
     assert snap.screen_ok and snap.last_update > 0  # perception wrote WorldState
+
+
+def test_frame_cache_captures_once_per_refresh() -> None:
+    calls: list[int] = []
+
+    def provider() -> np.ndarray:
+        calls.append(1)
+        return np.full((2, 2, 3), len(calls), dtype=np.uint8)
+
+    cache = cli.FrameCache(provider)
+    first = cache()  # nothing cached yet: captures
+    assert cache() is first and len(calls) == 1
+    fresh = cache.refresh()
+    assert cache() is fresh and len(calls) == 2
+
+
+def test_capture_regions_lists_tick_regions_or_falls_back_to_full() -> None:
+    profile = make_profile()
+    cfg = BotConfig.default()
+    names = ("battle_list", "floor_indicator", "hp_bar", "minimap", "mp_bar")
+    assert cli.capture_regions(profile, cfg) == [
+        profile.get_region(n).to_tuple for n in names
+    ]
+    del profile.regions["minimap"]
+    assert cli.capture_regions(profile, cfg) is None  # uncalibrated: full grab
 
 
 # -- F-01: no auto-attack with unknown names (interim) -------------------------
@@ -280,6 +307,28 @@ def test_minimap_start_seeds_minimap_reader(monkeypatch: pytest.MonkeyPatch) -> 
     assert captured["initial_position"] is None
 
 
+def test_lost_minimap_clears_state_position(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F-17: a lost tracker publishes "unknown" (0,0,0), not a stale position."""
+    from moonlight.state import Position
+
+    class _LostMinimap:
+        lost = True
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def read_position(self, frame: np.ndarray) -> object:
+            return None
+
+    monkeypatch.setattr("moonlight.perception.minimap.MinimapReader", _LostMinimap)
+    state = WorldState()
+    state.position = Position(100, 200, 7)
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    cli.make_perceive(state, make_profile(), lambda: frame)()
+    assert state.screen_ok
+    assert state.position == Position(0, 0, 0)
+
+
 def test_calibration_error_is_one_line_not_traceback(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -292,3 +341,58 @@ def test_calibration_error_is_one_line_not_traceback(
     monkeypatch.setattr(cli, "_cmd_profiles", boom)
     assert cli.main(["profiles"]) == 2
     assert capsys.readouterr().out == "error: region 'game_grid' is not calibrated\n"
+
+
+def test_tick_grabber_folds_the_cursor_read_into_one_grab_per_tick() -> None:
+    """P2 + P5: a clicking tick still makes ONE screen grab (regions + cursor ROI)."""
+    from moonlight.clicker import ClickController
+    from moonlight.perception.cursor import CursorReader
+
+    fake = FakeInput(cursor=(80, 80))
+    tpl = np.zeros((11, 11), dtype=np.uint8)
+    tpl[:, 5] = tpl[5, :] = 255
+    tpl[1, 1], tpl[9, 9] = 250, 200
+    grabs: list[list[tuple[int, int, int, int]] | None] = []
+
+    class Capture:
+        def get_frame(self, regions: list[tuple[int, int, int, int]] | None) -> np.ndarray:
+            grabs.append(regions)
+            frame = np.full((200, 320, 3), 40, dtype=np.uint8)
+            x, y = fake.cursor_position
+            frame[y - 5 : y + 6, x - 5 : x + 6] = tpl[:, :, None]
+            return frame
+
+    now = [0.0]
+    sleeps: list[float] = []
+    tick_regions = [(0, 0, 10, 10)]
+    grabber = cli.TickGrabber(
+        Capture(),  # type: ignore[arg-type]
+        tick_regions, 20.0, clock=lambda: now[0], sleep_fn=sleeps.append,
+    )
+    reader = CursorReader(cursor_region=(0, 0, 320, 200), cursor_templates=[tpl])
+    clicker = ClickController(
+        fake, reader, lambda: pytest.fail("full frame used"), roi_provider=grabber.roi,
+        clock=lambda: now[0], sleep_fn=lambda s: None,
+    )
+    grabber.attach(clicker)
+    clicker.request((150, 90))
+    result = None
+    for _ in range(10):
+        n = len(grabs)
+        grabber.frame()
+        if result is None:
+            result = clicker.step()
+        assert len(grabs) == n + 1  # never a second grab in a tick
+        now[0] += 0.05
+    assert result is True and fake.sent_lines[-1] == "C L"
+    assert grabs[0] == [*tick_regions, (0, 0, 320, 200)]  # first read: full region
+    assert grabs[1] == [*tick_regions, (150 - 48, 90 - 48, 96, 96)]  # then the ROI
+    assert grabs[-1] == tick_regions  # idle: no cursor read
+    assert sleeps == []  # a tick gap (50 ms) already covers the 20 ms settle
+    # A grab sooner than settle after the move waits out the remainder.
+    clicker.request((10, 10))
+    grabber.frame()
+    clicker.step()  # moves
+    now[0] += 0.005
+    grabber.frame()
+    assert sleeps == [pytest.approx(0.015)]

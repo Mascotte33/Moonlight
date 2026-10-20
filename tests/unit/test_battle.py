@@ -43,6 +43,8 @@ class RowSpec(TypedDict, total=False):
     bar: bool
     highlight: bool
     highlight_rgb: tuple[int, int, int]
+    hp: float
+    hp_rgb: tuple[int, int, int]
 
 
 class FakeResolver:
@@ -73,6 +75,8 @@ def make_frame(
             text, True without text = a bar-only row)
         highlight: paint the 20x20 target outline around the icon
         highlight_rgb: outline color to use (default pure red)
+        hp: HP fraction 0..1 painted as fill under the outline (rows 17..19)
+        hp_rgb: fill color (default Tibia green)
 
     Returns ``(frame, region)`` where *region* covers exactly the widget.
     """
@@ -99,6 +103,9 @@ def make_frame(
                     slot[7:15, c] = TEXT_RGB
         if spec.get("bar", spec.get("text")):
             slot[16, 24:154] = (0, 0, 0)
+        if "hp" in spec:
+            # Interior of the outline: x 25..152 (128 px), as Tibia draws it.
+            slot[17:20, 25 : 25 + round(spec["hp"] * 128)] = spec.get("hp_rgb", (0, 192, 0))
     region = (ox, oy, CONTENT_W, TOP_PAD + n * SLOT_H)
     return frame, region
 
@@ -367,6 +374,21 @@ class TestReaderApi:
         frame, region = make_frame([{"text": True}])
         entries = read_default(frame, region)
         assert entries[0].hp_percent is None
+
+    @pytest.mark.parametrize(
+        ("hp", "rgb"),
+        [(1.0, (0, 192, 0)), (0.5, (192, 192, 0)), (0.125, (192, 0, 0))],
+    )
+    def test_hp_percent_read_from_bar_fill(self, hp: float, rgb: tuple[int, int, int]) -> None:
+        """F-16: the coloured share of the fill row is the HP percent."""
+        frame, region = make_frame([{"text": True, "hp": hp, "hp_rgb": rgb}])
+        entries = read_default(frame, region)
+        assert entries[0].hp_percent == pytest.approx(hp * 100, abs=1.0)
+
+    def test_hp_percent_per_row(self) -> None:
+        frame, region = make_frame([{"text": True, "hp": 0.25}, {"text": True, "hp": 0.75}])
+        entries = read_default(frame, region)
+        assert [round(e.hp_percent or 0) for e in entries] == [25, 75]
 
 
 class TestEntriesToState:

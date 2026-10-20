@@ -24,6 +24,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -34,9 +35,21 @@ from moonlight.loop import DecisionModules, GameLoop, RateLimitedInput, beep_ale
 from moonlight.profile import ProfileManager
 from moonlight.state import WorldState
 
-__all__ = ["build_loop", "check_module_regions", "main", "make_perceive"]
+if TYPE_CHECKING:
+    from moonlight.capture import ScreenCapture
+    from moonlight.clicker import ClickController
+
+__all__ = [
+    "FrameCache",
+    "build_loop",
+    "capture_regions",
+    "check_module_regions",
+    "main",
+    "make_perceive",
+]
 
 FrameProvider = Callable[[], np.ndarray]
+Rect = tuple[int, int, int, int]
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +79,105 @@ MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "buffs": ("status_icons",),
     "alarms": (),
 }
+
+
+#: Regions :func:`make_perceive` reads every tick.
+_PERCEIVE_REGIONS = ("hp_bar", "mp_bar", "battle_list", "minimap", "floor_indicator")
+
+
+def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect] | None:
+    """The window regions a tick reads, for ``ScreenCapture.get_frame`` (P2).
+
+    ``None`` (grab the full window) when any of them is not calibrated.
+    ``game_grid`` is left out: it is only click geometry, and the clicker
+    grabs its own small cursor ROI.
+    """
+    names = set(_PERCEIVE_REGIONS)
+    for module in _enabled_modules(config):
+        names.update(MODULE_REGIONS.get(module, ()))
+    names.discard("game_grid")
+    if any(name not in profile.regions for name in names):
+        return None
+    return [profile.get_region(name).to_tuple for name in sorted(names)]
+
+
+class FrameCache:
+    """One capture per tick (P1).
+
+    The perceive step calls :meth:`refresh` once per tick; every other
+    consumer in the same tick (clicker, looting) calls the cache and gets
+    that same frame instead of capturing again.
+    """
+
+    def __init__(self, provider: FrameProvider) -> None:
+        self._provider = provider
+        self._frame: np.ndarray | None = None
+
+    def refresh(self) -> np.ndarray:
+        """Capture a new frame (once per tick)."""
+        self._frame = self._provider()
+        return self._frame
+
+    def __call__(self) -> np.ndarray:
+        """This tick's frame (captured now if none was yet)."""
+        return self._frame if self._frame is not None else self.refresh()
+
+
+class TickGrabber:
+    """Production capture: ONE screen grab per tick (P2 + P5).
+
+    Every mss grab costs a ~17 ms fixed sync whatever its size, so a
+    separate cursor-ROI grab would double a clicking tick. The tick grab
+    therefore also covers the region the clicker's next step reads
+    (:meth:`ClickController.next_read`), taken no sooner than
+    ``settle_ms`` after its last move; :meth:`roi` then serves that frame
+    and only grabs again when the region was not covered.
+    """
+
+    def __init__(
+        self,
+        capture: ScreenCapture,
+        regions: list[Rect] | None,
+        settle_ms: float,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        sleep_fn: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self._capture = capture
+        self._regions = regions
+        self._settle = settle_ms / 1000.0
+        self._clock = clock
+        self._sleep = sleep_fn
+        self._next_read: Callable[[], tuple[Rect, float] | None] | None = None
+        self._frame: np.ndarray | None = None
+        self._covered: Rect | None = None
+
+    def attach(self, clicker: ClickController) -> None:
+        """Fold *clicker*'s next cursor read into each tick grab."""
+        self._next_read = clicker.next_read
+
+    def frame(self) -> np.ndarray:
+        """The tick grab: the tick regions plus the clicker's next read."""
+        read = self._next_read() if self._next_read is not None else None
+        self._covered = None
+        regions = self._regions
+        if read is not None:
+            region, last_move = read
+            wait = last_move + self._settle - self._clock()
+            if wait > 0:
+                self._sleep(wait)
+            self._covered = region
+            if regions is not None:
+                regions = [*regions, region]
+        self._frame = self._capture.get_frame(regions)
+        return self._frame
+
+    def roi(self, region: Rect) -> np.ndarray:
+        """The clicker's cursor read: this tick's frame when it covers it."""
+        if region == self._covered and self._frame is not None:
+            self._covered = None  # a second read in the same tick grabs fresh
+            return self._frame
+        return self._capture.get_frame([region])
 
 
 def _enabled_modules(config: BotConfig) -> list[str]:
@@ -155,10 +267,15 @@ def make_perceive(
             state.monsters = monsters
             state.selected_target = selected
             state.players_on_screen = players
-            if position is not None:
-                state.position = position
-            if z is not None:
-                state.position = replace(state.position, z=int(z))
+            if minimap.lost:
+                # F-17: unknown until re-anchored; the cavebot reads (0,0,0)
+                # as "no position" and halts "stuck" instead of walking blind.
+                state.position = Position(0, 0, 0)
+            else:
+                if position is not None:
+                    state.position = position
+                if z is not None:
+                    state.position = replace(state.position, z=int(z))
             state.last_update = time.monotonic()
 
     return perceive
@@ -187,8 +304,17 @@ def build_loop(
     clock: Callable[[], float] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
     alert: Callable[[str], None] | None = beep_alert,
+    roi_provider: Callable[[Rect], np.ndarray] | None = None,
+    window_origin: Callable[[], tuple[int, int]] | None = None,
+    on_clicker: Callable[[ClickController], None] | None = None,
 ) -> GameLoop:
     """Assemble the bot: perception + the enabled decision modules + loop.
+
+    *frame_provider* is called exactly once per tick (P1, via
+    :class:`FrameCache`). *roi_provider* / *window_origin* feed the
+    clicker's small cursor-ROI grabs and open-loop mode (F-14); without
+    them the clicker reads the cached tick frame. *on_clicker* receives
+    the click controller once built (:class:`TickGrabber.attach`).
 
     Raises:
         ValueError: If an enabled module cannot be built from *profile*
@@ -200,6 +326,7 @@ def build_loop(
     from moonlight.decision.targeting import TargetingDecision
 
     state = state if state is not None else WorldState()
+    frames = FrameCache(frame_provider)
     # F-20: one wire limiter shared by the loop and every module that sends
     # (clicker, cavebot, looting, refill), so the 10/s cap counts serial
     # commands, not actions.
@@ -230,8 +357,15 @@ def build_loop(
 
         cursor = list(_templates(config.templates_dir / "cursor").values())
         clicker = ClickController(
-            backend, CursorReader(profile, cursor_templates=cursor or None), frame_provider
+            backend,
+            CursorReader(profile, cursor_templates=cursor or None),
+            frames,
+            config=config.clicker,
+            roi_provider=roi_provider,
+            window_origin=window_origin,
         )
+        if on_clicker is not None:
+            on_clicker(clicker)
         if config.cavebot is not None:
             from moonlight.decision.cavebot import Cavebot
 
@@ -254,7 +388,7 @@ def build_loop(
 
             reader = LootReader(_templates(config.templates_dir / "loot"), profile)
             m.looting = Looting(
-                reader, clicker, backend, state, config.looting, frame_provider=frame_provider
+                reader, clicker, backend, state, config.looting, frame_provider=frames
             )
     if config.refill is not None:
         from moonlight.decision.cavebot import RouteFileLoader
@@ -271,7 +405,7 @@ def build_loop(
         perceive=make_perceive(
             state,
             profile,
-            frame_provider,
+            frames.refresh,
             focus_check,
             minimap_start=config.minimap_start,
         ),
@@ -311,14 +445,35 @@ def _cmd_run(args: argparse.Namespace) -> int:
     backend = ArduinoInput(config.serial_port)
     try:
         loop = build_loop(
-            config, profile, backend, frame_provider=capture.get_frame,
-            focus_check=capture.is_focused,
+            config, profile, backend, **capture_providers(capture, profile, config)
         )
         print(f"moonlight {_version()}: running profile {name!r}; F12 = kill switch")
         loop.run()
     finally:
         backend.close()  # releases all inputs and stops the heartbeat
     return 0
+
+
+def capture_providers(
+    capture: ScreenCapture, profile: CalibrationProfile, config: BotConfig
+) -> dict[str, Any]:
+    """:func:`build_loop` keyword arguments backed by a real *capture*."""
+    regions = capture_regions(profile, config)
+    if regions is None:
+        logger.warning("uncalibrated regions: capturing the full window every tick")
+
+    def origin() -> tuple[int, int]:
+        rect = capture.get_window_rect()
+        return (rect[0], rect[1]) if rect is not None else (0, 0)
+
+    grabber = TickGrabber(capture, regions, config.clicker.settle_ms)
+    return {
+        "frame_provider": grabber.frame,
+        "focus_check": capture.is_focused,
+        "roi_provider": grabber.roi,
+        "window_origin": origin,
+        "on_clicker": grabber.attach,
+    }
 
 
 def _cmd_profiles(args: argparse.Namespace) -> int:
@@ -383,6 +538,12 @@ def _cmd_check(args: argparse.Namespace) -> int:
             report(True, f"import {mod}")
         except Exception as exc:  # noqa: BLE001
             report(False, f"import {mod}: {exc}")
+    # F-21: log OCR is optional (not wired into the tick), so a missing
+    # Tesseract is a warning, not a failed check.
+    from moonlight.perception.logocr import health
+
+    ocr_ok, detail = health()
+    print(f"[{'OK' if ocr_ok else 'WARN'}] log OCR: {detail}")
     return 0 if ok else 1
 
 

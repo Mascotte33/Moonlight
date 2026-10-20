@@ -122,6 +122,11 @@ class FakeSerialDevice:
                 return b""
             time.sleep(0.001)
 
+    @property
+    def in_waiting(self) -> int:
+        with self._rx_lock:
+            return sum(len(b) for b in self._rx)
+
     def reset_input_buffer(self) -> None:
         with self._rx_lock:
             self._rx.clear()
@@ -410,8 +415,10 @@ class TestWireProtocol:
         dev = fake_serial.devices[COM]
         with make_backend(heartbeat_interval=60.0) as ard:
             dev.reply_hook = lambda _line: "ERR"
-            with pytest.raises(ArduinoInputError):
+            ard.press_combo(COMBO)  # P6: fire-and-forget, the ACK is checked later
+            with pytest.raises(ArduinoInputError, match="rejected"):
                 ard.press_combo(COMBO)
+            assert command_lines(dev) == [f"K {COMBO}"]  # nothing sent after the ERR
 
     def test_silent_device_raises(self, fake_serial: types.SimpleNamespace) -> None:
         """No reply at all (link dying) must surface as an error."""
@@ -419,8 +426,29 @@ class TestWireProtocol:
         dev = fake_serial.devices[COM]
         with make_backend(heartbeat_interval=60.0) as ard:
             dev.reply_hook = lambda _line: None
-            with pytest.raises(ArduinoInputError):
-                ard.press_combo(COMBO)
+            ard.press_combo(COMBO)
+            with pytest.raises(ArduinoInputError, match="no reply"):
+                ard.release_all()
+
+    def test_press_does_not_block_on_slow_ack(
+        self, fake_serial: types.SimpleNamespace
+    ) -> None:
+        """P6: a key press returns before its ACK; a sync command waits for it."""
+        fake_serial.add_port(COM)
+        dev = fake_serial.devices[COM]
+        with make_backend(heartbeat_interval=60.0) as ard:
+
+            def slow_ok(line: str) -> None:
+                threading.Timer(0.2, dev._enqueue_reply, args=("OK",)).start()
+
+            dev.reply_hook = slow_ok
+            t0 = time.monotonic()
+            ard.press_combo(COMBO)
+            ard.mouse_move(1, 1)
+            assert time.monotonic() - t0 < 0.1
+            dev.reply_hook = None
+            ard.release_all()  # drains both pending ACKs without error
+            assert command_lines(dev) == [f"K {COMBO}", "M 1 1", "X"]
 
 
 class TestHeartbeat:

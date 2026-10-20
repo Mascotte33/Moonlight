@@ -14,7 +14,6 @@ active once real battle labels exist.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -39,6 +38,7 @@ from moonlight.perception import (
 )
 from moonlight.perception.loot import TITLE_TEMPLATE, LootReader, LootWindow
 from moonlight.state import Position
+from tests.golden_labels import PlaceholderLabelsError, load_golden_labels
 
 ROOT = Path(__file__).resolve().parents[2]
 FRAME_DIRS = (ROOT / "golde-screenshots", ROOT / "tests" / "golden")
@@ -137,7 +137,8 @@ def _same_session_pairs(paths: list[Path]) -> list[tuple[int, int]]:
 
 def _check(paths: list[Path], out: dict[str, list[Any]]) -> None:
     h, w = _load(paths[0]).shape[:2]
-    labels = json.loads(LABELS.read_text())["frames"] if LABELS.is_file() else {}
+    # F-18: the HP/MP gate below needs measured vitals labels, never placeholders.
+    labels = load_golden_labels(LABELS, require=("vitals",)) if LABELS.is_file() else {}
     pairs = _same_session_pairs(paths)
 
     for p, (hp, mp) in zip(paths, out["vitals"], strict=True):
@@ -189,6 +190,20 @@ def _check(paths: list[Path], out: dict[str, list[Any]]) -> None:
     assert all(x is None or isinstance(x, LootWindow) for x in loot)
     # "Rare window" is not asserted: no real loot-window template is in the repo, and
     # the probe cut (frame 0's top-left corner) matches every frame.
+
+
+def test_label_gated_checks_have_labels() -> None:
+    """F-18: the battle/sprite/minimap checks in _check are label-gated.
+
+    Refuse to call them covered while labels.json holds placeholders: skip
+    loudly, naming the modules to label (T33, human).
+    """
+    if not LABELS.is_file():
+        pytest.skip("no tests/golden/labels.json")
+    try:
+        load_golden_labels(LABELS, require=("battle", "minimap", "floor"))
+    except PlaceholderLabelsError as exc:
+        pytest.skip(f"golden gate refused: {exc}")
 
 
 def test_fast_subset() -> None:

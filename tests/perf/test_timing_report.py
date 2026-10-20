@@ -1,7 +1,8 @@
 """T30: per-module latency report against the 20 Hz (50 ms/tick) budget.
 
-Prints a timing table (run with ``-s``). Timing never fails the build: a
-tick over budget only prints a WARNING. Perception runs on real golden
+Prints a timing table (run with ``-s``). The per-module report only prints
+a WARNING; the budget itself is asserted by
+``test_production_tick_within_budget`` (F-15). Perception runs on real golden
 frames (skips without them); Tesseract-backed ``logocr`` is fail-closed and
 therefore near-free when the ``tesseract`` binary is not installed.
 """
@@ -11,7 +12,7 @@ from __future__ import annotations
 import json
 import statistics
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from unittest import mock
 
@@ -240,3 +241,143 @@ def test_timing_report(tmp_path: Path) -> None:
             + ", ".join(f"{n} ({p:.1f}ms)" for n, (_, p) in worst)
         )
     assert tick_mean > 0.0
+
+
+def test_production_tick_within_budget(tmp_path: Path) -> None:
+    """F-15/P7: the real tick -- ``build_loop`` + ``make_perceive`` + a real
+    ``ScreenCapture.get_frame`` of the calibrated regions at native resolution
+    + a cavebot step whose clicker converges and clicks -- has p95 < 50 ms,
+    with exactly one screen grab per tick (``TickGrabber`` folds the cursor
+    read into it).
+
+    Perception sees a golden frame (real client content); the screen grab is
+    real but its pixels are discarded, so the capture cost is measured even
+    without a Tibia window (the grab then targets the primary screen at the
+    golden frame size). Skips without golden frames or a display.
+    """
+    paths = _paths()
+    if not paths or not PROFILE.is_file():
+        pytest.skip("no golden frames or calibration profile")
+    from moonlight.calibrate import Region
+    from moonlight.capture import ScreenCapture
+    from moonlight.cli import TickGrabber, build_loop, capture_regions
+    from moonlight.config import BotConfig
+
+    bgr = cv2.imread(str(paths[0]))
+    assert bgr is not None, paths[0]
+    frames = [cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)]
+    height, width = frames[0].shape[:2]
+    cap = ScreenCapture()
+    try:
+        cap.capture_region(0, 0, 8, 8)
+    except Exception as exc:  # noqa: BLE001 - headless CI / no desktop session
+        cap.close()
+        pytest.skip(f"no display: {exc}")
+    if cap.get_window_rect() is None:
+        cap.get_window_rect = lambda: (0, 0, width, height)  # type: ignore[method-assign]
+
+    profile = CalibrationProfile.load(PROFILE)
+    profile.regions.setdefault("game_grid", Region(*GAME_GRID))
+    # Worst case first read: search the whole window (walk clicks hit the minimap).
+    profile.regions.setdefault("cursor", Region(0, 0, width, height))
+    # A synthetic cursor (no real templates until T33), drawn into the frame
+    # the clicker reads at the FakeInput's virtual cursor, so clicks converge.
+    cursor_tpl = np.zeros((11, 11), dtype=np.uint8)
+    cursor_tpl[:, 5] = cursor_tpl[5, :] = 255
+    cursor_tpl[1, 1], cursor_tpl[9, 9], cursor_tpl[3, 7] = 250, 200, 170
+    (tmp_path / "templates" / "cursor").mkdir(parents=True)
+    cv2.imwrite(str(tmp_path / "templates" / "cursor" / "arrow.png"), cursor_tpl)
+    fake = FakeInput(cursor=(width // 2, height // 2))
+    shown = frames[0].copy()
+    drawn: list[int] = []
+    routes = tmp_path / "routes"
+    routes.mkdir()
+    (routes / "far.json").write_text(
+        # One unreachable waypoint per floor: whatever floor the golden frames
+        # read, the route resyncs (never "lost") and the clicker keeps working.
+        json.dumps(
+            {"name": "far", "waypoints": [{"x": 10_000, "y": 100, "z": z} for z in range(16)]}
+        )
+    )
+    config = BotConfig.from_dict(
+        {
+            "profile": "moonlight_user",
+            "hotkeys": {"exura gran": "F1", "exura": "F2"},
+            "routes_dir": str(routes),
+            "templates_dir": str(tmp_path / "templates"),
+            "minimap_start": [1000, 1000, 7],  # absolute: a still frame is a real position
+            "loop": {"enable_f12_monitor": False},
+            "modules": {
+                "healing": {"enabled": True},
+                "targeting": {"enabled": True},
+                "alarms": {"enabled": True},
+                "cavebot": {"enabled": True, "route": "far"},
+                "looting": {"enabled": False},
+                "refill": {"enabled": False},
+                "buffs": {"enabled": False},
+            },
+        }
+    )
+    regions = capture_regions(profile, config)
+    # The real production grabber (one grab per tick, cursor read folded in).
+    # Ticks run back to back here, so its settle wait is skipped: at 20 Hz
+    # the 50 ms tick gap already covers it.
+    grabber = TickGrabber(cap, regions, config.clicker.settle_ms, sleep_fn=lambda _s: None)
+    grabs = [0, 0]  # [screen grabs, cursor reads]
+    real_get_frame = cap.get_frame
+
+    def counted_get_frame(regions: Sequence[tuple[int, int, int, int]] | None = None) -> np.ndarray:
+        grabs[0] += 1
+        return real_get_frame(regions)
+
+    cap.get_frame = counted_get_frame  # type: ignore[method-assign]
+
+    def frame_provider() -> np.ndarray:
+        grabber.frame()  # real grab, timed with the tick
+        # One golden frame every tick: frames from different moments jump HP,
+        # and the resulting ALARM/MOVE flapping would cancel every click.
+        return shown
+
+    def roi_provider(rect: tuple[int, int, int, int]) -> np.ndarray:
+        grabs[1] += 1
+        grabber.roi(rect)  # served from the tick grab (no second grab)
+        if drawn:  # erase the previous cursor, draw it where FakeInput has it
+            ox, oy = drawn
+            shown[oy - 5 : oy + 6, ox - 5 : ox + 6] = frames[0][oy - 5 : oy + 6, ox - 5 : ox + 6]
+        x, y = fake.cursor_position
+        shown[y - 5 : y + 6, x - 5 : x + 6] = cursor_tpl[:, :, None]
+        drawn[:] = [x, y]
+        return shown
+
+    loop = build_loop(
+        config,
+        profile,
+        fake,
+        frame_provider=frame_provider,
+        sleep_fn=lambda _dt: None,
+        alert=None,
+        roi_provider=roi_provider,
+        on_clicker=grabber.attach,
+    )
+
+    def one_tick(_: int) -> None:
+        loop._stop_event.clear()  # a stopped loop (e.g. !screen_ok) is re-armed
+        loop.tick()
+
+    try:
+        mean, p95 = _measure(one_tick)
+        n_grabs, n_reads = grabs
+        clicks = fake.sent_lines.count("C L")
+        grab_mean, grab_p95 = _measure(lambda _: cap.get_frame(regions))
+    finally:
+        cap.close()
+    print(
+        f"\nProduction tick: {mean:.1f}ms mean, {p95:.1f}ms p95 "
+        f"(capture {grab_mean:.1f}/{grab_p95:.1f}ms, "
+        f"{'regions' if regions else 'full window'}; {n_reads} cursor reads, "
+        f"{clicks} clicks, {n_grabs} screen grabs in {RUNS} ticks; "
+        f"budget {BUDGET_MS:.0f}ms)"
+    )
+    assert n_reads > 0, "the cavebot never clicked: the tick under test is not the real one"
+    assert n_grabs == RUNS, "a tick grabbed the screen more than once (P1/P5)"
+    assert p95 < BUDGET_MS, f"tick p95 {p95:.1f}ms over the {BUDGET_MS:.0f}ms budget"

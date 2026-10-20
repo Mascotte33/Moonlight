@@ -21,7 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from moonlight.cli import build_loop
+from moonlight.cli import build_loop, capture_providers
 from moonlight.config import DEFAULT_CONFIG_FILE, BotConfig
 from moonlight.gui.config_bridge import BotConfig as GuiBotConfig
 from moonlight.input import FakeInput, InputBackend
@@ -125,7 +125,6 @@ def build_gui_loop(
         real_config,
         profile,
         backend,
-        frame_provider=capture.get_frame,
-        focus_check=capture.is_focused,
         state=state,
+        **capture_providers(capture, profile, real_config),
     )

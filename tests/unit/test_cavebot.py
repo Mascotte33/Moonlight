@@ -24,21 +24,31 @@ GAME = (200, 0, 480, 352)  # 32 px tiles; player tile center = (440, 176)
 
 
 class RecordingClicker(ClickController):
-    """Records click_at calls; *on_click* lets a test move the world."""
+    """Records requested clicks; every click completes at once."""
 
     def __init__(self) -> None:
         self.clicks: list[tuple[tuple[int, int], ClickSide]] = []
+        self.cancels = 0
 
-    def click_at(
+    @property
+    def busy(self) -> bool:
+        return False
+
+    def request(
         self,
         target: tuple[int, int],
         *,
         tolerance: int = 2,
         max_iters: int = 5,
         side: ClickSide = ClickSide.LEFT,
-    ) -> bool:
+    ) -> None:
         self.clicks.append((target, side))
-        return True
+
+    def step(self) -> bool | None:
+        return None
+
+    def cancel(self) -> None:
+        self.cancels += 1
 
 
 class Sim:
@@ -438,3 +448,45 @@ def test_loop_calls_cavebot_resume_on_move_entry(
     loop.tick()
     assert loop.current_state is BotState.MOVE
     assert resumed, "cavebot.resume() not called on MOVE entry"
+
+
+def test_busy_clicker_is_stepped_not_rerequested_and_cancelled_on_advance() -> None:
+    """P5: a pending click is driven one step per tick, never re-queued."""
+
+    class SlowClicker(RecordingClicker):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pending = 0
+            self.steps = 0
+
+        @property
+        def busy(self) -> bool:
+            return self.pending > 0
+
+        def request(self, target: tuple[int, int], **kw: object) -> None:
+            super().request(target)
+            self.pending = 5
+
+        def step(self) -> bool | None:
+            self.steps += 1
+            self.pending -= 1
+            return None
+
+        def cancel(self) -> None:
+            super().cancel()
+            self.pending = 0
+
+    sim = Sim([walk(105, 100)], Position(100, 100, 7))
+    slow = SlowClicker()
+    sim.clicker = slow
+    sim.bot._clicker = slow
+    sim.bot.start()
+    for _ in range(30):  # 1.5 s idle: past reclick_interval while busy
+        sim.step()
+        if len(slow.clicks) > 1:
+            break
+    assert slow.steps >= 5  # first step on request, then one per tick
+    sim.pos = Position(105, 100, 7)
+    cancels = slow.cancels
+    sim.step()
+    assert sim.reached == [0] and slow.cancels > cancels

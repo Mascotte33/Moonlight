@@ -19,6 +19,11 @@ PyTibia production bots):
   without it is some other panel's text, not a creature (T28: on the golden
   frames whose layout puts another widget at the calibrated rect, every
   phantom row lacked it and every real entry had it);
+* the HP fill is the row under the outline's top edge, inside the
+  outline's run: HP-coloured pixels (green/yellow/red, channel spread >
+  :data:`HP_FILL_MIN_SPREAD`) are HP left, grey panel pixels HP lost
+  (F-16, measured on the golden frames: yellow ``c0c000`` fill, ``~4a4a4a``
+  lost);
 * the selected target's creature icon is framed by a pure-red 20x20 px
   outline at slot x 1..20, y 0..19 (:data:`SELECTED_RGB`; measured on the
   T08 golden frames in T28 -- the older grey-corner rule (76/166) matched
@@ -86,6 +91,9 @@ NAME_START_X = 23
 NAME_WIDTH = 115
 
 #: Maximum rows the battle-list widget can show (156x440 / 22 ~ 20).
+#: T33: recalibrate on server -- moonlight_user.json's battle_list is only
+#: 58 px tall (TOP_PADDING + 2 slots, the 2nd bar's fill cut off; F-16), so
+#: at most one creature reads with HP. Kept as-is: no live client to measure.
 MAX_SLOTS = 20
 
 #: Grayscale threshold: pixels strictly greater are text (ui_layout.md #3).
@@ -99,6 +107,9 @@ HP_BAR_DARK = 30
 
 #: Minimum dark run (px) of the outline; real bars span ~130 px.
 HP_BAR_MIN_RUN = 80
+#: Channel spread (max - min) above which a fill pixel is HP colour
+#: (green/yellow/red); the lost part shows the grey panel (spread ~0).
+HP_FILL_MIN_SPREAD = 60
 
 #: Attack-target outline color around the selected row's icon (T28).
 SELECTED_RGB: tuple[int, int, int] = (255, 0, 0)
@@ -252,15 +263,18 @@ class BattleReader:
             slot = gray[top:bottom, :cols]
             if slot.size == 0:
                 continue
-            if not self._has_text(slot) or not self._has_hp_bar(slot):
+            bar = self._hp_bar(slot) if self._has_text(slot) else None
+            if bar is None:
                 continue
             name = self._resolve_name(row, slot)
+            slot_rgb = crop[top:bottom, :cols]
             entries.append(
                 BattleEntry(
                     name=name,
                     index=row,
                     is_player=self._is_player(name),
-                    is_selected=self._is_selected(crop[top:bottom, :cols]),
+                    is_selected=self._is_selected(slot_rgb),
+                    hp_percent=self._hp_percent(slot_rgb, bar),
                 )
             )
         return entries
@@ -279,15 +293,37 @@ class BattleReader:
         return pixels >= self._min_text_pixels
 
     @staticmethod
-    def _has_hp_bar(slot: np.ndarray) -> bool:
-        """Return True when the slot shows an HP-bar outline under the name."""
+    def _hp_bar(slot: np.ndarray) -> tuple[int, int, int] | None:
+        """The HP-bar outline under the name as ``(row, x0, x1)``, or None.
+
+        *row* is the outline's top edge and ``x0:x1`` its longest dark run
+        (slot coordinates); None means no bar, so not a creature row.
+        """
         bar = slot[HP_BAR_ROWS[0] : HP_BAR_ROWS[1], NAME_START_X:] < HP_BAR_DARK
-        for row in bar:
-            # Longest run of True: distance between a run's start and end.
+        for i, row in enumerate(bar):
+            # Runs of True: [start, stop) pairs from the 0/1 edges.
             edges = np.flatnonzero(np.diff(np.concatenate(([0], row.view(np.int8), [0]))))
-            if edges.size and int((edges[1::2] - edges[::2]).max()) >= HP_BAR_MIN_RUN:
-                return True
-        return False
+            if not edges.size:
+                continue
+            k = int(np.argmax(edges[1::2] - edges[::2]))
+            x0, x1 = int(edges[2 * k]), int(edges[2 * k + 1])
+            if x1 - x0 >= HP_BAR_MIN_RUN:
+                return HP_BAR_ROWS[0] + i, NAME_START_X + x0, NAME_START_X + x1
+        return None
+
+    @staticmethod
+    def _hp_percent(slot_rgb: np.ndarray, bar: tuple[int, int, int]) -> float | None:
+        """HP percent from the fill row inside the outline (F-16).
+
+        None when no fill pixel is HP-coloured: a listed creature has HP
+        left, so an empty fill row means a misread, never "0 % HP".
+        """
+        row, x0, x1 = bar
+        if row + 1 >= slot_rgb.shape[0] or x1 - x0 < 3:
+            return None
+        fill = slot_rgb[row + 1, x0 + 1 : x1 - 1, :3].astype(np.int16)
+        left = int(np.count_nonzero(fill.max(axis=1) - fill.min(axis=1) > HP_FILL_MIN_SPREAD))
+        return 100.0 * left / len(fill) if left else None
 
     def _is_selected(self, slot_rgb: np.ndarray) -> bool:
         """Detect the red target outline around the slot's creature icon.

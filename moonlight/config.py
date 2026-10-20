@@ -18,6 +18,7 @@ JSON format (``moonlight_config.json``)::
       "routes_dir": "data/waypoints",
       "minimap_start": [x, y, z],          # optional absolute seed (F-03)
       "loop": {"tick_rate": 20.0},         # any LoopConfig field
+      "clicker": {"open_loop": false},     # any ClickerConfig field (F-14)
       "hotkeys": {"exura gran": "F1", "exura": "F2"},   # spell -> combo
       "monster_name_source": false,        # F-09: looting needs this true (T34)
       "capacity_source": false,            # F-09: refill needs this true (T34)
@@ -53,6 +54,7 @@ from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
+from moonlight.clicker import ClickerConfig
 from moonlight.decision.alarms import AlarmConfig
 from moonlight.decision.buffs import BuffManagerConfig
 from moonlight.decision.cavebot import Route, RouteError, RouteFileLoader
@@ -87,6 +89,7 @@ _TOP_KEYS = {
     "capacity_source",
     "buff_icon_source",
     "loop",
+    "clicker",
     "hotkeys",
     "modules",
 }
@@ -115,6 +118,9 @@ class BotConfig:
     templates_dir: Path = Path("data/templates")
     routes_dir: Path = Path("data/waypoints")
     loop: LoopConfig = LoopConfig()
+    #: Clicker mode (F-14): closed loop by default; open loop if T33 HIL
+    #: shows the rendered cursor cannot be captured.
+    clicker: ClickerConfig = ClickerConfig()
     hotkeys: dict[str, str] | None = None
     healing: HealingConfig | None = None
     targeting: TargetingConfig | None = None
@@ -199,6 +205,8 @@ class BotConfig:
             raise ConfigError("profile must be a non-empty string")
         if "loop" in data:
             kwargs["loop"] = _build(LoopConfig, data["loop"], "loop")
+        if "clicker" in data:
+            kwargs["clicker"] = _build(ClickerConfig, data["clicker"], "clicker")
         if "hotkeys" in data:
             kwargs["hotkeys"] = _coerce(data["hotkeys"], dict[str, str], "hotkeys")
 

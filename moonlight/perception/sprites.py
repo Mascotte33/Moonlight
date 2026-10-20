@@ -22,6 +22,16 @@ Implementation notes
   heuristics.
 * Only the ``game_grid`` region crop is ever touched (never full frames),
   keeping a per-read cost far below the 10 ms perception budget (T30).
+* **On demand only (P3).** Nothing calls this on the tick; a caller runs
+  it when it needs a sprite position. ``near_player=True`` searches only
+  the central half of the grid (~1/4 of the pixels) where the fight is,
+  and *monsters* limits the search to the names the battle list shows.
+  At most ``max_templates`` template frames are matched per call.
+* **Coarse-to-fine (P3).** Matching runs first on a ``downscale``-x
+  smaller image (``downscale**2`` fewer pixels) with a lenient
+  threshold; each coarse peak is then re-matched at full resolution in a
+  few-pixel window, so reported positions and confidences are exact and
+  the real threshold still decides.
 * Matches below *match_threshold* are discarded. Overlapping candidates
   (e.g. two animation frames of the same monster matching the same
   sprite) are collapsed with non-maximum suppression (IoU > *nms_iou*
@@ -41,7 +51,7 @@ position — ready for the decision layer.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 
 import cv2
@@ -64,6 +74,15 @@ DEFAULT_MATCH_THRESHOLD = 0.80
 
 #: IoU above which two candidate matches are the same sprite (NMS).
 DEFAULT_NMS_IOU = 0.5
+
+#: Coarse-pass shrink factor (P3); 1 disables the coarse pass.
+DEFAULT_DOWNSCALE = 2
+
+#: Most template frames matched per :meth:`SpriteDetector.detect` call (P3).
+DEFAULT_MAX_TEMPLATES = 8
+
+#: Templates whose downscaled side would drop below this skip the coarse pass.
+_MIN_COARSE_SIDE = 6
 
 
 @dataclass(frozen=True)
@@ -165,6 +184,8 @@ class SpriteDetector:
         ) = None,
         match_threshold: float = DEFAULT_MATCH_THRESHOLD,
         nms_iou: float = DEFAULT_NMS_IOU,
+        downscale: int = DEFAULT_DOWNSCALE,
+        max_templates: int = DEFAULT_MAX_TEMPLATES,
     ) -> None:
         """Create a detector.
 
@@ -180,6 +201,8 @@ class SpriteDetector:
                 sprite (TM_CCOEFF_NORMED range -1..1).
             nms_iou: Two candidates with IoU strictly above this are the
                 same sprite; only the higher-confidence one is reported.
+            downscale: Coarse-pass shrink factor (1 = full resolution only).
+            max_templates: Most template frames matched per call.
 
         Raises:
             ValueError: If a region is not a 4-element tuple, a template
@@ -198,6 +221,8 @@ class SpriteDetector:
 
         if nms_iou <= 0.0 or nms_iou > 1.0:
             raise ValueError(f"nms_iou must be in (0.0, 1.0], got {nms_iou}")
+        if downscale < 1 or max_templates < 1:
+            raise ValueError("downscale and max_templates must be >= 1")
 
         self._monsters: list[MonsterTemplates] = []
         if monster_templates is not None:
@@ -209,6 +234,10 @@ class SpriteDetector:
 
         self._match_threshold = float(match_threshold)
         self._nms_iou = float(nms_iou)
+        self._downscale = int(downscale)
+        self._max_templates = int(max_templates)
+        # Coarse templates, computed once (None = too small, full-res only).
+        self._coarse: dict[int, np.ndarray | None] = {}
 
     # -- public API ---------------------------------------------------------
 
@@ -226,12 +255,19 @@ class SpriteDetector:
         self,
         frame: np.ndarray,
         region: Rect | None = None,
+        *,
+        monsters: Collection[str] | None = None,
+        near_player: bool = False,
     ) -> list[SpriteDetection]:
         """Return the sprites visible in the game grid of *frame*.
 
         Args:
             frame: RGB ``(H, W, 3)`` ``uint8`` capture.
             region: Game-grid region; defaults to the constructor region.
+            monsters: Only match these monsters (e.g. the battle-list
+                names); None matches every configured monster.
+            near_player: Search only the central half of the region
+                (the player stands at its centre).
 
         Returns:
             One :class:`SpriteDetection` per visible sprite (positions in
@@ -242,11 +278,14 @@ class SpriteDetector:
         region = region if region is not None else self._game_grid_region
         if region is None or not self._monsters:
             return []
+        if near_player:
+            x, y, w, h = region
+            region = (x + w // 4, y + h // 4, w // 2, h // 2)
         crop, ox, oy = self._crop_with_offset(frame, region)
         if crop is None or crop.size == 0:
             return []
         gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
-        candidates = self._find_candidates(gray, ox, oy)
+        candidates = self._find_candidates(gray, ox, oy, monsters)
         return self._suppress(candidates, self._nms_iou)
 
     # -- helpers ------------------------------------------------------------
@@ -256,13 +295,15 @@ class SpriteDetector:
         gray: np.ndarray,
         offset_x: int,
         offset_y: int,
+        monsters: Collection[str] | None = None,
     ) -> list[SpriteDetection]:
-        """Template-match every monster frame over *gray*.
+        """Template-match the wanted monsters' frames over *gray*.
 
         Args:
             gray: Grayscale game-grid crop.
             offset_x: Crop's x offset in frame coordinates.
             offset_y: Crop's y offset in frame coordinates.
+            monsters: Names to match; None matches every monster.
 
         Returns:
             All matches at or above the match threshold, with positions
@@ -270,24 +311,107 @@ class SpriteDetector:
             inside the crop are skipped.
         """
         candidates: list[SpriteDetection] = []
-        for monster in self._monsters:
-            for template in monster.frames:
-                if template.shape[0] > gray.shape[0] or template.shape[1] > gray.shape[1]:
-                    continue
-                result = cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED)
-                ys, xs = np.where(result >= self._match_threshold)
-                for y, x in zip(ys, xs, strict=False):
-                    candidates.append(
-                        SpriteDetection(
-                            monster=monster.name,
-                            x=offset_x + int(x),
-                            y=offset_y + int(y),
-                            width=template.shape[1],
-                            height=template.shape[0],
-                            confidence=float(result[int(y), int(x)]),
-                        )
+        jobs = [
+            (monster.name, template)
+            for monster in self._monsters
+            if monsters is None or monster.name in monsters
+            for template in monster.frames
+        ][: self._max_templates]
+        small: np.ndarray | None = None
+        for name, template in jobs:
+            if template.shape[0] > gray.shape[0] or template.shape[1] > gray.shape[1]:
+                continue
+            coarse = self._coarse_template(template)
+            if coarse is None:
+                hits = self._match(gray, template, self._match_threshold)
+            else:
+                if small is None:
+                    small = self._shrink(gray)
+                hits = self._refine(gray, template, small, coarse)
+            for x, y, score in hits:
+                candidates.append(
+                    SpriteDetection(
+                        monster=name,
+                        x=offset_x + x,
+                        y=offset_y + y,
+                        width=template.shape[1],
+                        height=template.shape[0],
+                        confidence=score,
                     )
+                )
         return candidates
+
+    def _shrink(self, image: np.ndarray) -> np.ndarray:
+        """Downscale *image* by ``downscale`` (area averaging)."""
+        h, w = image.shape[:2]
+        d = self._downscale
+        return cv2.resize(image, (max(1, w // d), max(1, h // d)), interpolation=cv2.INTER_AREA)
+
+    def _coarse_template(self, template: np.ndarray) -> np.ndarray | None:
+        """Cached downscaled *template*, or None when it would be too small."""
+        key = id(template)
+        if key not in self._coarse:
+            d = self._downscale
+            too_small = d == 1 or min(template.shape[:2]) // d < _MIN_COARSE_SIDE
+            self._coarse[key] = None if too_small else self._shrink(template)
+        return self._coarse[key]
+
+    @staticmethod
+    def _match(
+        gray: np.ndarray, template: np.ndarray, threshold: float
+    ) -> list[tuple[int, int, float]]:
+        """Every ``(x, y, score)`` where *template* scores >= *threshold*."""
+        result = cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED)
+        ys, xs = np.where(result >= threshold)
+        return [
+            (int(x), int(y), float(result[int(y), int(x)]))
+            for y, x in zip(ys, xs, strict=False)
+        ]
+
+    def _refine(
+        self,
+        gray: np.ndarray,
+        template: np.ndarray,
+        small: np.ndarray,
+        coarse: np.ndarray,
+    ) -> list[tuple[int, int, float]]:
+        """Coarse peaks on *small*, then a full-res re-match around each.
+
+        The coarse threshold is lenient (half the real one) because a
+        sprite off the shrink grid (odd offset) correlates less once
+        downscaled; the full-res pass applies the real threshold, so
+        nothing weaker than before is reported and positions/confidences
+        are exact.
+
+        ponytail: one sub-pixel phase only; fine for pixel-art sprites
+        (features >= 2 px). Per-pixel-noise templates can miss at odd
+        offsets -- use ``downscale=1`` for those.
+        """
+        if coarse.shape[0] > small.shape[0] or coarse.shape[1] > small.shape[1]:
+            return self._match(gray, template, self._match_threshold)
+        d = self._downscale
+        th, tw = template.shape[:2]
+        peaks = [
+            (cx * d, cy * d, score)
+            for cx, cy, score in self._match(small, coarse, self._match_threshold * 0.5)
+        ]
+        # Coarse NMS: neighbouring coarse hits share one refine window.
+        peaks.sort(key=lambda p: p[2], reverse=True)
+        kept: list[tuple[int, int]] = []
+        for fx, fy, _ in peaks:
+            if all(abs(fx - kx) >= tw // 2 or abs(fy - ky) >= th // 2 for kx, ky in kept):
+                kept.append((fx, fy))
+        out: dict[tuple[int, int], float] = {}
+        pad = d + 1
+        for fx, fy in kept:
+            x0, y0 = max(0, fx - pad), max(0, fy - pad)
+            x1 = min(gray.shape[1], fx + pad + tw)
+            y1 = min(gray.shape[0], fy + pad + th)
+            if x1 - x0 < tw or y1 - y0 < th:
+                continue
+            for x, y, score in self._match(gray[y0:y1, x0:x1], template, self._match_threshold):
+                out[(x0 + x, y0 + y)] = score
+        return [(x, y, score) for (x, y), score in out.items()]
 
     @staticmethod
     def _suppress(

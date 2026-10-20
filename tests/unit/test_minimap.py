@@ -265,7 +265,7 @@ class TestRelativeTracking:
     def test_ambiguous_shift_rejected_by_half_radar_cap(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Spurious shifts beyond half the radar are rejected (position kept)."""
+        """F-17: a shift beyond half the radar flags lost (no silent 0 shift)."""
         import cv2
 
         reader = make_reader(initial_position=Position(7, 7, 0))
@@ -275,8 +275,14 @@ class TestRelativeTracking:
         # Force phaseCorrelate to report a huge (aliased/ambiguous) shift.
         monkeypatch.setattr(cv2, "phaseCorrelate", lambda a, b, w: ((70.0, 0.0), 1.0))
         frame2, _ = make_frame(4)
-        pos = reader.read_position(frame2, region)
-        assert pos == Position(7, 7, 0)
+        assert reader.read_position(frame2, region) is None
+        assert reader.lost
+        monkeypatch.undo()
+        # Stays lost (None) until re-anchored.
+        assert reader.read_position(frame2, region) is None
+        reader.reset(Position(40, 41, 0))
+        assert not reader.lost
+        assert reader.read_position(frame2, region) == Position(40, 41, 0)
 
     def test_reset_reanchors_tracking(self) -> None:
         reader = make_reader(initial_position=Position(0, 0, 0))
@@ -293,6 +299,65 @@ class TestRelativeTracking:
         reader.reset()
         pos = reader.read_position(frame, region)
         assert pos == Position(4, 4, 0)
+
+
+def shifted_frame(seed: int, dx: int, marker: bool = True) -> np.ndarray:
+    """Frame whose radar terrain is *seed* rolled by *dx* (player moved -dx)."""
+    frame, _ = make_frame(seed, marker=False)
+    terrain = np.roll(make_terrain(seed), dx, axis=1)
+    frame[REGION_Y : REGION_Y + RADAR_HEIGHT, REGION_X : REGION_X + RADAR_WIDTH] = terrain[
+        :, :, None
+    ]
+    if marker:
+        frame[REGION_Y + PLAYER_CENTER_Y, REGION_X + PLAYER_CENTER_X] = MARKER_RGB
+    return frame
+
+
+class TestShiftValidation:
+    """F-17: trust the shift response, track through occlusion, flag jumps."""
+
+    REGION = (REGION_X, REGION_Y, RADAR_WIDTH, RADAR_HEIGHT)
+
+    def test_tracks_through_occluded_marker(self) -> None:
+        # A map mark hides the cross; the trusted terrain shift still counts.
+        reader = make_reader(initial_position=Position(10, 10, 0))
+        assert reader.read_position(shifted_frame(6, 0), self.REGION) == Position(10, 10, 0)
+        for step in (1, 2, 3):
+            pos = reader.read_position(shifted_frame(6, -step, marker=False), self.REGION)
+            assert pos == Position(10 + step, 10, 0)
+        assert reader.read_position(shifted_frame(6, -5), self.REGION) == Position(15, 10, 0)
+        assert not reader.lost
+
+    def test_no_marker_and_no_trusted_shift_returns_none_and_keeps_anchor(self) -> None:
+        reader = make_reader(initial_position=Position(10, 10, 0))
+        reader.read_position(shifted_frame(6, 0), self.REGION)
+        # Unrelated content (e.g. another panel) without the cross: rejected...
+        assert reader.read_position(shifted_frame(99, 0, marker=False), self.REGION) is None
+        assert not reader.lost
+        # ...and the next radar still correlates against the last trusted one.
+        assert reader.read_position(shifted_frame(6, -2), self.REGION) == Position(12, 10, 0)
+
+    def test_radar_change_on_same_floor_flags_lost(self) -> None:
+        reader = make_reader(initial_position=Position(10, 10, 0))
+        reader.read_position(shifted_frame(6, 0), self.REGION)
+        # Cross visible, terrain unrelated, floor unchanged: a teleport.
+        assert reader.read_position(shifted_frame(7, 0), self.REGION) is None
+        assert reader.lost
+
+    def test_radar_change_with_floor_change_keeps_xy(self) -> None:
+        floors = iter([7, 6])
+
+        class _Floor:
+            def read_floor(
+                self, frame: np.ndarray, region: tuple[int, int, int, int] | None = None
+            ) -> int | None:
+                return next(floors)
+
+        reader = make_reader(initial_position=Position(10, 10, 7), floor_reader=_Floor())
+        assert reader.read_position(shifted_frame(6, 0), self.REGION) == Position(10, 10, 7)
+        # Stairs: the radar redraws for the new floor.
+        assert reader.read_position(shifted_frame(7, 0), self.REGION) == Position(10, 10, 6)
+        assert not reader.lost
 
 
 class TestMapMatcher:

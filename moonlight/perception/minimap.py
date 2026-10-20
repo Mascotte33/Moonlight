@@ -15,11 +15,21 @@ Layout facts (measured from PyTibia / tibiaeye):
 How the position is obtained
 ----------------------------
 
-* **Validation**: the radar is only trusted when the player marker (a small
-  white cross, color configurable) is present at the center. If the marker
-  is missing (or covered by a map mark icon) the region is not a valid radar
-  and :meth:`read_position` returns ``None``. The white cross was confirmed
-  on the 200 T08 golden frames (T28).
+* **Validation** (F-17): a read is trusted when the player marker (a small
+  white cross, color configurable) is at the center **or** the terrain
+  shift against the last trusted radar has a phase-correlation response of
+  at least ``shift_response_min``. Map-mark icons over the center hid the
+  cross on 27/200 golden frames; tracking continues through that
+  occlusion. The very first read (nothing to correlate against) still
+  needs the cross. Neither cue -> ``None`` and the last trusted radar is
+  kept.
+* **Lost** (F-17): a trusted shift beyond half the radar (aliased:
+  teleport, very fast move), or an untrusted one with the cross visible
+  and the floor unchanged, means the offset is unknown. The reader then
+  sets :attr:`MinimapReader.lost` and returns ``None`` until
+  :meth:`MinimapReader.reset` re-anchors it -- never a silent zero shift.
+  An untrusted shift *with* a floor change is the radar redrawing for
+  stairs/ropes: x, y are kept (the step is at most a tile).
 * **(x, y) — absolute**: a pluggable :class:`MapMatcher` converts the radar
   image to world coordinates (map matching against a known map). When
   configured it is authoritative: a ``None`` result yields ``None`` here.
@@ -39,6 +49,7 @@ a 106x109 radar) is well under the 10 ms budget (T30).
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from typing import Protocol
 
@@ -62,6 +73,8 @@ __all__ = [
     "FloorSource",
     "MinimapReader",
 ]
+
+logger = logging.getLogger(__name__)
 
 #: A rectangle as ``(x, y, width, height)`` (matches ``calibrate.Rect``).
 Rect = tuple[int, int, int, int]
@@ -188,6 +201,8 @@ class MinimapReader:
         self._initial_position = initial_position
         self._position = initial_position
         self._prev_gray: np.ndarray | None = None
+        self._prev_z = initial_position.z
+        self._lost = False
 
     # -- public API ---------------------------------------------------------
 
@@ -195,6 +210,11 @@ class MinimapReader:
     def minimap_region(self) -> Rect | None:
         """The stored minimap region (default for :meth:`read_position`)."""
         return self._minimap_region
+
+    @property
+    def lost(self) -> bool:
+        """True after an untrackable jump, until :meth:`reset` (F-17)."""
+        return self._lost
 
     def read_position(
         self,
@@ -210,40 +230,44 @@ class MinimapReader:
         Returns:
             The player :class:`~moonlight.state.Position` (z is 0 when the
             floor is unknown), or ``None`` when no region is known, the
-            region is out of bounds, or the player marker is not present at
-            the radar center (region is not a valid minimap).
+            region is out of bounds, the radar can't be validated (no
+            marker and no trusted shift), or tracking is :attr:`lost`.
         """
         region = region if region is not None else self._minimap_region
-        if region is None:
+        if region is None or self._lost:
             return None
         crop = self._crop(frame, region)
         if crop is None or crop.size == 0:
             return None
-        if not self._marker_at_center(crop):
-            return None
-
+        marker = self._marker_at_center(crop)
         h, w = crop.shape[:2]
         gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
-        z = self._read_z(frame)
 
         if self._map_matcher is not None:
-            xy = self._map_matcher.match(gray)
+            xy = self._map_matcher.match(gray) if marker else None
             if xy is None:
                 return None
-            return Position(int(xy[0]), int(xy[1]), z)
+            return Position(int(xy[0]), int(xy[1]), self._read_z(frame))
 
         # Relative tracking: player displacement = negated terrain shift.
-        dx = 0
-        dy = 0
-        if self._prev_gray is not None:
-            shift = self._terrain_shift(self._prev_gray, gray)
-            if shift is not None:
-                # Reject shifts larger than half the radar: phase correlation
-                # is ambiguous beyond that (e.g. teleport / radar reset).
-                if abs(shift[0]) <= w / 2.0 and abs(shift[1]) <= h / 2.0:
-                    dx = -int(round(shift[0]))
-                    dy = -int(round(shift[1]))
+        shift = None if self._prev_gray is None else self._terrain_shift(self._prev_gray, gray)
+        if shift is None and not marker:
+            return None  # neither cue: not a radar we can trust; keep the last one
+        z = self._read_z(frame)
+        dx = dy = 0
+        if shift is not None:
+            if abs(shift[0]) > w / 2.0 or abs(shift[1]) > h / 2.0:
+                # Phase correlation aliases beyond half the radar.
+                self._lose(f"shift {shift} beyond half the radar")
+                return None
+            dx = -int(round(shift[0]))
+            dy = -int(round(shift[1]))
+        elif self._prev_gray is not None and z == self._prev_z:
+            # Radar changed with no floor change: teleport or a big jump.
+            self._lose("radar changed with no trusted shift")
+            return None
         self._prev_gray = gray
+        self._prev_z = z
         self._position = Position(self._position.x + dx, self._position.y + dy, z)
         return self._position
 
@@ -256,8 +280,16 @@ class MinimapReader:
         """
         self._position = position if position is not None else self._initial_position
         self._prev_gray = None
+        self._prev_z = self._position.z
+        self._lost = False
 
     # -- helpers ------------------------------------------------------------
+
+    def _lose(self, why: str) -> None:
+        """Flag tracking as lost (F-17): positions are unknown until reset."""
+        logger.warning("minimap: tracking lost (%s); re-anchor with reset()", why)
+        self._lost = True
+        self._prev_gray = None
 
     def _read_z(self, frame: np.ndarray) -> int:
         """Read the z-level via the floor reader (0 when unknown)."""

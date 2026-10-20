@@ -261,10 +261,12 @@ class Cavebot:
         """MOVE (re)entered: restart the stuck timer and re-click at once."""
         self._last_move = self._clock()
         self._last_cmd = float("-inf")
+        self._clicker.cancel()  # a click queued before leaving MOVE is stale
 
     def stop(self) -> None:
         """Stop the route (no further input is sent)."""
         self._active = False
+        self._clicker.cancel()
 
     def is_active(self) -> bool:
         """True while the route is running."""
@@ -319,6 +321,7 @@ class Cavebot:
         logger.warning("cavebot: route %r stopped: %s", self.route.name, alarm)
         self.alarm = alarm
         self._active = False
+        self._clicker.cancel()
 
     def _read_position(self) -> Position | None:
         pos = self._state.snapshot().position
@@ -361,6 +364,7 @@ class Cavebot:
         self.route.current += 1
         self._expected_z = None
         self._last_cmd = float("-inf")
+        self._clicker.cancel()  # the pending click targeted the old waypoint
         self._resolve_jumps()
 
     def _resync_floor(self, z: int) -> None:
@@ -374,11 +378,15 @@ class Cavebot:
                 self.route.current = i
                 self._expected_z = None
                 self._last_cmd = float("-inf")
+                self._clicker.cancel()
                 return
         self._halt("lost")
 
     def _retry_if_idle(self, now: float, command: Callable[[], None]) -> None:
         """Send *command* first time, then only after standing still a while."""
+        if self._clicker.busy:
+            self._clicker.step()  # P5: one capture + one move per tick
+            return
         idle_since = max(self._last_cmd, self._last_move)
         if self._last_cmd == float("-inf") or now - idle_since >= self._reclick_interval:
             command()
@@ -389,7 +397,7 @@ class Cavebot:
         # Clamp to the radar (keep 2 px off the edge, minimap.py marker check).
         dx = max(-(mw // 2 - 2), min(mw // 2 - 2, wp.x - pos.x))
         dy = max(-(mh // 2 - 2), min(mh // 2 - 2, wp.y - pos.y))
-        self._clicker.click_at((mx + mw // 2 + dx, my + mh // 2 + dy))
+        self._clicker.request((mx + mw // 2 + dx, my + mh // 2 + dy))
 
     def _tile_action(self, wp: Waypoint, pos: Position) -> None:
         gx, gy, gw, gh = self._game_region
@@ -398,11 +406,13 @@ class Cavebot:
         row = _PLAYER_SLOT[1] + wp.y - pos.y
         tile = (gx + col * tw + tw // 2, gy + row * th + th // 2)
         if wp.action == "ladder":
-            self._clicker.click_at(tile, side=ClickSide.RIGHT)  # "use" the ladder
+            self._clicker.request(tile, side=ClickSide.RIGHT)  # "use" the ladder
             return
         assert self._input is not None  # checked in __init__
         self._input.press_combo(self._hotkeys[wp.action])
-        if self._clicker.click_at(tile) and wp.action == "shovel":
-            # ponytail: steps into the hole right after digging; add a delay
-            # if the client drops the walk click during the dig animation.
-            self._clicker.click_at(tile)
+        self._clicker.request(tile)
+        if wp.action == "shovel":
+            # Steps into the hole after digging; the clicker drops this
+            # follow-up when the dig click fails. ponytail: add a delay if
+            # the client drops the walk click during the dig animation.
+            self._clicker.request(tile)

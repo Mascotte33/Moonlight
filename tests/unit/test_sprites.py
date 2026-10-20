@@ -450,3 +450,53 @@ def test_performance_within_budget() -> None:
     elapsed_ms = (time.perf_counter() - start) * 1000.0
 
     assert elapsed_ms < 10.0, f"detect() took {elapsed_ms:.2f} ms (budget 10 ms)"
+
+
+# --------------------------------------------------------------------------
+# P3: on-demand scope (coarse-to-fine, ROI around the player, template cap)
+# --------------------------------------------------------------------------
+
+
+def pixel_art(seed: int) -> np.ndarray:
+    """A 20x20 sprite of 2x2-pixel blocks (Tibia-like pixel art, unlike noise)."""
+    rng = np.random.RandomState(seed)
+    blocks = np.where(rng.rand(10, 10) < 0.45, ON, 0).astype(np.uint8)
+    return np.kron(blocks, np.ones((2, 2), dtype=np.uint8))
+
+
+@pytest.mark.parametrize("x, y", [(80, 70), (81, 71), (133, 97), (51, 41)])
+def test_coarse_pass_finds_odd_and_even_offsets_exactly(x: int, y: int) -> None:
+    """The 2x coarse pass loses nothing: same hits as full resolution."""
+    sprites = [pixel_art(1), pixel_art(2)]
+    frame = np.full((FRAME_H, FRAME_W, 3), 5, dtype=np.uint8)
+    for (px, py), sprite in zip([(x, y), (180, 140)], sprites, strict=True):
+        frame[py:py + SPRITE_H, px:px + SPRITE_W] = sprite[..., None]
+    templates = {f"monster_{i}": [sprites[i]] for i in range(2)}
+    fine = SpriteDetector(game_grid_region=REGION, monster_templates=templates, downscale=1)
+    coarse = SpriteDetector(game_grid_region=REGION, monster_templates=templates)
+    hits = {(d.monster, d.x, d.y) for d in coarse.detect(frame)}
+    assert hits == {(d.monster, d.x, d.y) for d in fine.detect(frame)}
+    assert ("monster_0", x, y) in hits
+
+
+def test_near_player_searches_only_the_grid_centre() -> None:
+    """near_player=True skips sprites outside the central half of the grid."""
+    # REGION centre half: x 100..200, y 80..160.
+    frame = make_frame([(0, 130, 100, 0), (0, 56, 46, 0)])
+    det = detector({0: 0})
+    assert len(det.detect(frame)) == 2
+    assert [(d.x, d.y) for d in det.detect(frame, near_player=True)] == [(130, 100)]
+
+
+def test_monster_filter_and_template_cap() -> None:
+    """Only the named monsters are matched, and at most max_templates frames."""
+    frame = make_frame([(0, 70, 60, 0), (1, 160, 110, 0)])
+    templates = {f"monster_{i}": [make_template(i, 0)] for i in range(2)}
+    det = SpriteDetector(game_grid_region=REGION, monster_templates=templates)
+    assert {d.monster for d in det.detect(frame, monsters={"monster_1"})} == {"monster_1"}
+    capped = SpriteDetector(
+        game_grid_region=REGION, monster_templates=templates, max_templates=1
+    )
+    assert {d.monster for d in capped.detect(frame)} == {"monster_0"}
+    with pytest.raises(ValueError):
+        SpriteDetector(max_templates=0)
