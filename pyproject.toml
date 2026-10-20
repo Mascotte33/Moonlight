@@ -16,6 +16,7 @@ dependencies = [
     "pyserial>=3.5",
     "mss>=9.0",
     "pytesseract>=0.3.10",
+    "customtkinter>=5.2",
 ]
 
 [project.scripts]

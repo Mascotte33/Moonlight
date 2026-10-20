@@ -28,7 +28,7 @@ from moonlight.decision.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
 from moonlight.decision.healing import HealingConfig, HealingDecision, HealType
 from moonlight.decision.looting import Looting, LootingConfig
 from moonlight.decision.refill import Refill, RefillConfig
-from moonlight.input import FakeInput
+from moonlight.input import ClickSide, FakeInput
 from moonlight.loop import BotState, DecisionModules, F12Monitor, GameLoop, LoopConfig
 from moonlight.perception.loot import LootWindow
 from moonlight.state import Capacity, Monster, Position, WorldState
@@ -212,16 +212,42 @@ def test_8_low_mp_stops_casting_spells() -> None:
 
 
 def test_9_rate_limit_never_exceeds_20hz() -> None:
-    ws = make_state(hp_percent=50.0)  # a heal is wanted on every tick
+    """F-20: the 10/s cap holds for serial commands on the wire, not actions.
+
+    Every tick runs a clicker-like MOVE step that issues six commands (five
+    correction moves + a click) in one action; heals share the same bucket.
+    """
+    ws = make_state()
     inp = FakeInput()
-    gl, clock = make_loop(ws, inp)
+    clock = Clock()
+    holder: list[GameLoop] = []
+
+    def click_step() -> None:
+        wire = holder[0].input
+        for _ in range(5):
+            wire.mouse_move(3, 3)
+        wire.click(ClickSide.LEFT)
+
+    gl = GameLoop(
+        ws,
+        inp,
+        LoopConfig(enable_f12_monitor=False),
+        clock=clock,
+        sleep_fn=clock.sleep,
+        move_provider=lambda _s: True,
+        move_action=click_step,
+    )
+    holder.append(gl)
     start = clock.now
     while clock.now - start < 1.0:
         gl.tick()
         clock.sleep(1.0 / 20.0)
     stats = gl.get_stats()
     assert cast(int, stats["tick_count"]) <= 21  # 20 Hz (+ the t=0 tick)
-    assert len(inp.sent_lines) <= 12  # and input is capped at 10/s (+2 burst)
+    # Every serial command counts: at most 10/s (+2 burst) reach the device.
+    assert len(inp.sent_lines) <= 12
+    assert any(line.startswith("M") for line in inp.sent_lines)  # moves did go out
+    assert gl.input.dropped > 0
     assert cast(int, stats["actions_dropped_rate_limit"]) > 0
 
 

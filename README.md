@@ -98,7 +98,7 @@ Requirements: Windows, Python 3.12+, an Arduino Leonardo for real input
 
 ```bash
 # 1. Install (from the repo root)
-pip install -e . customtkinter
+pip install -e .
 
 # 2. Flash firmware/moonlight/moonlight.ino to the Leonardo (see firmware/README.md),
 #    then check the connection
@@ -114,6 +114,9 @@ python -m moonlight.gui
 Use `python -m moonlight.gui --no-bot` to open the GUI without starting the bot loop.
 
 ## Development
+
+The suite is verified green on Python 3.13 (a plain system install; the repo has
+no `.venv`).
 
 ```bash
 pip install -e ".[dev]"

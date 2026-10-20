@@ -183,6 +183,12 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
         now[0] += 0.05
     assert next(calls) > 0  # perception pulled frames
     assert loop.modules.cavebot is not None and loop.modules.refill is not None
+    # F-20: every module that sends shares the loop's wire limiter.
+    m = loop.modules
+    assert m.cavebot is not None and m.looting is not None and m.refill is not None
+    for backend in (m.cavebot._input, m.cavebot._clicker._input, m.looting._input,
+                    m.refill._input):
+        assert backend is loop.input
     snap = state.snapshot()
     assert snap.screen_ok and snap.last_update > 0  # perception wrote WorldState
 
@@ -272,3 +278,17 @@ def test_minimap_start_seeds_minimap_reader(monkeypatch: pytest.MonkeyPatch) -> 
     captured.clear()
     cli.make_perceive(state, make_profile(), frame_provider, minimap_start=None)
     assert captured["initial_position"] is None
+
+
+def test_calibration_error_is_one_line_not_traceback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """F-27: a CalibrationError (e.g. cavebot without game_grid) exits 2 cleanly."""
+    from moonlight.calibrate import CalibrationError
+
+    def boom(_args: object) -> int:
+        raise CalibrationError("region 'game_grid' is not calibrated")
+
+    monkeypatch.setattr(cli, "_cmd_profiles", boom)
+    assert cli.main(["profiles"]) == 2
+    assert capsys.readouterr().out == "error: region 'game_grid' is not calibrated\n"

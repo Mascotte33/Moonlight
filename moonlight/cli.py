@@ -27,10 +27,10 @@ from pathlib import Path
 
 import numpy as np
 
-from moonlight.calibrate import CalibrationProfile
+from moonlight.calibrate import CalibrationError, CalibrationProfile
 from moonlight.config import DEFAULT_CONFIG_FILE, MODULES, BotConfig, ConfigError
 from moonlight.input import InputBackend
-from moonlight.loop import DecisionModules, GameLoop, beep_alert
+from moonlight.loop import DecisionModules, GameLoop, RateLimitedInput, beep_alert
 from moonlight.profile import ProfileManager
 from moonlight.state import WorldState
 
@@ -200,6 +200,10 @@ def build_loop(
     from moonlight.decision.targeting import TargetingDecision
 
     state = state if state is not None else WorldState()
+    # F-20: one wire limiter shared by the loop and every module that sends
+    # (clicker, cavebot, looting, refill), so the 10/s cap counts serial
+    # commands, not actions.
+    backend = RateLimitedInput.wrap(backend, config.loop.max_actions_per_second, clock)
     combos = config.spell_combos
     m = DecisionModules()
     if config.healing is not None:
@@ -426,7 +430,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(f"unrecognized arguments: {' '.join(extra)}")
     try:
         code: int = args.func(args)
-    except (ConfigError, ValueError) as exc:
+    except (ConfigError, CalibrationError, ValueError) as exc:
         print(f"error: {exc}")
         return 2
     return code

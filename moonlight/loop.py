@@ -344,6 +344,18 @@ class RateLimitedInput(InputBackend):
     def close(self) -> None:
         self.backend.close()
 
+    @classmethod
+    def wrap(
+        cls,
+        backend: InputBackend,
+        rate: float,
+        clock: Callable[[], float] | None = None,
+    ) -> RateLimitedInput:
+        """*backend* behind a fresh wire limiter (capacity 2: one heal token)."""
+        if isinstance(backend, cls):
+            return backend
+        return cls(backend, RateLimiter(rate=rate, capacity=2.0, clock=clock))
+
 
 class F12Monitor:
     """Daemon thread that polls F12 and fires ``on_press`` on a rising edge.
@@ -462,12 +474,7 @@ class GameLoop:
         self.state = state
         # Every serial command goes through the wire limiter (F-20); build_loop
         # passes one in so the modules it builds share the same budget.
-        if not isinstance(input_backend, RateLimitedInput):
-            input_backend = RateLimitedInput(
-                input_backend,
-                RateLimiter(rate=cfg.max_actions_per_second, capacity=2.0, clock=clock),
-            )
-        self.input: RateLimitedInput = input_backend
+        self.input = RateLimitedInput.wrap(input_backend, cfg.max_actions_per_second, clock)
         self.config = cfg
         self._clock = clock if clock is not None else time.monotonic
         self._sleep_fn = sleep_fn if sleep_fn is not None else time.sleep
