@@ -28,13 +28,13 @@ from pathlib import Path
 import numpy as np
 
 from moonlight.calibrate import CalibrationProfile
-from moonlight.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
+from moonlight.config import DEFAULT_CONFIG_FILE, MODULES, BotConfig, ConfigError
 from moonlight.input import InputBackend
 from moonlight.loop import DecisionModules, GameLoop, beep_alert
 from moonlight.profile import ProfileManager
 from moonlight.state import WorldState
 
-__all__ = ["build_loop", "main", "make_perceive"]
+__all__ = ["build_loop", "check_module_regions", "main", "make_perceive"]
 
 FrameProvider = Callable[[], np.ndarray]
 
@@ -49,6 +49,44 @@ _PERCEPTION_MODULES = (
     "moonlight.perception.floor",
     "moonlight.perception.minimap",
 )
+
+#: Calibration regions each enabled decision module needs, derived from the
+#: perception readers in :func:`make_perceive` / :func:`build_loop`.
+#: ``moonlight check`` uses this to report per-module readiness (F-11): a
+#: module is MISSING when any of its required regions is absent from the
+#: profile. ``looting`` and ``refill`` reference regions that are not part of
+#: the standard calibration set (they need dedicated readers, T34), so they
+#: report as MISSING until those are calibrated.
+MODULE_REGIONS: dict[str, tuple[str, ...]] = {
+    "healing": ("hp_bar", "mp_bar"),
+    "targeting": ("battle_list",),
+    "cavebot": ("minimap", "floor_indicator", "game_grid"),
+    "looting": ("loot_window",),
+    "refill": ("capacity",),
+    "buffs": ("status_icons",),
+    "alarms": (),
+}
+
+
+def _enabled_modules(config: BotConfig) -> list[str]:
+    """Names of the decision modules enabled in *config*, in MODULES order."""
+    return [name for name in MODULES if getattr(config, name) is not None]
+
+
+def check_module_regions(
+    profile: CalibrationProfile, config: BotConfig
+) -> dict[str, list[str]]:
+    """Missing calibration regions per enabled module (F-11).
+
+    Returns a mapping from each enabled module name to the list of its
+    required regions absent from *profile* (empty when the module is ready).
+    Only enabled modules appear in the result.
+    """
+    report: dict[str, list[str]] = {}
+    for name in _enabled_modules(config):
+        required = MODULE_REGIONS.get(name, ())
+        report[name] = [r for r in required if r not in profile.regions]
+    return report
 
 
 def _version() -> str:
@@ -317,13 +355,24 @@ def _cmd_check(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001 - pyserial missing etc.
         report(False, f"serial port: {exc}")
     name = args.profile or (config.profile if config else None)
+    profile: CalibrationProfile | None = None
     try:
         if name is None:
             raise ValueError("no profile name")
-        _profiles(args, config).load(name)
+        profile = _profiles(args, config).load(name)
         report(True, f"profile {name!r}")
     except Exception as exc:  # noqa: BLE001 - ValueError / CalibrationError
         report(False, f"profile {name!r}: {exc}")
+    if profile is not None and config is not None:
+        for module, missing in check_module_regions(profile, config).items():
+            if missing:
+                report(
+                    False,
+                    f"module {module}: missing calibration region(s) "
+                    f"{', '.join(missing)}",
+                )
+            else:
+                report(True, f"module {module}: OK")
     for mod in _PERCEPTION_MODULES:
         try:
             importlib.import_module(mod)

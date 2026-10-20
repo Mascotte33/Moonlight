@@ -21,9 +21,13 @@ The test suite. Structure:
 | `unit/test_ui.py` | ✅ DONE (17 KB) |
 | `replay/`, `golden/` | ⬜ not created yet |
 
-Current baseline: **874 passed, 8 skipped** (T32b-r1, 2026-10-20: F-03 absolute
-minimap seed wiring + config validation, F-06 `resume()` on MOVE re-entry,
-F-01 no-nameless-attack + no-resolver warning; `unit/` now covers all three).
+Current baseline: **884 passed, 8 skipped** (T32b-r2, 2026-10-20: F-09
+looting/refill/buffs perception-source guards, F-10 buff-spell-list fix +
+buffs-OFF default, F-11 default profile `moonlight_user` + per-module
+calibration reporting in `check`, F-13 GUI `build_loop` + explicit simulation
+toggle + `PerceptionWriter` removal). Prior: T32b-r1 (F-03 minimap seed
+wiring, F-06 `resume()` on MOVE re-entry, F-01 no-nameless-attack +
+no-resolver warning).
 
 ## How to run
 ```bash

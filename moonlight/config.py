@@ -11,13 +11,17 @@ A module is **enabled** when its config is not ``None``.
 JSON format (``moonlight_config.json``)::
 
     {
-      "profile": "default",
+      "profile": "moonlight_user",         # default profile (F-11)
       "serial_port": null,                 # null = auto-detect the Arduino
       "profiles_dir": null,                # null = moonlight/profiles
       "templates_dir": "data/templates",   # cursor/*.png, loot/*.png
       "routes_dir": "data/waypoints",
+      "minimap_start": [x, y, z],          # optional absolute seed (F-03)
       "loop": {"tick_rate": 20.0},         # any LoopConfig field
       "hotkeys": {"exura gran": "F1", "exura": "F2"},   # spell -> combo
+      "monster_name_source": false,        # F-09: looting needs this true (T34)
+      "capacity_source": false,            # F-09: refill needs this true (T34)
+      "buff_icon_source": false,           # F-10: buffs needs this true (T34)
       "modules": {
         "healing":   {"enabled": true, "normal_hp_percent": 70.0},
         "targeting": {"enabled": true},
@@ -32,8 +36,13 @@ JSON format (``moonlight_config.json``)::
 Fail closed: ``profile``, ``modules`` and every module's ``enabled`` flag
 are required; unknown keys, wrong types, invalid values, a spell without a
 hotkey, a missing cavebot route file, or refill without cavebot+looting
-all raise :class:`ConfigError`. Fields left out of a module section take
-the dataclass defaults.
+all raise :class:`ConfigError`. Looting, refill and buffs additionally
+require their perception source (``monster_name_source`` /
+``capacity_source`` / ``buff_icon_source``) to be true (F-09 / F-10).
+Fields left out of a module section take the dataclass defaults.
+
+The default profile is ``moonlight_user`` (F-11); ``moonlight run`` and
+``moonlight check`` use it when no profile is given on the command line.
 """
 
 from __future__ import annotations
@@ -74,6 +83,9 @@ _TOP_KEYS = {
     "templates_dir",
     "routes_dir",
     "minimap_start",
+    "monster_name_source",
+    "capacity_source",
+    "buff_icon_source",
     "loop",
     "hotkeys",
     "modules",
@@ -116,6 +128,14 @@ class BotConfig:
     #: (seed + accumulated relative offset) instead of positions relative to
     #: wherever the bot started. ``None`` keeps the legacy relative behavior.
     minimap_start: tuple[int, int, int] | None = None
+    #: Perception sources that are actually wired up (F-09 / F-10). The
+    #: capacity reader and the monster-name resolver are deferred (T34), so
+    #: the corresponding modules would run against *unpopulated* state. Set
+    #: these to true only once a real reader populates the state; ``validate``
+    #: refuses to enable looting / refill / buffs without their source.
+    monster_name_source: bool = False
+    capacity_source: bool = False
+    buff_icon_source: bool = False
 
     @property
     def spell_combos(self) -> dict[str, str]:
@@ -126,7 +146,7 @@ class BotConfig:
     def default(cls) -> BotConfig:
         """Safe defaults: healing, targeting and alarms on; the rest off."""
         cfg = cls(
-            profile="default",
+            profile="moonlight_user",
             hotkeys={"exura gran": "F1", "exura": "F2"},
             healing=HealingConfig(),
             targeting=TargetingConfig(),
@@ -169,6 +189,9 @@ class BotConfig:
             "templates_dir",
             "routes_dir",
             "minimap_start",
+            "monster_name_source",
+            "capacity_source",
+            "buff_icon_source",
         ):
             if key in data:
                 kwargs[key] = _coerce(data[key], hints[key], key)
@@ -239,6 +262,29 @@ class BotConfig:
             raise ConfigError(f"no hotkey configured for spell(s): {missing}")
         if self.refill is not None and (self.cavebot is None or self.looting is None):
             raise ConfigError("refill needs the cavebot and looting modules enabled")
+        # F-09: unreachable gates must be honest. Looting and refill read
+        # state that no reader populates yet (monster names, capacity). Refuse
+        # to enable them until a perception source is wired (T34).
+        if self.looting is not None and not self.monster_name_source:
+            raise ConfigError(
+                "looting is enabled but no monster-name perception source is "
+                "configured: set 'monster_name_source' to true once a name "
+                "resolver is wired (T34), or disable the looting module"
+            )
+        if self.refill is not None and not self.capacity_source:
+            raise ConfigError(
+                "refill is enabled but no capacity perception source is "
+                "configured: set 'capacity_source' to true once a capacity "
+                "reader is wired (T34), or disable the refill module"
+            )
+        # F-10: the buffs module reads buff-icon state that no reader
+        # populates yet; refuse to enable it until one is wired.
+        if self.buffs is not None and not self.buff_icon_source:
+            raise ConfigError(
+                "buffs is enabled but no buff-icon perception source is "
+                "configured: set 'buff_icon_source' to true once buff-icon "
+                "perception is wired (T34), or disable the buffs module"
+            )
         return self
 
 

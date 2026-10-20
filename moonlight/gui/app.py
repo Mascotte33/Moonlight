@@ -17,6 +17,7 @@ from pathlib import Path
 import customtkinter as ctk
 
 from moonlight.gui import config_bridge
+from moonlight.gui.loop_factory import build_gui_loop
 from moonlight.gui.state_bridge import (
     BotController,
     GuiContext,
@@ -34,8 +35,6 @@ from moonlight.gui.tabs.settings import SettingsTab
 from moonlight.gui.tabs.spell_attack import SpellAttackTab
 from moonlight.gui.tabs.status import StatusTab
 from moonlight.gui.tabs.targeting import TargetingTab
-from moonlight.input import FakeInput
-from moonlight.loop import GameLoop
 from moonlight.state import WorldState
 
 #: Poller period in ms (10 Hz — light enough for a low-spec laptop).
@@ -139,30 +138,30 @@ class GuiApp:
         self.btn_start.pack(side="right")
 
     def start_bot(self) -> None:
-        """Start the bot loop thread on the shared controller.
+        """Start the real bot loop through the CLI wiring (F-13).
 
-        Connects the Arduino first (falling back to :class:`FakeInput` with
-        a log warning when no hardware is available, so the GUI stays fully
-        functional on a machine without the board).
+        Builds the loop via :func:`moonlight.gui.loop_factory.build_gui_loop`,
+        which wires a real screen capture (frame provider + focus check) and
+        every enabled decision module — never a bare :class:`GameLoop`
+        without ``perceive`` (which would stop on the first tick). A missing
+        Arduino requires the explicit *simulation* toggle (Hardware tab);
+        there is no silent :class:`FakeInput` fallback (F-13). For supervised
+        headless runs use the CLI (``moonlight run``).
         """
         if self.ctx.bot_running():
             return
         cfg = self.ctx.active_config()
-        backend = self.hardware.backend
-        if backend is None:
-            try:
-                backend = self.hardware.connect(
-                    port=cfg.serial_port, baudrate=cfg.serial_baudrate
-                )
-            except Exception as exc:  # noqa: BLE001 - fall back, log it
-                backend = FakeInput()
-                self.log.warn(
-                    f"arduino unavailable ({exc!r}); "
-                    "using FakeInput (no physical output)"
-                )
-        self.ctx.controller = BotController(
-            GameLoop(self.state, backend, cfg.to_loop_config()), log=self.log
-        )
+        try:
+            loop = build_gui_loop(
+                cfg,
+                hardware=self.hardware,
+                state=self.state,
+                config_path=self.config_path,
+            )
+        except Exception as exc:  # noqa: BLE001 - report, don't crash the app
+            self.log.error(f"could not start bot: {exc!r}")
+            return
+        self.ctx.controller = BotController(loop, log=self.log)
         self.ctx.controller.start()
         self._update_header()
 

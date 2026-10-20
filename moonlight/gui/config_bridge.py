@@ -184,7 +184,7 @@ class CavebotParams:
 
 @dataclass
 class BotConfig:
-    """The complete GUI-facing bot configuration."""
+    """The full GUI-level bot configuration."""
 
     tick_rate: float = 20.0
     window_title: str = "Tibia"
@@ -192,6 +192,10 @@ class BotConfig:
     serial_port: str | None = None
     serial_baudrate: int = 115200
     profile_name: str | None = None
+    # F-13: explicit simulation toggle. When True, the GUI Start uses a
+    # FakeInput backend instead of a real Arduino. A missing Arduino with
+    # this off is a hard error — there is no silent FakeInput fallback.
+    simulation: bool = False
     modules: ModuleToggles = field(default_factory=ModuleToggles)
     healing: HealingParams = field(default_factory=HealingParams)
     targeting: TargetingParams = field(default_factory=TargetingParams)
@@ -220,6 +224,7 @@ class BotConfig:
             "serial_port",
             "serial_baudrate",
             "profile_name",
+            "simulation",
         ):
             if name in data:
                 kwargs[name] = data[name]

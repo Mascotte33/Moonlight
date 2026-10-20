@@ -108,16 +108,12 @@ class BuffAction:
     priority: int
 
 
-#: Common Tibia buffs, highest priority first: haste, then the four
-#: elemental/holy protections. Used as the default for
-#: :attr:`BuffManagerConfig.buffs`.
-DEFAULT_BUFFS: tuple[BuffConfig, ...] = (
-    BuffConfig(buff_name="speed", spell="utemo", priority=10),
-    BuffConfig(buff_name="fire_protection", spell="exori flamatio", priority=20),
-    BuffConfig(buff_name="energy_protection", spell="exori visatio", priority=30),
-    BuffConfig(buff_name="earth_protection", spell="exori terratio", priority=40),
-    BuffConfig(buff_name="holy_protection", spell="exori sanatio", priority=50),
-)
+#: Default buff list (F-10). The previous defaults were wrong: the
+#: ``exori *`` family (flamatio/visatio/terratio/sanatio) are *attack*
+#: spells, not buffs, and ``utemo`` is not a real spell. Until buff-icon
+#: perception is wired (T34) the default list is empty and the buffs module
+#: defaults to OFF (see :class:`moonlight.config.BotConfig.default`).
+DEFAULT_BUFFS: tuple[BuffConfig, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -82,22 +82,11 @@ class TestConfigValidation:
         BuffManager()  # must not raise
 
     def test_default_buffs(self) -> None:
-        names = [b.buff_name for b in DEFAULT_BUFFS]
-        assert names == [
-            "speed",
-            "fire_protection",
-            "energy_protection",
-            "earth_protection",
-            "holy_protection",
-        ]
-        spells = [b.spell for b in DEFAULT_BUFFS]
-        assert spells == [
-            "utemo",
-            "exori flamatio",
-            "exori visatio",
-            "exori terratio",
-            "exori sanatio",
-        ]
+        # F-10: the previous defaults were wrong (exori * are attacks, not
+        # buffs; 'utemo' is not a real spell). Until buff-icon perception is
+        # wired (T34) the default list is empty and the module defaults to OFF.
+        assert DEFAULT_BUFFS == ()
+        assert BuffManagerConfig().buffs == []
 
     @pytest.mark.parametrize("cooldown", [0, -100])
     def test_nonpositive_cooldown_rejected(self, cooldown: int) -> None:
@@ -187,12 +176,11 @@ class TestTrackMissing:
         manager, _ = make_manager(BuffManagerConfig(buffs=[]))
         assert manager.track(make_state(buffs={})) == []
 
-    def test_default_config_tracks_common_buffs(self) -> None:
+    def test_default_config_tracks_no_buffs(self) -> None:
+        # F-10: the default buff list is empty, so a default config tracks
+        # nothing until buffs are configured (and buff-icon perception wired).
         manager, _ = make_manager()
-        actions = manager.track(make_state(buffs={}))
-        assert len(actions) == 5
-        assert actions[0].buff_name == "speed"
-        assert actions[0].spell == "utemo"
+        assert manager.track(make_state(buffs={})) == []
 
 
 # -- track(): expiring soon -------------------------------------------------------

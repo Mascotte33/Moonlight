@@ -75,11 +75,24 @@ class HardwareTab(Tab):
             )
             btns.grid_columnconfigure(col, weight=1)
 
+        # Simulation toggle (F-13): explicitly opt into FakeInput so the GUI
+        # stays usable on a machine without the board. Off by default — a
+        # missing Arduino is then a hard error (no silent fallback).
+        self.var_simulation = ctk.BooleanVar(
+            value=self.ctx.active_config().simulation
+        )
+        ctk.CTkCheckBox(
+            box_grid,
+            text="Simulation mode (no Arduino — FakeInput)",
+            variable=self.var_simulation,
+            command=self._on_simulation_toggle,
+        ).grid(row=4, column=0, columnspan=2, sticky="w", padx=10, pady=(4, 0))
+
         self.lbl_ports = ctk.CTkLabel(
             box_grid, text="", anchor="w", justify="left", font=ctk.CTkFont(size=11)
         )
         self.lbl_ports.grid(
-            row=4, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10)
+            row=5, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10)
         )
 
     # -- actions -----------------------------------------------------------
@@ -148,6 +161,17 @@ class HardwareTab(Tab):
         self._msg = "disconnected"
         self._last_pong = "--"
         self._refresh()
+
+    def _on_simulation_toggle(self) -> None:
+        """Persist the simulation toggle to the config store (F-13).
+
+        The checkbox has already updated ``var_simulation``; we read it back
+        and persist so the next ``build_gui_loop`` picks it up.
+        """
+        checked = bool(self.var_simulation.get())
+        self.ctx.config_store.update(
+            lambda cfg: setattr(cfg, "simulation", checked)
+        )
 
     # -- display -----------------------------------------------------------
 

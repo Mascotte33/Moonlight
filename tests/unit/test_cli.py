@@ -77,12 +77,41 @@ def test_calibrate_delegates() -> None:
 
 
 def test_check(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write_profile(tmp_path, "default")
+    write_profile(tmp_path, "moonlight_user")
     with mock.patch("moonlight.input.find_arduino_port", return_value="COM9"):
         assert cli.main(["--profiles-dir", str(tmp_path), "check"]) == 0
     with mock.patch("moonlight.input.find_arduino_port", return_value=None):
         assert cli.main(["--profiles-dir", str(tmp_path), "check"]) == 1
     assert "no Arduino found" in capsys.readouterr().out
+
+
+def test_check_module_regions_reports_missing() -> None:
+    """F-11: check_module_regions names the missing region(s) per enabled module."""
+    profile = make_profile()
+    del profile.regions["game_grid"]  # break cavebot only
+    cfg = replace(
+        BotConfig.default(),
+        cavebot=CavebotConfig(Route("hunt", waypoints=[Waypoint(100, 100, 7)])),
+    )
+    report = cli.check_module_regions(profile, cfg)
+    assert report["cavebot"] == ["game_grid"]
+    assert report["healing"] == []
+    assert report["targeting"] == []
+    assert report["alarms"] == []
+    # Only enabled modules appear in the report.
+    assert set(report) == {"healing", "targeting", "cavebot", "alarms"}
+
+
+def test_check_module_regions_all_present() -> None:
+    """F-11: a complete profile yields an empty (OK) report for every module."""
+    profile = make_profile()
+    cfg = replace(
+        BotConfig.default(),
+        cavebot=CavebotConfig(Route("hunt", waypoints=[Waypoint(100, 100, 7)])),
+    )
+    report = cli.check_module_regions(profile, cfg)
+    assert report["cavebot"] == []
+    assert all(missing == [] for missing in report.values())
 
 
 def test_run_unknown_profile_fails_closed(tmp_path: Path) -> None:
@@ -95,7 +124,7 @@ def test_missing_explicit_config_fails_closed(tmp_path: Path) -> None:
 
 
 def test_run_dispatch(tmp_path: Path) -> None:
-    write_profile(tmp_path, "default")
+    write_profile(tmp_path, "moonlight_user")
     loop = mock.Mock()
     with (
         mock.patch("moonlight.capture.ScreenCapture"),
@@ -126,6 +155,10 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
         looting=LootingConfig(),
         refill=RefillConfig(routes_dir=tmp_path),
         templates_dir=tmp_path / "templates",
+        # F-09 / F-10: enable the perception sources these modules require.
+        monster_name_source=True,
+        capacity_source=True,
+        buff_icon_source=True,
     ).validate()
     rng = np.random.default_rng(0)
     frames = [rng.integers(0, 256, (600, 800, 3), dtype=np.uint8) for _ in range(3)]

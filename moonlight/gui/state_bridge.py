@@ -12,11 +12,17 @@ Connects the GUI to the real bot runtime without touching bot logic:
   ``snapshot()`` call on the Tk thread; the loop thread is never blocked.
 * :class:`HardwareController` — owns the :class:`moonlight.input.ArduinoInput`
   (or FakeInput) connection: port listing, connect/ping/release_all/close.
-* :class:`PerceptionWriter` — optional background thread that runs the
-  existing perception readers (vitals, battle, minimap, floor) against a
-  screen capture and writes into the shared WorldState, so the dashboard
-  shows live values.
 * :class:`GuiContext` — the single object handed to every tab.
+
+.. note::
+   The GUI's "Start bot" does **not** run perception in a side thread. It
+   builds the real bot loop through :func:`moonlight.cli.build_loop` (see
+   :mod:`moonlight.gui.app`), which wires a real screen capture, the focus
+   gate and every enabled decision module. The previous ``PerceptionWriter``
+   background thread was removed (F-13): it duplicated ``make_perceive`` and
+   hard-coded ``client_focused = True``, which would have bypassed the
+   safety focus gate. For headless/supervised runs use the CLI
+   (``moonlight run``) — the GUI is a supervisory front-end.
 """
 
 from __future__ import annotations
@@ -25,14 +31,13 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 from moonlight.gui.config_bridge import BotConfig, ConfigStore
 from moonlight.state import WorldState
 
 if TYPE_CHECKING:  # pragma: no cover
-    from moonlight.calibrate import CalibrationProfile
     from moonlight.input import InputBackend
     from moonlight.loop import GameLoop
 
@@ -41,7 +46,6 @@ __all__ = [
     "GuiContext",
     "HardwareController",
     "LogFeed",
-    "PerceptionWriter",
     "StatePoller",
 ]
 
@@ -383,125 +387,6 @@ class HardwareController:
 
 
 # ---------------------------------------------------------------------------
-# Perception writer (live WorldState updates)
-# ---------------------------------------------------------------------------
-
-
-class PerceptionWriter:
-    """Background thread: screen capture -> perception readers -> WorldState.
-
-    Uses the existing perception modules (vitals, battle, minimap, floor)
-    against a :class:`moonlight.capture.ScreenCapture` and a calibration
-    profile; results are written into the shared :class:`WorldState` under
-    its lock, exactly like the headless writer the bot uses. The GUI never
-    runs perception itself — this just hosts the same readers in a thread.
-    """
-
-    def __init__(
-        self,
-        state: WorldState,
-        profile: CalibrationProfile,
-        capture: Any,
-        rate: float = 20.0,
-        log: LogFeed | None = None,
-    ) -> None:
-        if rate <= 0:
-            raise ValueError("rate must be > 0")
-        self.state = state
-        self.profile = profile
-        self.capture = capture
-        self.rate = float(rate)
-        self.log = log
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-        self.last_error: str | None = None
-        self.last_frame_at: float | None = None
-
-    @property
-    def running(self) -> bool:
-        """True while the writer thread is alive."""
-        t = self._thread
-        return t is not None and t.is_alive()
-
-    def start(self) -> None:
-        """Start the perception thread. Raises ``RuntimeError`` if running."""
-        if self.running:
-            raise RuntimeError("perception writer already running")
-        self._stop.clear()
-        self.last_error = None
-        thread = threading.Thread(
-            target=self._run, name="moonlight-gui-perception", daemon=True
-        )
-        self._thread = thread
-        thread.start()
-        if self.log is not None:
-            self.log.info(f"perception writer started ({self.rate} Hz)")
-
-    def stop(self) -> None:
-        """Stop the writer thread and join (bounded)."""
-        self._stop.set()
-        thread = self._thread
-        if thread is not None and thread.is_alive():
-            thread.join(timeout=3.0)
-        if self._thread is thread and thread is not None and not thread.is_alive():
-            self._thread = None
-        if self.log is not None:
-            self.log.info("perception writer stopped")
-
-    def _run(self) -> None:
-        # Import here so display-only mode never requires cv2/numpy at import
-        # time of the GUI package.
-        from moonlight.perception.battle import BattleReader, entries_to_state
-        from moonlight.perception.floor import FloorReader
-        from moonlight.perception.minimap import MinimapReader
-        from moonlight.perception.vitals import VitalsReader
-
-        vitals = VitalsReader(self.profile)
-        battle = BattleReader(self.profile)
-        floor = FloorReader(self.profile)
-        minimap = MinimapReader(self.profile, floor_reader=floor)
-        period = 1.0 / self.rate
-        while not self._stop.is_set():
-            start = time.monotonic()
-            try:
-                frame = self.capture.get_frame()
-                hp, mp = vitals.read_vitals(frame)
-                entries = battle.read_battle_list(frame)
-                monsters, selected, players = entries_to_state(entries)
-                position = minimap.read_position(frame)
-                floor_level = floor.read_floor(frame)
-                now = time.time()
-                with self.state.lock():
-                    self.state.screen_ok = True
-                    self.state.client_focused = True
-                    # WorldState fields are hp_percent / mp_percent (state.py).
-                    self.state.hp_percent = float(hp) if hp is not None else 0.0
-                    self.state.mp_percent = float(mp) if mp is not None else 0.0
-                    self.state.monsters = monsters
-                    self.state.selected_target = selected
-                    self.state.players_on_screen = players
-                    if position is not None:
-                        self.state.position = position
-                    # WorldState has no ``floor`` field; the minimap's
-                    # z-level is the single floor source of truth.
-                    if floor_level is not None:
-                        self.state.position = replace(
-                            self.state.position, z=int(floor_level)
-                        )
-                    self.state.last_update = now
-                self.last_frame_at = now
-            except Exception as exc:  # noqa: BLE001 - keep writing on next tick
-                self.last_error = repr(exc)
-                with self.state.lock():
-                    self.state.screen_ok = False
-            elapsed = time.monotonic() - start
-            delay = period - elapsed
-            if delay > 0:
-                self._stop.wait(delay)
-        self._thread = None
-
-
-# ---------------------------------------------------------------------------
 # Context handed to every tab
 # ---------------------------------------------------------------------------
 
@@ -520,7 +405,6 @@ class GuiContext:
     hardware: HardwareController
     log: LogFeed
     controller: BotController | None = None
-    perception_writer: PerceptionWriter | None = None
     profile_name: str | None = None
 
     def active_config(self) -> BotConfig:

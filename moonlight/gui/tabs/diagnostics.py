@@ -45,8 +45,6 @@ class DiagnosticsTab(Tab):
         self.lbl_tick_rate.grid(row=1, column=0, sticky="ew", padx=10)
         self.lbl_tick_ms = stat_label(perf_grid, "Avg / max tick")
         self.lbl_tick_ms.grid(row=1, column=1, sticky="ew", padx=10)
-        self.lbl_capture = stat_label(perf_grid, "Capture latency")
-        self.lbl_capture.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 8))
 
         mods = section(parent, "Decision modules (live)")
         mods.grid(row=1, column=0, sticky="nsew", padx=10, pady=6)
@@ -126,11 +124,6 @@ class DiagnosticsTab(Tab):
             self.lbl_tick_ms.configure(
                 text=f"Avg / max tick: {avg_ms} / {max_ms} ms"
             )
-
-        writer = self.ctx.perception_writer
-        if writer is not None and writer.last_frame_at:
-            cap_ms = (time.time() - writer.last_frame_at) * 1000.0
-            self.lbl_capture.configure(text=f"Capture latency: {cap_ms:.0f} ms")
 
         text = self.ctx.log.text(40)
         if text != self._log_text:

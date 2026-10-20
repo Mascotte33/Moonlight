@@ -44,6 +44,9 @@ def test_load_roundtrip(tmp_path: Path) -> None:
     data["routes_dir"] = str(tmp_path / "routes")
     data["loop"] = {"tick_rate": 10.0, "enable_f12_monitor": False}
     data["serial_port"] = "COM7"
+    # F-09: looting / refill need their perception sources wired (T34).
+    data["monster_name_source"] = True
+    data["capacity_source"] = True
     path = tmp_path / "moonlight_config.json"
     path.write_text(json.dumps(data))
     cfg = BotConfig.load(path)
@@ -53,6 +56,42 @@ def test_load_roundtrip(tmp_path: Path) -> None:
     assert cfg.refill is not None and cfg.refill.trigger_cap == 80.0
     assert cfg.loop.tick_rate == 10.0 and cfg.serial_port == "COM7"
     assert cfg.targeting is None
+    assert cfg.monster_name_source is True and cfg.capacity_source is True
+
+
+def test_looting_refused_without_name_source() -> None:
+    """F-09: looting without a monster-name perception source is refused."""
+    data = raw(looting={"enabled": True})
+    with pytest.raises(ConfigError, match="monster-name perception source"):
+        BotConfig.from_dict(data)
+    data["monster_name_source"] = True
+    assert BotConfig.from_dict(data).looting is not None
+
+
+def test_refill_refused_without_capacity_source(tmp_path: Path) -> None:
+    """F-09: refill without a capacity perception source is refused."""
+    route_file(tmp_path / "routes")
+    data = raw(
+        cavebot={"enabled": True, "route": "hunt"},
+        looting={"enabled": True},
+        refill={"enabled": True},
+    )
+    data["routes_dir"] = str(tmp_path / "routes")
+    # Let the looting guard pass so the capacity guard is what fires.
+    data["monster_name_source"] = True
+    with pytest.raises(ConfigError, match="capacity perception source"):
+        BotConfig.from_dict(data)
+    data["capacity_source"] = True
+    assert BotConfig.from_dict(data).refill is not None
+
+
+def test_buffs_refused_without_icon_source() -> None:
+    """F-10: buffs without buff-icon perception is refused."""
+    data = raw(buffs={"enabled": True})
+    with pytest.raises(ConfigError, match="buff-icon perception source"):
+        BotConfig.from_dict(data)
+    data["buff_icon_source"] = True
+    assert BotConfig.from_dict(data).buffs is not None
 
 
 @pytest.mark.parametrize(
