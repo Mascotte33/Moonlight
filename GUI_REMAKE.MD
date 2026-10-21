@@ -280,6 +280,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_healing.py` passes, with tests that Apply writes the thresholds and each spell's hotkey, and that a spell with no hotkey is refused. Owner checks: set Normal HP to 65, Save, reopen the GUI, and it shows 65. "The bot heals at 65" waits for calibration.
 
 ### T2.F2.K1 — Settings options
+- ✅ Done in commit 9b25533.
 - What: convert Settings to `OPTIONS`, starting with `loop.tick_rate` (slider 1–60). Remove what now lives elsewhere: Start/Pause/Kill and the status text (top bar, S.F2.K1), serial port and baud rate (Hardware, T7.F1.K1), input mode (Hardware's Simulation switch). The Config section (dropdown, New, Save, Delete) stays at the top.
 - Needs: T7.F1.K1
 - Files: moonlight/gui/tabs/settings.py, tests/unit/test_gui_options.py
