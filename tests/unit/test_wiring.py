@@ -19,7 +19,7 @@ from moonlight.decision.looting import LootingConfig
 from moonlight.decision.refill import RefillConfig
 from moonlight.hardware.input import FakeInput
 from moonlight.setup.calibrate import REGIONS, CalibrationProfile, Region
-from moonlight.setup.config import BotConfig, CavebotConfig
+from moonlight.setup.config import BotConfig, CavebotConfig, ConfigError
 
 
 def make_profile() -> CalibrationProfile:
@@ -302,3 +302,24 @@ def test_tick_grabber_folds_the_cursor_read_into_one_grab_per_tick() -> None:
     now[0] += 0.005
     grabber.frame()
     assert sleeps == [pytest.approx(0.015)]
+
+
+def test_cavebot_starts_at_start_index() -> None:
+    route = Route("hunt", waypoints=[Waypoint(100, 100, 7), Waypoint(101, 100, 7)])
+    cfg = replace(
+        BotConfig.default(),
+        loop=LoopConfig(enable_f12_monitor=False),
+        cavebot=CavebotConfig(route, start_index=1),
+    ).validate()
+    loop = wiring.build_loop(
+        cfg, make_profile(), FakeInput(), frame_provider=lambda: np.zeros((600, 800, 3), np.uint8)
+    )
+    assert loop.modules.cavebot is not None
+    assert loop.modules.cavebot.route.current == 1
+
+
+def test_start_index_past_the_end_is_refused() -> None:
+    route = Route("hunt", waypoints=[Waypoint(100, 100, 7)])
+    cfg = replace(BotConfig.default(), cavebot=CavebotConfig(route, start_index=1))
+    with pytest.raises(ConfigError, match="outside 1..1"):
+        cfg.validate()
