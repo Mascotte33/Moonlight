@@ -316,6 +316,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_options.py` passes, with a test that max monsters writes `targeting.max_monsters_to_engage`. Owner checks: values are kept after Save and reopening the GUI.
 
 ### T5.F1.K2 — Whitelist or blacklist in the bot
+- ✅ Done in commit f6242d5.
 - What: `TargetingConfig` gets `mode: "all" | "whitelist" | "blacklist"` (default `"all"`) and `creatures: tuple[str, ...]`. `TargetingDecision` attacks only listed creatures in whitelist mode, and skips listed creatures in blacklist mode. Names match without case. The tab gets a mode dropdown and one creature list editor (name entry, Add, Remove), replacing the two GUI-only lists.
 - Needs: T5.F1.K1
 - Files: moonlight/decision/targeting.py, moonlight/setup/config.py (only if `from_dict` needs it for the tuple), moonlight/gui/tabs/targeting.py, tests/unit/test_targeting.py
