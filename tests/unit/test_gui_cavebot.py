@@ -54,7 +54,7 @@ def test_no_route_on_disk_changes_nothing(tmp_path: Path) -> None:
 def test_table_rows_come_from_the_file(tmp_path: Path) -> None:
     route = RouteFileLoader.load(_routes(tmp_path) / "rotworms.json")
     lines = waypoint_table(route).splitlines()
-    assert lines[1].split() == ["1", "walk", "100", "200", "7"]
+    assert lines[1].split() == ["1", "walk", "100", "200", "7", "START"]
     assert lines[2].split() == ["2", "rope", "101", "200", "7"]
     assert waypoint_table(None) == "No waypoints loaded"
 

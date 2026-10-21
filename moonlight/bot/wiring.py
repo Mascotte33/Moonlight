@@ -186,6 +186,16 @@ def check_module_regions(
 # -- integration seam ---------------------------------------------------------
 
 
+def start_position(config: BotConfig) -> tuple[int, int, int] | None:
+    """Where the minimap tracker starts: ``minimap_start``, else the route's first waypoint."""
+    if config.minimap_start is not None:
+        return config.minimap_start
+    if config.cavebot is not None and config.cavebot.route.waypoints:
+        wp = config.cavebot.route.waypoints[0]
+        return (wp.x, wp.y, wp.z)
+    return None
+
+
 def make_perceive(
     state: WorldState,
     profile: CalibrationProfile,
@@ -386,7 +396,7 @@ def build_loop(
             profile,
             frames.refresh,
             focus_check,
-            minimap_start=config.minimap_start,
+            minimap_start=start_position(config),
         ),
         clock=clock,
         sleep_fn=sleep_fn,

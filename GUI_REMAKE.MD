@@ -572,6 +572,12 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Don't touch: moonlight/decision/cavebot.py.
 - Done when: pytest stays green. Owner checks: type X, Y, Z and press Rope, and a rope row shows in the table.
 
+### T3.F9.K4 — First waypoint is the start
+
+The bot always starts on the route's first waypoint. Minimap tracking takes its
+X, Y, Z as the start position, unless `minimap_start` is set in the config. The
+route table marks that row START.
+
 #### Phase 4: bot features asked for in Phase 3
 
 These need bot code first. Each gets its GUI part in the same task.

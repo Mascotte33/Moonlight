@@ -323,3 +323,13 @@ def test_start_index_past_the_end_is_refused() -> None:
     cfg = replace(BotConfig.default(), cavebot=CavebotConfig(route, start_index=1))
     with pytest.raises(ConfigError, match="outside 1..1"):
         cfg.validate()
+
+
+def test_start_position_is_the_first_waypoint_unless_set() -> None:
+    from moonlight.decision.cavebot import Route, Waypoint
+
+    route = Route("r", waypoints=[Waypoint(100, 200, 7), Waypoint(101, 200, 7)])
+    cfg = replace(BotConfig.default(), cavebot=CavebotConfig(route))
+    assert wiring.start_position(cfg) == (100, 200, 7)
+    assert wiring.start_position(replace(cfg, minimap_start=(1, 2, 3))) == (1, 2, 3)
+    assert wiring.start_position(BotConfig.default()) is None
