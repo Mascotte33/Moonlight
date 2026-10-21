@@ -12,6 +12,10 @@ thin presentation layer and never reimplements bot logic.
 from __future__ import annotations
 
 import argparse
+import ctypes
+import sys
+import time
+from ctypes import wintypes
 from pathlib import Path
 
 import customtkinter as ctk
@@ -64,7 +68,81 @@ TAB_ORDER = (
     DiagnosticsTab,
 )
 
-__all__ = ["GuiApp", "POLL_MS", "TAB_ORDER", "main"]
+__all__ = [
+    "GuiApp",
+    "POLL_MS",
+    "TAB_ORDER",
+    "cpu_percent",
+    "cpu_times",
+    "dot_color",
+    "main",
+    "memory_text",
+]
+
+
+def cpu_times() -> tuple[int, int] | None:
+    """Whole-PC ``(idle, total)`` CPU time in 100 ns ticks; None off Windows."""
+    if sys.platform != "win32":
+        return None
+    idle, kernel, user = (wintypes.FILETIME() for _ in range(3))
+    ok = ctypes.windll.kernel32.GetSystemTimes(
+        ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
+    )
+    if not ok:
+        return None
+    ticks = [(t.dwHighDateTime << 32) | t.dwLowDateTime for t in (idle, kernel, user)]
+    return ticks[0], ticks[1] + ticks[2]  # kernel time includes idle
+
+
+def cpu_percent(prev: tuple[int, int], now: tuple[int, int]) -> float:
+    """Busy share of the whole PC between two :func:`cpu_times` samples, 0..100."""
+    total = now[1] - prev[1]
+    if total <= 0:
+        return 0.0
+    return 100.0 * (1 - (now[0] - prev[0]) / total)
+
+
+def dot_color(ok: bool) -> str:
+    """Bottom-bar status dot: green when ok, red when not (Look: failed dot)."""
+    return theme.LIFE if ok else theme.BLOOD
+
+
+def memory_text() -> str:
+    """Working set of this process as "85 MB"; "—" off Windows or on failure."""
+    if sys.platform != "win32":
+        return "—"
+    try:
+
+        class Counters(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.GetCurrentProcess.restype = wintypes.HANDLE
+        k32.K32GetProcessMemoryInfo.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(Counters),
+            wintypes.DWORD,
+        ]
+        c = Counters()
+        c.cb = ctypes.sizeof(c)
+        if not k32.K32GetProcessMemoryInfo(
+            k32.GetCurrentProcess(), ctypes.byref(c), c.cb
+        ):
+            return "—"
+        return f"{c.WorkingSetSize // 2**20} MB"
+    except Exception:  # noqa: BLE001 - a status label must never crash the poller
+        return "—"
 
 
 class GuiApp:
@@ -100,6 +178,7 @@ class GuiApp:
         self.root.minsize(880, 580)
 
         self._build_topbar()
+        self._build_bottombar()
 
         body = ctk.CTkFrame(self.root, fg_color="transparent", corner_radius=0)
         body.pack(fill="both", expand=True, pady=(6, 0))
@@ -212,6 +291,45 @@ class GuiApp:
         self.lbl_dot = ctk.CTkLabel(bar, text="●", text_color=theme.TEXT_MUTED)
         self.lbl_dot.pack(side="right")
 
+    def _build_bottombar(self) -> None:
+        bar = ctk.CTkFrame(self.root, corner_radius=0, fg_color=theme.PANEL)
+        bar.pack(side="bottom", fill="x")
+        ctk.CTkFrame(self.root, height=1, fg_color=theme.RAISED, corner_radius=0).pack(
+            side="bottom", fill="x"
+        )
+        mono = ctk.CTkFont(family=theme.MONO, size=theme.SIZE_TITLE)
+        self._dots: dict[str, ctk.CTkLabel] = {}
+        for name in ("Screen", "Arduino", "Bot"):
+            self._dots[name] = ctk.CTkLabel(
+                bar, text=f"● {name}", font=mono, text_color=theme.TEXT_MUTED
+            )
+            self._dots[name].pack(side="left", padx=(theme.PAD, 0), pady=theme.UNIT)
+        self.lbl_mem = ctk.CTkLabel(bar, text="MEM —", font=mono)
+        self.lbl_mem.pack(side="right", padx=theme.PAD)
+        self.lbl_cpu = ctk.CTkLabel(bar, text="CPU 0%", font=mono)
+        self.lbl_cpu.pack(side="right")
+        self._res_t = time.monotonic()
+        self._cpu = cpu_times()
+
+    def _update_bottombar(self) -> None:
+        snap = self.ctx.state.snapshot()
+        ok = {
+            "Screen": snap.screen_ok,
+            "Arduino": self.hardware.backend is not None,
+            "Bot": self.ctx.bot_running(),
+        }
+        for name, lbl in self._dots.items():
+            lbl.configure(text_color=dot_color(ok[name]))
+        now = time.monotonic()
+        if now - self._res_t >= 1.0:  # CPU/MEM refresh about once a second
+            cpu = cpu_times()
+            text = "—" if cpu is None or self._cpu is None else (
+                f"{cpu_percent(self._cpu, cpu):.0f}%"
+            )
+            self.lbl_cpu.configure(text=f"CPU {text}")
+            self.lbl_mem.configure(text=f"MEM {memory_text()}")
+            self._res_t, self._cpu = now, cpu
+
     def pause_bot(self) -> None:
         """Pause = the controller's stop(), same as Settings' pause."""
         ctrl = self.ctx.controller
@@ -279,6 +397,7 @@ class GuiApp:
             for tab in self.tabs.values():
                 tab.on_poll(snap)
             self._update_topbar()
+            self._update_bottombar()
         except Exception as exc:  # noqa: BLE001 - the poller must survive
             self.log.warn(f"poll error: {exc!r}")
         finally:
