@@ -30,10 +30,12 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from moonlight.bot.state import WorldState
+from moonlight.gui import loop_factory
 from moonlight.gui.config_bridge import BotConfig, ConfigStore
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -422,6 +424,15 @@ class GuiContext:
     log: LogFeed
     controller: BotController | None = None
     profile_name: str | None = None
+    #: Called after another named config is picked (tabs refill their options).
+    config_listeners: list[Callable[[], None]] = field(default_factory=list)
+
+    def pick_config(self, name: str) -> Path:
+        """Pick named config *name* and tell every listener."""
+        path = loop_factory.pick_config(name)
+        for listener in self.config_listeners:
+            listener()
+        return path
 
     def active_config(self) -> BotConfig:
         """A fresh copy of the live config (thread-safe)."""

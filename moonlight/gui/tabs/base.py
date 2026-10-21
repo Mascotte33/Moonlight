@@ -19,7 +19,6 @@ from __future__ import annotations
 import types
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -34,8 +33,8 @@ from typing import (
 import customtkinter as ctk
 
 from moonlight.gui import theme
-from moonlight.gui.loop_factory import load_real_config
-from moonlight.setup.config import DEFAULT_CONFIG_FILE, MODULES, BotConfig, ConfigError
+from moonlight.gui.loop_factory import load_real_config, picked_config
+from moonlight.setup.config import MODULES, BotConfig, ConfigError
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.bot.state import WorldState
@@ -188,6 +187,7 @@ class Tab:
     def __init__(self, ctx: GuiContext) -> None:
         self.ctx = ctx
         self._readers: dict[str, Callable[[], object]] = {}
+        self._writers: dict[str, Callable[[object], None]] = {}
 
     def build(self, parent: ctk.CTkFrame) -> None:
         """Create this tab's widgets inside *parent* (called once)."""
@@ -199,6 +199,8 @@ class Tab:
 
     def build_options(self, parent: ctk.CTkFrame) -> None:
         """One labelled control per entry in ``options``, filled from the config."""
+        if self.options:
+            self.ctx.config_listeners.append(self.reload_options)
         cfg = load_real_config()
         for option in self.options:
             row = ctk.CTkFrame(parent, fg_color="transparent")
@@ -210,31 +212,41 @@ class Tab:
                 font=ctk.CTkFont(size=theme.SIZE_BODY),
                 text_color=theme.TEXT_DIM,
             ).pack(side="left")
-            value = read_option(cfg, option.field)
-            self._readers[option.field] = _control(row, option, value)
+            get, put = _control(row, option)
+            put(read_option(cfg, option.field))
+            self._readers[option.field] = get
+            self._writers[option.field] = put
+
+    def reload_options(self) -> None:
+        """Refill every control from the picked config."""
+        cfg = load_real_config()
+        for option in self.options:
+            if option.field in self._writers:
+                self._writers[option.field](read_option(cfg, option.field))
 
     def apply(self) -> BotConfig:
-        """Write every option into the config and save it (Rule 2).
+        """Write every option into the picked config and save it (Rule 2).
 
         Raises:
             ConfigError: When a value is refused; nothing is saved then.
         """
-        cfg = load_real_config()
+        path = picked_config()
+        cfg = load_real_config(path)
         for option in self.options:
             if option.field in self._readers:
                 cfg = write_option(cfg, option, self._readers[option.field]())
-        cfg.save(Path(DEFAULT_CONFIG_FILE))
+        cfg.save(path)
         return cfg
 
 
-def _control(row: ctk.CTkFrame, option: Option, value: object) -> Callable[[], object]:
-    """Pack *option*'s control into *row*; return a function reading its value."""
+def _control(
+    row: ctk.CTkFrame, option: Option
+) -> tuple[Callable[[], object], Callable[[object], None]]:
+    """Pack *option*'s control into *row*; return functions to read and set it."""
     if option.control == "switch":
         switch = ctk.CTkSwitch(row, text="", progress_color=theme.LIFE)
-        if value:
-            switch.select()
         switch.pack(side="right")
-        return lambda: bool(switch.get())
+        return lambda: bool(switch.get()), lambda v: switch.select() if v else switch.deselect()
     if option.control == "dropdown":
         choices = option.choices or []
         menu = ctk.CTkOptionMenu(
@@ -244,9 +256,9 @@ def _control(row: ctk.CTkFrame, option: Option, value: object) -> Callable[[], o
             button_color=theme.RAISED,
             button_hover_color=theme.HOVER,
         )
-        menu.set(str(value) if value is not None else (choices[0] if choices else ""))
         menu.pack(side="right")
-        return lambda: menu.get()
+        fallback = choices[0] if choices else ""
+        return lambda: menu.get(), lambda v: menu.set(fallback if v is None else str(v))
     if option.control == "slider":
         low = option.min if option.min is not None else 0.0
         high = option.max if option.max is not None else 100.0
@@ -260,13 +272,20 @@ def _control(row: ctk.CTkFrame, option: Option, value: object) -> Callable[[], o
             button_color=theme.MANA,
             command=lambda v: shown.configure(text=f"{v:g}"),
         )
-        start = value if isinstance(value, int | float) else low
-        slider.set(start)
-        shown.configure(text=f"{start:g}")
         shown.pack(side="right")
         slider.pack(side="right", padx=theme.UNIT)
-        return lambda: slider.get()
+
+        def put_slider(value: object) -> None:
+            start = value if isinstance(value, int | float) else low
+            slider.set(start)
+            shown.configure(text=f"{start:g}")
+
+        return lambda: slider.get(), put_slider
     entry = ctk.CTkEntry(row, fg_color=theme.NIGHT, border_color=theme.RAISED)
-    entry.insert(0, "" if value is None else str(value))
     entry.pack(side="right")
-    return lambda: entry.get()
+
+    def put_entry(value: object) -> None:
+        entry.delete(0, "end")
+        entry.insert(0, "" if value is None else str(value))
+
+    return lambda: entry.get(), put_entry

@@ -2,18 +2,27 @@
 
 Start / Pause (stop) / Kill drive the bot loop thread (via the controller);
 the tick rate, window target and input mode fields edit the live
-:class:`~moonlight.gui.config_bridge.BotConfig` (thread-safe store) and
-Save/Load persist it to ``data/config.json``.
+:class:`~moonlight.gui.config_bridge.BotConfig` (thread-safe store).
+The config dropdown picks a named config in ``configs/`` and Save as copies
+the picked one under a new name (T0.F1.K3).
 """
 
 from __future__ import annotations
 
+from tkinter import messagebox
 from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
 from moonlight.gui import theme
+from moonlight.gui.loop_factory import (
+    config_names,
+    load_real_config,
+    picked_config,
+    save_config_as,
+)
 from moonlight.gui.tabs.base import Tab, section
+from moonlight.setup.config import ConfigError
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.bot.state import WorldState
@@ -129,13 +138,21 @@ class SettingsTab(Tab):
         self.chk_overlay = ctk.CTkCheckBox(cfg_grid, text="Overlay", variable=self.var_overlay)
         self.chk_overlay.grid(row=8, column=0, columnspan=2, sticky="w", padx=8, pady=2)
 
-        # -- save / load ----------------------------------------------------
-        io_box = section(parent, "Save / load")
+        # -- named configs --------------------------------------------------
+        io_box = section(parent, "Config")
         io_box.pack(fill="x", padx=10, pady=(4, 10))
-        self.btn_save = ctk.CTkButton(io_box, text="Save config", width=130)
-        self.btn_save.pack(side="left", padx=(10, 4), pady=8)
-        self.btn_load = ctk.CTkButton(io_box, text="Load config", width=130)
-        self.btn_load.pack(side="left", padx=4, pady=8)
+        self.menu_config = ctk.CTkOptionMenu(
+            io_box,
+            values=config_names() or [picked_config().stem],
+            command=self._on_pick,
+            fg_color=theme.RAISED,
+            button_color=theme.RAISED,
+            button_hover_color=theme.HOVER,
+        )
+        self.menu_config.set(picked_config().stem)
+        self.menu_config.pack(side="left", padx=(10, 4), pady=8)
+        self.btn_save_as = ctk.CTkButton(io_box, text="Save as", width=110)
+        self.btn_save_as.pack(side="left", padx=4, pady=8)
         self.lbl_io = ctk.CTkLabel(io_box, text="", anchor="w")
         self.lbl_io.pack(side="left", padx=12, pady=8)
         self._bind_buttons()
@@ -150,8 +167,7 @@ class SettingsTab(Tab):
         self.btn_start.configure(command=self._on_start)
         self.btn_pause.configure(command=self._on_pause)
         self.btn_kill.configure(command=self._on_kill)
-        self.btn_save.configure(command=self._on_save)
-        self.btn_load.configure(command=self._on_load)
+        self.btn_save_as.configure(command=self._on_save_as)
 
     # -- field <-> config helpers ------------------------------------------
 
@@ -224,21 +240,31 @@ class SettingsTab(Tab):
         ctrl.kill()
         self.lbl_status.configure(text="killed (F12)")
 
-    # -- save / load ---------------------------------------------------------
+    # -- named configs -------------------------------------------------------
 
-    def _on_save(self) -> None:
-        try:
-            self.ctx.config_store.update(self._apply_fields)
-        except ValueError as exc:
-            self.lbl_io.configure(text=f"invalid: {exc}")
+    def _on_pick(self, name: str) -> None:
+        self.ctx.pick_config(name)
+        self.lbl_io.configure(text=f"picked {name}")
+
+    def _on_save_as(self) -> None:
+        name = ctk.CTkInputDialog(text="Config name:", title="Save as").get_input()
+        if not name:
             return
-        path = self.ctx.config_store.save()
-        self.lbl_io.configure(text=f"saved {path.name}")
-
-    def _on_load(self) -> None:
-        cfg = self.ctx.config_store.reload()
-        self._load_into_fields(cfg)
-        self.lbl_io.configure(text=f"loaded {self.ctx.config_store.path.name}")
+        cfg = load_real_config()
+        try:
+            try:
+                save_config_as(cfg, name)
+            except FileExistsError:
+                if not messagebox.askyesno("Save as", f"{name} exists. Overwrite it?"):
+                    return
+                save_config_as(cfg, name, overwrite=True)
+        except ConfigError as exc:
+            self.lbl_io.configure(text=str(exc))
+            return
+        self.menu_config.configure(values=config_names())
+        self.menu_config.set(name)
+        self._on_pick(name)
+        self.lbl_io.configure(text=f"saved {name}")
 
     # -- per-poll status ------------------------------------------------------
 
