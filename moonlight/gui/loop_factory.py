@@ -37,6 +37,7 @@ __all__ = [
     "build_gui_loop",
     "config_names",
     "config_path",
+    "delete_config",
     "load_profile",
     "load_real_config",
     "make_backend",
@@ -93,6 +94,23 @@ def pick_config(name: str, configs_dir: str | Path = CONFIGS_DIR) -> Path:
         raise ConfigError(f"no config named {name!r}")
     (Path(configs_dir) / "last.txt").write_text(name, encoding="utf-8")
     return path
+
+
+def delete_config(name: str, configs_dir: str | Path = CONFIGS_DIR) -> Path:
+    """Delete config *name*; return the picked config afterwards.
+
+    Raises:
+        ConfigError: When *name* is the only config left, or doesn't exist.
+    """
+    names = config_names(configs_dir)
+    if name not in names:
+        raise ConfigError(f"no config named {name!r}")
+    if len(names) == 1:
+        raise ConfigError("the only config can't be deleted")
+    config_path(name, configs_dir).unlink()
+    if picked_config(configs_dir).stem == name:
+        return pick_config(config_names(configs_dir)[0], configs_dir)
+    return picked_config(configs_dir)
 
 
 def save_config_as(
