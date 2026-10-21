@@ -452,6 +452,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_recorder.py` passes, with a test that a saved route loads with `RouteFileLoader`. Owner checks: record two waypoints, save, and the route shows in the Cavebot dropdown.
 
 ### T8.F3.K1 — Start and stop recording
+- ✅ Done in commit b8967a6.
 - What: **Start recording** / **Stop recording** buttons and a status line (Not recording / Recording, plus the live position). While recording, a `walk` waypoint is added when the player has moved at least N tiles from the last one (entry, default 5) or changed floor.
 - Needs: T8.F1.K1
 - Files: moonlight/gui/tabs/recorder.py, tests/unit/test_gui_recorder.py
