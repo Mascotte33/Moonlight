@@ -526,6 +526,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: pytest stays green. Owner checks: the Loot sub-tab has no Max items per corpse.
 
 ### T3.F7.K2 — Refill explained
+- ✅ Done in commit 11288d6.
 - What: a short text at the top of the Refill sub-tab: at the trigger cap the bot walks the refill route to its `storage` label, deposits until the stop cap, then walks to the `farming` label.
 - Needs: T3.F7.K1
 - Files: moonlight/gui/tabs/cavebot.py
