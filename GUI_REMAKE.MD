@@ -486,6 +486,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_options.py` passes, with a test that no config field is shown by two tabs. Owner checks: turn Healing and Targeting off, Save, reopen the GUI, and both are still off.
 
 ### T2.F4.K3 — Modules explained, and why a switch stays off
+- ✅ Done in commit cc53c93.
 - What: one line under **Modules** says what the switches do. When a switch can't turn on, the reason shows in that switch's row in plain words (Cavebot needs a route; Looting, Refill and Buffs need a reader the bot doesn't have yet; Refill needs Cavebot and Looting; a spell needs a hotkey).
 - Needs: T2.F4.K2
 - Files: moonlight/gui/tabs/settings.py, tests/unit/test_gui_options.py
