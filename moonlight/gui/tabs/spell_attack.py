@@ -16,7 +16,6 @@ from moonlight.setup.config import BotConfig, ConfigError
 __all__ = ["OPTIONS", "SPELLS", "SpellAttackTab", "apply_attack_spells"]
 
 OPTIONS = [
-    Option("Attack spells", "attack_spells.enabled", "switch"),
     Option("Single-target spell", "attack_spells.single_spell", "entry"),
     Option("AoE spell", "attack_spells.aoe_spell", "entry"),
     Option("AoE from monsters", "attack_spells.aoe_min_monsters", "slider", min=1, max=10),

@@ -21,7 +21,6 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = ["OPTIONS", "TargetingTab", "apply_targeting"]
 
 OPTIONS = [
-    Option("Targeting", "targeting.enabled", "switch"),
     Option("Max monsters to engage", "targeting.max_monsters_to_engage", "slider", min=1, max=10),
     Option("Prefer lowest-HP monster", "targeting.prefer_low_hp", "switch"),
     Option("Flee when a player is on screen", "targeting.player_protection", "switch"),

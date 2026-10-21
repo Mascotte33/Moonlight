@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from moonlight.bot.state import Monster, WorldState
 from moonlight.decision.attack_spells import AttackSpells, AttackSpellsConfig
 from moonlight.hardware.input import FakeInput
@@ -70,12 +72,12 @@ def test_tab_writes_spells_and_hotkeys() -> None:
     from moonlight.setup.config import BotConfig, ConfigError
 
     values = {
-        "attack_spells.enabled": True,
         "attack_spells.single_spell": "exori",
         "attack_spells.aoe_min_monsters": 4.0,
     }
-    cfg = apply_attack_spells(BotConfig.default(), values, {"attack_spells.single_spell": "F5"})
+    on = replace(BotConfig.default(), attack_spells=AttackSpellsConfig())
+    cfg = apply_attack_spells(on, values, {"attack_spells.single_spell": "F5"})
     assert cfg.attack_spells == AttackSpellsConfig(single_spell="exori", aoe_min_monsters=4)
     assert cfg.spell_combos["exori"] == "F5"
     with pytest.raises(ConfigError, match="no hotkey"):
-        apply_attack_spells(BotConfig.default(), values, {"attack_spells.single_spell": ""})
+        apply_attack_spells(on, values, {"attack_spells.single_spell": ""})

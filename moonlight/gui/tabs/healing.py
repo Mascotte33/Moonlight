@@ -22,7 +22,6 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = ["OPTIONS", "SPELLS", "HealingTab", "apply_healing"]
 
 OPTIONS = [
-    Option("Healing", "healing.enabled", "switch"),
     Option("Emergency heal at HP %", "healing.emergency_hp_percent", "slider", min=0, max=100),
     Option("Normal heal at HP %", "healing.normal_hp_percent", "slider", min=0, max=100),
     Option("Keep mana above %", "healing.mana_threshold", "slider", min=0, max=100),

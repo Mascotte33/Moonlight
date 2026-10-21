@@ -36,10 +36,9 @@ def test_route_names(tmp_path: Path) -> None:
 
 def test_picking_a_route_writes_cavebot_route(tmp_path: Path) -> None:
     cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
-    values = {"cavebot.enabled": True, "cavebot.route": "rotworms", "cavebot.rope_hotkey": "F7"}
+    values: dict[str, object] = {"cavebot.route": "rotworms", "cavebot.rope_hotkey": "F7"}
     cfg = apply_cavebot(cfg, values)
-    assert cfg.cavebot is not None
-    assert cfg.cavebot.rope_hotkey == "F7"
+    assert cfg.off["cavebot"].rope_hotkey == "F7"
     assert picked_route(cfg) == "rotworms"
 
 
@@ -51,7 +50,7 @@ def test_blank_hotkey_keeps_default(tmp_path: Path) -> None:
 
 def test_no_route_on_disk_changes_nothing(tmp_path: Path) -> None:
     cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
-    assert apply_cavebot(cfg, {"cavebot.enabled": True, "cavebot.route": "No routes"}) == cfg
+    assert apply_cavebot(cfg, {"cavebot.route": "No routes"}) == cfg
 
 
 def test_table_rows_come_from_the_file(tmp_path: Path) -> None:
@@ -90,9 +89,8 @@ def test_live_route_is_none_without_a_running_bot() -> None:
 
 def test_start_waypoint_is_given_one_based(tmp_path: Path) -> None:
     cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
-    cfg = apply_cavebot(cfg, {"cavebot.enabled": True, "cavebot.route": "rotworms",
-                              "cavebot.start_index": "2"})
-    assert cfg.cavebot is not None and cfg.cavebot.start_index == 1
+    cfg = apply_cavebot(cfg, {"cavebot.route": "rotworms", "cavebot.start_index": "2"})
+    assert cfg.off["cavebot"].start_index == 1
 
 
 def test_add_waypoint_stores_the_live_position(tmp_path: Path) -> None:
