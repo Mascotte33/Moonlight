@@ -100,6 +100,7 @@ then the Calibration tab (C2.F4), then the image finders and the scale (C2.F1,
 C2.F2.K3 to K6, C3), then the Start check (C4).
 
 ### C1.F1.K1 — Measure from the game area
+- ✅ Done in commit bcf667b.
 - What: `capture.py` returns the client area (`GetClientRect` + `ClientToScreen`), not `GetWindowRect`. Region offsets and click positions (`window_origin` in `bot/wiring.py`) both use it.
 - Files: moonlight/perception/capture.py, tests/unit/test_capture.py
 - Don't touch: profiles/*.json, the readers.
