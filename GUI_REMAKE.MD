@@ -460,6 +460,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_recorder.py` passes, with tests that a short step adds nothing and a long step or floor change adds a waypoint. Owner checks: wait for calibration.
 
 ### T8.F4.K1 — Recorder hotkeys
+- ✅ Done in commit f00e67e.
 - What: hotkeys that work while the game has focus: F6 walk, F7 rope, F8 shovel, F4 ladder, F9 label, F5 undo. They use `RegisterHotKey` via `ctypes` on Windows (no new dependency), only while recording, and are released on Stop recording and on close. This covers T8.F4 and T8.F6.
 - Needs: T8.F3.K1
 - Files: moonlight/gui/tabs/recorder.py, tests/unit/test_gui_recorder.py
