@@ -1,4 +1,4 @@
-"""Recorder tab: record waypoints and save them as bot routes (T8.F1.K1, T8.F3.K1).
+"""Recorder tab: record waypoints and save them as bot routes (T8.F1.K1-T8.F4.K1).
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, in the format
 :class:`RouteFileLoader` reads, so the Cavebot tab can pick and run them.
@@ -6,8 +6,13 @@ Routes are the bot's own files, ``<routes_dir>/<name>.json``, in the format
 
 from __future__ import annotations
 
+import ctypes
 import json
+import queue
 import re
+import sys
+import threading
+from ctypes import wintypes
 from pathlib import Path
 
 import customtkinter as ctk
@@ -19,10 +24,79 @@ from moonlight.gui.loop_factory import load_real_config
 from moonlight.gui.tabs.base import Tab, section, stat_label
 from moonlight.gui.tabs.cavebot import route_names, waypoint_table
 
-__all__ = ["RecorderTab", "make_waypoint", "save_route", "should_add", "status_line"]
+__all__ = [
+    "HOTKEYS",
+    "RecorderTab",
+    "make_waypoint",
+    "save_route",
+    "should_add",
+    "status_line",
+    "vk_code",
+]
 
 NO_ROUTES = "No routes"
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
+#: Recording hotkeys: function key -> waypoint action (or "undo").
+HOTKEYS = {"F4": "ladder", "F5": "undo", "F6": "walk", "F7": "rope", "F8": "shovel", "F9": "label"}
+_WM_QUIT = 0x0012
+_WM_HOTKEY = 0x0312
+_MOD_NOREPEAT = 0x4000
+
+
+def vk_code(key: str) -> int:
+    """Windows virtual-key code of function key *key* ("F1" is 0x70)."""
+    return 0x6F + int(key[1:])
+
+
+class _Hotkeys:
+    """:data:`HOTKEYS` as global hotkeys, pressed actions put on *out*.
+
+    ``RegisterHotKey`` ties keys to the thread that registers them, so they
+    live on their own thread with a message loop. Windows only.
+    """
+
+    def __init__(self, out: queue.Queue[str]) -> None:
+        self._out = out
+        self._thread: threading.Thread | None = None
+        self._thread_id = 0
+        self.failed: list[str] = []
+
+    def start(self) -> None:
+        if sys.platform != "win32" or self._thread is not None:
+            return
+        ready = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run, args=(ready,), daemon=True, name="recorder-hotkeys"
+        )
+        self._thread.start()
+        ready.wait(1.0)
+
+    def stop(self) -> None:
+        if sys.platform != "win32" or self._thread is None:
+            return
+        ctypes.windll.user32.PostThreadMessageW(self._thread_id, _WM_QUIT, 0, 0)
+        self._thread.join(1.0)
+        self._thread = None
+
+    def _run(self, ready: threading.Event) -> None:
+        if sys.platform != "win32":
+            return
+        user32 = ctypes.windll.user32
+        self._thread_id = ctypes.windll.kernel32.GetCurrentThreadId()
+        msg = wintypes.MSG()
+        user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)  # makes the message queue
+        keys = list(HOTKEYS)
+        self.failed = [
+            k
+            for i, k in enumerate(keys)
+            if not user32.RegisterHotKey(None, i + 1, _MOD_NOREPEAT, vk_code(k))
+        ]
+        ready.set()
+        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            if msg.message == _WM_HOTKEY and 1 <= msg.wParam <= len(keys):
+                self._out.put(HOTKEYS[keys[msg.wParam - 1]])
+        for i in range(len(keys)):
+            user32.UnregisterHotKey(None, i + 1)
 
 
 def make_waypoint(
@@ -110,6 +184,9 @@ class RecorderTab(Tab):
         self.lbl_pos = ctk.CTkLabel(top, text=status_line(False, Position(0, 0, 0)), anchor="e")
         self.lbl_pos.pack(side="right")
         self._recording = False
+        self._pressed: queue.Queue[str] = queue.Queue()
+        self._hotkeys = _Hotkeys(self._pressed)
+        self.btn_record.bind("<Destroy>", lambda _e: self._hotkeys.stop(), add="+")
         self.lbl_count = stat_label(parent, "Waypoints")
         self.lbl_count.grid(row=1, column=0, sticky="ew", padx=10)
         self._pos = Position(0, 0, 0)
@@ -268,6 +345,12 @@ class RecorderTab(Tab):
         self._recording = not self._recording
         self.btn_record.configure(text="Stop recording" if self._recording else "Start recording")
         self._draw_status()
+        if self._recording:
+            self._hotkeys.start()
+            if self._hotkeys.failed:
+                self._status(f"Hotkeys in use elsewhere: {', '.join(self._hotkeys.failed)}")
+        else:
+            self._hotkeys.stop()
 
     def _draw_status(self) -> None:
         text = status_line(self._recording, self._pos)
@@ -282,6 +365,12 @@ class RecorderTab(Tab):
         self._draw_status()
         if not self._recording:
             return
+        while not self._pressed.empty():
+            action = self._pressed.get_nowait()
+            if action == "undo":
+                self._undo()
+            else:
+                self._add_action(action)
         try:
             tiles = max(1, int(self.var_tiles.get()))
         except ValueError:
