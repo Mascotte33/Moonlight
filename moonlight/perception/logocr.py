@@ -13,7 +13,7 @@ low OCR confidence or any OCR error yields ``LogFrame(ok=False, ...)``;
   the tick on a daemon thread at <= 1 Hz, so the tick never waits on OCR.
 * **Failures (F-21).** The first OCR failure is logged once with its
   exception (a missing Tesseract binary is otherwise indistinguishable
-  from an empty log); :func:`health` is what ``moonlight check`` reports.
+  from an empty log); :func:`health` is what ``tools/check_setup.py`` reports.
 * **Dedupe (F-21).** By position, not text: the new read is aligned with
   the previous one (the log scrolls up), and only lines below the overlap
   are new -- so two identical "You loot nothing" lines are two events.
@@ -179,7 +179,7 @@ def _overlap(prev: list[str], cur: list[str]) -> int:
 
 
 def health() -> tuple[bool, str]:
-    """Is OCR usable here? ``(ok, detail)`` for ``moonlight check`` (F-21)."""
+    """Is OCR usable here? ``(ok, detail)`` for ``tools/check_setup.py`` (F-21)."""
     try:
         import pytesseract
 
