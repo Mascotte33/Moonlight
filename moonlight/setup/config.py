@@ -30,6 +30,7 @@ JSON format (``moonlight_config.json``)::
       "modules": {
         "healing":   {"enabled": true, "normal_hp_percent": 70.0},
         "targeting": {"enabled": true},
+        "attack_spells": {"enabled": false},   # optional section, missing = off
         "buffs":     {"enabled": false},
         "alarms":    {"enabled": true},
         "cavebot":   {"enabled": false, "route": "rotworms"},
@@ -64,6 +65,7 @@ from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from moonlight.bot.loop import GameLoop, LoopConfig
 from moonlight.decision.alarms import AlarmConfig
+from moonlight.decision.attack_spells import AttackSpellsConfig
 from moonlight.decision.buffs import BuffManagerConfig
 from moonlight.decision.cavebot import Route, RouteError, RouteFileLoader
 from moonlight.decision.healing import HealingConfig
@@ -84,7 +86,16 @@ __all__ = [
 DEFAULT_CONFIG_FILE = "moonlight_config.json"
 
 #: Module section names, in ``modules`` of the JSON file.
-MODULES = ("healing", "targeting", "buffs", "alarms", "cavebot", "looting", "refill")
+MODULES = (
+    "healing",
+    "targeting",
+    "attack_spells",
+    "buffs",
+    "alarms",
+    "cavebot",
+    "looting",
+    "refill",
+)
 
 _TOP_KEYS = {
     "profile",
@@ -143,6 +154,7 @@ class BotConfig:
     hotkeys: dict[str, str] | None = None
     healing: HealingConfig | None = None
     targeting: TargetingConfig | None = None
+    attack_spells: AttackSpellsConfig | None = None
     buffs: BuffManagerConfig | None = None
     alarms: AlarmConfig | None = None
     cavebot: CavebotConfig | None = None
@@ -240,6 +252,8 @@ class BotConfig:
         routes_dir = kwargs.get("routes_dir", Path("data/waypoints"))
         for name in MODULES:
             if name not in modules:
+                if name == "attack_spells":
+                    continue  # added after the first config files were written
                 raise ConfigError(f"modules: missing required section {name!r}")
             section = dict(_require_dict(modules[name], f"modules.{name}"))
             enabled = section.pop("enabled", None)
@@ -301,7 +315,7 @@ class BotConfig:
                 raise ConfigError(f"off: {name!r} is not a module that is off")
         try:
             GameLoop._validate_config(self.loop)
-            for cfg in (self.healing, self.targeting, self.buffs, self.alarms):
+            for cfg in (self.healing, self.targeting, self.attack_spells, self.buffs, self.alarms):
                 if cfg is not None:
                     cfg.validate()
             if self.minimap_start is not None:
@@ -325,6 +339,9 @@ class BotConfig:
             spells += [h.emergency_spell, h.normal_spell]
             if h.cure_conditions:
                 spells.append(h.cure_spell)
+        if self.attack_spells is not None:
+            a = self.attack_spells
+            spells += [s for s in (a.single_spell, a.aoe_spell) if s]
         if self.buffs is not None:
             spells += [b.spell for b in self.buffs.buffs]
         missing = sorted({s for s in spells if s not in self.spell_combos})
