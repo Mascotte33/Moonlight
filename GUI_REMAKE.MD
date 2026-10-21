@@ -239,6 +239,7 @@ Write every task as one block, so an agent can do it with no other context:
 Tab tasks are in build order. Each one converts its part of the tab to the T0.F3.K1 pattern and removes that part's use of `gui/config_bridge.py`. Functions the bot can't do yet are listed under **Not planned yet** at the end.
 
 ### T7.F1.K1 — Hardware options
+- ✅ Done in commit a3cb90a.
 - What: convert Hardware to `OPTIONS`:
   - `simulation`: switch "Simulation", with a one-line hint under it ("No Arduino. Actions are only logged.");
   - `serial_port`: entry. Blank means auto-detect and is saved as `null`;
