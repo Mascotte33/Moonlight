@@ -1,8 +1,8 @@
-"""Dashboard tab — live bot health at a glance (T39).
+"""Dashboard tab: stat cards, battle list and event log tail (T1.F1.K1).
 
-Shows bot tick count (from the loop's stats), creature/monster counts,
-HP/MP, active modules, the live battle list, and a terminal-style event log
-tail.
+Four stat cards (Uptime, Ticks, Creatures, HP) show hero-size values from
+the loop's stats and the live :class:`WorldState`. The module switches live
+in Settings.
 """
 
 from __future__ import annotations
@@ -11,16 +11,37 @@ from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
-from moonlight.gui.tabs.base import Tab, section, stat_label
+from moonlight.gui import theme
+from moonlight.gui.tabs.base import Tab, section, stat_num
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.bot.state import WorldState
 
-__all__ = ["DashboardTab"]
+__all__ = ["CARDS", "DashboardTab", "card_values", "uptime_text"]
+
+CARDS = ("Uptime", "Ticks", "Creatures", "HP")
+
+
+def uptime_text(stats: dict[str, object]) -> str:
+    """``h:mm:ss`` from the loop's ``uptime_seconds``; ``—`` when stopped."""
+    if "uptime_seconds" not in stats:
+        return "—"
+    secs = int(stat_num(stats, "uptime_seconds"))
+    return f"{secs // 3600}:{secs // 60 % 60:02d}:{secs % 60:02d}"
+
+
+def card_values(stats: dict[str, object], snap: WorldState) -> dict[str, str]:
+    """The text of each stat card."""
+    return {
+        "Uptime": uptime_text(stats),
+        "Ticks": str(int(stat_num(stats, "tick_count"))) if stats else "—",
+        "Creatures": str(len(snap.monsters)),
+        "HP": f"{snap.hp_percent:.0f}%",
+    }
 
 
 class DashboardTab(Tab):
-    """Live bot health: ticks, creatures, HP/MP, modules, battle list, log."""
+    """Stat cards, battle list and event log."""
 
     title = "Dashboard"
 
@@ -28,20 +49,22 @@ class DashboardTab(Tab):
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(1, weight=1)
 
-        self.lbl_tick = stat_label(parent, "Bot tick")
-        self.lbl_tick.grid(row=0, column=0, sticky="w", padx=10, pady=(10, 0))
-        self.lbl_state = stat_label(parent, "Loop state")
-        self.lbl_state.grid(row=0, column=1, sticky="w", padx=10)
-        self.lbl_monsters = stat_label(parent, "Monsters")
-        self.lbl_monsters.grid(row=0, column=2, sticky="w", padx=10)
-        self.lbl_players = stat_label(parent, "Players")
-        self.lbl_players.grid(row=0, column=3, sticky="w", padx=10)
-        self.lbl_hp = stat_label(parent, "HP")
-        self.lbl_hp.grid(row=0, column=4, sticky="w", padx=10)
-        self.lbl_mp = stat_label(parent, "MP")
-        self.lbl_mp.grid(row=0, column=5, sticky="w", padx=10)
-        self.lbl_modules = stat_label(parent, "Modules")
-        self.lbl_modules.grid(row=0, column=6, sticky="w", padx=10)
+        cards = ctk.CTkFrame(parent, fg_color="transparent")
+        cards.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+        self._cards: dict[str, ctk.CTkLabel] = {}
+        for col, name in enumerate(CARDS):
+            cards.grid_columnconfigure(col, weight=1, uniform="card")
+            box = section(cards, name)
+            box.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else theme.UNIT, 0))
+            value = ctk.CTkLabel(
+                box,
+                text="—",
+                anchor="w",
+                font=ctk.CTkFont(family=theme.MONO, size=theme.SIZE_HERO, weight="bold"),
+                text_color=theme.TEXT,
+            )
+            value.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
+            self._cards[name] = value
 
         body = ctk.CTkFrame(parent, fg_color="transparent")
         body.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
@@ -78,25 +101,10 @@ class DashboardTab(Tab):
             return {}
 
     def on_poll(self, snap: WorldState) -> None:
-        stats = self._loop_stats()
-        self.lbl_tick.configure(text=f"Bot tick: {stats.get('tick_count', 0)}")
-        self.lbl_state.configure(text=f"Loop state: {stats.get('state', 'idle')}")
-        self.lbl_monsters.configure(text=f"Monsters: {len(snap.monsters)}")
-        self.lbl_players.configure(text=f"Players: {snap.players_on_screen}")
-        self.lbl_hp.configure(text=f"HP: {snap.hp_percent:.0f}%")
-        self.lbl_mp.configure(text=f"MP: {snap.mp_percent:.0f}%")
-        cfg = self.ctx.active_config()
-        mods = [
-            name
-            for name, on in (
-                ("healing", cfg.modules.healing),
-                ("cavebot", cfg.modules.cavebot),
-                ("loot", cfg.modules.loot),
-                ("overlay", cfg.modules.overlay),
-            )
-            if on
-        ]
-        self.lbl_modules.configure(text=f"Modules: {', '.join(mods) if mods else 'none'}")
+        for name, text in card_values(self._loop_stats(), snap).items():
+            label = self._cards[name]
+            if label.cget("text") != text:
+                label.configure(text=text)
         if snap.monsters:
             monsters = snap.monsters[:20]
             lines = [
