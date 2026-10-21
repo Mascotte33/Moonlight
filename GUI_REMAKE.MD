@@ -251,6 +251,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_options.py` passes, with a test that a blank port writes `serial_port=None`. Owner checks: change the baud rate, Save, reopen the GUI, and the value is still there.
 
 ### T7.F2.K1 — Detect ports
+- ✅ Done in commit 9fe5c7b.
 - What: a **Detect** button next to the port entry fills a dropdown with `ctx.hardware.list_ports()`. Picking a port puts it in the entry. No ports shows "No ports found".
 - Needs: T7.F1.K1
 - Files: moonlight/gui/tabs/hardware.py
