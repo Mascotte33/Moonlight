@@ -404,6 +404,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_cavebot.py` passes, with tests that picking a route writes `cavebot.route` and the table rows come from the file. Owner checks: a route in `data/waypoints/` shows in the dropdown and its waypoints show in the table.
 
 ### T3.F4.K1 — Current waypoint
+- ✅ Done in commit 8c35ddb.
 - What: in the waypoint table the current waypoint (`Route.current`, read from the running cavebot) is marked `>`, and a line under it says "Waypoint N of M". Stopped bot = no marker, "Not running".
 - Needs: T3.F1.K1
 - Files: moonlight/gui/tabs/cavebot.py, moonlight/gui/state_bridge.py (read the cavebot's route from the running loop), tests/unit/test_gui_cavebot.py
