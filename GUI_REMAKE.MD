@@ -368,6 +368,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_bottombar.py` passes. Owner checks: the Status tab's CPU matches the bottom bar's.
 
 ### T9.F3.K1 — Position card
+- ✅ Done in commit 8efdde0.
 - What: position `x, y, z` in Cascadia Mono, a **Copy** button that puts `x, y, z` on the clipboard, and "updated N s ago" from `last_update`. The age text is a plain function.
 - Needs: T9.F1.K1
 - Files: moonlight/gui/tabs/status.py, tests/unit/test_gui_status.py
