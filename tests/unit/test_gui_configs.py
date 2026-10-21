@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 
 from moonlight.bot.state import WorldState
-from moonlight.gui.config_bridge import ConfigStore
 from moonlight.gui.loop_factory import (
     config_names,
     delete_config,
@@ -99,7 +98,6 @@ def test_save_runs_every_tabs_apply() -> None:
     calls: list[str] = []
     ctx = GuiContext(
         state=WorldState(),
-        config_store=ConfigStore(None, Path("gui.json")),
         hardware=HardwareController(),
         log=LogFeed(),
     )
