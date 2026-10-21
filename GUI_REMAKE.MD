@@ -93,6 +93,7 @@ Write every task as one block, so an agent can do it with no other context:
 
 ```
 ### T3.F6.K1 — Add current waypoint
+- ✅ Done in commit f73e099.
 - What: a button that appends the player's current minimap position to the route.
 - Needs: T0.F3.K1
 - Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
