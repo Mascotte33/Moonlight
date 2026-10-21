@@ -14,18 +14,25 @@ from typing import TYPE_CHECKING
 import customtkinter as ctk
 
 from moonlight.gui import theme
-from moonlight.gui.tabs.base import Tab, section, stat_label
+from moonlight.gui.tabs.base import Option, Tab, section, stat_label
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.bot.state import WorldState
 
-__all__ = ["HardwareTab"]
+__all__ = ["OPTIONS", "HardwareTab"]
+
+OPTIONS = [
+    Option("Serial port (blank = auto-detect)", "serial_port", "entry"),
+    Option("Baud rate", "serial_baudrate", "entry", min=1),
+    Option("Simulation", "simulation", "switch"),
+]
 
 
 class HardwareTab(Tab):
     """Arduino backend status and controls (list, connect, ping, release)."""
 
     title = "Hardware"
+    options = OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
         parent.grid_columnconfigure(0, weight=1)
@@ -41,24 +48,22 @@ class HardwareTab(Tab):
         self._last_pong: str = "--"
         self._msg: str = ""
 
+        options = section(parent, "Connection")
+        options.grid(row=4, column=0, sticky="ew", padx=10, pady=(10, 0))
+        self.build_options(options)
+        ctk.CTkLabel(
+            options,
+            text="No Arduino. Actions are only logged.",
+            anchor="w",
+            font=ctk.CTkFont(size=theme.SIZE_TITLE),
+            text_color=theme.TEXT_MUTED,
+        ).pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
+
         box = section(parent, "Arduino backend")
-        box.grid(row=4, column=0, sticky="nsew", padx=10, pady=(10, 10))
+        box.grid(row=5, column=0, sticky="nsew", padx=10, pady=(10, 10))
         box_grid = ctk.CTkFrame(box, fg_color="transparent")
         box_grid.pack(fill="both", expand=True)
         box_grid.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(
-            box_grid, text="Serial port (blank = auto-detect)"
-        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(8, 0))
-        self.var_port = ctk.StringVar(value="")
-        ctk.CTkEntry(
-            box_grid, textvariable=self.var_port, placeholder_text="e.g. COM3"
-        ).grid(row=1, column=0, columnspan=2, sticky="ew", padx=10, pady=4)
-        ctk.CTkLabel(box_grid, text="Baud rate").grid(row=2, column=0, sticky="w", padx=10)
-        self.var_baud = ctk.StringVar(value="115200")
-        ctk.CTkEntry(box_grid, textvariable=self.var_baud).grid(
-            row=2, column=1, sticky="ew", padx=10
-        )
 
         btns = ctk.CTkFrame(box_grid, fg_color="transparent")
         btns.grid(row=3, column=0, columnspan=2, sticky="ew", padx=6, pady=(10, 4))
@@ -75,19 +80,6 @@ class HardwareTab(Tab):
                 row=0, column=col, padx=4, sticky="ew"
             )
             btns.grid_columnconfigure(col, weight=1)
-
-        # Simulation toggle (F-13): explicitly opt into FakeInput so the GUI
-        # stays usable on a machine without the board. Off by default — a
-        # missing Arduino is then a hard error (no silent fallback).
-        self.var_simulation = ctk.BooleanVar(
-            value=self.ctx.active_config().simulation
-        )
-        ctk.CTkCheckBox(
-            box_grid,
-            text="Simulation mode (no Arduino — FakeInput)",
-            variable=self.var_simulation,
-            command=self._on_simulation_toggle,
-        ).grid(row=4, column=0, columnspan=2, sticky="w", padx=10, pady=(4, 0))
 
         self.lbl_ports = ctk.CTkLabel(
             box_grid, text="", anchor="w", justify="left", font=ctk.CTkFont(size=theme.SIZE_TITLE)
@@ -117,9 +109,9 @@ class HardwareTab(Tab):
         self._refresh()
 
     def _connect(self) -> None:
-        port = self.var_port.get().strip() or None
+        port = str(self._readers["serial_port"]()).strip() or None
         try:
-            baud = int(self.var_baud.get() or "115200")
+            baud = int(str(self._readers["serial_baudrate"]()))
         except ValueError:
             baud = 115200
 
@@ -162,17 +154,6 @@ class HardwareTab(Tab):
         self._msg = "disconnected"
         self._last_pong = "--"
         self._refresh()
-
-    def _on_simulation_toggle(self) -> None:
-        """Persist the simulation toggle to the config store (F-13).
-
-        The checkbox has already updated ``var_simulation``; we read it back
-        and persist so the next ``build_gui_loop`` picks it up.
-        """
-        checked = bool(self.var_simulation.get())
-        self.ctx.config_store.update(
-            lambda cfg: setattr(cfg, "simulation", checked)
-        )
 
     # -- display -----------------------------------------------------------
 
