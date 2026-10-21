@@ -77,6 +77,11 @@ def _field_type(path: list[str]) -> Any:
     return hint
 
 
+def _allows_none(path: list[str]) -> bool:
+    raw = get_type_hints(_field_type(path[:-1]))[path[-1]]
+    return type(None) in get_args(raw)
+
+
 def _cast(value: object, hint: Any, field: str) -> object:
     """Fit a control's value to the field's type (sliders give floats)."""
     try:
@@ -122,7 +127,9 @@ def write_option(cfg: BotConfig, option: Option, value: object) -> BotConfig:
     """
     path = option.field.split(".")
     head = path[0]
-    if not (head in MODULES and path[1:] == ["enabled"]):
+    if value == "" and _allows_none(path):
+        value = None
+    elif not (head in MODULES and path[1:] == ["enabled"]):
         value = _cast(value, _field_type(path), option.field)
     if isinstance(value, int | float) and not isinstance(value, bool):
         low, high = option.min, option.max

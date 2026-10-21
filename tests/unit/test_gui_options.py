@@ -63,3 +63,10 @@ def test_unknown_field_and_bad_number_refused() -> None:
         read_option(BotConfig.default(), "clicker.nope")
     with pytest.raises(ConfigError):
         write_option(BotConfig.default(), Option("Baud", "serial_baudrate", "entry"), "fast")
+
+
+def test_blank_entry_writes_none_into_optional_field() -> None:
+    port = Option("Port", "serial_port", "entry")
+    cfg = write_option(BotConfig.default(), port, "COM3")
+    assert cfg.serial_port == "COM3"
+    assert write_option(cfg, port, "").serial_port is None
