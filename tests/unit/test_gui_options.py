@@ -80,3 +80,25 @@ def test_tick_rate_option_writes_loop_tick_rate() -> None:
     assert cfg.loop.tick_rate == 30.0
     with pytest.raises(ConfigError):
         write_option(cfg, tick, 61.0)
+
+
+def _switch(name: str) -> Option:
+    from moonlight.gui.tabs.settings import MODULE_SWITCHES
+
+    (option,) = [o for o in MODULE_SWITCHES if o.field == f"{name}.enabled"]
+    return option
+
+
+def test_looting_switch_off_and_on_keeps_values() -> None:
+    cfg = replace(BotConfig.default(), monster_name_source=True)
+    cfg = write_option(cfg, _switch("looting"), True)
+    cfg = write_option(cfg, Option("Max", "looting.max_items_per_loot", "entry"), "7")
+    cfg = write_option(cfg, _switch("looting"), False)
+    assert cfg.looting is None
+    cfg = write_option(cfg, _switch("looting"), True)
+    assert cfg.looting is not None and cfg.looting.max_items_per_loot == 7
+
+
+def test_cavebot_switch_without_route_refused() -> None:
+    with pytest.raises(ConfigError, match="route"):
+        write_option(BotConfig.default(), _switch("cavebot"), True)
