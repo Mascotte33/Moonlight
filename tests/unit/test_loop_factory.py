@@ -17,16 +17,17 @@ customtkinter imports, so this whole module is headless-safe.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from moonlight.bot.state import WorldState
-from moonlight.gui.config_bridge import BotConfig as GuiBotConfig
 from moonlight.gui.loop_factory import build_gui_loop, make_backend
 from moonlight.gui.state_bridge import HardwareController
 from moonlight.hardware.input import FakeInput, NoArduinoFoundError
 from moonlight.setup.calibrate import REGIONS, CalibrationProfile, Region
+from moonlight.setup.config import BotConfig
 
 
 class _SpyBackend(FakeInput):
@@ -41,11 +42,15 @@ class _SpyBackend(FakeInput):
         super().close()
 
 
-def _gui_config(**overrides: object) -> GuiBotConfig:
-    cfg = GuiBotConfig()
-    for key, value in overrides.items():
-        setattr(cfg, key, value)
-    return cfg
+def _config(**overrides: object) -> BotConfig:
+    return replace(BotConfig.default(), **overrides)  # type: ignore[arg-type]
+
+
+def _config_file(tmp_path: Path, *, simulation: bool) -> Path:
+    """The real config file Start reads, naming the ``test_profile``."""
+    path = tmp_path / "moonlight_config.json"
+    _config(profile="test_profile", simulation=simulation).save(path)
+    return path
 
 
 @pytest.fixture()
@@ -61,13 +66,6 @@ def profile_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
-def missing_config(tmp_path: Path) -> Path:
-    """A non-existent config path -> ``load_real_config`` falls back to
-    :meth:`BotConfig.default` (healing/targeting/alarms on, the rest off)."""
-    return tmp_path / "does_not_exist_config.json"
-
-
-@pytest.fixture()
 def state() -> WorldState:
     return WorldState()
 
@@ -78,8 +76,7 @@ def state() -> WorldState:
 def test_make_backend_simulation_returns_fake() -> None:
     """simulation ON -> FakeInput, with no Arduino connection attempted."""
     hw = HardwareController()  # no factory: must NOT be consulted
-    gui = _gui_config(simulation=True)
-    backend = make_backend(gui, hw)
+    backend = make_backend(_config(simulation=True), hw)
     assert isinstance(backend, FakeInput)
     assert hw.backend is None  # connect() was never called
 
@@ -94,8 +91,7 @@ def test_make_backend_real_when_simulation_off() -> None:
         return b
 
     hw = HardwareController(input_factory=factory)
-    gui = _gui_config(simulation=False, serial_port="COM9")
-    backend = make_backend(gui, hw)
+    backend = make_backend(_config(simulation=False, serial_port="COM9"), hw)
     assert backend is calls[0]
     assert backend is hw.backend
     assert calls[0] is not None
@@ -111,9 +107,9 @@ def test_make_backend_reopens_fresh_on_restart() -> None:
         return b
 
     hw = HardwareController(input_factory=factory)
-    gui = _gui_config(simulation=False)
-    first = make_backend(gui, hw)
-    second = make_backend(gui, hw)
+    cfg = _config(simulation=False)
+    first = make_backend(cfg, hw)
+    second = make_backend(cfg, hw)
     assert isinstance(first, _SpyBackend)
     assert isinstance(second, _SpyBackend)
     assert first is not second
@@ -125,7 +121,7 @@ def test_make_backend_reopens_fresh_on_restart() -> None:
 
 
 def test_build_gui_loop_wires_real_perceive(
-    profile_dir: Path, missing_config: Path, state: WorldState
+    profile_dir: Path, tmp_path: Path, state: WorldState
 ) -> None:
     """Start builds the real loop: a wired ``perceive`` (never bare GameLoop)."""
 
@@ -133,12 +129,10 @@ def test_build_gui_loop_wires_real_perceive(
         return _SpyBackend()
 
     hw = HardwareController(input_factory=factory)
-    gui = _gui_config(simulation=True, profile_name="test_profile")
     loop = build_gui_loop(
-        gui,
         hardware=hw,
         state=state,
-        config_path=missing_config,
+        config_path=_config_file(tmp_path, simulation=True),
         profiles_dir=profile_dir,
     )
     # A bare GameLoop has _perceive is None; build_loop always wires one.
@@ -146,7 +140,7 @@ def test_build_gui_loop_wires_real_perceive(
 
 
 def test_build_gui_loop_no_silent_fakeinput(
-    profile_dir: Path, missing_config: Path, state: WorldState
+    profile_dir: Path, tmp_path: Path, state: WorldState
 ) -> None:
     """simulation OFF + no Arduino -> NoArduinoFoundError (no silent FakeInput)."""
 
@@ -154,13 +148,11 @@ def test_build_gui_loop_no_silent_fakeinput(
         raise NoArduinoFoundError("no Arduino Leonardo found on the bus")
 
     hw = HardwareController(input_factory=factory)
-    gui = _gui_config(simulation=False, profile_name="test_profile")
     with pytest.raises(NoArduinoFoundError):
         build_gui_loop(
-            gui,
             hardware=hw,
             state=state,
-            config_path=missing_config,
+            config_path=_config_file(tmp_path, simulation=False),
             profiles_dir=profile_dir,
         )
     # The controller recorded the error and has no active backend.

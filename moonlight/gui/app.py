@@ -345,20 +345,14 @@ class GuiApp:
         Builds the loop via :func:`moonlight.gui.loop_factory.build_gui_loop`,
         which wires a real screen capture (frame provider + focus check) and
         every enabled decision module — never a bare :class:`GameLoop`
-        without ``perceive`` (which would stop on the first tick). A missing
-        Arduino requires the explicit *simulation* toggle (Hardware tab);
-        there is no silent :class:`FakeInput` fallback (F-13).
+        without ``perceive`` (which would stop on the first tick). It reads only
+        ``moonlight_config.json``; a missing Arduino requires its explicit
+        ``simulation`` flag. There is no silent :class:`FakeInput` fallback (F-13).
         """
         if self.ctx.bot_running():
             return
-        cfg = self.ctx.active_config()
         try:
-            loop = build_gui_loop(
-                cfg,
-                hardware=self.hardware,
-                state=self.state,
-                config_path=self.config_path,
-            )
+            loop = build_gui_loop(hardware=self.hardware, state=self.state)
         except Exception as exc:  # noqa: BLE001 - report, don't crash the app
             self.log.error(f"could not start bot: {exc!r}")
             return
