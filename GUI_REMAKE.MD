@@ -384,6 +384,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: pytest stays green and diagnostics.py doesn't use `config_store`. Owner checks: the dots match the Dashboard's.
 
 ### T10.F4.K1 — Recent errors
+- ✅ Done in commit d7a84e9.
 - What: a **Recent errors** card with the last 20 log lines at warning or error level, newest first, and "No errors" when there are none. `LogFeed` already keeps the level.
 - Needs: T10.F1.K1
 - Files: moonlight/gui/tabs/diagnostics.py, moonlight/gui/state_bridge.py (a level filter on `LogFeed.text` if needed), tests/unit/test_gui_status.py
