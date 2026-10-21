@@ -7,7 +7,13 @@ from dataclasses import replace
 from pathlib import Path
 
 from moonlight.decision.cavebot import RouteFileLoader
-from moonlight.gui.tabs.cavebot import apply_cavebot, picked_route, route_names, waypoint_table
+from moonlight.gui.tabs.cavebot import (
+    apply_cavebot,
+    picked_route,
+    route_names,
+    waypoint_line,
+    waypoint_table,
+)
 from moonlight.setup.config import BotConfig
 
 
@@ -52,3 +58,29 @@ def test_table_rows_come_from_the_file(tmp_path: Path) -> None:
     assert lines[1].split() == ["1", "walk", "100", "200", "7"]
     assert lines[2].split() == ["2", "rope", "101", "200", "7"]
     assert waypoint_table(None) == "No waypoints loaded"
+
+
+def test_current_waypoint_is_marked(tmp_path: Path) -> None:
+    route = RouteFileLoader.load(_routes(tmp_path) / "rotworms.json")
+    lines = waypoint_table(route, current=1).splitlines()
+    assert lines[2].startswith(">")
+    assert not lines[1].startswith(">")
+    assert ">" not in waypoint_table(route)
+
+
+def test_waypoint_line() -> None:
+    assert waypoint_line(1, 2) == "Waypoint 2 of 2"
+    assert waypoint_line(None, 2) == "Not running"
+
+
+def test_live_route_is_none_without_a_running_bot() -> None:
+    from types import SimpleNamespace
+
+    from moonlight.gui.state_bridge import GuiContext
+
+    ctx = SimpleNamespace(controller=None, bot_running=lambda: False)
+    assert GuiContext.live_route(ctx) is None  # type: ignore[arg-type]
+    cavebot = SimpleNamespace(route="r")
+    loop = SimpleNamespace(modules=SimpleNamespace(cavebot=cavebot))
+    ctx = SimpleNamespace(controller=SimpleNamespace(loop=loop), bot_running=lambda: True)
+    assert GuiContext.live_route(ctx) == "r"  # type: ignore[arg-type]

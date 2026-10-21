@@ -11,6 +11,7 @@ from pathlib import Path
 
 import customtkinter as ctk
 
+from moonlight.bot.state import WorldState
 from moonlight.decision.cavebot import Route, RouteError, RouteFileLoader
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
@@ -24,6 +25,7 @@ __all__ = [
     "apply_cavebot",
     "picked_route",
     "route_names",
+    "waypoint_line",
     "waypoint_table",
 ]
 
@@ -48,14 +50,22 @@ def picked_route(cfg: BotConfig) -> str:
     return route.name if isinstance(route, Route) else ""
 
 
-def waypoint_table(route: Route | None) -> str:
-    """*route*'s waypoints as a text table, or "No waypoints loaded"."""
+def waypoint_table(route: Route | None, current: int | None = None) -> str:
+    """*route*'s waypoints as a text table, row *current* (0-based) marked ``>``."""
     if route is None or not route.waypoints:
         return "No waypoints loaded"
-    lines = [f"{'#':>3}  {'action':<7}{'x':>6}{'y':>6}{'z':>4}  label"]
-    for i, wp in enumerate(route.waypoints, 1):
-        lines.append(f"{i:>3}  {wp.action:<7}{wp.x:>6}{wp.y:>6}{wp.z:>4}  {wp.label}")
+    lines = [f" {'#':>3}  {'action':<7}{'x':>6}{'y':>6}{'z':>4}  label"]
+    for i, wp in enumerate(route.waypoints):
+        mark = ">" if i == current else " "
+        lines.append(
+            f"{mark}{i + 1:>3}  {wp.action:<7}{wp.x:>6}{wp.y:>6}{wp.z:>4}  {wp.label}"
+        )
     return "\n".join(lines)
+
+
+def waypoint_line(current: int | None, total: int) -> str:
+    """"Waypoint N of M" for 0-based *current*, or "Not running" for None."""
+    return "Not running" if current is None else f"Waypoint {current + 1} of {total}"
 
 
 def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
@@ -106,8 +116,13 @@ class CavebotTab(Tab):
         self.wp_list = ctk.CTkTextbox(
             wps, height=200, wrap="none", font=ctk.CTkFont(family=theme.MONO)
         )
-        self.wp_list.pack(fill="both", expand=True, padx=theme.PAD, pady=theme.PAD)
+        self.wp_list.pack(fill="both", expand=True, padx=theme.PAD, pady=(theme.PAD, 0))
+        self.lbl_current = ctk.CTkLabel(wps, text="Not running", anchor="w")
+        self.lbl_current.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
         self._routes_dir = Path()
+        self._route: Route | None = None
+        self._error = ""
+        self._text = ""
         self._reload()
 
     def _reload(self) -> None:
@@ -120,16 +135,33 @@ class CavebotTab(Tab):
         self._show_route(self.menu_route.get())
 
     def _show_route(self, name: str) -> None:
-        text = waypoint_table(None)
+        self._route = None
+        self._error = ""
         if name != NO_ROUTES:
             try:
-                text = waypoint_table(RouteFileLoader.load(self._routes_dir / f"{name}.json"))
+                self._route = RouteFileLoader.load(self._routes_dir / f"{name}.json")
             except RouteError as exc:
-                text = str(exc)
+                self._error = str(exc)
+        self._draw()
+
+    def _draw(self) -> None:
+        live = self.ctx.live_route()
+        route = live if live is not None else self._route
+        current = live.current if live is not None else None
+        text = self._error if live is None and self._error else waypoint_table(route, current)
+        line = waypoint_line(current, len(route.waypoints) if route else 0)
+        if self.lbl_current.cget("text") != line:
+            self.lbl_current.configure(text=line)
+        if text == self._text:
+            return
+        self._text = text
         self.wp_list.configure(state="normal")
         self.wp_list.delete("1.0", "end")
         self.wp_list.insert("1.0", text)
         self.wp_list.configure(state="disabled")
+
+    def on_poll(self, snap: WorldState) -> None:
+        self._draw()
 
     def reload_options(self) -> None:
         super().reload_options()
