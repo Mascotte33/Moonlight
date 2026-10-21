@@ -288,6 +288,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_options.py` passes, with a test that the tick rate option writes `loop.tick_rate`. Owner checks: Settings has no Start/Pause/Kill, port or baud; the tick rate is kept after Save and reopening the GUI.
 
 ### T2.F4.K1 — Module switches
+- ✅ Done in commit c6929e1.
 - What: a **Modules** section in Settings with one `<module>.enabled` switch per bot module: healing, targeting, cavebot, looting, refill, buffs, alarms. Cavebot needs a route, so turning it on before a route is picked (T3.F1.K1) shows the `ConfigError` text and the switch goes back off.
 - Needs: T2.F2.K1
 - Files: moonlight/gui/tabs/settings.py, tests/unit/test_gui_options.py
