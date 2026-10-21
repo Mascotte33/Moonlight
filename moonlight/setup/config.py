@@ -42,6 +42,10 @@ require their perception source (``monster_name_source`` /
 ``capacity_source`` / ``buff_icon_source``) to be true (F-09 / F-10).
 Fields left out of a module section take the dataclass defaults.
 
+A module that is off keeps its values: ``{"enabled": false, "normal_hp_percent":
+65}`` is parsed into :attr:`BotConfig.off` and written back the same way, so
+turning the module on again restores them. The bot never reads ``off``.
+
 The default profile is ``moonlight_user`` (F-11); the GUI and
 ``tools/check_setup.py`` use it when no profile is given.
 """
@@ -50,7 +54,7 @@ from __future__ import annotations
 
 import json
 import types
-from dataclasses import asdict, dataclass, fields, is_dataclass
+from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
@@ -142,6 +146,8 @@ class BotConfig:
     monster_name_source: bool = False
     capacity_source: bool = False
     buff_icon_source: bool = False
+    #: Kept values of modules that are off, by module name (T0.F1.K4).
+    off: dict[str, Any] = field(default_factory=dict)
 
     @property
     def spell_combos(self) -> dict[str, str]:
@@ -220,12 +226,16 @@ class BotConfig:
             enabled = section.pop("enabled", None)
             if not isinstance(enabled, bool):
                 raise ConfigError(f"modules.{name}.enabled must be true or false")
-            if not enabled:
+            if not enabled and not section:
                 continue
             if name == "cavebot":
-                kwargs[name] = _cavebot(section, routes_dir)
+                value = _cavebot(section, routes_dir)
             else:
-                kwargs[name] = _coerce(section, hints[name], f"modules.{name}")
+                value = _coerce(section, hints[name], f"modules.{name}")
+            if enabled:
+                kwargs[name] = value
+            else:
+                kwargs.setdefault("off", {})[name] = value
 
         cfg = cls(**kwargs)
         cfg.validate()
@@ -234,7 +244,9 @@ class BotConfig:
     def to_dict(self) -> dict[str, Any]:
         """The JSON :meth:`from_dict` reads; cavebot is saved by its route name."""
         data: dict[str, Any] = {
-            f.name: getattr(self, f.name) for f in fields(self) if f.name not in MODULES
+            f.name: getattr(self, f.name)
+            for f in fields(self)
+            if f.name not in MODULES and f.name != "off"
         }
         if self.hotkeys is None:
             del data["hotkeys"]
@@ -243,17 +255,13 @@ class BotConfig:
         modules: dict[str, Any] = {}
         for name in MODULES:
             cfg = getattr(self, name)
-            if cfg is None:
-                modules[name] = {"enabled": False}
-            elif isinstance(cfg, CavebotConfig):
-                modules[name] = {
-                    "enabled": True,
-                    "route": cfg.route.name,
-                    "rope_hotkey": cfg.rope_hotkey,
-                    "shovel_hotkey": cfg.shovel_hotkey,
-                }
+            kept = self.off.get(name)
+            if cfg is not None:
+                modules[name] = {"enabled": True, **_section(cfg)}
+            elif kept is not None:
+                modules[name] = {"enabled": False, **_section(kept)}
             else:
-                modules[name] = {"enabled": True, **asdict(cfg)}
+                modules[name] = {"enabled": False}
         data["modules"] = modules
         # Round-trip through JSON so Paths become str and tuples become lists.
         result: dict[str, Any] = json.loads(json.dumps(data, default=str))
@@ -269,6 +277,9 @@ class BotConfig:
         Raises:
             ConfigError: If a value or module combination is invalid.
         """
+        for name in self.off:
+            if name not in MODULES or getattr(self, name) is not None:
+                raise ConfigError(f"off: {name!r} is not a module that is off")
         try:
             GameLoop._validate_config(self.loop)
             for cfg in (self.healing, self.targeting, self.buffs, self.alarms):
@@ -341,6 +352,17 @@ def _reject_unknown(data: dict[str, Any], known: set[str], where: str) -> None:
     unknown = sorted(set(data) - known)
     if unknown:
         raise ConfigError(f"{where}: unknown key(s) {unknown}")
+
+
+def _section(cfg: Any) -> dict[str, Any]:
+    """A module config as its JSON section, without ``enabled``."""
+    if isinstance(cfg, CavebotConfig):
+        return {
+            "route": cfg.route.name,
+            "rope_hotkey": cfg.rope_hotkey,
+            "shovel_hotkey": cfg.shovel_hotkey,
+        }
+    return asdict(cfg)
 
 
 def _cavebot(section: dict[str, Any], routes_dir: Path) -> CavebotConfig:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -210,3 +211,21 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
     path = tmp_path / "saved.json"
     cfg.save(path)
     assert BotConfig.load(path) == cfg
+
+
+def test_off_module_keeps_its_values(tmp_path: Path) -> None:
+    """T0.F1.K4: an off module's values round-trip, and the bot sees it off."""
+    data = raw(healing={"enabled": False, "normal_hp_percent": 65})
+    cfg = BotConfig.from_dict(data)
+    assert cfg.healing is None
+    assert cfg.off["healing"] == HealingConfig(normal_hp_percent=65.0)
+    path = tmp_path / "saved.json"
+    cfg.save(path)
+    assert json.loads(path.read_text())["modules"]["healing"]["normal_hp_percent"] == 65.0
+    assert BotConfig.load(path) == cfg
+
+
+def test_off_entry_for_enabled_module_refused() -> None:
+    cfg = BotConfig.default()
+    with pytest.raises(ConfigError, match="healing"):
+        replace(cfg, off={"healing": HealingConfig()}).validate()
