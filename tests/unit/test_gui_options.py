@@ -102,3 +102,13 @@ def test_looting_switch_off_and_on_keeps_values() -> None:
 def test_cavebot_switch_without_route_refused() -> None:
     with pytest.raises(ConfigError, match="route"):
         write_option(BotConfig.default(), _switch("cavebot"), True)
+
+
+def test_max_monsters_writes_targeting_field() -> None:
+    from moonlight.gui.tabs.targeting import OPTIONS
+
+    opt = next(o for o in OPTIONS if o.field == "targeting.max_monsters_to_engage")
+    cfg = write_option(BotConfig.default(), opt, 7.0)
+    assert cfg.targeting is not None and cfg.targeting.max_monsters_to_engage == 7
+    with pytest.raises(ConfigError):
+        write_option(cfg, opt, 11)
