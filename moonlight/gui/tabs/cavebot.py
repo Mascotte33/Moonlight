@@ -50,8 +50,8 @@ LOOT_OPTIONS = [
 ]
 REFILL_ROUTE = Option("Refill route", "refill.route_name", "dropdown")
 REFILL_OPTIONS = [
-    Option("Start refill at cap (oz)", "refill.trigger_cap", "entry"),
-    Option("Stop at cap (oz)", "refill.stop_cap", "entry"),
+    Option("Start refill at used cap %", "refill.trigger_cap", "entry"),
+    Option("Stop at used cap %", "refill.stop_cap", "entry"),
     REFILL_ROUTE,
     Option("Storage hotkey", "refill.storage_hotkey", "entry"),
     Option("Deposit hotkey (blank = none)", "refill.deposit_hotkey", "entry"),
@@ -160,6 +160,18 @@ class CavebotTab(Tab):
 
         refill = section(refill_page, "Refill")
         refill.pack(fill="x", padx=10, pady=10)
+        ctk.CTkLabel(
+            refill,
+            text=(
+                "When your used capacity reaches the start %, the bot walks the refill route"
+                " to its 'storage' label. It deposits until used capacity is down to the stop %,"
+                " then walks to the 'farming' label and hunts again."
+            ),
+            anchor="w",
+            justify="left",
+            wraplength=640,
+            text_color=theme.TEXT_DIM,
+        ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.build_options(refill, REFILL_OPTIONS)
         self.menu_refill_route = _menu(refill, REFILL_OPTIONS, REFILL_ROUTE)
         ctk.CTkFrame(refill, height=theme.UNIT, fg_color="transparent").pack()
