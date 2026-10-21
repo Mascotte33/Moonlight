@@ -436,6 +436,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_cavebot.py` passes, with a test that a blank deposit hotkey writes `None`. Owner checks: values are kept after Save and reopening.
 
 ### T3.F8.K1 — Loot sub-tab
+- ✅ Done in commit e9ecf1a.
 - What: a **Loot** sub-tab in Cavebot with `OPTIONS` for `looting.enabled`, `looting.loot_hotkey`, `looting.move_all_hotkey` (blank = none), `looting.max_items_per_loot` (slider 1–50), `looting.min_cap_to_loot` (entry, oz).
 - Needs: T3.F1.K1
 - Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
