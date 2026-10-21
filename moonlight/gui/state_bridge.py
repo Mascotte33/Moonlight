@@ -107,10 +107,12 @@ class LogFeed:
             items = list(self._lines)
         return items[-n:]
 
-    def text(self, n: int = 30) -> str:
-        """The last *n* lines as ``[HH:MM:SS] LEVEL message`` text."""
+    def text(self, n: int = 30, levels: tuple[str, ...] | None = None) -> str:
+        """The last *n* lines (only *levels*, when given) as ``[HH:MM:SS] LEVEL message`` text."""
+        with self._lock:
+            items = [ln for ln in self._lines if levels is None or ln[1] in levels]
         out: list[str] = []
-        for ts, level, msg in self.recent(n):
+        for ts, level, msg in items[-n:]:
             out.append(time.strftime("%H:%M:%S", time.localtime(ts)) + f" [{level}] {msg}")
         return "\n".join(out)
 
@@ -361,6 +363,8 @@ class HardwareController:
             except Exception as exc:  # noqa: BLE001 - report to the tab
                 self.last_error = repr(exc)
                 self._backend = None
+                if self.log is not None:
+                    self.log.error(f"arduino connect failed: {exc!r}")
                 raise
             backend = self._backend
         name = getattr(backend, "connected_port", None)

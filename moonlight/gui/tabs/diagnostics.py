@@ -13,9 +13,16 @@ import customtkinter as ctk
 
 from moonlight.bot.state import WorldState
 from moonlight.gui import theme
+from moonlight.gui.state_bridge import LogFeed
 from moonlight.gui.tabs.base import Tab, dot_color, health, section, stat_label, stat_num
 
-__all__ = ["DiagnosticsTab"]
+__all__ = ["DiagnosticsTab", "recent_errors"]
+
+
+def recent_errors(log: LogFeed) -> str:
+    """The last 20 warning and error lines, newest first, or "No errors"."""
+    lines = log.text(20, levels=("warn", "error")).splitlines()
+    return "\n".join(reversed(lines)) or "No errors"
 
 
 class DiagnosticsTab(Tab):
@@ -25,7 +32,7 @@ class DiagnosticsTab(Tab):
 
     def build(self, parent: ctk.CTkFrame) -> None:
         parent.grid_columnconfigure(0, weight=1)
-        parent.grid_rowconfigure(2, weight=1)
+        parent.grid_rowconfigure(3, weight=1)
 
         perf = section(parent, "Performance")
         perf.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10, 6))
@@ -51,8 +58,15 @@ class DiagnosticsTab(Tab):
             self._dots[name].pack(fill="x", padx=theme.PAD)
         ctk.CTkFrame(box, height=theme.UNIT, fg_color="transparent").pack()
 
+        errs = section(parent, "Recent errors")
+        errs.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 6))
+        self.lbl_errors = ctk.CTkLabel(
+            errs, text="No errors", anchor="w", justify="left", text_color=theme.BLOOD
+        )
+        self.lbl_errors.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
+
         logsec = section(parent, "Event log (tail)")
-        logsec.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        logsec.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
         logsec.grid_columnconfigure(0, weight=1)
         self.log_view = ctk.CTkTextbox(logsec, height=140, wrap="none")
         self.log_view.pack(fill="both", expand=True, padx=10, pady=(6, 4))
@@ -130,6 +144,9 @@ class DiagnosticsTab(Tab):
                 text=f"Avg / max tick: {avg_ms} / {max_ms} ms"
             )
 
+        errors = recent_errors(self.ctx.log)
+        if self.lbl_errors.cget("text") != errors:
+            self.lbl_errors.configure(text=errors)
         text = self.ctx.log.text(40)
         if text != self._log_text:
             self._log_text = text
