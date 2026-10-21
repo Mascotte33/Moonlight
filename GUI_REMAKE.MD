@@ -557,6 +557,19 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Don't touch: moonlight/decision/cavebot.py.
 - Done when: pytest stays green, with the recorder tests kept. Owner checks: with no route, press Add waypoint and a message says why. Type X, Y, Z, add two waypoints, name and save the route, and it shows in the route dropdown. "Not running" shows above the table.
 
+### T4.F1.K3 — One cure spell per condition
+- What: the single cure spell becomes one spell per condition: paralyze, poison, burning, electrified, cursed, bleeding (`healing.cure_<condition>`). A blank spell means that condition is not cured. Each has its own hotkey in the Healing tab's Cure group. Old config files with `cure_spell` + `cure_conditions` still load.
+- Needs: T4.F1.K2
+- Files: moonlight/decision/healing.py, moonlight/setup/config.py, moonlight/gui/tabs/healing.py, tests/unit/test_healing.py, tests/unit/test_gui_healing.py
+- Done when: pytest stays green, with tests that each condition casts its own spell, a blank one is skipped, and an old file loads. Owner checks: the Cure group has six rows; type exana pox with a hotkey for Poison, Save, reopen, and it is kept. "The bot cures" waits for the buff icon reader.
+
+### T3.F9.K2 — One button per waypoint type
+- What: the route editor's action dropdown and Add waypoint become one button per action (Walk, Rope, Shovel, Ladder, Label, Goto). A button adds that waypoint at the typed X, Y, Z, or the bot's position when blank.
+- Needs: T3.F9.K1
+- Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
+- Don't touch: moonlight/decision/cavebot.py.
+- Done when: pytest stays green. Owner checks: type X, Y, Z and press Rope, and a rope row shows in the table.
+
 #### Phase 4: bot features asked for in Phase 3
 
 These need bot code first. Each gets its GUI part in the same task.
@@ -566,8 +579,8 @@ These need bot code first. Each gets its GUI part in the same task.
 - Files: moonlight/decision/healing.py, moonlight/gui/tabs/healing.py, their tests
 
 ### T3.F10.K1 — Node, stand and lure waypoints
-- What: new cavebot actions. Node: reached within a few tiles. Stand: reached only on the exact tile. Lure: walk without attacking. They show in the route editor's action list.
-- Files: moonlight/decision/cavebot.py, the targeting gate in moonlight/bot/loop.py, moonlight/gui/tabs/recorder.py, their tests
+- What: new cavebot actions. Node: reached within a few tiles. Stand: reached only on the exact tile. Lure: walk without attacking. They get their own buttons in the route editor.
+- Files: moonlight/decision/cavebot.py, the targeting gate in moonlight/bot/loop.py, moonlight/gui/tabs/cavebot.py, their tests
 
 ### T6.F2.K1 — Attack spell per creature
 - What: each creature in the Targeting list can have its own attack spell, plus a **Use for all monsters** spell for the rest.
