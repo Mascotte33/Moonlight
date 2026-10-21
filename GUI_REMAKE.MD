@@ -392,6 +392,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_status.py` passes, with a test that info lines are left out. Owner checks: a failed Test connection shows in the card.
 
 ### T3.F1.K1 — Route picker on the bot's routes
+- ✅ Done in commit 71dbee1.
 - What: the GUI uses the bot's route format and folder (`data/waypoints/`, `BotConfig.routes_dir`, read by `RouteFileLoader`). This settles the route folder open decision. Cavebot gets:
   - a dropdown `Option` on `cavebot.route` with the route names in `routes_dir` (`to_dict` saves the route by name, so the value round-trips), plus **Reload**;
   - `cavebot.rope_hotkey` and `cavebot.shovel_hotkey` entries;
