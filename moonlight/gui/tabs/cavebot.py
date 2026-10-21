@@ -1,4 +1,4 @@
-"""Cavebot tab: Route and Refill sub-tabs (T3.F1.K1, T3.F7.K1).
+"""Cavebot tab: Route, Refill and Loot sub-tabs (T3.F1.K1, T3.F7.K1, T3.F8.K1).
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, read by
 :class:`RouteFileLoader`. ``cavebot.route`` and ``refill.route_name`` are
@@ -20,6 +20,7 @@ from moonlight.gui.tabs.base import Option, Tab, read_option, section, write_opt
 from moonlight.setup.config import BotConfig, ConfigError
 
 __all__ = [
+    "LOOT_OPTIONS",
     "OPTIONS",
     "REFILL_OPTIONS",
     "ROUTE",
@@ -42,6 +43,13 @@ OPTIONS = [
     START,
     Option("Rope hotkey", "cavebot.rope_hotkey", "entry"),
     Option("Shovel hotkey", "cavebot.shovel_hotkey", "entry"),
+]
+LOOT_OPTIONS = [
+    Option("Looting", "looting.enabled", "switch"),
+    Option("Loot hotkey", "looting.loot_hotkey", "entry"),
+    Option("Move-all hotkey (blank = none)", "looting.move_all_hotkey", "entry"),
+    Option("Max items per corpse", "looting.max_items_per_loot", "slider", 1, 50),
+    Option("Min cap to loot (oz)", "looting.min_cap_to_loot", "entry"),
 ]
 REFILL_ROUTE = Option("Refill route", "refill.route_name", "dropdown")
 REFILL_OPTIONS = [
@@ -97,12 +105,13 @@ def add_waypoint(path: Path, pos: Position) -> str:
 
 
 def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
-    """*cfg* with the cavebot and refill option *values*.
+    """*cfg* with the cavebot, loot and refill option *values*.
 
     The cavebot route is written first. With no route on disk picked the
     cavebot options are skipped, so Save still works for an off cavebot
     without routes. A blank cavebot hotkey keeps its default; a blank
-    deposit hotkey means no deposit. The start waypoint is given 1-based.
+    deposit or move-all hotkey means none. The start waypoint is given
+    1-based. Loot goes before refill, which needs looting on.
 
     Raises:
         ConfigError: For a refused value.
@@ -117,7 +126,7 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
         for option in sorted(OPTIONS, key=lambda o: o is not ROUTE):
             if values.get(option.field, "") != "":
                 cfg = write_option(cfg, option, values[option.field])
-    for option in REFILL_OPTIONS:
+    for option in LOOT_OPTIONS + REFILL_OPTIONS:
         if option.field in values:
             cfg = write_option(cfg, option, values[option.field])
     return cfg
@@ -133,10 +142,10 @@ def _menu(box: ctk.CTkFrame, options: list[Option], option: Option) -> ctk.CTkOp
 
 
 class CavebotTab(Tab):
-    """Route sub-tab (route, hotkeys, waypoints) and Refill sub-tab."""
+    """Route sub-tab (route, hotkeys, waypoints), Refill and Loot sub-tabs."""
 
     title = "Cavebot"
-    options = OPTIONS + REFILL_OPTIONS
+    options = OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
         tabs = ctk.CTkTabview(
@@ -148,6 +157,10 @@ class CavebotTab(Tab):
         tabs.pack(fill="both", expand=True)
         page = tabs.add("Route")
         refill_page = tabs.add("Refill")
+        loot = section(tabs.add("Loot"), "Loot")
+        loot.pack(fill="x", padx=10, pady=10)
+        self.build_options(loot, LOOT_OPTIONS)
+        ctk.CTkFrame(loot, height=theme.UNIT, fg_color="transparent").pack()
 
         refill = section(refill_page, "Refill")
         refill.pack(fill="x", padx=10, pady=10)
