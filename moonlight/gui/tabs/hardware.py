@@ -51,6 +51,25 @@ class HardwareTab(Tab):
         options = section(parent, "Connection")
         options.grid(row=4, column=0, sticky="ew", padx=10, pady=(10, 0))
         self.build_options(options)
+        detect = ctk.CTkFrame(options, fg_color="transparent")
+        detect.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self.menu_ports = ctk.CTkOptionMenu(
+            detect,
+            values=["Click Detect"],
+            command=self._writers["serial_port"],
+            fg_color=theme.RAISED,
+            button_color=theme.RAISED,
+            button_hover_color=theme.HOVER,
+        )
+        self.menu_ports.pack(side="right")
+        ctk.CTkButton(
+            detect,
+            text="Detect",
+            width=80,
+            command=self._detect,
+            fg_color=theme.RAISED,
+            hover_color=theme.HOVER,
+        ).pack(side="right", padx=theme.UNIT)
         ctk.CTkLabel(
             options,
             text="No Arduino. Actions are only logged.",
@@ -69,7 +88,6 @@ class HardwareTab(Tab):
         btns.grid(row=3, column=0, columnspan=2, sticky="ew", padx=6, pady=(10, 4))
         for col, (text, cmd) in enumerate(
             (
-                ("List ports", self._list_ports),
                 ("Connect", self._connect),
                 ("Ping (PONG)", self._ping),
                 ("Release all", self._release_all),
@@ -90,22 +108,14 @@ class HardwareTab(Tab):
 
     # -- actions -----------------------------------------------------------
 
-    def _list_ports(self) -> None:
+    def _detect(self) -> None:
         try:
-            ports = self.ctx.hardware.list_ports()
+            ports = [p["device"] for p in self.ctx.hardware.list_ports()]
         except Exception as exc:  # noqa: BLE001 - display only
             self._msg = f"port list failed: {exc!r}"
             ports = []
-        if ports:
-            self.lbl_ports.configure(
-                text="\n".join(
-                    f"{p['device']}  —  {p['description'] or 'unknown device'}"
-                    for p in ports[:8]
-                )
-            )
-            self._msg = ""
-        elif not self._msg:
-            self._msg = "no serial ports found"
+        self.menu_ports.configure(values=ports or ["No ports found"])
+        self.menu_ports.set(ports[0] if ports else "No ports found")
         self._refresh()
 
     def _connect(self) -> None:
