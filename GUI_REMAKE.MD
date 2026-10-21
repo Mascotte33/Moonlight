@@ -344,6 +344,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_dashboard.py` passes (uptime text, `—` when the bot is stopped). Owner checks: Start in simulation and the uptime counts up.
 
 ### T1.F2.K1 — Bot health dots
+- ✅ Done in commit b0d32c1.
 - What: a **Bot health** card with one dot per subsystem the bot can report today: Screen (`screen_ok`), Vitals (`last_update` under 2 s old), Minimap (position not `(0, 0, 0)`), Arduino (backend connected), Bot (running). Put the check in one plain function in `tabs/base.py` that returns `(name, ok)` pairs. The bottom bar and Diagnostics use the same function. A battle list dot waits until perception reports per-reader results.
 - Needs: T1.F1.K1
 - Files: moonlight/gui/tabs/base.py, moonlight/gui/tabs/dashboard.py, moonlight/gui/app.py (the bottom bar uses the function), tests/unit/test_gui_dashboard.py
