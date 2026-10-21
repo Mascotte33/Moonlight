@@ -239,7 +239,7 @@ class GuiApp:
             btn.configure(
                 fg_color=theme.MANA if active else "transparent",
                 text_color=theme.NIGHT if active else theme.TEXT_DIM,
-                hover_color=theme.MANA_HOVER if active else theme.NAV_HOVER,
+                hover_color=theme.MANA_HOVER if active else theme.HOVER,
             )
 
     # -- header / bot control ----------------------------------------------
