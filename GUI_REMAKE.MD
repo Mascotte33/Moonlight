@@ -96,6 +96,11 @@ Write every task as one block, so an agent can do it with no other context:
 - Files: moonlight/bot/loop.py, moonlight/bot/wiring.py, moonlight/gui/loop_factory.py
 - Done when: changing a Healing threshold while the bot runs takes effect within one tick; a test proves it.
 
+### T2.F7.K1 — Start calibration button
+- What: in Settings, a **Start calibration** button that opens the calibration window (`moonlight/setup/calibrate.py`) for the current profile, plus an editable **UI scale** number read from and saved to that profile's `ui_scale`. The rest of calibration is in `CALIBRATION.MD`.
+- Files: moonlight/gui/tabs/settings.py, tests/gui/
+- Done when: the button opens the calibration window and saving it replaces the profile; changing UI scale and pressing Apply writes it to the profile.
+
 _Tab tasks: the owner says what each tab needs; they get written up here in the format above._
 
 ---
@@ -210,6 +215,7 @@ Today: everything except Start/Pause/Kill writes the GUI config the bot ignores.
 | T2.F4 | Module toggles: Healing, Cavebot, Loot (+ hotkey), Stuck alert (+ timeout), Session logging, Screen overlay, Debug overlay | 🟡 only Healing, Loot, Cavebot, Overlay; not read by the bot |
 | T2.F5 | Server save: enable + time (CET) | ❌ |
 | T2.F6 | Auto-reconnect (contents not visible in the screenshot) | ❌ |
+| T2.F7 | Start calibration button + UI scale number (see `CALIBRATION.MD`) | ❌ |
 
 ### T3 — Cavebot
 
@@ -309,7 +315,7 @@ Today: tick rate, tick-time percentiles, capture latency, state freshness, Reset
 
 ### Not in any tab yet
 
-- Calibrate and Check setup buttons (card `task_21b3ca41`).
+- Check setup button (card `task_21b3ca41`). Calibrate is now T2.F7.
 - Buffs and Alarms (decision modules exist, no GUI).
 - Looting settings.
 
