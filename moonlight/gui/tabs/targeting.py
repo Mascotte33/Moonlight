@@ -16,7 +16,7 @@ from moonlight.gui.config_bridge import BotConfig, TargetingParams
 from moonlight.gui.tabs.base import Tab, section
 
 if TYPE_CHECKING:  # pragma: no cover
-    from moonlight.state import WorldState
+    from moonlight.bot.state import WorldState
 
 __all__ = ["TargetingTab"]
 

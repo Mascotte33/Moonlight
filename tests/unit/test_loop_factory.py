@@ -21,12 +21,12 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.calibrate import REGIONS, CalibrationProfile, Region
+from moonlight.bot.state import WorldState
 from moonlight.gui.config_bridge import BotConfig as GuiBotConfig
 from moonlight.gui.loop_factory import build_gui_loop, make_backend
 from moonlight.gui.state_bridge import HardwareController
-from moonlight.input import FakeInput, NoArduinoFoundError
-from moonlight.state import WorldState
+from moonlight.hardware.input import FakeInput, NoArduinoFoundError
+from moonlight.setup.calibrate import REGIONS, CalibrationProfile, Region
 
 
 class _SpyBackend(FakeInput):

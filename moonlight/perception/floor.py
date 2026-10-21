@@ -25,7 +25,7 @@ Implementation notes
 * A :class:`TemplateSet` can be injected directly (used by the synthetic
   unit tests); this keeps the matching path fully testable offline.
 * Frames are RGB ``(H, W, 3)`` ``uint8`` arrays as produced by
-  ``moonlight.capture``.
+  ``moonlight.perception.capture``.
 
 Performance: 16 normalized matches over a small indicator region are well
 under the 10 ms per-read budget (T30).
@@ -165,7 +165,7 @@ class TemplateSet:
 class FloorReader:
     """Read the current floor level (0–15) from captured frames.
 
-    Construct from a :class:`moonlight.calibrate.CalibrationProfile` (which
+    Construct from a :class:`moonlight.setup.calibrate.CalibrationProfile` (which
     stores the ``floor_indicator`` region) and/or an explicit region tuple.
     Templates are loaded lazily from *template_dir* on the first read unless
     a :class:`TemplateSet` is injected.

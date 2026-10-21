@@ -17,15 +17,15 @@ import importlib
 import sys
 from pathlib import Path
 
-from moonlight.calibrate import CalibrationProfile
-from moonlight.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
-from moonlight.profile import ProfileManager
-from moonlight.wiring import check_module_regions
+from moonlight.setup.calibrate import CalibrationProfile
+from moonlight.setup.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
+from moonlight.setup.profile import ProfileManager
+from moonlight.bot.wiring import check_module_regions
 
 #: Modules imported to prove the perception stack loads.
 _PERCEPTION_MODULES = (
     "cv2",
-    "moonlight.capture",
+    "moonlight.perception.capture",
     "moonlight.perception.vitals",
     "moonlight.perception.battle",
     "moonlight.perception.floor",
@@ -58,7 +58,7 @@ def check(config_arg: str, profiles_dir: Path | None, profile_name: str | None) 
         report(False, f"config: {exc}")
         config = None
     try:
-        from moonlight.input import find_arduino_port
+        from moonlight.hardware.input import find_arduino_port
 
         port = config.serial_port if config and config.serial_port else find_arduino_port()
         report(port is not None, f"serial port: {port or 'no Arduino found'}")

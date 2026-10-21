@@ -10,6 +10,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+from moonlight.bot.state import WorldState
 from moonlight.decision.buffs import (
     DEFAULT_BUFFS,
     REASON_EXPIRING_SOON,
@@ -20,8 +21,7 @@ from moonlight.decision.buffs import (
     BuffManagerConfig,
     buff_cooldown_key,
 )
-from moonlight.input import FakeInput
-from moonlight.state import WorldState
+from moonlight.hardware.input import FakeInput
 
 
 class FakeClock:

@@ -3,7 +3,7 @@
 import pytest
 from mock_serial import MockBus
 
-from moonlight.input import ClickSide, FakeInput, ProtocolEncoder
+from moonlight.hardware.input import ClickSide, FakeInput, ProtocolEncoder
 
 
 @pytest.mark.parametrize(("side", "line"), [(ClickSide.LEFT, "C L"), (ClickSide.RIGHT, "C R")])

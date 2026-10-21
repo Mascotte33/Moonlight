@@ -132,7 +132,7 @@ def main() -> None:
 
     print("\n[4] Arduino serial latency (real hardware):")
     try:
-        from moonlight.input import ArduinoInput, find_arduino_port
+        from moonlight.hardware.input import ArduinoInput, find_arduino_port
 
         if find_arduino_port() is None:
             print("    no Arduino found; skipping")

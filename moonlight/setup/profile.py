@@ -1,7 +1,7 @@
 """Calibration profile manager (T40).
 
 Thin, single source of truth for ``profiles/<name>.json`` on top of
-:class:`moonlight.calibrate.CalibrationProfile`. The GUI and
+:class:`moonlight.setup.calibrate.CalibrationProfile`. The GUI and
 ``tools/check_setup.py`` delegate here.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from moonlight.calibrate import CalibrationProfile, default_profiles_dir
+from moonlight.setup.calibrate import CalibrationProfile, default_profiles_dir
 
 __all__ = ["ProfileManager"]
 

@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING
 import customtkinter as ctk
 
 if TYPE_CHECKING:  # pragma: no cover
+    from moonlight.bot.state import WorldState
     from moonlight.gui.state_bridge import GuiContext
-    from moonlight.state import WorldState
 
 __all__ = ["Tab", "section", "stat_label", "stat_num"]
 

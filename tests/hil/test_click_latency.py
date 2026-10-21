@@ -5,7 +5,7 @@ import time
 import pytest
 from mock_serial import MockBus
 
-from moonlight.input import FakeInput
+from moonlight.hardware.input import FakeInput
 
 #: Generous offline ceiling; the in-memory path is microseconds, so this only
 #: trips on a real regression (blocking sleeps, accidental I/O).

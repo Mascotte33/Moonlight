@@ -40,10 +40,10 @@ How the position is obtained
   This is the closed-loop tracking technique from ui_layout.md #4.
 * **z**: read from an injected :class:`moonlight.perception.floor.FloorReader`
   (or any :class:`FloorSource`). ``0`` means "unknown floor" (see
-  ``moonlight.state.Position``).
+  ``moonlight.bot.state.Position``).
 
 Frames are RGB ``(H, W, 3)`` ``uint8`` arrays as produced by
-``moonlight.capture``. One read (crop + marker check + phase correlation on
+``moonlight.perception.capture``. One read (crop + marker check + phase correlation on
 a 106x109 radar) is well under the 10 ms budget (T30).
 """
 
@@ -56,8 +56,8 @@ from typing import Protocol
 import cv2
 import numpy as np
 
+from moonlight.bot.state import Position
 from moonlight.perception.floor import FloorReader
-from moonlight.state import Position
 
 __all__ = [
     "Rect",
@@ -129,7 +129,7 @@ class FloorSource(Protocol):
 class MinimapReader:
     """Read the player position (x, y, z) from the minimap region.
 
-    Construct from a :class:`moonlight.calibrate.CalibrationProfile` (which
+    Construct from a :class:`moonlight.setup.calibrate.CalibrationProfile` (which
     stores the ``minimap`` region) and/or an explicit region tuple. The
     stored region is the default when :meth:`read_position` is called
     without an explicit region.
@@ -228,7 +228,7 @@ class MinimapReader:
             region: Minimap region; defaults to the constructor region.
 
         Returns:
-            The player :class:`~moonlight.state.Position` (z is 0 when the
+            The player :class:`~moonlight.bot.state.Position` (z is 0 when the
             floor is unknown), or ``None`` when no region is known, the
             region is out of bounds, the radar can't be validated (no
             marker and no trusted shift), or tracking is :attr:`lost`.

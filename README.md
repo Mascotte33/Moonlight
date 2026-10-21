@@ -45,18 +45,28 @@ flowchart LR
     LOOP{{"20 Hz loop · rate limit · F12 kill switch"}} -.-> DEC
 ```
 
+```
+moonlight/
+├── gui/          the desktop window and its 10 tabs
+├── bot/          the engine: loop, safety, wiring, WorldState, user scripts
+├── perception/   reading the game: screen capture + HP/MP, battle list, minimap, …
+├── decision/     choosing actions: healing, targeting, buffs, alarms, cavebot, …
+├── hardware/     talking to the Arduino: input backends, closed-loop clicking
+├── setup/        config, calibration profiles, the calibration tool
+└── profiles/     saved calibration profiles (<name>.json)
+```
+
 | Path | Contents |
 |---|---|
-| `moonlight/capture.py` | Client-window capture (mss, optional dxcam), DPI-aware, focus detection |
-| `moonlight/calibrate.py` | Screen-region calibration → `moonlight/profiles/<name>.json` |
-| `moonlight/perception/` | Readers: HP/MP, battle list, minimap, floor, monster sprites, cursor, loot window, server-log OCR |
-| `moonlight/state.py` | `WorldState` — the snapshot shared between perception and decision |
-| `moonlight/decision/` | Healing, targeting, buffs, alarms, cavebot, looting, refill |
-| `moonlight/loop.py` | 20 Hz priority state machine |
-| `moonlight/safety.py` | Wire-level rate limit, F12 kill switch, operator alert |
-| `moonlight/wiring.py` | Builds the bot loop from config + profile (`build_loop`) |
-| `moonlight/input.py`, `clicker.py` | Input backends (`ArduinoInput`, `FakeInput`) and closed-loop clicking |
 | `moonlight/gui/` | 10-tab desktop GUI (customtkinter) |
+| `moonlight/bot/loop.py` | 20 Hz priority state machine |
+| `moonlight/bot/safety.py` | Wire-level rate limit, F12 kill switch, operator alert |
+| `moonlight/bot/wiring.py` | Builds the bot loop from config + profile (`build_loop`) |
+| `moonlight/bot/state.py` | `WorldState` — the snapshot shared between perception and decision |
+| `moonlight/perception/` | `capture.py` (mss / dxcam, DPI-aware, focus) and the readers: HP/MP, battle list, minimap, floor, monster sprites, cursor, loot window, server-log OCR |
+| `moonlight/decision/` | Healing, targeting, buffs, alarms, cavebot, looting, refill |
+| `moonlight/hardware/` | Input backends (`ArduinoInput`, `FakeInput`) and closed-loop clicking |
+| `moonlight/setup/` | Bot config, profile manager, screen-region calibration tool |
 | `firmware/` | Arduino Leonardo HID firmware and [wire protocol](firmware/README.md) |
 | `tests/` | Unit, golden, replay, safety, perf and hardware-in-the-loop suites ([details](tests/README.md)) |
 | `tools/` | Benchmarks, Arduino verification, labelling and calibration helpers ([details](tools/README.md)) |
@@ -106,7 +116,7 @@ pip install -e .
 python tools/arduino_verify.py
 
 # 3. Calibrate the screen regions for your client window
-python -m moonlight.calibrate moonlight_user
+python -m moonlight.setup.calibrate moonlight_user
 
 # 4. Check the setup (config, Arduino, profile, perception)
 python tools/check_setup.py

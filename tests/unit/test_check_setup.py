@@ -9,9 +9,9 @@ from unittest import mock
 
 import pytest
 
-from moonlight.calibrate import REGIONS, CalibrationProfile, Region
-from moonlight.config import BotConfig
 from moonlight.decision.looting import LootingConfig
+from moonlight.setup.calibrate import REGIONS, CalibrationProfile, Region
+from moonlight.setup.config import BotConfig
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "tools" / "check_setup.py"
 _spec = importlib.util.spec_from_file_location("check_setup", _SCRIPT)
@@ -31,7 +31,7 @@ def test_missing_region_reports_fail(
     config = replace(BotConfig.default(), looting=LootingConfig())
     with (
         mock.patch.object(check_setup, "_load_config", return_value=config),
-        mock.patch("moonlight.input.find_arduino_port", return_value="COM9"),
+        mock.patch("moonlight.hardware.input.find_arduino_port", return_value="COM9"),
     ):
         assert check_setup.main(["--profiles-dir", str(tmp_path)]) == 1
     out = capsys.readouterr().out

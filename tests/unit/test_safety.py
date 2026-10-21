@@ -1,4 +1,4 @@
-"""Unit tests for moonlight.safety (RateLimiter, F12Monitor).
+"""Unit tests for moonlight.bot.safety (RateLimiter, F12Monitor).
 
 F12 uses an injectable key-state probe (tiny real sleeps for the thread).
 """
@@ -11,7 +11,7 @@ from collections.abc import Callable
 
 import pytest
 
-from moonlight.safety import VK_F12, F12Monitor, RateLimiter
+from moonlight.bot.safety import VK_F12, F12Monitor, RateLimiter
 
 
 class FakeClock:

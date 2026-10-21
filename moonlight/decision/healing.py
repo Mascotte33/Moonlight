@@ -1,6 +1,6 @@
 """Healing decisions (T14).
 
-Decides when and how to heal based on :class:`moonlight.state.WorldState`:
+Decides when and how to heal based on :class:`moonlight.bot.state.WorldState`:
 
 * **EMERGENCY** (loop priority 3): HP at or below the emergency threshold
   -> cast the emergency spell immediately.
@@ -10,7 +10,7 @@ Decides when and how to heal based on :class:`moonlight.state.WorldState`:
   cast the normal spell when convenient.
 
 Priority within this module (highest wins): emergency > cure > normal.
-KILL/ALARM handling stays in :class:`moonlight.loop.GameLoop` (healing
+KILL/ALARM handling stays in :class:`moonlight.bot.loop.GameLoop` (healing
 continues in ALARM mode there).
 
 :class:`HealingDecision` is a decision engine plus cooldown bookkeeping;
@@ -18,7 +18,7 @@ it never talks to the game itself. The optional input-backend
 integration lives in :meth:`HealingDecision.send` and
 :meth:`HealingDecision.decide_and_send`: a spell is mapped to a key
 combo through the configurable *spell_combos* mapping and pressed
-through an :class:`moonlight.input.InputBackend`.
+through an :class:`moonlight.hardware.input.InputBackend`.
 
 Conventions inherited from the rest of the pipeline:
 
@@ -43,8 +43,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
-from moonlight.input import InputBackend
-from moonlight.state import WorldState
+from moonlight.bot.state import WorldState
+from moonlight.hardware.input import InputBackend
 
 __all__ = [
     "EMERGENCY_COOLDOWN_KEY",

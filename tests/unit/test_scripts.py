@@ -6,20 +6,20 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.input import ClickSide, FakeInput
-from moonlight.scripts import BotScript, Condition, ScriptRunner, Trigger
-from moonlight.state import WorldState
+from moonlight.bot.scripts import BotScript, Condition, ScriptRunner, Trigger
+from moonlight.bot.state import WorldState
+from moonlight.hardware.input import ClickSide, FakeInput
 
 GOOD = """
-from moonlight.scripts import BotScript
+from moonlight.bot.scripts import BotScript
 class S(BotScript):
     def tick(self, state, input):
         input.press_combo("f2")
 """
 
 ALL_CALLS = """
-from moonlight.scripts import BotScript
-from moonlight.input import ClickSide
+from moonlight.bot.scripts import BotScript
+from moonlight.hardware.input import ClickSide
 class S(BotScript):
     def tick(self, state, input):
         input.press_combo('f1'); input.hold_combo('a')
@@ -68,7 +68,7 @@ def test_no_subclass(tmp_path: Path) -> None:
 
 def test_ctor_error_does_not_crash(tmp_path: Path) -> None:
     src = (
-        "from moonlight.scripts import BotScript\n"
+        "from moonlight.bot.scripts import BotScript\n"
         "class S(BotScript):\n    def __init__(self): raise ValueError\n"
     )
     assert runner(tmp_path, s=src).scripts == {}
@@ -103,7 +103,7 @@ def test_idle_runner_does_nothing(tmp_path: Path) -> None:
 
 def test_exception_in_tick_swallowed(tmp_path: Path) -> None:
     src = (
-        "from moonlight.scripts import BotScript\n"
+        "from moonlight.bot.scripts import BotScript\n"
         "class S(BotScript):\n    def tick(self, state, input): 1/0\n"
     )
     r = runner(tmp_path, boom=src)
@@ -226,8 +226,8 @@ def test_stop(tmp_path: Path) -> None:
 
 def test_click_wire_format(tmp_path: Path) -> None:
     src = (
-        "from moonlight.scripts import BotScript\n"
-        "from moonlight.input import ClickSide\n"
+        "from moonlight.bot.scripts import BotScript\n"
+        "from moonlight.hardware.input import ClickSide\n"
         "class S(BotScript):\n"
         "    def tick(self, state, input): input.click(ClickSide.RIGHT)\n"
     )

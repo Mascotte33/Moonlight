@@ -17,7 +17,7 @@ Focus (all offline, deterministic):
     - Validation: bad target shapes, tolerance<0, max_iters<1 -> ValueError;
     - ClickSide.RIGHT sends 'C R'.
 
-Harness: FakeInput (moonlight.input) tracks a virtual cursor position; a
+Harness: FakeInput (moonlight.hardware.input) tracks a virtual cursor position; a
 frame_provider renders the cursor template at fake.cursor_position onto a
 blank RGB frame, so CursorReader reads the fake's live position — a true
 closed loop over synthetic pixels.
@@ -31,8 +31,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from moonlight.clicker import ClickController
-from moonlight.input import ClickSide, FakeInput
+from moonlight.hardware.clicker import ClickController
+from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.perception import CursorReader
 
 # ---------------------------------------------------------------------------
@@ -360,7 +360,7 @@ class TestStateMachine:
         assert not clicker.busy and fake.sent_lines == []
 
     def test_open_loop_homes_then_dead_reckons_scaled(self) -> None:
-        from moonlight.clicker import ClickerConfig
+        from moonlight.hardware.clicker import ClickerConfig
 
         fake = FakeInput(cursor=(0, 0))
         reader = CursorReader(cursor_region=REGION, cursor_templates=[TEMPLATE])

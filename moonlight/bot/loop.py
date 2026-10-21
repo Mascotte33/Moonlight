@@ -65,7 +65,7 @@ Safety invariants (re-checked on every tick, never just at startup):
   Arduino heartbeat so the firmware watchdog can fire).
 * **Rate limit** -- at most ``max_actions_per_second`` serial commands
   (default 10/s sustained), counted at the wire by
-  :class:`~moonlight.safety.RateLimitedInput`, so multi-command actions (clicker moves,
+  :class:`~moonlight.bot.safety.RateLimitedInput`, so multi-command actions (clicker moves,
   rope hotkey + click, MOVE/REFILL steps) cannot exceed it. Heals have
   priority: non-heal commands leave one token in reserve, so a heal never
   waits behind an attack (worst case 12 commands in the first second,
@@ -75,9 +75,9 @@ Safety invariants (re-checked on every tick, never just at startup):
   edge; :meth:`GameLoop.kill` does the same programmatically (UI button,
   Arduino kill pin, watchdog).
 
-The loop only reads :class:`moonlight.state.WorldState` via
+The loop only reads :class:`moonlight.bot.state.WorldState` via
 ``snapshot()`` (perception is the single writer) and is the only
-component that talks to the :class:`moonlight.input.InputBackend`.
+component that talks to the :class:`moonlight.hardware.input.InputBackend`.
 
 Everything timing-related (clock, sleep) and environment-related (PM
 check, move route, F12 key probe) is injectable, so the loop is fully
@@ -95,10 +95,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from moonlight.bot.safety import F12Monitor, RateLimitedInput
+from moonlight.bot.state import WorldState
 from moonlight.decision.healing import HealingConfig
-from moonlight.input import InputBackend
-from moonlight.safety import F12Monitor, RateLimitedInput
-from moonlight.state import WorldState
+from moonlight.hardware.input import InputBackend
 
 if TYPE_CHECKING:
     from moonlight.decision.alarms import AlarmAction, AlarmDecision
@@ -116,7 +116,7 @@ __all__ = [
     "LoopConfig",
 ]
 
-logger = logging.getLogger("moonlight.loop")
+logger = logging.getLogger("moonlight.bot.loop")
 
 
 @dataclass(frozen=True)
@@ -641,7 +641,7 @@ class GameLoop:
         and ``screen_ok`` True. The action only runs when its first wire
         command can be paid for (so a module never records a cast that
         was not sent); every command it issues pays one token at the wire
-        (:class:`~moonlight.safety.RateLimitedInput`), surplus commands are dropped.
+        (:class:`~moonlight.bot.safety.RateLimitedInput`), surplus commands are dropped.
         Non-*heal* actions leave one token in reserve so heals never wait
         behind them. An *action* returning ``False`` (a module declined to
         send) or losing a command to the limit is not counted as sent.

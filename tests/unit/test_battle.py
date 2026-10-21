@@ -20,12 +20,12 @@ from typing import TypedDict
 import numpy as np
 import pytest
 
-from moonlight.calibrate import CalibrationProfile, Region
 from moonlight.perception.battle import (
     BattleEntry,
     BattleReader,
     entries_to_state,
 )
+from moonlight.setup.calibrate import CalibrationProfile, Region
 
 BG: tuple[int, int, int] = (40, 40, 40)  # dark battle-list background
 STONE: tuple[int, int, int] = (72, 72, 72)  # real client panel grey (T28)

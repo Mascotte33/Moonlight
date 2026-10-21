@@ -18,16 +18,16 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from moonlight.calibrate import CalibrationProfile
-from moonlight.config import MODULES, BotConfig
-from moonlight.input import InputBackend
-from moonlight.loop import DecisionModules, GameLoop
-from moonlight.safety import RateLimitedInput, beep_alert
-from moonlight.state import WorldState
+from moonlight.bot.loop import DecisionModules, GameLoop
+from moonlight.bot.safety import RateLimitedInput, beep_alert
+from moonlight.bot.state import WorldState
+from moonlight.hardware.input import InputBackend
+from moonlight.setup.calibrate import CalibrationProfile
+from moonlight.setup.config import MODULES, BotConfig
 
 if TYPE_CHECKING:
-    from moonlight.capture import ScreenCapture
-    from moonlight.clicker import ClickController
+    from moonlight.hardware.clicker import ClickController
+    from moonlight.perception.capture import ScreenCapture
 
 __all__ = [
     "MODULE_REGIONS",
@@ -202,11 +202,11 @@ def make_perceive(
     coordinates (seed + accumulated relative offset) instead of relative to
     wherever the bot started.
     """
+    from moonlight.bot.state import Position
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
     from moonlight.perception.vitals import VitalsReader
-    from moonlight.state import Position
 
     vitals = VitalsReader(profile)
     battle = BattleReader(profile)
@@ -326,7 +326,7 @@ def build_loop(
         m.alarms = AlarmDecision(config.alarms, clock=clock)
 
     if config.cavebot is not None or config.looting is not None:
-        from moonlight.clicker import ClickController
+        from moonlight.hardware.clicker import ClickController
         from moonlight.perception.cursor import CursorReader
 
         cursor = list(_templates(config.templates_dir / "cursor").values())

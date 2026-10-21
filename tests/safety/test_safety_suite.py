@@ -20,19 +20,19 @@ import cv2
 import numpy as np
 import pytest
 
-from moonlight.calibrate import CalibrationProfile, default_profiles_dir
-from moonlight.clicker import ClickController
-from moonlight.config import BotConfig
+from moonlight.bot.loop import BotState, DecisionModules, GameLoop, LoopConfig
+from moonlight.bot.safety import F12Monitor
+from moonlight.bot.state import Capacity, Monster, Position, WorldState
+from moonlight.bot.wiring import build_loop
 from moonlight.decision.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
 from moonlight.decision.healing import HealingConfig, HealingDecision, HealType
 from moonlight.decision.looting import Looting, LootingConfig
 from moonlight.decision.refill import Refill, RefillConfig
-from moonlight.input import ClickSide, FakeInput
-from moonlight.loop import BotState, DecisionModules, GameLoop, LoopConfig
+from moonlight.hardware.clicker import ClickController
+from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.perception.loot import LootWindow
-from moonlight.safety import F12Monitor
-from moonlight.state import Capacity, Monster, Position, WorldState
-from moonlight.wiring import build_loop
+from moonlight.setup.calibrate import CalibrationProfile, default_profiles_dir
+from moonlight.setup.config import BotConfig
 
 pytestmark = pytest.mark.safety
 

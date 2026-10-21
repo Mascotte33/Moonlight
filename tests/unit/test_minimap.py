@@ -19,7 +19,7 @@ import time
 import numpy as np
 import pytest
 
-from moonlight.calibrate import CalibrationProfile, Region
+from moonlight.bot.state import Position
 from moonlight.perception.minimap import (
     DEFAULT_MARKER_TOLERANCE,
     PLAYER_CENTER_X,
@@ -29,7 +29,7 @@ from moonlight.perception.minimap import (
     RADAR_WIDTH,
     MinimapReader,
 )
-from moonlight.state import Position
+from moonlight.setup.calibrate import CalibrationProfile, Region
 
 REGION_X, REGION_Y = 100, 80
 

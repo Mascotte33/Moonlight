@@ -16,6 +16,7 @@ from pathlib import Path
 
 import customtkinter as ctk
 
+from moonlight.bot.state import WorldState
 from moonlight.gui import config_bridge
 from moonlight.gui.loop_factory import build_gui_loop
 from moonlight.gui.state_bridge import (
@@ -35,7 +36,6 @@ from moonlight.gui.tabs.settings import SettingsTab
 from moonlight.gui.tabs.spell_attack import SpellAttackTab
 from moonlight.gui.tabs.status import StatusTab
 from moonlight.gui.tabs.targeting import TargetingTab
-from moonlight.state import WorldState
 
 #: Poller period in ms (10 Hz — light enough for a low-spec laptop).
 POLL_MS = 100
@@ -138,7 +138,7 @@ class GuiApp:
         self.btn_start.pack(side="right")
 
     def start_bot(self) -> None:
-        """Start the real bot loop through :mod:`moonlight.wiring` (F-13).
+        """Start the real bot loop through :mod:`moonlight.bot.wiring` (F-13).
 
         Builds the loop via :func:`moonlight.gui.loop_factory.build_gui_loop`,
         which wires a real screen capture (frame provider + focus check) and

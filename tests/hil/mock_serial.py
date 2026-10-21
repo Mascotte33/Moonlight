@@ -1,14 +1,14 @@
 """In-memory serial device for the HIL suite (no hardware, no pyserial).
 
-``MockSerial`` satisfies ``moonlight.input.SerialPortLike`` and answers with
+``MockSerial`` satisfies ``moonlight.hardware.input.SerialPortLike`` and answers with
 the firmware replies emulated by ``FakeInput``. ``MockBus`` stands in for the
-USB bus: it patches ``moonlight.input.open_serial_port`` /
+USB bus: it patches ``moonlight.hardware.input.open_serial_port`` /
 ``find_arduino_port`` and can unplug / re-plug the device.
 """
 
 import pytest
 
-from moonlight.input import ArduinoInput, FakeInput
+from moonlight.hardware.input import ArduinoInput, FakeInput
 
 PORT = "COM5"
 
@@ -76,8 +76,8 @@ class MockBus:
         return ser
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("moonlight.input.open_serial_port", self.open_port)
-        monkeypatch.setattr("moonlight.input.find_arduino_port", lambda *a, **k: None)
+        monkeypatch.setattr("moonlight.hardware.input.open_serial_port", self.open_port)
+        monkeypatch.setattr("moonlight.hardware.input.find_arduino_port", lambda *a, **k: None)
 
     def connect(self, heartbeat_interval: float = 60.0) -> ArduinoInput:
         """Open an ``ArduinoInput`` on this bus (slow heartbeat: tests drive I/O)."""

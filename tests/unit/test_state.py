@@ -1,4 +1,4 @@
-"""Unit tests for moonlight.state (WorldState and supporting types).
+"""Unit tests for moonlight.bot.state (WorldState and supporting types).
 
 Platform-independent: pure data structures plus threading behaviour, so
 the suite runs anywhere.
@@ -12,7 +12,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from moonlight.state import Capacity, Monster, Position, WorldState
+from moonlight.bot.state import Capacity, Monster, Position, WorldState
 
 
 class TestMonster:

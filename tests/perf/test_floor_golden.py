@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.calibrate import default_profiles_dir
+from moonlight.setup.calibrate import default_profiles_dir
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -74,7 +74,7 @@ def _usable_profile() -> object | None:
     """Return the first profile that has a calibrated floor_indicator rect."""
     if not PROFILE_DIR.is_dir():
         return None
-    from moonlight.calibrate import CalibrationProfile
+    from moonlight.setup.calibrate import CalibrationProfile
 
     for path in sorted(PROFILE_DIR.glob("*.json")):
         try:

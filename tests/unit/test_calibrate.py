@@ -1,4 +1,4 @@
-"""Unit tests for moonlight.calibrate.
+"""Unit tests for moonlight.setup.calibrate.
 
 The core data model, coordinate transforms, and save/load are pure stdlib and
 are tested headless (no OpenCV, display, or Tibia window required).
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.calibrate import (
+from moonlight.setup.calibrate import (
     GAME_GRID_COLS,
     GAME_GRID_ROWS,
     REGIONS,

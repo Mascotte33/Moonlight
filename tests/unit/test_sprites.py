@@ -24,7 +24,7 @@ Why synthetic data is the right choice here
 Conventions (shared with test_floor.py and test_minimap.py)
 ------------------------------------------------------------
 * Frames are RGB ``(H, W, 3)`` uint8 arrays, as produced by
-  ``moonlight.capture``.
+  ``moonlight.perception.capture``.
 * Sprite templates are 2-D grayscale ``(H, W)`` uint8 arrays.
 * ``REGION`` is the synthetic game-grid region in frame coordinates.
 """
@@ -35,13 +35,13 @@ import cv2
 import numpy as np
 import pytest
 
-from moonlight.calibrate import CalibrationProfile, Region
 from moonlight.perception.sprites import (
     DEFAULT_MATCH_THRESHOLD,
     MonsterTemplates,
     SpriteDetection,
     SpriteDetector,
 )
+from moonlight.setup.calibrate import CalibrationProfile, Region
 
 # --------------------------------------------------------------------------
 # Synthetic scene constants

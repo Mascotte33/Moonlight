@@ -10,13 +10,13 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+from moonlight.bot.state import Monster, WorldState
 from moonlight.decision.targeting import (
     TargetingAction,
     TargetingActionKind,
     TargetingConfig,
     TargetingDecision,
 )
-from moonlight.state import Monster, WorldState
 
 
 def make_state(
