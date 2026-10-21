@@ -1,30 +1,25 @@
-"""Diagnostics tab (T39) — performance, module toggles, event log tail.
+"""Diagnostics tab: subsystem health, performance and the event log tail.
 
-Shows the GUI poll rate, state freshness, loop tick rate and tick-time
-percentiles, capture latency, the decision-module toggles (live-wired to
-the config store), and the tail of the shared :class:`LogFeed` event log.
+The Health card (T10.F1.K1) shows the same dots as the Dashboard, each with
+its last value. The module switches live in Settings.
 """
 
 from __future__ import annotations
 
 import time
 from collections import deque
-from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
-from moonlight.gui.tabs.base import Tab, section, stat_label, stat_num
-
-if TYPE_CHECKING:  # pragma: no cover
-    from moonlight.bot.state import WorldState
+from moonlight.bot.state import WorldState
+from moonlight.gui import theme
+from moonlight.gui.tabs.base import Tab, dot_color, health, section, stat_label, stat_num
 
 __all__ = ["DiagnosticsTab"]
 
-_MODULE_NAMES: tuple[str, ...] = ("healing", "cavebot", "loot", "overlay")
-
 
 class DiagnosticsTab(Tab):
-    """FPS/tick rates, capture latency, module toggles, event log tail."""
+    """Subsystem health, tick rates and the event log tail."""
 
     title = "Diagnostics"
 
@@ -46,18 +41,15 @@ class DiagnosticsTab(Tab):
         self.lbl_tick_ms = stat_label(perf_grid, "Avg / max tick")
         self.lbl_tick_ms.grid(row=1, column=1, sticky="ew", padx=10)
 
-        mods = section(parent, "Decision modules (live)")
-        mods.grid(row=1, column=0, sticky="nsew", padx=10, pady=6)
-        mods.grid_columnconfigure(0, weight=1)
-        for name in _MODULE_NAMES:
-            initial = bool(getattr(self.ctx.active_config().modules, name))
-            var = ctk.BooleanVar(value=initial)
-            ctk.CTkCheckBox(
-                mods,
-                text=name,
-                variable=var,
-                command=lambda n=name, v=var: self._set_module(n, v),
-            ).pack(anchor="w", padx=10, pady=3)
+        box = section(parent, "Health")
+        box.grid(row=1, column=0, sticky="nsew", padx=10, pady=6)
+        self._dots: dict[str, ctk.CTkLabel] = {}
+        for name, _ in health(WorldState(), False, False):
+            self._dots[name] = ctk.CTkLabel(
+                box, text=f"● {name}", anchor="w", text_color=theme.TEXT_MUTED
+            )
+            self._dots[name].pack(fill="x", padx=theme.PAD)
+        ctk.CTkFrame(box, height=theme.UNIT, fg_color="transparent").pack()
 
         logsec = section(parent, "Event log (tail)")
         logsec.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -72,11 +64,6 @@ class DiagnosticsTab(Tab):
         self._poll_times: deque[float] = deque(maxlen=200)
 
     # -- actions -----------------------------------------------------------
-
-    def _set_module(self, name: str, var: ctk.BooleanVar) -> None:
-        self.ctx.config_store.update(
-            lambda cfg: setattr(cfg.modules, name, bool(var.get()))
-        )
 
     def _reset_stats(self) -> None:
         ctrl = self.ctx.controller
@@ -99,6 +86,23 @@ class DiagnosticsTab(Tab):
 
     # -- live updates ------------------------------------------------------
 
+    def _update_health(self, snap: WorldState) -> None:
+        hw = self.ctx.hardware
+        pos = snap.position
+        port = hw.port or "auto"
+        values = {
+            "Screen": "found" if snap.screen_ok else "missing",
+            "Vitals": f"HP {snap.hp_percent:.0f}%  MP {snap.mp_percent:.0f}%",
+            "Minimap": f"pos {pos.x}, {pos.y}, {pos.z}",
+            "Arduino": f"{port} connected" if hw.backend is not None else "not connected",
+            "Bot": "running" if self.ctx.bot_running() else "stopped",
+        }
+        for name, ok in health(snap, hw.backend is not None, self.ctx.bot_running()):
+            text = f"● {name}: {values[name]}"
+            lbl = self._dots[name]
+            if lbl.cget("text") != text:
+                lbl.configure(text=text, text_color=dot_color(ok))
+
     def on_poll(self, snap: WorldState) -> None:
         now = time.monotonic()
         self._poll_times.append(now)
@@ -109,8 +113,9 @@ class DiagnosticsTab(Tab):
             hz = (len(self._poll_times) - 1) / window if window > 0 else 0.0
             self.lbl_poll_rate.configure(text=f"GUI poll rate: {hz:.1f} Hz")
 
+        self._update_health(snap)
         if snap.last_update > 0:
-            age_ms = (time.time() - snap.last_update) * 1000.0
+            age_ms = (now - snap.last_update) * 1000.0
             self.lbl_state_age.configure(text=f"State age: {age_ms:.0f} ms")
 
         stats = self._loop_stats()
