@@ -1,5 +1,6 @@
 from moonlight.gui import theme
-from moonlight.gui.app import cpu_percent, dot_color, memory_text
+from moonlight.gui.sysinfo import cpu_percent, memory_text, ram_percent
+from moonlight.gui.tabs.base import dot_color
 
 
 def test_dot_color() -> None:
@@ -14,3 +15,8 @@ def test_memory_text() -> None:
 def test_cpu_percent_is_whole_pc_busy_share() -> None:
     assert cpu_percent((100, 1000), (150, 1100)) == 50.0
     assert cpu_percent((100, 1000), (100, 1000)) == 0.0
+
+
+def test_ram_percent_is_a_share_or_unknown() -> None:
+    ram = ram_percent()
+    assert ram is None or 0.0 <= ram <= 100.0

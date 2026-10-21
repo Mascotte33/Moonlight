@@ -1,17 +1,19 @@
 """Status tab (T39) — live WorldState and loop statistics.
 
 Shows HP/MP bars, monster list, selected target, minimap position,
-inventory capacity, active buffs, and the bot loop's own stats
-(tick count, uptime, actions sent/dropped).
+inventory capacity, active buffs, the bot loop's own stats
+(tick count, uptime, actions sent/dropped) and a System card (T9.F1.K1).
 """
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
-from moonlight.gui import theme
+from moonlight.gui import sysinfo, theme
 from moonlight.gui.tabs.base import Tab, section, stat_label, stat_num
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -30,6 +32,7 @@ class StatusTab(Tab):
         parent.grid_rowconfigure(0, weight=2)
         parent.grid_rowconfigure(1, weight=2)
         parent.grid_rowconfigure(2, weight=3)
+        parent.grid_rowconfigure(3, weight=1)
 
         vit = section(parent, "Vitals")
         vit.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10, 6))
@@ -85,6 +88,42 @@ class StatusTab(Tab):
         self.lbl_dropped = stat_label(loop_grid, "Dropped")
         self.lbl_dropped.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 8))
 
+        system = section(parent, "System")
+        system.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=10, pady=(0, 10))
+        self.cpu_bar = ctk.CTkProgressBar(system, progress_color=theme.AMBER)
+        self.cpu_bar.set(0)
+        self.cpu_bar.pack(fill="x", padx=10, pady=(6, 0))
+        self.lbl_cpu = stat_label(system, "CPU")
+        self.lbl_cpu.pack(anchor="w", padx=10)
+        self.ram_bar = ctk.CTkProgressBar(system, progress_color=theme.MANA)
+        self.ram_bar.set(0)
+        self.ram_bar.pack(fill="x", padx=10)
+        self.lbl_ram = stat_label(system, "RAM")
+        self.lbl_ram.pack(anchor="w", padx=10)
+        self.lbl_proc = stat_label(system, "Bot")
+        self.lbl_proc.pack(anchor="w", padx=10, pady=(0, 8))
+        self._sys_t = 0.0
+        self._cpu = sysinfo.cpu_times()
+
+    def _update_system(self) -> None:
+        now = time.monotonic()
+        if now - self._sys_t < 1.0:  # same pace as the bottom bar
+            return
+        cpu = sysinfo.cpu_times()
+        if cpu is None or self._cpu is None:
+            self.lbl_cpu.configure(text="CPU: —")
+        else:
+            busy = sysinfo.cpu_percent(self._cpu, cpu)
+            self.cpu_bar.set(busy / 100.0)
+            self.lbl_cpu.configure(text=f"CPU: {busy:.0f}%")
+        ram = sysinfo.ram_percent()
+        self.ram_bar.set(0 if ram is None else ram / 100.0)
+        self.lbl_ram.configure(text="RAM: —" if ram is None else f"RAM: {ram:.0f}%")
+        self.lbl_proc.configure(
+            text=f"Bot: {sysinfo.memory_text()}, {threading.active_count()} threads"
+        )
+        self._sys_t, self._cpu = now, cpu
+
     def _set_text(self, box: ctk.CTkTextbox, text: str) -> None:
         box.configure(state="normal")
         box.delete("1.0", "end")
@@ -101,6 +140,7 @@ class StatusTab(Tab):
             return {}
 
     def on_poll(self, snap: WorldState) -> None:
+        self._update_system()
         hp = snap.hp_percent
         mp = snap.mp_percent
         self.hp_bar.set(max(0.0, min(1.0, hp / 100.0)))
