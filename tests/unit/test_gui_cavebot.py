@@ -107,3 +107,11 @@ def test_unknown_position_adds_nothing(tmp_path: Path) -> None:
     before = path.read_text(encoding="utf-8")
     assert add_waypoint(path, Position(0, 0, 0)) == "Position unknown"
     assert path.read_text(encoding="utf-8") == before
+
+
+def test_blank_deposit_hotkey_writes_none(tmp_path: Path) -> None:
+    cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
+    cfg = apply_cavebot(cfg, {"refill.deposit_hotkey": "F5"})
+    assert cfg.off["refill"].deposit_hotkey == "F5"
+    cfg = apply_cavebot(cfg, {"refill.deposit_hotkey": ""})
+    assert cfg.off["refill"].deposit_hotkey is None

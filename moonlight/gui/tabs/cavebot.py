@@ -1,8 +1,8 @@
-"""Cavebot tab: route picker, tool hotkeys and the route's waypoints (T3.F1.K1).
+"""Cavebot tab: Route and Refill sub-tabs (T3.F1.K1, T3.F7.K1).
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, read by
-:class:`RouteFileLoader`. ``cavebot.route`` is saved by name, so the route
-dropdown holds names.
+:class:`RouteFileLoader`. ``cavebot.route`` and ``refill.route_name`` are
+saved by name, so their dropdowns hold names.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from moonlight.setup.config import BotConfig, ConfigError
 
 __all__ = [
     "OPTIONS",
+    "REFILL_OPTIONS",
     "ROUTE",
     "CavebotTab",
     "add_waypoint",
@@ -41,6 +42,15 @@ OPTIONS = [
     START,
     Option("Rope hotkey", "cavebot.rope_hotkey", "entry"),
     Option("Shovel hotkey", "cavebot.shovel_hotkey", "entry"),
+]
+REFILL_ROUTE = Option("Refill route", "refill.route_name", "dropdown")
+REFILL_OPTIONS = [
+    Option("Refill", "refill.enabled", "switch"),
+    Option("Start refill at cap (oz)", "refill.trigger_cap", "entry"),
+    Option("Stop at cap (oz)", "refill.stop_cap", "entry"),
+    REFILL_ROUTE,
+    Option("Storage hotkey", "refill.storage_hotkey", "entry"),
+    Option("Deposit hotkey (blank = none)", "refill.deposit_hotkey", "entry"),
 ]
 
 
@@ -87,47 +97,71 @@ def add_waypoint(path: Path, pos: Position) -> str:
 
 
 def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
-    """*cfg* with the cavebot option *values*, the route written first.
+    """*cfg* with the cavebot and refill option *values*.
 
-    With no route on disk picked nothing changes, so Save still works for
-    an off cavebot without routes. A blank hotkey keeps its default.
-    The start waypoint is given 1-based.
+    The cavebot route is written first. With no route on disk picked the
+    cavebot options are skipped, so Save still works for an off cavebot
+    without routes. A blank cavebot hotkey keeps its default; a blank
+    deposit hotkey means no deposit. The start waypoint is given 1-based.
 
     Raises:
         ConfigError: For a refused value.
     """
-    if values.get(ROUTE.field) not in route_names(cfg.routes_dir):
-        return cfg
-    start = values.get(START.field, "")
-    if start != "":
-        try:
-            values = {**values, START.field: int(str(start)) - 1}
-        except ValueError:
-            raise ConfigError(f"start waypoint {start!r} is not a whole number") from None
-    for option in sorted(OPTIONS, key=lambda o: o is not ROUTE):
-        if values.get(option.field, "") != "":
+    if values.get(ROUTE.field) in route_names(cfg.routes_dir):
+        start = values.get(START.field, "")
+        if start != "":
+            try:
+                values = {**values, START.field: int(str(start)) - 1}
+            except ValueError:
+                raise ConfigError(f"start waypoint {start!r} is not a whole number") from None
+        for option in sorted(OPTIONS, key=lambda o: o is not ROUTE):
+            if values.get(option.field, "") != "":
+                cfg = write_option(cfg, option, values[option.field])
+    for option in REFILL_OPTIONS:
+        if option.field in values:
             cfg = write_option(cfg, option, values[option.field])
     return cfg
 
 
+def _menu(box: ctk.CTkFrame, options: list[Option], option: Option) -> ctk.CTkOptionMenu:
+    """The dropdown :meth:`Tab.build_options` made for *option* in *box*."""
+    rows = [w for w in box.winfo_children() if isinstance(w, ctk.CTkFrame)]
+    return next(
+        w for w in rows[options.index(option)].winfo_children()
+        if isinstance(w, ctk.CTkOptionMenu)
+    )
+
+
 class CavebotTab(Tab):
-    """Route, tool hotkeys and the picked route's waypoints."""
+    """Route sub-tab (route, hotkeys, waypoints) and Refill sub-tab."""
 
     title = "Cavebot"
-    options = OPTIONS
+    options = OPTIONS + REFILL_OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
-        box = section(parent, "Cavebot")
-        box.pack(fill="x", padx=10, pady=10)
-        self.build_options(box)
-        rows = [w for w in box.winfo_children() if isinstance(w, ctk.CTkFrame)]
-        row = rows[OPTIONS.index(ROUTE)]
-        self.menu_route = next(
-            w for w in row.winfo_children() if isinstance(w, ctk.CTkOptionMenu)
+        tabs = ctk.CTkTabview(
+            parent,
+            fg_color=theme.NIGHT,
+            segmented_button_selected_color=theme.HOVER,
+            segmented_button_selected_hover_color=theme.HOVER,
         )
+        tabs.pack(fill="both", expand=True)
+        page = tabs.add("Route")
+        refill_page = tabs.add("Refill")
+
+        refill = section(refill_page, "Refill")
+        refill.pack(fill="x", padx=10, pady=10)
+        self.build_options(refill, REFILL_OPTIONS)
+        self.menu_refill_route = _menu(refill, REFILL_OPTIONS, REFILL_ROUTE)
+        ctk.CTkFrame(refill, height=theme.UNIT, fg_color="transparent").pack()
+
+        box = section(page, "Cavebot")
+        box.pack(fill="x", padx=10, pady=10)
+        self.build_options(box, OPTIONS)
+        self.menu_route = _menu(box, OPTIONS, ROUTE)
         self.menu_route.configure(command=self._show_route)
         ctk.CTkButton(
-            row,
+            self.menu_route.master,
             text="Reload",
             width=70,
             command=self._reload,
@@ -136,7 +170,7 @@ class CavebotTab(Tab):
         ).pack(side="right", padx=theme.UNIT)
         ctk.CTkFrame(box, height=theme.UNIT, fg_color="transparent").pack()
 
-        wps = section(parent, "Waypoints")
+        wps = section(page, "Waypoints")
         wps.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         self.wp_list = ctk.CTkTextbox(
             wps, height=200, wrap="none", font=ctk.CTkFont(family=theme.MONO)
@@ -167,6 +201,7 @@ class CavebotTab(Tab):
         self._routes_dir = Path(cfg.routes_dir)
         names = route_names(self._routes_dir)
         self.menu_route.configure(values=names or [NO_ROUTES])
+        self.menu_refill_route.configure(values=names or [NO_ROUTES])
         picked = picked_route(cfg)
         self.menu_route.set(picked if picked in names else (names[0] if names else NO_ROUTES))
         start = read_option(cfg, START.field)
