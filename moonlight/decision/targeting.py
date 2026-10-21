@@ -62,6 +62,8 @@ __all__ = [
 
 logger = logging.getLogger("moonlight.decision.targeting")
 
+MODES = ("all", "whitelist", "blacklist")
+
 
 class TargetingActionKind(StrEnum):
     """Kind of a targeting action (the ``TargetingAction.action`` tokens)."""
@@ -84,6 +86,13 @@ class TargetingConfig:
     player_protection: bool = True
     """Abort (flee) as soon as any player is on screen."""
 
+    mode: str = "all"
+    """``"all"``, ``"whitelist"`` (attack only *creatures*) or ``"blacklist"``
+    (never attack *creatures*)."""
+
+    creatures: tuple[str, ...] = ()
+    """Creature names for *mode*, matched without case."""
+
     def validate(self) -> TargetingConfig:
         """Check invariants and return self (fail fast, loop-style validation).
 
@@ -96,6 +105,8 @@ class TargetingConfig:
             raise ValueError("max_monsters_to_engage must be an int")
         if self.max_monsters_to_engage < 1:
             raise ValueError("max_monsters_to_engage must be >= 1")
+        if self.mode not in MODES:
+            raise ValueError(f"mode must be one of {MODES}, got {self.mode!r}")
         return self
 
 
@@ -211,10 +222,18 @@ class TargetingDecision:
 
     # -- helpers ---------------------------------------------------------------
 
-    @staticmethod
-    def _candidate_monsters(state: WorldState) -> list[Monster]:
-        """Monsters that may be targeted: never a player, never a nameless entry."""
-        return [m for m in state.monsters if m.name and not m.is_player]
+    def _candidate_monsters(self, state: WorldState) -> list[Monster]:
+        """Monsters that may be targeted: never a player, never a nameless
+        entry, and only what the whitelist / blacklist allows."""
+        listed = {name.lower() for name in self.config.creatures}
+        keep = self.config.mode != "whitelist"
+        return [
+            m
+            for m in state.monsters
+            if m.name
+            and not m.is_player
+            and (self.config.mode == "all" or (m.name.lower() in listed) != keep)
+        ]
 
     @staticmethod
     def _valid_selected(

@@ -400,3 +400,37 @@ class TestTargetingActionStructure:
         assert action is not None
         assert action.action is TargetingActionKind.FLEE
         assert action.target_name == ""
+
+
+# -- whitelist / blacklist (T5.F1.K2) --------------------------------------------
+
+CROWD = [Monster(name="Rat", hp_percent=10.0), Monster(name="Dragon", hp_percent=50.0)]
+
+
+@pytest.mark.parametrize(
+    ("mode", "creatures", "target"),
+    [
+        ("all", ("dragon",), "Rat"),
+        ("whitelist", ("DRAGON",), "Dragon"),
+        ("blacklist", ("rat",), "Dragon"),
+        ("whitelist", ("Orc",), None),
+    ],
+)
+def test_mode_filters_targets(mode: str, creatures: tuple[str, ...], target: str | None) -> None:
+    action = make_targeting(TargetingConfig(mode=mode, creatures=creatures)).decide(
+        make_state(monsters=CROWD)
+    )
+    assert (action.target_name if action else None) == target
+
+
+def test_selected_blacklisted_target_is_switched() -> None:
+    action = make_targeting(TargetingConfig(mode="blacklist", creatures=("Rat",))).decide(
+        make_state(monsters=CROWD, selected_target=CROWD[0])
+    )
+    assert action is not None
+    assert action.action == TargetingActionKind.SWITCH and action.target_name == "Dragon"
+
+
+def test_unknown_mode_refused() -> None:
+    with pytest.raises(ValueError, match="mode"):
+        TargetingConfig(mode="some").validate()
