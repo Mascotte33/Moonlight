@@ -360,6 +360,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_loop.py` passes, with a test per task text. Owner checks: in simulation it shows Idle. The other texts wait for calibration.
 
 ### T9.F1.K1 — System card
+- ✅ Done in commit 70959ac.
 - What: CPU % and RAM % bars for the whole PC, the bot's memory MB, and its thread count (`threading.active_count()`). Move the bottom bar's CPU and memory readers from `app.py` into `moonlight/gui/sysinfo.py` and use them in both places. RAM % comes from `GlobalMemoryStatusEx` via `ctypes` on Windows, `—` elsewhere.
 - Needs: S.F4.K1
 - Files: moonlight/gui/sysinfo.py, moonlight/gui/app.py, moonlight/gui/tabs/status.py, tests/unit/test_gui_bottombar.py
