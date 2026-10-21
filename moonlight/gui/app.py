@@ -40,6 +40,8 @@ from moonlight.gui.tabs.targeting import TargetingTab
 #: Poller period in ms (10 Hz — light enough for a low-spec laptop).
 POLL_MS = 100
 
+SIDEBAR_WIDTH = 200
+
 #: The ten tabs in display order.
 TAB_ORDER = (
     DashboardTab,
@@ -91,33 +93,73 @@ class GuiApp:
 
         self._build_header()
 
-        self.tabview = ctk.CTkTabview(self.root)
-        self.tabview.pack(fill="both", expand=True, padx=10, pady=(6, 10))
+        body = ctk.CTkFrame(self.root, fg_color="transparent", corner_radius=0)
+        body.pack(fill="both", expand=True, pady=(6, 0))
+        sidebar = ctk.CTkFrame(
+            body, width=SIDEBAR_WIDTH, fg_color=theme.NIGHT, corner_radius=0
+        )
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
+        ctk.CTkFrame(body, width=1, fg_color=theme.RAISED, corner_radius=0).pack(
+            side="left", fill="y"
+        )
+        ctk.CTkLabel(
+            sidebar,
+            text="MOONLIGHT",
+            font=ctk.CTkFont(size=theme.SIZE_HEADING, weight="bold"),
+            text_color=theme.TEXT,
+        ).pack(anchor="w", padx=theme.PAD, pady=(theme.PAD, theme.GAP))
+        content = ctk.CTkFrame(body, fg_color="transparent", corner_radius=0)
+        content.pack(side="left", fill="both", expand=True, padx=10, pady=(0, 10))
+        content.grid_columnconfigure(0, weight=1)
+        content.grid_rowconfigure(0, weight=1)
+
         self.tabs: dict[str, Tab] = {}
+        self._pages: dict[str, ctk.CTkFrame] = {}
+        self._nav: dict[str, ctk.CTkButton] = {}
         for tab_cls in TAB_ORDER:
             tab = tab_cls(self.ctx)
-            frame = self.tabview.add(tab.title)
-            frame.grid_columnconfigure(0, weight=1)
-            frame.grid_rowconfigure(0, weight=1)
-            tab.build(frame)
-            self.tabs[tab.title] = tab
+            title = tab.title
+            page = ctk.CTkFrame(content, fg_color="transparent")
+            page.grid(row=0, column=0, sticky="nsew")
+            page.grid_columnconfigure(0, weight=1)
+            page.grid_rowconfigure(0, weight=1)
+            tab.build(page)
+            self.tabs[title] = tab
+            self._pages[title] = page
+            self._nav[title] = ctk.CTkButton(
+                sidebar,
+                text=title,
+                anchor="w",
+                height=32,
+                corner_radius=theme.RADIUS_CONTROL,
+                font=ctk.CTkFont(size=theme.SIZE_BODY),
+                command=lambda t=title: self.select_tab(t),
+            )
+            self._nav[title].pack(fill="x", padx=theme.UNIT * 2, pady=1)
+        self.select_tab(next(iter(self.tabs)))
 
         if start_bot:
             self.start_bot()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.after(POLL_MS, self._poll)
 
+    def select_tab(self, title: str) -> None:
+        """Raise ``title``'s page and highlight its sidebar entry."""
+        self._pages[title].tkraise()
+        for name, btn in self._nav.items():
+            active = name == title
+            btn.configure(
+                fg_color=theme.MANA if active else "transparent",
+                text_color=theme.NIGHT if active else theme.TEXT_DIM,
+                hover_color=theme.MANA_HOVER if active else theme.RAISED,
+            )
+
     # -- header / bot control ----------------------------------------------
 
     def _build_header(self) -> None:
         header = ctk.CTkFrame(self.root, corner_radius=0, fg_color="transparent")
         header.pack(fill="x", padx=10, pady=(10, 0))
-        ctk.CTkLabel(
-            header,
-            text="MOONLIGHT",
-            font=ctk.CTkFont(size=theme.SIZE_HEADING, weight="bold"),
-            text_color=theme.TEXT,
-        ).pack(side="left", padx=6)
         self.lbl_bot = ctk.CTkLabel(
             header, text="bot: stopped", font=ctk.CTkFont(size=theme.SIZE_BODY)
         )
