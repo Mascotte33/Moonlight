@@ -1,4 +1,4 @@
-"""Dashboard tab: stat cards, battle list and event log tail (T1.F1.K1).
+"""Dashboard tab: stat cards, bot health, battle list and log tail (T1).
 
 Four stat cards (Uptime, Ticks, Creatures, HP) show hero-size values from
 the loop's stats and the live :class:`WorldState`. The module switches live
@@ -7,15 +7,11 @@ in Settings.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import customtkinter as ctk
 
+from moonlight.bot.state import WorldState
 from moonlight.gui import theme
-from moonlight.gui.tabs.base import Tab, section, stat_num
-
-if TYPE_CHECKING:  # pragma: no cover
-    from moonlight.bot.state import WorldState
+from moonlight.gui.tabs.base import Tab, dot_color, health, section, stat_num
 
 __all__ = ["CARDS", "DashboardTab", "card_values", "uptime_text"]
 
@@ -66,6 +62,17 @@ class DashboardTab(Tab):
             value.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
             self._cards[name] = value
 
+        box = section(cards, "Bot health")
+        box.grid(row=1, column=0, columnspan=len(CARDS), sticky="ew", pady=(theme.UNIT, 0))
+        dots = ctk.CTkFrame(box, fg_color="transparent")
+        dots.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
+        self._dots: dict[str, ctk.CTkLabel] = {}
+        for name, _ in health(WorldState(), False, False):
+            self._dots[name] = ctk.CTkLabel(
+                dots, text=f"● {name}", text_color=theme.TEXT_MUTED
+            )
+            self._dots[name].pack(side="left", padx=(0, theme.PAD))
+
         body = ctk.CTkFrame(parent, fg_color="transparent")
         body.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
         body.grid_columnconfigure(0, weight=1)
@@ -105,6 +112,9 @@ class DashboardTab(Tab):
             label = self._cards[name]
             if label.cget("text") != text:
                 label.configure(text=text)
+        arduino = self.ctx.hardware.backend is not None
+        for name, ok in health(snap, arduino, self.ctx.bot_running()):
+            self._dots[name].configure(text_color=dot_color(ok))
         if snap.monsters:
             monsters = snap.monsters[:20]
             lines = [

@@ -16,6 +16,7 @@ the Tk thread while the bot loop thread keeps ticking in the background.
 
 from __future__ import annotations
 
+import time
 import types
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -40,7 +41,16 @@ if TYPE_CHECKING:  # pragma: no cover
     from moonlight.bot.state import WorldState
     from moonlight.gui.state_bridge import GuiContext
 
-__all__ = ["Option", "Tab", "read_option", "section", "stat_label", "stat_num", "write_option"]
+__all__ = [
+    "Option",
+    "Tab",
+    "dot_color",
+    "health",
+    "read_option", "section",
+    "stat_label",
+    "stat_num",
+    "write_option",
+]
 
 
 @dataclass(frozen=True)
@@ -182,6 +192,29 @@ def stat_num(stats: dict[str, object], key: str, default: float = 0.0) -> float:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
     return default
+
+
+def health(
+    snap: WorldState, arduino: bool, running: bool, now: float | None = None
+) -> list[tuple[str, bool]]:
+    """``(name, ok)`` per subsystem the bot can report today.
+
+    Vitals count as ok while ``last_update`` is under 2 s old.
+    """
+    now = time.monotonic() if now is None else now
+    pos = snap.position
+    return [
+        ("Screen", snap.screen_ok),
+        ("Vitals", snap.last_update > 0 and now - snap.last_update < 2.0),
+        ("Minimap", (pos.x, pos.y, pos.z) != (0, 0, 0)),
+        ("Arduino", arduino),
+        ("Bot", running),
+    ]
+
+
+def dot_color(ok: bool) -> str:
+    """Status dot: green when ok, red when not (Look: failed dot)."""
+    return theme.LIFE if ok else theme.BLOOD
 
 
 class Tab:

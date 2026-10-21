@@ -30,7 +30,7 @@ from moonlight.gui.state_bridge import (
     LogFeed,
     topbar_text,
 )
-from moonlight.gui.tabs.base import Tab
+from moonlight.gui.tabs.base import Tab, dot_color, health
 from moonlight.gui.tabs.cavebot import CavebotTab
 from moonlight.gui.tabs.dashboard import DashboardTab
 from moonlight.gui.tabs.diagnostics import DiagnosticsTab
@@ -100,11 +100,6 @@ def cpu_percent(prev: tuple[int, int], now: tuple[int, int]) -> float:
     if total <= 0:
         return 0.0
     return 100.0 * (1 - (now[0] - prev[0]) / total)
-
-
-def dot_color(ok: bool) -> str:
-    """Bottom-bar status dot: green when ok, red when not (Look: failed dot)."""
-    return theme.LIFE if ok else theme.BLOOD
 
 
 def memory_text() -> str:
@@ -301,7 +296,7 @@ class GuiApp:
         )
         mono = ctk.CTkFont(family=theme.MONO, size=theme.SIZE_TITLE)
         self._dots: dict[str, ctk.CTkLabel] = {}
-        for name in ("Screen", "Arduino", "Bot"):
+        for name, _ in health(WorldState(), False, False):
             self._dots[name] = ctk.CTkLabel(
                 bar, text=f"● {name}", font=mono, text_color=theme.TEXT_MUTED
             )
@@ -315,13 +310,8 @@ class GuiApp:
 
     def _update_bottombar(self) -> None:
         snap = self.ctx.state.snapshot()
-        ok = {
-            "Screen": snap.screen_ok,
-            "Arduino": self.hardware.backend is not None,
-            "Bot": self.ctx.bot_running(),
-        }
-        for name, lbl in self._dots.items():
-            lbl.configure(text_color=dot_color(ok[name]))
+        for name, ok in health(snap, self.hardware.backend is not None, self.ctx.bot_running()):
+            self._dots[name].configure(text_color=dot_color(ok))
         now = time.monotonic()
         if now - self._res_t >= 1.0:  # CPU/MEM refresh about once a second
             cpu = cpu_times()
