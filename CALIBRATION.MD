@@ -122,6 +122,7 @@ C2.F2.K3 to K6, C3), then the Start check (C4).
 - Done when: `pytest tests/unit/test_autofind.py` passes; on the golden screenshots each box is within 3 px of `profiles/moonlight_user.json`; `python tools/calibrate_auto.py` still runs.
 
 ### C2.F3.K1 — Window size and UI scale in the profile
+- ✅ Done in commit cf74024.
 - What: `CalibrationProfile` gets `window_size` and `ui_scale` (Data shapes), read in `from_dict` and written in `to_dict`. Old profiles without them still load (Rule 4).
 - Files: moonlight/setup/calibrate.py, tests/unit/test_calibrate.py
 - Done when: `pytest tests/unit/test_calibrate.py` passes; a profile round-trips both fields; an old profile loads with `None` and `1.0`.
