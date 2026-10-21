@@ -55,8 +55,19 @@ def make_state(
     return state
 
 
+#: Cures are off by default; the old shared spell keeps these tests' expectations.
+CURED = HealingConfig(
+    cure_paralyze="exura gran",
+    cure_poison="exura gran",
+    cure_burn="exura gran",
+    cure_energy="exura gran",
+    cure_curse="exura gran",
+    cure_bleed="exura gran",
+)
+
+
 def make_healer(
-    config: HealingConfig | None = None,
+    config: HealingConfig | None = CURED,
     clock: FakeClock | None = None,
     spell_combos: dict[str, str] | None = None,
 ) -> tuple[HealingDecision, FakeClock]:
@@ -147,13 +158,19 @@ class TestDecidePriority:
         assert "12.0s" in action.reason
 
     def test_cure_priority_follows_config_order(self) -> None:
-        config = HealingConfig(cure_conditions=("burn", "poison", "paralyze"))
+        config = HealingConfig(cure_poison="exana pox", cure_burn="exana flam")
         healer, _ = make_healer(config=config)
         action = healer.decide(
-            make_state(hp=50.0, buffs={"poison": 4.0, "burn": 6.0})
+            make_state(hp=50.0, buffs={"burn": 6.0, "poison": 4.0})
         )
         assert action is not None
-        assert action.cooldown_key == cure_cooldown_key("burn")
+        # CURES order: poison before burn, each with its own spell.
+        assert action.cooldown_key == cure_cooldown_key("poison")
+        assert action.spell == "exana pox"
+
+    def test_condition_without_spell_is_not_cured(self) -> None:
+        healer, _ = make_healer(config=HealingConfig(cure_poison="exana pox"))
+        assert healer.decide(make_state(hp=90.0, buffs={"burn": 6.0})) is None
 
     def test_case_insensitive_condition_match(self) -> None:
         healer, _ = make_healer()
@@ -368,23 +385,13 @@ class TestConfigValidation:
         with pytest.raises(ValueError):
             HealingDecision(HealingConfig(heal_cooldown_ms=0))
 
-    @pytest.mark.parametrize("field", ["emergency_spell", "normal_spell", "cure_spell"])
+    @pytest.mark.parametrize("field", ["emergency_spell", "normal_spell"])
     @pytest.mark.parametrize("value", ["", "   "])
     def test_invalid_spells_rejected(self, field: str, value: str) -> None:
         # Dynamic field name: unpack through dict[str, Any] (intentionally invalid input).
         kwargs: dict[str, Any] = {field: value}
         with pytest.raises(ValueError):
             HealingDecision(HealingConfig(**kwargs))
-
-    def test_duplicate_cure_conditions_rejected(self) -> None:
-        with pytest.raises(ValueError):
-            HealingDecision(
-                HealingConfig(cure_conditions=("poison", "Poison"))
-            )
-
-    def test_whitespace_cure_condition_rejected(self) -> None:
-        with pytest.raises(ValueError):
-            HealingDecision(HealingConfig(cure_conditions=("poison", "a b")))
 
     def test_invalid_spell_combo_rejected(self) -> None:
         with pytest.raises(ValueError):

@@ -31,14 +31,22 @@ GROUPS = [
         Option("Heal at HP %", "healing.normal_hp_percent", "slider", min=0, max=100),
         Option("Spell", "healing.normal_spell", "entry"),
     ]),
-    ("Cure", [Option("Spell", "healing.cure_spell", "entry")]),
+    # T4.F1.K3: each condition has its own cure; a blank spell is not cured.
+    ("Cure", [
+        Option("Paralyze (utani hur)", "healing.cure_paralyze", "entry"),
+        Option("Poison (exana pox)", "healing.cure_poison", "entry"),
+        Option("Burning (exana flam)", "healing.cure_burn", "entry"),
+        Option("Electrified (exana vis)", "healing.cure_energy", "entry"),
+        Option("Cursed (exana mort)", "healing.cure_curse", "entry"),
+        Option("Bleeding (exana kor)", "healing.cure_bleed", "entry"),
+    ]),
     ("Mana and cooldown", [
         Option("Keep mana above %", "healing.mana_threshold", "slider", min=0, max=100),
         Option("Heal cooldown (ms)", "healing.heal_cooldown_ms", "slider", min=0, max=2000),
     ]),
 ]
 OPTIONS = [o for _, group in GROUPS for o in group]
-SPELLS = [o.field for o in OPTIONS if o.field.endswith("_spell")]
+SPELLS = [o.field for o in OPTIONS if o.control == "entry"]
 
 
 def apply_healing(
