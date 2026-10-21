@@ -542,6 +542,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: pytest stays green. Owner checks: add three creatures, select two, Remove, Save, reopen, and one is left.
 
 ### T5.F4.K1 — Attack spells in Targeting
+- ✅ Done in commit 30e377c.
 - What: the Spell attack tab's options move into the Targeting tab as an **Attack spells** section. The Spell attack tab is removed.
 - Needs: T6.F1.K1, T2.F4.K2
 - Files: moonlight/gui/tabs/targeting.py, spell_attack.py, tabs/__init__.py, moonlight/gui/app.py, tests/unit/test_attack_spells.py
