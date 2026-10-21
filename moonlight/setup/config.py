@@ -16,6 +16,7 @@ JSON format (``moonlight_config.json``)::
       "serial_baudrate": 115200,
       "simulation": false,                 # true = FakeInput, no Arduino (F-13)
       "log_commands": false,               # true = every input command goes to the GUI log
+      "window_title": "Tibia",             # game window to capture (exact or prefix)
       "profiles_dir": null,                # null = moonlight/profiles
       "templates_dir": "data/templates",   # cursor/*.png, loot/*.png
       "routes_dir": "data/waypoints",
@@ -91,6 +92,7 @@ _TOP_KEYS = {
     "serial_baudrate",
     "simulation",
     "log_commands",
+    "window_title",
     "profiles_dir",
     "templates_dir",
     "routes_dir",
@@ -129,6 +131,8 @@ class BotConfig:
     #: Arduino with this off is a hard error, never a silent fallback.
     simulation: bool = False
     log_commands: bool = False
+    #: Same as ``perception.capture.TIBIA_WINDOW_TITLE``; not imported, that pulls in mss.
+    window_title: str = "Tibia"
     profiles_dir: Path | None = None
     templates_dir: Path = Path("data/templates")
     routes_dir: Path = Path("data/waypoints")
@@ -211,6 +215,7 @@ class BotConfig:
             "serial_baudrate",
             "simulation",
             "log_commands",
+            "window_title",
             "profiles_dir",
             "templates_dir",
             "routes_dir",

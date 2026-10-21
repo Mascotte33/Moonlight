@@ -229,3 +229,11 @@ def test_off_entry_for_enabled_module_refused() -> None:
     cfg = BotConfig.default()
     with pytest.raises(ConfigError, match="healing"):
         replace(cfg, off={"healing": HealingConfig()}).validate()
+
+
+def test_window_title_roundtrip() -> None:
+    from moonlight.perception.capture import TIBIA_WINDOW_TITLE
+
+    assert BotConfig.default().window_title == TIBIA_WINDOW_TITLE
+    cfg = replace(BotConfig.default(), window_title="Tibia - Gunzodus")
+    assert BotConfig.from_dict(cfg.to_dict()).window_title == "Tibia - Gunzodus"
