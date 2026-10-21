@@ -20,13 +20,17 @@ from moonlight.gui.loop_factory import (
     picked_config,
     save_config_as,
 )
-from moonlight.gui.tabs.base import Option, Tab, section
+from moonlight.gui.tabs.base import Option, Tab, section, write_option
 from moonlight.setup.config import ConfigError
 
-__all__ = ["OPTIONS", "SettingsTab"]
+__all__ = ["MODULE_SWITCHES", "OPTIONS", "SettingsTab"]
 
 OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
+]
+MODULE_SWITCHES = [
+    Option(name.capitalize(), f"{name}.enabled", "switch")
+    for name in ("healing", "targeting", "cavebot", "looting", "refill", "buffs", "alarms")
 ]
 
 
@@ -34,7 +38,7 @@ class SettingsTab(Tab):
     """Named configs (pick, New, Save, Delete) and core options."""
 
     title = "Settings"
-    options = OPTIONS
+    options = [*OPTIONS, *MODULE_SWITCHES]
 
     def build(self, parent: ctk.CTkFrame) -> None:
         io_box = section(parent, "Config")
@@ -65,6 +69,34 @@ class SettingsTab(Tab):
         self.box_options = section(parent, "Options")
         self.box_options.pack(fill="x", padx=10, pady=4)
         self.build_options(self.box_options)
+        rows = [w for w in self.box_options.winfo_children() if isinstance(w, ctk.CTkFrame)]
+        ctk.CTkLabel(
+            self.box_options,
+            text="MODULES",
+            anchor="w",
+            font=ctk.CTkFont(size=theme.SIZE_TITLE, weight="bold"),
+            text_color=theme.TEXT_MUTED,
+        ).pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0), before=rows[len(OPTIONS)])
+        for option, row in zip(self.options, rows, strict=True):
+            for switch in row.winfo_children():
+                if isinstance(switch, ctk.CTkSwitch):
+                    switch.configure(command=lambda f=option.field: self._check_switch(f))
+        self.lbl_options = ctk.CTkLabel(
+            self.box_options, text="", anchor="w", text_color=theme.BLOOD
+        )
+        self.lbl_options.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, theme.PAD))
+
+    def _check_switch(self, field: str) -> None:
+        """Flip a module switch back when the config would refuse it."""
+        cfg = load_real_config()
+        try:
+            for option in self.options:
+                cfg = write_option(cfg, option, self._readers[option.field]())
+        except ConfigError as exc:
+            self._writers[field](not self._readers[field]())
+            self.lbl_options.configure(text=str(exc))
+            return
+        self.lbl_options.configure(text="")
 
     # -- named configs -------------------------------------------------------
 
