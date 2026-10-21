@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import queue
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 import customtkinter as ctk
@@ -226,7 +227,7 @@ class CavebotTab(Tab):
         kinds = ctk.CTkFrame(wps, fg_color="transparent")
         kinds.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         for action in ACTIONS:
-            button = _button(kinds, action.capitalize(), lambda a=action: self._add_action(a))
+            button = _button(kinds, action.capitalize(), partial(self._add_action, action))
             button.configure(width=70)
             button.pack(side="left", padx=(0, theme.UNIT))
 
