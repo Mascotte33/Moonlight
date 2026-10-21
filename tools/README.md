@@ -24,20 +24,6 @@ manage hardware. Excluded from the strict `ruff`/`mypy` package lint (see
 |------|---------|
 | `label_golden.py` | Interactively label golden screenshots for perception regression tests. `label` = one image, `batch` = whole directory. Writes label JSON into `tests/golden/`. Run: `python tools/label_golden.py --help` |
 
-## Capture benchmarking (T02)
-
-| File | Purpose |
-|------|---------|
-| `bench_capture.py` | Benchmark capture FPS (mss vs dxcam/DXGI) at Tibia window sizes, DPI-aware. |
-| `capture_bench_*.json` | Benchmark result artifacts (baseline, LLM-contention, final). |
-
-## Local-LLM contention
-
-| File | Purpose |
-|------|---------|
-| `llm_load.py` | Keep the local `llama-server` generating tokens for N seconds to simulate GPU contention while the capture loop runs. |
-| `probe_env.py` | Quick environment probe: monitors, `llama-server` footprint, GPU state. |
-
 ## Running
 
 These are tools, not the bot. Smoke-test directly, e.g.:
@@ -45,7 +31,6 @@ These are tools, not the bot. Smoke-test directly, e.g.:
 ```bash
 python tools/arduino_verify.py          # is the Arduino alive?
 python tools/label_golden.py --help     # golden labeling
-python tools/probe_env.py               # environment snapshot
 ```
 
 They are exercised indirectly by `tests/unit` and `tests/perf`.

@@ -3,9 +3,8 @@
 **Date:** 2026-10-13 · **Agent:** hw_research · **Machine:** live measurement (Windows 11)
 
 All numbers below are **real measurements** taken on this machine via
-`tools/bench_capture.py`, `tools/llm_load.py`, and `nvidia-smi`/`psutil`. Raw
-JSON results are in `tools/capture_bench_baseline.json` and
-`tools/capture_bench_llm_contention.json`.
+benchmark scripts (`bench_capture.py`, `llm_load.py`, since removed; see git
+history) and `nvidia-smi`/`psutil`.
 
 ---
 

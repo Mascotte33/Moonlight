@@ -3,7 +3,7 @@
 The ground-truth frame set for all real-frame testing.
 
 ## Contents
-- **200 real Tibia client frames** (2560x1369 PNG) copied from `golde-screenshots/`
+- **200 real Tibia client frames** (2560x1369 PNG)
   (user data — never modify the originals). 5 characters, 6 sessions (Jul 5-16),
   uniform fixed client layout. Filenames carry the event label
   (LevelUp/SkillUp/Achievement/TreasureFound/BossDefeated/LowHealth).
