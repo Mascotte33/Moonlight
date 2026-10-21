@@ -550,6 +550,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: pytest stays green. Owner checks: Targeting shows Attack spells; their values are kept after Save and reopening.
 
 ### T3.F9.K1 — Route editor in Cavebot (Recorder merged)
+- ✅ Done in commit cd20133.
 - What: the Recorder moves into Cavebot's Route sub-tab as one route editor. Picking a route loads it into the editor. Add waypoint (any bot action, at the typed X, Y, Z or the live position), Undo, Clear, recording with auto-add and F-key hotkeys, and Save route all live there. "Add current position" becomes Add waypoint with X, Y, Z blank. The waypoint line ("Not running") and every message sit above the table, so they are always in view. With no routes, the dropdown area says to record one. The Recorder tab is removed.
 - Needs: T8.F4.K1, T3.F6.K1
 - Files: moonlight/gui/tabs/cavebot.py, recorder.py, tabs/__init__.py, moonlight/gui/app.py, tests/unit/test_gui_cavebot.py, tests/unit/test_gui_recorder.py
