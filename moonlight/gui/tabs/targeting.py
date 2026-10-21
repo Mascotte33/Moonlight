@@ -6,6 +6,7 @@ not through ``OPTIONS``.
 
 from __future__ import annotations
 
+import tkinter as tk
 from typing import TYPE_CHECKING
 
 import customtkinter as ctk
@@ -18,7 +19,7 @@ from moonlight.setup.config import BotConfig
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.bot.state import WorldState
 
-__all__ = ["OPTIONS", "TargetingTab", "apply_targeting"]
+__all__ = ["OPTIONS", "TargetingTab", "apply_targeting", "remove_creatures"]
 
 OPTIONS = [
     Option("Max monsters to engage", "targeting.max_monsters_to_engage", "slider", min=1, max=10),
@@ -42,6 +43,13 @@ def apply_targeting(cfg: BotConfig, values: dict[str, object], creatures: list[s
         if option.field in values:
             cfg = write_option(cfg, option, values[option.field])
     return cfg
+
+
+def remove_creatures(creatures: list[str], picked: tuple[int, ...], typed: str) -> list[str]:
+    """*creatures* without the *picked* rows, or without *typed* if none is picked."""
+    if picked:
+        return [c for i, c in enumerate(creatures) if i not in picked]
+    return [c for c in creatures if c.lower() != typed.strip().lower()]
 
 
 class TargetingTab(Tab):
@@ -69,10 +77,21 @@ class TargetingTab(Tab):
                 fg_color=theme.RAISED,
                 hover_color=theme.HOVER,
             ).pack(side="right", padx=(theme.UNIT, 0))
-        self.lbl_creatures = ctk.CTkLabel(
-            box, text="", anchor="w", justify="left", wraplength=420, text_color=theme.TEXT
+        # Plain Tk Listbox: CTk has no list widget, and this one gives Ctrl/Shift select.
+        self.list_creatures = tk.Listbox(
+            box,
+            selectmode="extended",
+            height=6,
+            activestyle="none",
+            bg=theme.NIGHT,
+            fg=theme.TEXT,
+            selectbackground=theme.HOVER,
+            selectforeground=theme.TEXT,
+            highlightthickness=0,
+            borderwidth=0,
+            font=(theme.MONO, theme.SIZE_BODY),
         )
-        self.lbl_creatures.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, theme.PAD))
+        self.list_creatures.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, theme.PAD))
         self._fill_creatures(load_real_config())
         self.lbl_live = ctk.CTkLabel(parent, text="", anchor="w", text_color=theme.TEXT_DIM)
         self.lbl_live.pack(fill="x", padx=10)
@@ -83,7 +102,9 @@ class TargetingTab(Tab):
         self._show_creatures()
 
     def _show_creatures(self) -> None:
-        self.lbl_creatures.configure(text=", ".join(self._creatures) or "No creatures listed.")
+        self.list_creatures.delete(0, "end")
+        for name in self._creatures:
+            self.list_creatures.insert("end", name)
 
     def _add(self) -> None:
         name = self.ent_name.get().strip()
@@ -93,8 +114,9 @@ class TargetingTab(Tab):
         self._show_creatures()
 
     def _remove(self) -> None:
-        name = self.ent_name.get().strip().lower()
-        self._creatures = [c for c in self._creatures if c.lower() != name]
+        self._creatures = remove_creatures(
+            self._creatures, self.list_creatures.curselection(), self.ent_name.get()  # type: ignore[no-untyped-call]
+        )
         self.ent_name.delete(0, "end")
         self._show_creatures()
 
