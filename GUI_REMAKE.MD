@@ -236,7 +236,228 @@ Write every task as one block, so an agent can do it with no other context:
 - Files: moonlight/bot/loop.py, moonlight/bot/wiring.py, moonlight/gui/loop_factory.py
 - Done when: do not build yet.
 
-_Tab tasks (T1–T10) are not written yet. They get written here, in the format above, before Phase 3 starts. Each tab task also converts that tab to the T0.F3.K1 pattern._
+Tab tasks are in build order. Each one converts its part of the tab to the T0.F3.K1 pattern and removes that part's use of `gui/config_bridge.py`. Functions the bot can't do yet are listed under **Not planned yet** at the end.
+
+### T7.F1.K1 — Hardware options
+- What: convert Hardware to `OPTIONS`:
+  - `simulation`: switch "Simulation", with a one-line hint under it ("No Arduino. Actions are only logged.");
+  - `serial_port`: entry. Blank means auto-detect and is saved as `null`;
+  - `serial_baudrate`: entry.
+  Remove the tab's `config_store` save. Test connection stays as it is.
+- Needs: T0.F1.K3
+- Files: moonlight/gui/tabs/hardware.py, moonlight/gui/tabs/base.py (a blank entry writes `None` into a `str | None` field), tests/unit/test_gui_options.py
+- Don't touch: other tabs, `HardwareController` in state_bridge.py.
+- Done when: `pytest tests/unit/test_gui_options.py` passes, with a test that a blank port writes `serial_port=None`. Owner checks: change the baud rate, Save, reopen the GUI, and the value is still there.
+
+### T7.F2.K1 — Detect ports
+- What: a **Detect** button next to the port entry fills a dropdown with `ctx.hardware.list_ports()`. Picking a port puts it in the entry. No ports shows "No ports found".
+- Needs: T7.F1.K1
+- Files: moonlight/gui/tabs/hardware.py
+- Don't touch: other tabs.
+- Done when: pytest stays green. Owner checks: with the Arduino plugged in, Detect lists its port.
+
+### T7.F3.K1 — Log every Arduino command
+- What: add `BotConfig.log_commands: bool = False` and a switch for it in Hardware. When it is on, Start wraps the input backend so every command it sends goes to the event log (`ctx.log`) as one line.
+- Needs: T7.F1.K1
+- Files: moonlight/setup/config.py, moonlight/gui/loop_factory.py (`make_backend`), moonlight/gui/tabs/hardware.py, tests/unit/test_loop_factory.py
+- Don't touch: moonlight/bot/loop.py.
+- Done when: `pytest tests/unit/test_loop_factory.py` passes, with a test that a sent command shows up in the log when the switch is on and not when it is off. Owner checks: switch on, Start in simulation, and Dashboard's Recent events shows the commands.
+
+### T4.F1.K1 — Healing options
+- What: convert Healing to `OPTIONS`:
+  - `healing.enabled`: switch;
+  - `healing.emergency_hp_percent`, `healing.normal_hp_percent`, `healing.mana_threshold`: sliders 0–100;
+  - `healing.heal_cooldown_ms`: slider 0–2000;
+  - `healing.emergency_spell`, `healing.normal_spell`, `healing.cure_spell`: entries.
+  Next to each spell, a hotkey entry that writes `hotkeys[<spell>]`. `hotkeys` is a dict, so this goes in `build()` and `apply()`, not in `OPTIONS`. A spell without a hotkey is refused (`BotConfig` already checks this), and the error shows in the tab.
+- Needs: T0.F1.K3
+- Files: moonlight/gui/tabs/healing.py, tests/unit/test_gui_healing.py
+- Don't touch: other tabs, moonlight/decision/healing.py.
+- Done when: `pytest tests/unit/test_gui_healing.py` passes, with tests that Apply writes the thresholds and each spell's hotkey, and that a spell with no hotkey is refused. Owner checks: set Normal HP to 65, Save, reopen the GUI, and it shows 65. "The bot heals at 65" waits for calibration.
+
+### T2.F2.K1 — Settings options
+- What: convert Settings to `OPTIONS`, starting with `loop.tick_rate` (slider 1–60). Remove what now lives elsewhere: Start/Pause/Kill and the status text (top bar, S.F2.K1), serial port and baud rate (Hardware, T7.F1.K1), input mode (Hardware's Simulation switch). The Config section (dropdown, New, Save, Delete) stays at the top.
+- Needs: T7.F1.K1
+- Files: moonlight/gui/tabs/settings.py, tests/unit/test_gui_options.py
+- Don't touch: other tabs.
+- Done when: `pytest tests/unit/test_gui_options.py` passes, with a test that the tick rate option writes `loop.tick_rate`. Owner checks: Settings has no Start/Pause/Kill, port or baud; the tick rate is kept after Save and reopening the GUI.
+
+### T2.F4.K1 — Module switches
+- What: a **Modules** section in Settings with one `<module>.enabled` switch per bot module: healing, targeting, cavebot, looting, refill, buffs, alarms. Cavebot needs a route, so turning it on before a route is picked (T3.F1.K1) shows the `ConfigError` text and the switch goes back off.
+- Needs: T2.F2.K1
+- Files: moonlight/gui/tabs/settings.py, tests/unit/test_gui_options.py
+- Don't touch: Diagnostics (its duplicate switches go in T10.F1.K1).
+- Done when: `pytest tests/unit/test_gui_options.py` passes, with tests that switching looting off and on keeps its values, and that cavebot with no route is refused. Owner checks: turn Looting off, Save, reopen, and it is still off.
+
+### T2.F3.K1 — Window picker
+- What: add `BotConfig.window_title: str` (default: the capture's `TIBIA_WINDOW_TITLE`). Start passes it to `ScreenCapture` (`loop_factory.py`). Settings gets a dropdown of the titles of open windows plus **Refresh**. The titles come from `EnumWindows` via `ctypes` on Windows, and the list is empty elsewhere. No new dependency.
+- Needs: T2.F2.K1
+- Files: moonlight/setup/config.py, moonlight/gui/loop_factory.py, moonlight/gui/tabs/settings.py, tests/unit/test_config.py, tests/unit/test_loop_factory.py
+- Don't touch: moonlight/perception/capture.py (it already takes `window_title`).
+- Done when: `pytest tests/unit/test_config.py tests/unit/test_loop_factory.py` passes, with tests that `window_title` round-trips and that Start passes it to the capture. Owner checks: with the game open, its window is in the dropdown.
+
+### T5.F1.K1 — Targeting options
+- What: convert Targeting to `OPTIONS`:
+  - `targeting.enabled`, `targeting.prefer_low_hp`, `targeting.player_protection`: switches;
+  - `targeting.max_monsters_to_engage`: slider 1–10;
+  - `loop.attack_combo`: entry.
+  The whitelist and blacklist stay GUI-only until T5.F1.K2.
+- Needs: T0.F1.K3
+- Files: moonlight/gui/tabs/targeting.py, tests/unit/test_gui_options.py
+- Don't touch: other tabs, moonlight/decision/targeting.py.
+- Done when: `pytest tests/unit/test_gui_options.py` passes, with a test that max monsters writes `targeting.max_monsters_to_engage`. Owner checks: values are kept after Save and reopening the GUI.
+
+### T5.F1.K2 — Whitelist or blacklist in the bot
+- What: `TargetingConfig` gets `mode: "all" | "whitelist" | "blacklist"` (default `"all"`) and `creatures: tuple[str, ...]`. `TargetingDecision` attacks only listed creatures in whitelist mode, and skips listed creatures in blacklist mode. Names match without case. The tab gets a mode dropdown and one creature list editor (name entry, Add, Remove), replacing the two GUI-only lists.
+- Needs: T5.F1.K1
+- Files: moonlight/decision/targeting.py, moonlight/setup/config.py (only if `from_dict` needs it for the tuple), moonlight/gui/tabs/targeting.py, tests/unit/test_targeting.py
+- Don't touch: other decision modules.
+- Done when: `pytest tests/unit/test_targeting.py` passes, with tests for each mode, including that `"all"` behaves as today. Owner checks: add a creature, Save, reopen, and it is still in the list.
+
+### T6.F1.K1 — Attack spells in the bot and the tab
+- What: today no bot module casts attack spells. Add one:
+  - `moonlight/decision/attack_spells.py` with `AttackSpellsConfig`: `single_spell`, `aoe_spell`, `aoe_min_monsters` (default 3), `mana_reserve_percent` (default 20), `cooldown_ms` (default 2000);
+  - each tick with a selected target and MP above the reserve, it casts the AoE spell when at least `aoe_min_monsters` monsters are on screen, else the single spell. Blank spell = not used. The keys come from `hotkeys`, like healing;
+  - add `attack_spells` to `MODULES`, `BotConfig` and `wiring.py`;
+  - convert the Spell attack tab to `OPTIONS` for these fields, plus `attack_spells.enabled`, and hotkey entries next to the spells (as in T4.F1.K1).
+- Needs: T5.F1.K1, T4.F1.K1
+- Files: moonlight/decision/attack_spells.py, moonlight/setup/config.py, moonlight/bot/wiring.py, moonlight/gui/tabs/spell_attack.py, tests/unit/test_attack_spells.py
+- Don't touch: healing and targeting decisions.
+- Done when: `pytest tests/unit/test_attack_spells.py` passes, with tests for AoE vs single, the mana reserve, the cooldown, and no target = no cast. Owner checks: values are kept after Save and reopening. "The bot casts" waits for calibration.
+
+### T1.F1.K1 — Dashboard stat cards
+- What: four stat cards: Uptime (from the loop's `uptime_seconds`, shown as `h:mm:ss`), Ticks, Creatures on screen, HP %. Values use the hero size from **Look**. Remove the module list read from the GUI config (Settings has the switches). The text formatting is a plain function.
+- Needs: T0.F1.K3
+- Files: moonlight/gui/tabs/dashboard.py, tests/unit/test_gui_dashboard.py
+- Don't touch: other tabs.
+- Done when: `pytest tests/unit/test_gui_dashboard.py` passes (uptime text, `—` when the bot is stopped). Owner checks: Start in simulation and the uptime counts up.
+
+### T1.F2.K1 — Bot health dots
+- What: a **Bot health** card with one dot per subsystem the bot can report today: Screen (`screen_ok`), Vitals (`last_update` under 2 s old), Minimap (position not `(0, 0, 0)`), Arduino (backend connected), Bot (running). Put the check in one plain function in `tabs/base.py` that returns `(name, ok)` pairs. The bottom bar and Diagnostics use the same function. A battle list dot waits until perception reports per-reader results.
+- Needs: T1.F1.K1
+- Files: moonlight/gui/tabs/base.py, moonlight/gui/tabs/dashboard.py, moonlight/gui/app.py (the bottom bar uses the function), tests/unit/test_gui_dashboard.py
+- Don't touch: other tabs.
+- Done when: `pytest tests/unit/test_gui_dashboard.py tests/unit/test_gui_bottombar.py` passes, with a test of each dot from a `WorldState`. Owner checks: with `--no-bot` every dot is red; the Arduino dot turns green after Test connection.
+
+### T1.F3.K1 — Current task
+- What: the loop reports what it did last tick in `stats()["current_task"]`: `Idle`, `Healing`, `Attacking`, `Looting` or `Walking to waypoint N`. The Dashboard shows it under the stat cards.
+- Needs: T1.F1.K1
+- Files: moonlight/bot/loop.py, moonlight/gui/tabs/dashboard.py, tests/unit/test_loop.py
+- Don't touch: the decision modules.
+- Done when: `pytest tests/unit/test_loop.py` passes, with a test per task text. Owner checks: in simulation it shows Idle. The other texts wait for calibration.
+
+### T9.F1.K1 — System card
+- What: CPU % and RAM % bars for the whole PC, the bot's memory MB, and its thread count (`threading.active_count()`). Move the bottom bar's CPU and memory readers from `app.py` into `moonlight/gui/sysinfo.py` and use them in both places. RAM % comes from `GlobalMemoryStatusEx` via `ctypes` on Windows, `—` elsewhere.
+- Needs: S.F4.K1
+- Files: moonlight/gui/sysinfo.py, moonlight/gui/app.py, moonlight/gui/tabs/status.py, tests/unit/test_gui_bottombar.py
+- Don't touch: other tabs.
+- Done when: `pytest tests/unit/test_gui_bottombar.py` passes. Owner checks: the Status tab's CPU matches the bottom bar's.
+
+### T9.F3.K1 — Position card
+- What: position `x, y, z` in Cascadia Mono, a **Copy** button that puts `x, y, z` on the clipboard, and "updated N s ago" from `last_update`. The age text is a plain function.
+- Needs: T9.F1.K1
+- Files: moonlight/gui/tabs/status.py, tests/unit/test_gui_status.py
+- Don't touch: other tabs.
+- Done when: `pytest tests/unit/test_gui_status.py` passes (age text, "never" when `last_update` is 0). Owner checks: Copy, then paste somewhere, and it shows the position.
+
+### T10.F1.K1 — Subsystem health and Arduino
+- What: a **Health** card with the T1.F2.K1 dots and each one's last value (e.g. "HP 82%", "pos 1024, 980, 7", "COM3 connected"). This covers T10.F1 and T10.F2. Remove Diagnostics' module switches (Settings owns them, T2.F4.K1).
+- Needs: T1.F2.K1, T2.F4.K1
+- Files: moonlight/gui/tabs/diagnostics.py
+- Don't touch: other tabs.
+- Done when: pytest stays green and diagnostics.py doesn't use `config_store`. Owner checks: the dots match the Dashboard's.
+
+### T10.F4.K1 — Recent errors
+- What: a **Recent errors** card with the last 20 log lines at warning or error level, newest first, and "No errors" when there are none. `LogFeed` already keeps the level.
+- Needs: T10.F1.K1
+- Files: moonlight/gui/tabs/diagnostics.py, moonlight/gui/state_bridge.py (a level filter on `LogFeed.text` if needed), tests/unit/test_gui_status.py
+- Don't touch: other tabs.
+- Done when: `pytest tests/unit/test_gui_status.py` passes, with a test that info lines are left out. Owner checks: a failed Test connection shows in the card.
+
+### T3.F1.K1 — Route picker on the bot's routes
+- What: the GUI uses the bot's route format and folder (`data/waypoints/`, `BotConfig.routes_dir`, read by `RouteFileLoader`). This settles the route folder open decision. Cavebot gets:
+  - a dropdown `Option` on `cavebot.route` with the route names in `routes_dir` (`to_dict` saves the route by name, so the value round-trips), plus **Reload**;
+  - `cavebot.rope_hotkey` and `cavebot.shovel_hotkey` entries;
+  - a waypoint table (#, action, x, y, z, label) of the picked route, and "No waypoints loaded" when it is empty.
+  Remove the tab's `config_store` use and its `gui/routes.py` use. Loop route is now a `goto` waypoint in the route, so the Loop route switch goes away.
+- Needs: T0.F1.K3
+- Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
+- Don't touch: moonlight/decision/cavebot.py, the Recorder tab.
+- Done when: `pytest tests/unit/test_gui_cavebot.py` passes, with tests that picking a route writes `cavebot.route` and the table rows come from the file. Owner checks: a route in `data/waypoints/` shows in the dropdown and its waypoints show in the table.
+
+### T3.F4.K1 — Current waypoint
+- What: in the waypoint table the current waypoint (`Route.current`, read from the running cavebot) is marked `>`, and a line under it says "Waypoint N of M". Stopped bot = no marker, "Not running".
+- Needs: T3.F1.K1
+- Files: moonlight/gui/tabs/cavebot.py, moonlight/gui/state_bridge.py (read the cavebot's route from the running loop), tests/unit/test_gui_cavebot.py
+- Don't touch: moonlight/decision/cavebot.py.
+- Done when: `pytest tests/unit/test_gui_cavebot.py` passes (the line text from index and length). Owner checks: wait for calibration.
+
+### T3.F2.K1 — Start from waypoint N
+- What: a number entry "Start from waypoint" (1 to the route's length). Start sets the route's `current` to N − 1 before the loop runs. It is saved as `cavebot.start_index` in `CavebotConfig` (default 0).
+- Needs: T3.F1.K1
+- Files: moonlight/setup/config.py, moonlight/bot/wiring.py, moonlight/gui/tabs/cavebot.py, tests/unit/test_loop_wiring.py
+- Don't touch: moonlight/decision/cavebot.py.
+- Done when: `pytest tests/unit/test_loop_wiring.py` passes, with a test that the built cavebot starts at the given index, and that an index past the end is refused. Owner checks: wait for calibration.
+
+### T3.F6.K1 — Add current position as a waypoint
+- What: a button that appends the player's live position as a `walk` waypoint to the picked route file and refreshes the table. Position `(0, 0, 0)` (unknown) shows "Position unknown" and adds nothing.
+- Needs: T3.F1.K1
+- Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
+- Don't touch: other tabs.
+- Done when: `pytest tests/unit/test_gui_cavebot.py` passes (adding a waypoint stores the live x/y/z; unknown position adds nothing). Owner checks: the button is in the Cavebot tab.
+
+### T3.F7.K1 — Refill sub-tab
+- What: a **Refill** sub-tab in Cavebot with `OPTIONS` for what the bot has: `refill.enabled`, `refill.trigger_cap` and `refill.stop_cap` (entries, oz), `refill.route_name` (dropdown of routes), `refill.storage_hotkey`, `refill.deposit_hotkey` (blank = no deposit). Remove the GUI-only refill HP %, MP % and deposit fields. Potion counts wait (see Not planned yet).
+- Needs: T3.F1.K1
+- Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
+- Don't touch: moonlight/decision/refill.py.
+- Done when: `pytest tests/unit/test_gui_cavebot.py` passes, with a test that a blank deposit hotkey writes `None`. Owner checks: values are kept after Save and reopening.
+
+### T3.F8.K1 — Loot sub-tab
+- What: a **Loot** sub-tab in Cavebot with `OPTIONS` for `looting.enabled`, `looting.loot_hotkey`, `looting.move_all_hotkey` (blank = none), `looting.max_items_per_loot` (slider 1–50), `looting.min_cap_to_loot` (entry, oz).
+- Needs: T3.F1.K1
+- Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
+- Don't touch: moonlight/decision/looting.py.
+- Done when: `pytest tests/unit/test_gui_cavebot.py` passes. Owner checks: values are kept after Save and reopening.
+
+### T8.F1.K1 — Recorder saves bot routes
+- What: the Recorder saves and loads routes in the bot's format in `routes_dir` (x, y, z, action, label), so the Cavebot can run them. Output file = a route name entry, plus a dropdown of existing routes to load. Waypoint types become the bot's actions: walk, rope, shovel, ladder, label, goto.
+- Needs: T3.F1.K1
+- Files: moonlight/gui/tabs/recorder.py, tests/unit/test_gui_recorder.py
+- Don't touch: moonlight/decision/cavebot.py, the Cavebot tab.
+- Done when: `pytest tests/unit/test_gui_recorder.py` passes, with a test that a saved route loads with `RouteFileLoader`. Owner checks: record two waypoints, save, and the route shows in the Cavebot dropdown.
+
+### T8.F3.K1 — Start and stop recording
+- What: **Start recording** / **Stop recording** buttons and a status line (Not recording / Recording, plus the live position). While recording, a `walk` waypoint is added when the player has moved at least N tiles from the last one (entry, default 5) or changed floor.
+- Needs: T8.F1.K1
+- Files: moonlight/gui/tabs/recorder.py, tests/unit/test_gui_recorder.py
+- Don't touch: other tabs.
+- Done when: `pytest tests/unit/test_gui_recorder.py` passes, with tests that a short step adds nothing and a long step or floor change adds a waypoint. Owner checks: wait for calibration.
+
+### T8.F4.K1 — Recorder hotkeys
+- What: hotkeys that work while the game has focus: F6 walk, F7 rope, F8 shovel, F4 ladder, F9 label, F5 undo. They use `RegisterHotKey` via `ctypes` on Windows (no new dependency), only while recording, and are released on Stop recording and on close. This covers T8.F4 and T8.F6.
+- Needs: T8.F3.K1
+- Files: moonlight/gui/tabs/recorder.py, tests/unit/test_gui_recorder.py
+- Don't touch: other tabs.
+- Done when: `pytest tests/unit/test_gui_recorder.py` passes, with a test that each key maps to its action. Owner checks: while recording in the game, F7 adds a rope waypoint and F5 removes it.
+
+### T0.F1.K6 — Delete the GUI's config copy
+- What: delete `moonlight/gui/config_bridge.py`, `moonlight/gui/routes.py`, `ctx.config_store` and their tests. Every tab now reads and writes `BotConfig`.
+- Needs: every tab task above.
+- Files: moonlight/gui/config_bridge.py, moonlight/gui/routes.py, moonlight/gui/state_bridge.py, moonlight/gui/app.py, their tests
+- Don't touch: moonlight/setup/config.py.
+- Done when: pytest stays green and `grep -rn "config_bridge\|gui.routes\|config_store" moonlight tests` finds nothing. Owner checks: every tab opens.
+
+#### Not planned yet
+
+These need bot features that don't exist. They get tasks when the bot can do them:
+- T2.F4: Stuck alert, session logging, screen and debug overlay switches.
+- T2.F5 server save and T2.F6 auto-reconnect.
+- T3.F7: refill on potion counts (the bot can't count potions yet).
+- T5.F3: attack the nearest creature (perception doesn't give creature positions).
+- T8.F4: Refill check F10 and T8.F5 stairs (the bot has no such waypoint actions).
+- T9.F2: food, speed, stamina (perception doesn't read them).
+- T10.F3: recovery (stuck, reconnect, safe mode).
 
 ---
 
@@ -354,7 +575,7 @@ Today: everything except Start/Pause/Kill writes the GUI config the bot ignores.
 
 ### T3 — Cavebot
 
-Today: the cavebot engine is a placeholder (T22 pending).
+Today: the cavebot engine works (`decision/cavebot.py`), but the tab uses the GUI's own route format in `data/routes/`.
 
 | ID | Function | Today |
 |---|---|---|
@@ -461,4 +682,4 @@ Left out on purpose: Tibiaeye's Telemetry (no server here) and its Software / Ca
 ## Open decisions
 
 - **Tab set** (merges, new Buffs/Alarms/Looting tabs): left as-is for now.
-- **Route folder:** the GUI saves to `data/routes/`, but `decision/cavebot.py` and `decision/refill.py` read `data/waypoints/`. Settle it in the Cavebot tasks.
+- **Route folder:** settled. The GUI uses the bot's format in `data/waypoints/` (T3.F1.K1, T8.F1.K1).
