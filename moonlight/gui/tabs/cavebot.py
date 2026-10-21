@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
-from moonlight.gui import routes
+from moonlight.gui import routes, theme
 from moonlight.gui.config_bridge import BotConfig, CavebotParams
 from moonlight.gui.tabs.base import Tab, section
 
@@ -56,7 +56,7 @@ class CavebotTab(Tab):
             else "Cavebot engine: available",
             anchor="w",
             font=ctk.CTkFont(weight="bold"),
-            text_color="#e0a040",
+            text_color=theme.AMBER,
         )
         self.lbl_t22.grid(row=0, column=0, sticky="w", padx=10, pady=(10, 0))
 

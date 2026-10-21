@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
+from moonlight.gui import theme
 from moonlight.gui.tabs.base import Tab, section, stat_label, stat_num
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -33,12 +34,12 @@ class StatusTab(Tab):
         vit = section(parent, "Vitals")
         vit.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10, 6))
         vit.grid_columnconfigure(0, weight=1)
-        self.hp_bar = ctk.CTkProgressBar(vit, progress_color="#2ecc71")
+        self.hp_bar = ctk.CTkProgressBar(vit, progress_color=theme.LIFE)
         self.hp_bar.set(0)
         self.hp_bar.pack(fill="x", padx=10, pady=(6, 0))
         self.lbl_hp = ctk.CTkLabel(vit, text="HP: --")
         self.lbl_hp.pack(anchor="w", padx=10, pady=(0, 6))
-        self.mp_bar = ctk.CTkProgressBar(vit, progress_color="#3498db")
+        self.mp_bar = ctk.CTkProgressBar(vit, progress_color=theme.MANA)
         self.mp_bar.set(0)
         self.mp_bar.pack(fill="x", padx=10, pady=(0, 0))
         self.lbl_mp = ctk.CTkLabel(vit, text="MP: --")

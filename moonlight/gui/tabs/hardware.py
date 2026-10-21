@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
+from moonlight.gui import theme
 from moonlight.gui.tabs.base import Tab, section, stat_label
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -89,7 +90,7 @@ class HardwareTab(Tab):
         ).grid(row=4, column=0, columnspan=2, sticky="w", padx=10, pady=(4, 0))
 
         self.lbl_ports = ctk.CTkLabel(
-            box_grid, text="", anchor="w", justify="left", font=ctk.CTkFont(size=11)
+            box_grid, text="", anchor="w", justify="left", font=ctk.CTkFont(size=theme.SIZE_TITLE)
         )
         self.lbl_ports.grid(
             row=5, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10)

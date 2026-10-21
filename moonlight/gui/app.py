@@ -17,7 +17,7 @@ from pathlib import Path
 import customtkinter as ctk
 
 from moonlight.bot.state import WorldState
-from moonlight.gui import config_bridge
+from moonlight.gui import config_bridge, theme
 from moonlight.gui.loop_factory import build_gui_loop
 from moonlight.gui.state_bridge import (
     BotController,
@@ -65,8 +65,7 @@ class GuiApp:
         config_path: Path | str | None = None,
         start_bot: bool = True,
     ) -> None:
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
+        theme.apply()
 
         self.config_path = (
             Path(config_path)
@@ -116,10 +115,11 @@ class GuiApp:
         ctk.CTkLabel(
             header,
             text="MOONLIGHT",
-            font=ctk.CTkFont(size=20, weight="bold"),
+            font=ctk.CTkFont(size=theme.SIZE_HEADING, weight="bold"),
+            text_color=theme.TEXT,
         ).pack(side="left", padx=6)
         self.lbl_bot = ctk.CTkLabel(
-            header, text="bot: stopped", font=ctk.CTkFont(size=12)
+            header, text="bot: stopped", font=ctk.CTkFont(size=theme.SIZE_BODY)
         )
         self.lbl_bot.pack(side="left", padx=12)
         self.btn_stop = ctk.CTkButton(
@@ -127,13 +127,20 @@ class GuiApp:
             text="Stop bot",
             command=self.stop_bot,
             width=110,
-            fg_color="#c0392b",
-            hover_color="#e74c3c",
+            fg_color=theme.BLOOD,
+            hover_color=theme.BLOOD_HOVER,
+            text_color=theme.NIGHT,
             state="disabled",
         )
         self.btn_stop.pack(side="right", padx=(6, 6))
         self.btn_start = ctk.CTkButton(
-            header, text="Start bot", command=self.start_bot, width=110
+            header,
+            text="Start bot",
+            command=self.start_bot,
+            width=110,
+            fg_color=theme.LIFE,
+            hover_color=theme.LIFE_HOVER,
+            text_color=theme.NIGHT,
         )
         self.btn_start.pack(side="right")
 
