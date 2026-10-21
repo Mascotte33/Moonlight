@@ -518,6 +518,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: pytest stays green. Owner checks: Current task is the first thing on the Dashboard.
 
 ### T3.F8.K2 — Drop Max items per corpse
+- ✅ Done in commit de13da6.
 - What: remove the slider from the Loot sub-tab. The bot loots with one hotkey and never reads `looting.max_items_per_loot`. The config field stays, so older config files still load.
 - Needs: T3.F8.K1
 - Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
