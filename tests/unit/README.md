@@ -12,7 +12,6 @@ on synthetic numpy frames, `FakeInput`, and monkeypatched serial.
 | `test_state.py` | `state.py` (WorldState) | 17 |
 | `test_calibrate.py` | `calibrate.py` (regions, landmark, save/load) | 35 |
 | `test_loop.py` | `loop.py` (20 Hz loop, priority machine, kill switch) | 32 |
-| `test_ui.py` | `ui.py` (BotController, profile select, CLI, scripted input) | 47 |
 | `test_vitals.py` | `perception/vitals.py` (HP/MP bar reading) | 35 |
 | `test_battle.py` | `perception/battle.py` (battle list, selection) | 36 |
 | `test_minimap.py` | `perception/minimap.py` (player position, radar scroll) | 30 |
