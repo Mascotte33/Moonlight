@@ -558,6 +558,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: pytest stays green, with the recorder tests kept. Owner checks: with no route, press Add waypoint and a message says why. Type X, Y, Z, add two waypoints, name and save the route, and it shows in the route dropdown. "Not running" shows above the table.
 
 ### T4.F1.K3 — One cure spell per condition
+- ✅ Done in commit c76ca9e.
 - What: the single cure spell becomes one spell per condition: paralyze, poison, burning, electrified, cursed, bleeding (`healing.cure_<condition>`). A blank spell means that condition is not cured. Each has its own hotkey in the Healing tab's Cure group. Old config files with `cure_spell` + `cure_conditions` still load.
 - Needs: T4.F1.K2
 - Files: moonlight/decision/healing.py, moonlight/setup/config.py, moonlight/gui/tabs/healing.py, tests/unit/test_healing.py, tests/unit/test_gui_healing.py
