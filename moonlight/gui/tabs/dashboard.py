@@ -2,7 +2,7 @@
 
 Shows bot tick count (from the loop's stats), creature/monster counts,
 HP/MP, active modules, the live battle list, and a terminal-style event log
-tail (the same lines the terminal UI prints).
+tail.
 """
 
 from __future__ import annotations

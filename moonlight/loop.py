@@ -421,7 +421,7 @@ class F12Monitor:
 class GameLoop:
     """The 20 Hz main game loop with the priority state machine.
 
-    Typical usage (wired up by the UI in T27)::
+    Typical usage (wired up by ``cli.build_loop``)::
 
         loop = GameLoop(world_state, input_backend)
         loop.run()  # blocks until kill / stop() / screen_ok goes false
@@ -1029,7 +1029,7 @@ class GameLoop:
             raise ValueError("pause_timeout must be > 0 and max_consecutive_errors >= 1")
 
     def get_stats(self) -> dict[str, object]:
-        """Performance and safety stats for the UI (T27) and T30 report."""
+        """Performance and safety stats for the GUI and the T30 report."""
         uptime = 0.0
         if self._start_time is not None:
             uptime = self._clock() - self._start_time
