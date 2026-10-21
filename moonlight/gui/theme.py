@@ -39,6 +39,7 @@ __all__ = [
     "TEXT_MUTED",
     "UNIT",
     "apply",
+    "button_colors",
 ]
 
 NIGHT = "#0d1117"
@@ -176,3 +177,14 @@ def apply() -> None:
     }
     for widget, values in overrides.items():
         ctk.ThemeManager.theme.setdefault(widget, {}).update(values)
+
+
+def button_colors(enabled: bool, color: str, hover: str) -> dict[str, str]:
+    """Fill and hover for a colored button: its own colors, or RAISED when disabled.
+
+    customtkinter only greys a disabled button's text, so a colored button
+    would keep its fill.
+    """
+    if enabled:
+        return {"fg_color": color, "hover_color": hover}
+    return {"fg_color": RAISED, "hover_color": RAISED}

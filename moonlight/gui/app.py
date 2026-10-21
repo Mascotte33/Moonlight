@@ -273,6 +273,7 @@ class GuiApp:
             ("▶ Start", self.start_bot, theme.LIFE, theme.LIFE_HOVER),
         )
         made: list[ctk.CTkButton] = []
+        self._btn_colors: dict[ctk.CTkButton, tuple[str, str]] = {}
         for text, command, color, hover in buttons:
             btn = ctk.CTkButton(
                 bar,
@@ -284,6 +285,7 @@ class GuiApp:
                 text_color=theme.NIGHT,
             )
             btn.pack(side="right", padx=(0, theme.UNIT if made else theme.GAP))
+            self._btn_colors[btn] = (color, hover)
             made.append(btn)
         self.btn_stop, self.btn_pause, self.btn_start = made
         self.lbl_state = ctk.CTkLabel(bar, text="Stopped", font=mono)
@@ -384,9 +386,16 @@ class GuiApp:
         self.lbl_mp.configure(text=mp)
         self.lbl_state.configure(text=state)
         self.lbl_dot.configure(text_color=STATE_COLORS[state])
-        self.btn_start.configure(state="disabled" if running else "normal")
-        for btn in (self.btn_pause, self.btn_stop):
-            btn.configure(state="normal" if running else "disabled")
+        enabled = {
+            self.btn_start: not running,
+            self.btn_pause: running,
+            self.btn_stop: running,
+        }
+        for btn, on in enabled.items():
+            btn.configure(
+                state="normal" if on else "disabled",
+                **theme.button_colors(on, *self._btn_colors[btn]),
+            )
 
     # -- poll loop -----------------------------------------------------------
 

@@ -29,3 +29,14 @@ def test_apply_sets_look_defaults() -> None:
     assert ctk.ThemeManager.theme["CTk"]["fg_color"] == theme.NIGHT
     assert ctk.ThemeManager.theme["CTkButton"]["fg_color"] == theme.RAISED
     assert ctk.ThemeManager.theme["CTkFont"]["family"] == theme.FONT
+
+
+def test_disabled_button_is_raised() -> None:
+    assert theme.button_colors(False, theme.LIFE, theme.LIFE_HOVER) == {
+        "fg_color": theme.RAISED,
+        "hover_color": theme.RAISED,
+    }
+    assert theme.button_colors(True, theme.LIFE, theme.LIFE_HOVER) == {
+        "fg_color": theme.LIFE,
+        "hover_color": theme.LIFE_HOVER,
+    }
