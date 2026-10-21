@@ -24,6 +24,7 @@ __all__ = ["OPTIONS", "HardwareTab"]
 OPTIONS = [
     Option("Serial port (blank = auto-detect)", "serial_port", "entry"),
     Option("Baud rate", "serial_baudrate", "entry", min=1),
+    Option("Log every Arduino command", "log_commands", "switch"),
     Option("Simulation", "simulation", "switch"),
 ]
 

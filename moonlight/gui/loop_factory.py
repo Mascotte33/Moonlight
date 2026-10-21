@@ -18,12 +18,13 @@ from __future__ import annotations
 
 import re
 import shutil
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from moonlight.bot.state import WorldState
 from moonlight.bot.wiring import build_loop, capture_providers
-from moonlight.hardware.input import FakeInput, InputBackend
+from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
 from moonlight.setup.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
 from moonlight.setup.profile import ProfileManager
 
@@ -34,6 +35,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 __all__ = [
     "CONFIGS_DIR",
+    "LoggedInput",
     "build_gui_loop",
     "config_names",
     "config_path",
@@ -151,6 +153,47 @@ def load_profile(
     return ProfileManager(profiles_dir).load(profile_name)
 
 
+class LoggedInput(InputBackend):
+    """Sends every command to *inner* and writes it to *log* as one line."""
+
+    def __init__(self, inner: InputBackend, log: Callable[[str], None]) -> None:
+        self.inner = inner
+        self._log = log
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.inner, name)
+
+    def press_combo(self, combo: str) -> None:
+        self._log(f"input: press {combo}")
+        self.inner.press_combo(combo)
+
+    def hold_combo(self, combo: str) -> None:
+        self._log(f"input: hold {combo}")
+        self.inner.hold_combo(combo)
+
+    def release_combo(self, combo: str) -> None:
+        self._log(f"input: release {combo}")
+        self.inner.release_combo(combo)
+
+    def mouse_move(self, dx: int, dy: int) -> None:
+        self._log(f"input: mouse {dx} {dy}")
+        self.inner.mouse_move(dx, dy)
+
+    def click(self, side: ClickSide) -> None:
+        self._log(f"input: click {side.name.lower()}")
+        self.inner.click(side)
+
+    def ping(self) -> bool:
+        return self.inner.ping()
+
+    def release_all(self) -> None:
+        self._log("input: release all")
+        self.inner.release_all()
+
+    def close(self) -> None:
+        self.inner.close()
+
+
 def make_backend(config: BotConfig, hardware: HardwareController) -> InputBackend:
     """Create the input backend for the GUI Start button (F-13).
 
@@ -163,9 +206,16 @@ def make_backend(config: BotConfig, hardware: HardwareController) -> InputBacken
       :class:`~moonlight.hardware.input.NoArduinoFoundError` propagates — the Start
       fails with a clear message instead of silently going fake (F-13).
     """
+    backend: InputBackend
     if config.simulation:
-        return FakeInput()
-    return hardware.connect(port=config.serial_port or None, baudrate=config.serial_baudrate)
+        backend = FakeInput()
+    else:
+        backend = hardware.connect(
+            port=config.serial_port or None, baudrate=config.serial_baudrate
+        )
+    if config.log_commands and hardware.log is not None:
+        backend = LoggedInput(backend, hardware.log.info)
+    return backend
 
 
 def build_gui_loop(
