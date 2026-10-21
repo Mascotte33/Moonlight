@@ -502,6 +502,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_options.py` passes, with a test that a typed value is read back as a whole number. Owner checks: type 25 as the tick rate, Save, reopen, and it is 25.
 
 ### T4.F1.K2 — Healing grouped
+- ✅ Done in commit 4a87445.
 - What: three groups, each an HP % (Cure has none) with its spell and hotkey just under it: Emergency, Normal, Cure. Mana and cooldown go in their own group.
 - Needs: T4.F1.K1
 - Files: moonlight/gui/tabs/healing.py, tests/unit/test_gui_healing.py
