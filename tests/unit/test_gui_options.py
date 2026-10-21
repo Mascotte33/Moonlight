@@ -70,3 +70,13 @@ def test_blank_entry_writes_none_into_optional_field() -> None:
     cfg = write_option(BotConfig.default(), port, "COM3")
     assert cfg.serial_port == "COM3"
     assert write_option(cfg, port, "").serial_port is None
+
+
+def test_tick_rate_option_writes_loop_tick_rate() -> None:
+    from moonlight.gui.tabs.settings import OPTIONS
+
+    (tick,) = [o for o in OPTIONS if o.field == "loop.tick_rate"]
+    cfg = write_option(BotConfig.default(), tick, 30.0)
+    assert cfg.loop.tick_rate == 30.0
+    with pytest.raises(ConfigError):
+        write_option(cfg, tick, 61.0)
