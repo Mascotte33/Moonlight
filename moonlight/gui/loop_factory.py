@@ -3,7 +3,7 @@
 The GUI must never run a bare :class:`moonlight.loop.GameLoop` with no
 ``perceive`` — the first tick would see ``screen_ok=False`` and stop (F-13).
 Instead the Start action builds the loop through
-:func:`moonlight.cli.build_loop`, which wires a **real** screen capture
+:func:`moonlight.wiring.build_loop`, which wires a **real** screen capture
 (frame provider + focus check), the focus gate and every enabled decision
 module — exactly the wiring the CLI's ``run`` subcommand uses.
 
@@ -21,12 +21,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from moonlight.cli import build_loop, capture_providers
 from moonlight.config import DEFAULT_CONFIG_FILE, BotConfig
 from moonlight.gui.config_bridge import BotConfig as GuiBotConfig
 from moonlight.input import FakeInput, InputBackend
 from moonlight.profile import ProfileManager
 from moonlight.state import WorldState
+from moonlight.wiring import build_loop, capture_providers
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.calibrate import CalibrationProfile
@@ -91,7 +91,7 @@ def build_gui_loop(
     """Build the real bot loop for the GUI Start button (F-13).
 
     Wires a real screen capture (frame provider + focus check) and every
-    enabled decision module through :func:`moonlight.cli.build_loop`. Never
+    enabled decision module through :func:`moonlight.wiring.build_loop`. Never
     builds a bare ``GameLoop`` with no ``perceive`` (which stops on tick 1).
 
     Args:
@@ -108,7 +108,7 @@ def build_gui_loop(
             not enabled (F-13: no silent ``FakeInput``).
         ConfigError: When the real config fails validation.
         RuntimeError: When a calibration region is missing for an enabled
-            module (raised by :func:`moonlight.cli.build_loop`).
+            module (raised by :func:`moonlight.wiring.build_loop`).
     """
     real_config = load_real_config(config_path)
     profile = load_profile(
