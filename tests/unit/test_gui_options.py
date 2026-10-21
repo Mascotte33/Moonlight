@@ -153,3 +153,17 @@ def test_refill_without_capacity_reader_has_a_plain_reason() -> None:
     msg = "refill is enabled but no capacity perception source is configured"
     assert plain_reason(msg).startswith("Refill needs a capacity reader")
     assert plain_reason("something else") == "something else"
+
+
+@pytest.mark.parametrize(
+    ("text", "value"), [("25", 25), ("24.6", 25), ("99", 60), ("0", 1), ("abc", 10), ("", 10)]
+)
+def test_typed_slider_value_is_a_whole_number(text: str, value: int) -> None:
+    from moonlight.gui.tabs.base import typed_value
+
+    assert typed_value(text, 1, 60, fallback=10) == value
+
+
+def test_whole_number_fits_a_float_field() -> None:
+    cfg = write_option(BotConfig.default(), HP, 65)
+    assert cfg.healing is not None and cfg.healing.normal_hp_percent == 65
