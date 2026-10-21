@@ -179,6 +179,7 @@ Write every task as one block, so an agent can do it with no other context:
 - Files: moonlight/gui/tabs/base.py, tests/unit/test_gui_options.py
 - Don't touch: the tab files (each tab task converts its own tab).
 - Done when: `pytest tests/unit/test_gui_options.py` passes, with tests that a dotted-path write gives the right `BotConfig`, a write into a `None` section creates it, and out-of-range values are refused.
+- ✅ Done in commit f7ed7b1. A value written into a turned-off module keeps it off; only its `<module>.enabled` switch turns it on.
 
 ### T0.F1.K3 — Named configs: dropdown, Save as, Apply saves
 - What: configs live in `configs/<name>.json`. Settings replaces its Save config / Load config buttons with:
@@ -188,7 +189,7 @@ Write every task as one block, so an agent can do it with no other context:
   - The last pick is stored in `configs/last.txt` and picked again on the next start.
   - First run with an empty `configs/`: copy `moonlight_config.json` to `configs/default.json` if it exists, else save `BotConfig.default()` there.
 - Needs: T0.F1.K2, T0.F3.K1
-- Files: moonlight/gui/tabs/settings.py, moonlight/gui/state_bridge.py, moonlight/gui/loop_factory.py, tests/unit/test_gui_configs.py
+- Files: moonlight/gui/tabs/settings.py, moonlight/gui/state_bridge.py, moonlight/gui/loop_factory.py, moonlight/gui/tabs/base.py (`apply()` saves the picked config; controls refill on a pick), tests/unit/test_gui_configs.py
 - Don't touch: `tools/check_setup.py` (it already takes `--config configs/<name>.json`).
 - Done when: `pytest tests/unit/test_gui_configs.py` passes, with tests that Save as writes the named file, a bad name is refused, the dropdown lists the files, the last pick is restored, and the first run creates `configs/default.json`. Owner checks: Save as a new name, pick it in the dropdown, change a value, Apply, Stop then Start, and the bot uses the new value.
 

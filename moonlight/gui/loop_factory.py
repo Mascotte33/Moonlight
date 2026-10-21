@@ -16,13 +16,15 @@ imported and unit-tested headlessly.
 
 from __future__ import annotations
 
+import re
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from moonlight.bot.state import WorldState
 from moonlight.bot.wiring import build_loop, capture_providers
 from moonlight.hardware.input import FakeInput, InputBackend
-from moonlight.setup.config import DEFAULT_CONFIG_FILE, BotConfig
+from moonlight.setup.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
 from moonlight.setup.profile import ProfileManager
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -30,17 +32,93 @@ if TYPE_CHECKING:  # pragma: no cover
     from moonlight.gui.state_bridge import HardwareController
     from moonlight.setup.calibrate import CalibrationProfile
 
-__all__ = ["build_gui_loop", "load_profile", "load_real_config", "make_backend"]
+__all__ = [
+    "CONFIGS_DIR",
+    "build_gui_loop",
+    "config_names",
+    "config_path",
+    "load_profile",
+    "load_real_config",
+    "make_backend",
+    "pick_config",
+    "picked_config",
+    "save_config_as",
+]
+
+#: Named configs live here as ``<name>.json``; ``last.txt`` holds the pick.
+CONFIGS_DIR = Path("configs")
+_NAME = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def config_names(configs_dir: str | Path = CONFIGS_DIR) -> list[str]:
+    """The names of the saved configs, sorted (what the dropdown lists)."""
+    return sorted(p.stem for p in Path(configs_dir).glob("*.json"))
+
+
+def config_path(name: str, configs_dir: str | Path = CONFIGS_DIR) -> Path:
+    """The file for config *name*.
+
+    Raises:
+        ConfigError: When *name* is not only letters, digits, ``-`` and ``_``.
+    """
+    if not _NAME.fullmatch(name):
+        raise ConfigError(f"bad config name {name!r}: use letters, digits, - and _")
+    return Path(configs_dir) / f"{name}.json"
+
+
+def picked_config(configs_dir: str | Path = CONFIGS_DIR) -> Path:
+    """The picked config file, from ``last.txt`` (else the first name).
+
+    On first run (no configs yet) it creates ``default.json`` from
+    ``moonlight_config.json``, or from :meth:`BotConfig.default`.
+    """
+    folder = Path(configs_dir)
+    if not config_names(folder):
+        folder.mkdir(parents=True, exist_ok=True)
+        old = Path(DEFAULT_CONFIG_FILE)
+        if old.exists():
+            shutil.copyfile(old, folder / "default.json")
+        else:
+            BotConfig.default().save(folder / "default.json")
+    last = folder / "last.txt"
+    name = last.read_text(encoding="utf-8").strip() if last.exists() else ""
+    names = config_names(folder)
+    return folder / f"{name if name in names else names[0]}.json"
+
+
+def pick_config(name: str, configs_dir: str | Path = CONFIGS_DIR) -> Path:
+    """Make config *name* the picked one and remember it in ``last.txt``."""
+    path = config_path(name, configs_dir)
+    if not path.exists():
+        raise ConfigError(f"no config named {name!r}")
+    (Path(configs_dir) / "last.txt").write_text(name, encoding="utf-8")
+    return path
+
+
+def save_config_as(
+    cfg: BotConfig, name: str, configs_dir: str | Path = CONFIGS_DIR, *, overwrite: bool = False
+) -> Path:
+    """Save *cfg* as config *name* and pick it.
+
+    Raises:
+        ConfigError: For a bad name.
+        FileExistsError: When *name* exists and *overwrite* is false.
+    """
+    path = config_path(name, configs_dir)
+    if path.exists() and not overwrite:
+        raise FileExistsError(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cfg.save(path)
+    return pick_config(name, configs_dir)
 
 
 def load_real_config(config_path: str | Path | None = None) -> BotConfig:
     """Load the authoritative real :class:`~moonlight.setup.config.BotConfig`.
 
-    The GUI Start loads ``moonlight_config.json``, or
-    :meth:`~moonlight.setup.config.BotConfig.default` when the file does not
-    exist yet.
+    With no *config_path* it loads the picked config (:func:`picked_config`).
+    A missing file gives :meth:`~moonlight.setup.config.BotConfig.default`.
     """
-    path = Path(config_path) if config_path is not None else Path(DEFAULT_CONFIG_FILE)
+    path = Path(config_path) if config_path is not None else picked_config()
     # A missing config file means "use safe defaults" (fresh install); a
     # present-but-malformed file still raises ConfigError (mirrors cli._load_config).
     if not path.exists():
@@ -88,7 +166,7 @@ def build_gui_loop(
     Args:
         hardware: The shared hardware controller (owns the Arduino).
         state: The shared :class:`~moonlight.bot.state.WorldState` to mutate.
-        config_path: Path to the real config file; ``None`` uses the default.
+        config_path: Path to the real config file; ``None`` uses the picked one.
         profiles_dir: Directory holding calibration profiles.
 
     Raises:
