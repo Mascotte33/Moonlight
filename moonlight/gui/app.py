@@ -35,7 +35,6 @@ from moonlight.gui.tabs.hardware import HardwareTab
 from moonlight.gui.tabs.healing import HealingTab
 from moonlight.gui.tabs.recorder import RecorderTab
 from moonlight.gui.tabs.settings import SettingsTab
-from moonlight.gui.tabs.spell_attack import SpellAttackTab
 from moonlight.gui.tabs.status import StatusTab
 from moonlight.gui.tabs.targeting import TargetingTab
 
@@ -51,14 +50,13 @@ STATE_COLORS = {
     "Stopped": theme.TEXT_MUTED,
 }
 
-#: The ten tabs in display order.
+#: The tabs in display order.
 TAB_ORDER = (
     DashboardTab,
     SettingsTab,
     CavebotTab,
     HealingTab,
     TargetingTab,
-    SpellAttackTab,
     HardwareTab,
     RecorderTab,
     StatusTab,
@@ -74,7 +72,7 @@ __all__ = [
 
 
 class GuiApp:
-    """customtkinter shell hosting the ten tabs and the state poller."""
+    """customtkinter shell hosting the tabs and the state poller."""
 
     def __init__(
         self,

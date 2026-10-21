@@ -68,7 +68,7 @@ def test_config_without_attack_spells_section_loads_off() -> None:
 def test_tab_writes_spells_and_hotkeys() -> None:
     import pytest
 
-    from moonlight.gui.tabs.spell_attack import apply_attack_spells
+    from moonlight.gui.tabs.targeting import apply_attack_spells
     from moonlight.setup.config import BotConfig, ConfigError
 
     values = {

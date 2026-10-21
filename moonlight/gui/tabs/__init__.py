@@ -7,7 +7,6 @@ from moonlight.gui.tabs.hardware import HardwareTab
 from moonlight.gui.tabs.healing import HealingTab
 from moonlight.gui.tabs.recorder import RecorderTab
 from moonlight.gui.tabs.settings import SettingsTab
-from moonlight.gui.tabs.spell_attack import SpellAttackTab
 from moonlight.gui.tabs.status import StatusTab
 from moonlight.gui.tabs.targeting import TargetingTab
 
@@ -19,7 +18,6 @@ __all__ = [
     "HardwareTab",
     "RecorderTab",
     "SettingsTab",
-    "SpellAttackTab",
     "StatusTab",
     "TargetingTab",
 ]
