@@ -119,3 +119,10 @@ def test_off_module_without_kept_values_shows_defaults() -> None:
     assert cfg.attack_spells is None and "attack_spells" not in cfg.off
     assert read_option(cfg, "attack_spells.aoe_min_monsters") == 3
     assert read_option(cfg, "cavebot.rope_hotkey") is None
+
+
+def test_no_field_is_shown_by_two_tabs() -> None:
+    from moonlight.gui import tabs
+
+    fields = [o.field for name in tabs.__all__ for o in getattr(tabs, name).options]
+    assert sorted(f for f in set(fields) if fields.count(f) > 1) == []

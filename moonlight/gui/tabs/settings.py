@@ -30,9 +30,12 @@ OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
     Option("Game window", "window_title", "dropdown"),
 ]
+#: The only switch for each module; the module tabs have none (T2.F4.K2).
 MODULE_SWITCHES = [
-    Option(name.capitalize(), f"{name}.enabled", "switch")
-    for name in ("healing", "targeting", "cavebot", "looting", "refill", "buffs", "alarms")
+    Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
+    for name in (
+        "healing", "targeting", "attack_spells", "cavebot", "looting", "refill", "buffs", "alarms"
+    )
 ]
 
 

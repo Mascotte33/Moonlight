@@ -8,7 +8,6 @@ from moonlight.gui.tabs.healing import apply_healing
 from moonlight.setup.config import BotConfig, ConfigError
 
 VALUES: dict[str, object] = {
-    "healing.enabled": True,
     "healing.emergency_hp_percent": 25.0,
     "healing.normal_hp_percent": 65.0,
     "healing.mana_threshold": 30.0,
@@ -42,8 +41,3 @@ def test_apply_writes_thresholds_and_hotkeys() -> None:
 def test_spell_with_no_hotkey_is_refused() -> None:
     with pytest.raises(ConfigError, match="exura vita"):
         apply_healing(BotConfig.default(), VALUES, {**COMBOS, "healing.emergency_spell": " "})
-
-
-def test_switch_off_turns_healing_off() -> None:
-    cfg = apply_healing(BotConfig.default(), {**VALUES, "healing.enabled": False}, COMBOS)
-    assert cfg.healing is None

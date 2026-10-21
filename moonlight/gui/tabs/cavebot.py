@@ -38,14 +38,12 @@ ROUTE = Option("Route", "cavebot.route", "dropdown")
 #: Shown 1-based; ``cavebot.start_index`` is 0-based.
 START = Option("Start from waypoint", "cavebot.start_index", "entry")
 OPTIONS = [
-    Option("Cavebot", "cavebot.enabled", "switch"),
     ROUTE,
     START,
     Option("Rope hotkey", "cavebot.rope_hotkey", "entry"),
     Option("Shovel hotkey", "cavebot.shovel_hotkey", "entry"),
 ]
 LOOT_OPTIONS = [
-    Option("Looting", "looting.enabled", "switch"),
     Option("Loot hotkey", "looting.loot_hotkey", "entry"),
     Option("Move-all hotkey (blank = none)", "looting.move_all_hotkey", "entry"),
     Option("Max items per corpse", "looting.max_items_per_loot", "slider", 1, 50),
@@ -53,7 +51,6 @@ LOOT_OPTIONS = [
 ]
 REFILL_ROUTE = Option("Refill route", "refill.route_name", "dropdown")
 REFILL_OPTIONS = [
-    Option("Refill", "refill.enabled", "switch"),
     Option("Start refill at cap (oz)", "refill.trigger_cap", "entry"),
     Option("Stop at cap (oz)", "refill.stop_cap", "entry"),
     REFILL_ROUTE,
