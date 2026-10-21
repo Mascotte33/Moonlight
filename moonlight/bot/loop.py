@@ -189,6 +189,15 @@ class BotState(StrEnum):
         return list(BotState).index(self)
 
 
+# What get_stats()["current_task"] says for each state; MOVE names the waypoint.
+_TASKS = {
+    BotState.EMERGENCY_HEAL: "Healing",
+    BotState.NORMAL_HEAL: "Healing",
+    BotState.ATTACK: "Attacking",
+    BotState.LOOT: "Looting",
+}
+
+
 @dataclass
 class DecisionModules:
     """Decision engines the loop calls every tick; ``None`` = not wired."""
@@ -296,6 +305,7 @@ class GameLoop:
         self._kill_event = threading.Event()
         self._stop_event = threading.Event()
         self._state = BotState.IDLE
+        self._task = "Idle"
 
         # Stats (written by the tick thread; read via get_stats()).
         self._tick_count = 0
@@ -609,11 +619,13 @@ class GameLoop:
     # -- actions -------------------------------------------------------------
 
     def _dispatch(self, snap: WorldState) -> None:
+        self._task = _TASKS.get(self._state, "Idle")
         if self._state is BotState.KILL:
             self._act_kill()
             return
         # Healing continues through every state (including ALARM).
         if self.modules.healing is not None and self._heal(snap):
+            self._task = "Healing"
             return
         busy = (BotState.ALARM, BotState.EMERGENCY_HEAL, BotState.NORMAL_HEAL)
         if self.modules.buffs is not None and self._state not in busy and self._buff(snap):
@@ -768,6 +780,10 @@ class GameLoop:
         The step is gated (focus/screen_ok); its clicks/keys pay at the
         wire limiter like every other command (F-20).
         """
+        cavebot = self.modules.cavebot
+        self._task = (
+            f"Walking to waypoint {cavebot.route.current + 1}" if cavebot else "Walking"
+        )
         if self._move_action is None:
             return
         if self._send(snap, self._move_action):
@@ -825,6 +841,7 @@ class GameLoop:
         return {
             "state": self._state.value,
             "tick_count": ticks,
+            "current_task": self._task,
             "uptime_seconds": round(uptime, 3),
             "avg_tick_time_ms": (
                 round(self._tick_time_total / ticks * 1000.0, 3) if ticks else 0.0

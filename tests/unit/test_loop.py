@@ -10,11 +10,14 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import cast
 
-from moonlight.bot.loop import BotState, GameLoop, LoopConfig
+from moonlight.bot.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.bot.safety import VK_F12, F12Monitor, RateLimiter
 from moonlight.bot.state import Monster, WorldState
+from moonlight.decision.cavebot import Cavebot
+from moonlight.decision.looting import Looting
 from moonlight.hardware.input import FakeInput
 
 PERIOD = 1.0 / 20.0  # 50 ms
@@ -495,3 +498,35 @@ class TestGameLoopStats:
         gl.reset_stats()
         assert gl.get_stats()["tick_count"] == 0
         assert gl.get_stats()["actions_sent"] == 0
+
+
+class TestCurrentTask:
+    def _task(self, ws: WorldState, modules: DecisionModules | None = None) -> object:
+        gl, _ = make_loop(ws, FakeInput(), modules=modules)
+        gl.tick()
+        return gl.get_stats()["current_task"]
+
+    def test_idle(self) -> None:
+        assert self._task(make_state()) == "Idle"
+
+    def test_healing(self) -> None:
+        assert self._task(make_state(hp=50.0)) == "Healing"
+
+    def test_attacking(self) -> None:
+        assert self._task(make_state(target=True)) == "Attacking"
+
+    def test_looting(self) -> None:
+        looting = SimpleNamespace(should_loot=lambda s: True, step=lambda s: None)
+        modules = DecisionModules(looting=cast(Looting, looting))
+        assert self._task(make_state(), modules=modules) == "Looting"
+
+    def test_walking_to_waypoint(self) -> None:
+        cavebot = SimpleNamespace(
+            route=SimpleNamespace(current=2),
+            is_active=lambda: True,
+            step=lambda: None,
+            resume=lambda: None,
+            alarm=None,
+        )
+        modules = DecisionModules(cavebot=cast(Cavebot, cavebot))
+        assert self._task(make_state(), modules=modules) == "Walking to waypoint 3"

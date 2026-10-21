@@ -62,8 +62,12 @@ class DashboardTab(Tab):
             value.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
             self._cards[name] = value
 
+        self.lbl_task = ctk.CTkLabel(
+            cards, text="Current task: Idle", anchor="w", text_color=theme.TEXT_DIM
+        )
+        self.lbl_task.grid(row=1, column=0, columnspan=len(CARDS), sticky="ew", pady=theme.UNIT)
         box = section(cards, "Bot health")
-        box.grid(row=1, column=0, columnspan=len(CARDS), sticky="ew", pady=(theme.UNIT, 0))
+        box.grid(row=2, column=0, columnspan=len(CARDS), sticky="ew")
         dots = ctk.CTkFrame(box, fg_color="transparent")
         dots.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
         self._dots: dict[str, ctk.CTkLabel] = {}
@@ -108,7 +112,11 @@ class DashboardTab(Tab):
             return {}
 
     def on_poll(self, snap: WorldState) -> None:
-        for name, text in card_values(self._loop_stats(), snap).items():
+        stats = self._loop_stats()
+        task = f"Current task: {stats.get('current_task', 'Idle')}"
+        if self.lbl_task.cget("text") != task:
+            self.lbl_task.configure(text=task)
+        for name, text in card_values(stats, snap).items():
             label = self._cards[name]
             if label.cget("text") != text:
                 label.configure(text=text)
