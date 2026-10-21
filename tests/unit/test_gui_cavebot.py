@@ -6,15 +6,18 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from moonlight.decision.cavebot import RouteFileLoader
 from moonlight.gui.tabs.cavebot import (
     apply_cavebot,
+    apply_start,
     picked_route,
     route_names,
     waypoint_line,
     waypoint_table,
 )
-from moonlight.setup.config import BotConfig
+from moonlight.setup.config import BotConfig, ConfigError
 
 
 def _routes(tmp_path: Path) -> Path:
@@ -110,3 +113,12 @@ def test_loot_tab_has_no_unused_max_items() -> None:
     from moonlight.gui.tabs.cavebot import LOOT_OPTIONS
 
     assert "looting.max_items_per_loot" not in [o.field for o in LOOT_OPTIONS]
+
+
+def test_start_position_saves_xyz_or_none() -> None:
+    cfg = apply_start(BotConfig.default(), ["32000", "31900", "7"])
+    assert cfg.minimap_start == (32000, 31900, 7)
+    assert apply_start(cfg, ["", " ", ""]).minimap_start is None
+    for bad in (["1", "", "7"], ["a", "2", "7"], ["1", "-2", "7"]):
+        with pytest.raises(ConfigError):
+            apply_start(cfg, bad)
