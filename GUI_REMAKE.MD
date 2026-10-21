@@ -376,6 +376,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_status.py` passes (age text, "never" when `last_update` is 0). Owner checks: Copy, then paste somewhere, and it shows the position.
 
 ### T10.F1.K1 — Subsystem health and Arduino
+- ✅ Done in commit df12fc0.
 - What: a **Health** card with the T1.F2.K1 dots and each one's last value (e.g. "HP 82%", "pos 1024, 980, 7", "COM3 connected"). This covers T10.F1 and T10.F2. Remove Diagnostics' module switches (Settings owns them, T2.F4.K1).
 - Needs: T1.F2.K1, T2.F4.K1
 - Files: moonlight/gui/tabs/diagnostics.py
