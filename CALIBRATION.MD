@@ -115,6 +115,7 @@ C2.F2.K3 to K6, C3), then the Start check (C4).
 - Done when: `pytest tests/unit/test_autofind.py` passes, with tests using two fake finders, one that finds and one that fails.
 
 ### C2.F2.K2 — HP and MP bar finders
+- ✅ Done in commit 1897427.
 - What: `find_hp_bar` and `find_mp_bar`, built on `detect_bars` from `tools/calibrate_auto.py`. Move what's needed into `autofind.py` and make the tool import it from there. Convert BGR → RGB before calling.
 - Needs: C2.F2.K1
 - Files: moonlight/setup/autofind.py, tools/calibrate_auto.py, tests/unit/test_autofind.py
