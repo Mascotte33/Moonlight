@@ -42,7 +42,7 @@ Implementation notes
   user screenshots (T08); until then, synthetic templates keep this
   module fully testable offline.
 * Frames are RGB ``(H, W, 3)`` ``uint8`` arrays as produced by
-  ``moonlight.capture``.
+  ``moonlight.perception.capture``.
 
 Reported positions are the top-left corners of the matched sprites in
 *frame* (screen-window) coordinates, already offset by the region's
@@ -155,7 +155,7 @@ class SpriteDetector:
     """Locate monster sprites in the game grid via template matching.
 
     Construct with the game-grid region (explicitly or from a
-    :class:`moonlight.calibrate.CalibrationProfile`) and the per-monster
+    :class:`moonlight.setup.calibrate.CalibrationProfile`) and the per-monster
     sprite templates. :meth:`detect` then returns one
     :class:`SpriteDetection` per visible sprite.
 

@@ -1,6 +1,6 @@
 """Buff decisions (T26).
 
-Decides which buffs to recast based on :class:`moonlight.state.WorldState`:
+Decides which buffs to recast based on :class:`moonlight.bot.state.WorldState`:
 
 * **MISSING** (reason ``"missing"``): the configured buff is not present in
   ``WorldState.buffs`` -> cast it.
@@ -31,7 +31,7 @@ Conventions inherited from the rest of the pipeline:
 * The optional input-backend integration lives in :meth:`BuffManager.send`
   and :meth:`BuffManager.track_and_send`: a spell is mapped to a key combo
   through the configurable *spell_combos* mapping and pressed through an
-  :class:`moonlight.input.InputBackend`.
+  :class:`moonlight.hardware.input.InputBackend`.
 
 Everything timing-related is injectable, so the module is fully
 unit-testable without hardware or a running client.
@@ -44,8 +44,8 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
-from moonlight.input import InputBackend
-from moonlight.state import WorldState
+from moonlight.bot.state import WorldState
+from moonlight.hardware.input import InputBackend
 
 __all__ = [
     "DEFAULT_BUFFS",
@@ -112,7 +112,7 @@ class BuffAction:
 #: ``exori *`` family (flamatio/visatio/terratio/sanatio) are *attack*
 #: spells, not buffs, and ``utemo`` is not a real spell. Until buff-icon
 #: perception is wired (T34) the default list is empty and the buffs module
-#: defaults to OFF (see :class:`moonlight.config.BotConfig.default`).
+#: defaults to OFF (see :class:`moonlight.setup.config.BotConfig.default`).
 DEFAULT_BUFFS: tuple[BuffConfig, ...] = ()
 
 

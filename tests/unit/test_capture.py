@@ -1,4 +1,4 @@
-"""Unit tests for moonlight.capture.
+"""Unit tests for moonlight.perception.capture.
 
 All tests are platform-independent: Win32 window APIs, ``mss`` and ``dxcam``
 are mocked so the suite runs in CI (Linux) without a display, a Tibia window,
@@ -13,7 +13,7 @@ import sys
 import numpy as np
 import pytest
 
-from moonlight.capture import CaptureError, ScreenCapture, WindowNotFoundError
+from moonlight.perception.capture import CaptureError, ScreenCapture, WindowNotFoundError
 
 _IS_WINDOWS = sys.platform == "win32"
 

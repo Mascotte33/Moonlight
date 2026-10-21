@@ -31,7 +31,7 @@ Convergence contract
   ``None``), the click fails and **no click** is sent — a missed click
   is safer than a blind click at an unverified position (fail closed).
 * Every wire ``M`` command stays within the protocol's -127..127 range
-  (see :mod:`moonlight.input`).
+  (see :mod:`moonlight.hardware.input`).
 
 Per-tick state machine (P5 / F-14)
 ----------------------------------
@@ -61,8 +61,8 @@ then tracks the position from the moves it sent, scaled by the
 calibrated ``mouse_scale`` (pixels per count; T33 calibrates it).
 
 The controller takes a *frame provider* callable (in production it wraps
-``moonlight.capture``; in tests it renders a synthetic cursor at the
-:class:`moonlight.input.FakeInput` virtual cursor position) — no hard
+``moonlight.perception.capture``; in tests it renders a synthetic cursor at the
+:class:`moonlight.hardware.input.FakeInput` virtual cursor position) — no hard
 dependency on the capture backend.
 """
 
@@ -77,7 +77,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from moonlight.input import MAX_MOUSE_DELTA, ClickSide, InputBackend
+from moonlight.hardware.input import MAX_MOUSE_DELTA, ClickSide, InputBackend
 from moonlight.perception.cursor import CursorReader, Rect
 
 __all__ = [
@@ -87,7 +87,7 @@ __all__ = [
     "DEFAULT_MAX_ITERS",
 ]
 
-logger = logging.getLogger("moonlight.clicker")
+logger = logging.getLogger("moonlight.hardware.clicker")
 
 #: Default convergence tolerance in pixels (±2 px, T17 requirement).
 DEFAULT_TOLERANCE = 2

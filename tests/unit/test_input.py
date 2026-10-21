@@ -1,4 +1,4 @@
-"""Unit tests for moonlight.input.
+"""Unit tests for moonlight.hardware.input.
 
 Covers:
 * ProtocolEncoder: wire encoding for each command (K/D/U/M/C/P/X) and
@@ -11,7 +11,7 @@ No serial port or hardware is used anywhere in this file.
 
 import pytest
 
-from moonlight.input import ClickSide, FakeInput, InputBackend, ProtocolEncoder
+from moonlight.hardware.input import ClickSide, FakeInput, InputBackend, ProtocolEncoder
 
 COMBO = "ctrl+alt+t"
 

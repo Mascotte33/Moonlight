@@ -15,8 +15,8 @@ import customtkinter as ctk
 from moonlight.gui.tabs.base import Tab, section
 
 if TYPE_CHECKING:  # pragma: no cover
+    from moonlight.bot.state import WorldState
     from moonlight.gui.config_bridge import BotConfig
-    from moonlight.state import WorldState
 
 __all__ = ["SettingsTab"]
 

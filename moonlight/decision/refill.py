@@ -38,10 +38,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from moonlight.bot.state import WorldState
 from moonlight.decision.cavebot import Cavebot, Route, RouteError, RouteFileLoader
 from moonlight.decision.looting import Looting
-from moonlight.input import InputBackend
-from moonlight.state import WorldState
+from moonlight.hardware.input import InputBackend
 
 __all__ = [
     "DEPOSIT_RETRY_TICKS",

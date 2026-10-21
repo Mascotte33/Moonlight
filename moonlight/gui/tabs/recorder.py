@@ -17,7 +17,7 @@ from moonlight.gui import routes
 from moonlight.gui.tabs.base import Tab, section, stat_label
 
 if TYPE_CHECKING:  # pragma: no cover
-    from moonlight.state import WorldState
+    from moonlight.bot.state import WorldState
 
 __all__ = ["RecorderTab"]
 

@@ -9,10 +9,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest import mock
 
+from moonlight.bot.loop import BotState, DecisionModules, GameLoop, LoopConfig
+from moonlight.bot.state import Monster, WorldState
 from moonlight.decision.healing import HealingConfig, HealingDecision
-from moonlight.input import FakeInput
-from moonlight.loop import BotState, DecisionModules, GameLoop, LoopConfig
-from moonlight.state import Monster, WorldState
+from moonlight.hardware.input import FakeInput
 
 
 def make_state(*, hp: float = 100.0, target: str | None = None, monsters: int = 0) -> WorldState:

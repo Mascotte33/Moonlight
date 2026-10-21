@@ -27,9 +27,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from moonlight.bot.loop import LoopConfig
     from moonlight.decision.healing import HealingConfig
     from moonlight.decision.targeting import TargetingConfig
-    from moonlight.loop import LoopConfig
 
 __all__ = [
     "BotConfig",
@@ -252,12 +252,12 @@ class BotConfig:
     # -- mapping onto real bot config ---------------------------------------
 
     def to_loop_config(self) -> LoopConfig:
-        """Build the real ``moonlight.loop.LoopConfig`` for GameLoop.
+        """Build the real ``moonlight.bot.loop.LoopConfig`` for GameLoop.
 
         Healing thresholds feed the loop's emergency/normal thresholds and
         the attack combo comes from the targeting config.
         """
-        from moonlight.loop import LoopConfig
+        from moonlight.bot.loop import LoopConfig
 
         return LoopConfig(
             tick_rate=self.tick_rate,

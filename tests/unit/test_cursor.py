@@ -28,8 +28,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from moonlight.calibrate import CalibrationProfile, Region
 from moonlight.perception import CursorReader, CursorTemplates
+from moonlight.setup.calibrate import CalibrationProfile, Region
 
 # ---------------------------------------------------------------------------
 # Synthetic fixtures

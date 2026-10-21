@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from moonlight.bot.state import WorldState
 from moonlight.decision.healing import (
     EMERGENCY_COOLDOWN_KEY,
     NORMAL_COOLDOWN_KEY,
@@ -20,8 +21,7 @@ from moonlight.decision.healing import (
     HealType,
     cure_cooldown_key,
 )
-from moonlight.input import FakeInput
-from moonlight.state import WorldState
+from moonlight.hardware.input import FakeInput
 
 
 class FakeClock:

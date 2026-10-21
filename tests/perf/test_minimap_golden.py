@@ -35,10 +35,10 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.calibrate import default_profiles_dir
+from moonlight.bot.state import Position
 from moonlight.perception.floor import FloorReader
 from moonlight.perception.minimap import MinimapReader
-from moonlight.state import Position
+from moonlight.setup.calibrate import default_profiles_dir
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -85,7 +85,7 @@ def _usable_profile() -> object | None:
     """Return the first profile that has a calibrated minimap rect."""
     if not PROFILE_DIR.is_dir():
         return None
-    from moonlight.calibrate import CalibrationProfile
+    from moonlight.setup.calibrate import CalibrationProfile
 
     for path in sorted(PROFILE_DIR.glob("*.json")):
         try:

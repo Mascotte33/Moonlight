@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-from moonlight.calibrate import CalibrationProfile, default_profiles_dir
+from moonlight.setup.calibrate import CalibrationProfile, default_profiles_dir
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GOLDEN_DIRS = (REPO_ROOT / "data" / "golden", REPO_ROOT / "tests" / "golden")
@@ -230,7 +230,7 @@ def test_battle_smoke(run: Run, golden_summary: list[str]) -> None:
 
 
 def test_minimap_smoke(run: Run, golden_summary: list[str]) -> None:
-    from moonlight.state import Position
+    from moonlight.bot.state import Position
 
     _no_errors(run, "minimap")
     for pos in run.outputs["minimap"]:

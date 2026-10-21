@@ -2,7 +2,7 @@
 
 Arduino Leonardo (ATmega32U4) firmware that makes the board act as a USB
 HID keyboard + mouse, driven over serial. This is the **physical input layer**
-of MOONLIGHT — the PC's `moonlight/input.py` sends wire commands, and this
+of MOONLIGHT — the PC's `moonlight/hardware/input.py` sends wire commands, and this
 firmware turns them into real keyboard/mouse events.
 
 > **Scope note:** The board is a **standard USB HID device**. Per the project

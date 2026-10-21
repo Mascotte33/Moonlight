@@ -4,19 +4,19 @@ Connects the GUI to the real bot runtime without touching bot logic:
 
 * :class:`LogFeed` — thread-safe ring buffer of log lines (the GUI's event
   log; mirrors ``ui.py``'s terminal log).
-* :class:`BotController` — runs :class:`moonlight.loop.GameLoop` on a daemon
+* :class:`BotController` — runs :class:`moonlight.bot.loop.GameLoop` on a daemon
   thread with start/stop/kill semantics (the loop's own F12 kill-switch and
   stop-event do the real work; the controller just hosts the thread).
-* :class:`StatePoller` — polls the shared :class:`moonlight.state.WorldState`
+* :class:`StatePoller` — polls the shared :class:`moonlight.bot.state.WorldState`
   on a Tk timer and pushes a snapshot into the tabs. Polling is a fast
   ``snapshot()`` call on the Tk thread; the loop thread is never blocked.
-* :class:`HardwareController` — owns the :class:`moonlight.input.ArduinoInput`
+* :class:`HardwareController` — owns the :class:`moonlight.hardware.input.ArduinoInput`
   (or FakeInput) connection: port listing, connect/ping/release_all/close.
 * :class:`GuiContext` — the single object handed to every tab.
 
 .. note::
    The GUI's "Start bot" does **not** run perception in a side thread. It
-   builds the real bot loop through :func:`moonlight.wiring.build_loop` (see
+   builds the real bot loop through :func:`moonlight.bot.wiring.build_loop` (see
    :mod:`moonlight.gui.app`), which wires a real screen capture, the focus
    gate and every enabled decision module. The previous ``PerceptionWriter``
    background thread was removed (F-13): it duplicated ``make_perceive`` and
@@ -33,12 +33,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
+from moonlight.bot.state import WorldState
 from moonlight.gui.config_bridge import BotConfig, ConfigStore
-from moonlight.state import WorldState
 
 if TYPE_CHECKING:  # pragma: no cover
-    from moonlight.input import InputBackend
-    from moonlight.loop import GameLoop
+    from moonlight.bot.loop import GameLoop
+    from moonlight.hardware.input import InputBackend
 
 __all__ = [
     "BotController",
@@ -108,7 +108,7 @@ class LogFeed:
 
 
 class BotController:
-    """Hosts the :class:`~moonlight.loop.GameLoop` on a daemon thread.
+    """Hosts the :class:`~moonlight.bot.loop.GameLoop` on a daemon thread.
 
     Start/stop/kill delegate to the loop's own thread-safe controls
     (``start`` runs ``loop.run()`` in the thread; ``stop``/``kill`` set the
@@ -133,7 +133,7 @@ class BotController:
 
     @property
     def state(self) -> Any:
-        """The loop's current :class:`~moonlight.loop.BotState`."""
+        """The loop's current :class:`~moonlight.bot.loop.BotState`."""
         return self.loop.current_state
 
     def start(self) -> None:
@@ -269,7 +269,7 @@ class HardwareController:
     """Owns the Arduino connection for the Hardware tab.
 
     Port listing uses ``serial.tools.list_ports``; connect builds an
-    :class:`moonlight.input.ArduinoInput` (blocking — call from a worker
+    :class:`moonlight.hardware.input.ArduinoInput` (blocking — call from a worker
     thread); ping/release_all/close delegate to the backend. The factory is
     injectable so tests run without hardware.
     """
@@ -328,7 +328,7 @@ class HardwareController:
         Raises on failure (callers surface the message in the tab).
         """
         if self._factory is None:
-            from moonlight.input import ArduinoInput
+            from moonlight.hardware.input import ArduinoInput
 
             self._factory = lambda p, b: ArduinoInput(  # noqa: E731
                 port=p, baudrate=b, heartbeat_interval=1.0

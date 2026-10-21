@@ -22,10 +22,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from moonlight.clicker import ClickController
-from moonlight.input import InputBackend
+from moonlight.bot.state import WorldState
+from moonlight.hardware.clicker import ClickController
+from moonlight.hardware.input import InputBackend
 from moonlight.perception.loot import LootReader
-from moonlight.state import WorldState
 
 __all__ = ["OPEN_TIMEOUT_TICKS", "LootingConfig", "Looting"]
 

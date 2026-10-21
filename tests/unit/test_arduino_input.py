@@ -1,4 +1,4 @@
-"""Unit tests for moonlight.input.ArduinoInput (task T16).
+"""Unit tests for moonlight.hardware.input.ArduinoInput (task T16).
 
 The serial layer is fully emulated in memory: a fake ``serial`` module is
 patched into ``sys.modules`` so ArduinoInput's lazy pyserial imports resolve
@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-from moonlight.input import (
+from moonlight.hardware.input import (
     ARDUINO_LEONARDO_VID,
     ArduinoInput,
     ArduinoInputError,
@@ -178,7 +178,7 @@ class FakeSerialDevice:
 
 
 def install_fake_serial(monkeypatch: pytest.MonkeyPatch) -> types.SimpleNamespace:
-    """Patch sys.modules so moonlight.input's lazy serial imports hit fakes.
+    """Patch sys.modules so moonlight.hardware.input's lazy serial imports hit fakes.
 
     Returns a controller namespace with:
         devices:    dict mapping port name -> FakeSerialDevice
@@ -678,7 +678,7 @@ class TestImportWithoutSerial:
             "            raise ImportError('serial blocked by test')\n"
             "        return None\n"
             "sys.meta_path.insert(0, Blocker())\n"
-            "import moonlight.input as m\n"
+            "import moonlight.hardware.input as m\n"
             "assert m.ArduinoInput is not None\n"
             "assert not any(k == 'serial' or k.startswith('serial.')\n"
             "               for k in sys.modules)\n"

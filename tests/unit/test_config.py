@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from moonlight.config import MODULES, BotConfig, ConfigError
 from moonlight.decision.healing import HealingConfig
+from moonlight.setup.config import MODULES, BotConfig, ConfigError
 
 
 def route_file(d: Path, name: str = "hunt") -> None:

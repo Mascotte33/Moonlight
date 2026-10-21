@@ -26,8 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from moonlight.input import ClickSide, InputBackend
-from moonlight.state import WorldState
+from moonlight.bot.state import WorldState
+from moonlight.hardware.input import ClickSide, InputBackend
 
 __all__ = [
     "BotScript",
@@ -38,7 +38,7 @@ __all__ = [
 
 log = logging.getLogger(__name__)
 
-DEFAULT_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+DEFAULT_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
 
 _OPS: dict[str, Callable[[Any, Any], bool]] = {
     "<": operator.lt,

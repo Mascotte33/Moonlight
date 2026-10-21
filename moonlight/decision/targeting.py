@@ -1,6 +1,6 @@
 """Targeting decisions (T20).
 
-Decides which creature to attack, given :class:`moonlight.state.WorldState`:
+Decides which creature to attack, given :class:`moonlight.bot.state.WorldState`:
 
 * **ATTACK** (reasons: ``"already targeting ..."`` / ``"first monster ..."`` /
   ``"weakest monster ..."``): a monster was chosen and is (or must become)
@@ -51,7 +51,7 @@ import logging
 from dataclasses import dataclass
 from enum import StrEnum
 
-from moonlight.state import Monster, WorldState
+from moonlight.bot.state import Monster, WorldState
 
 __all__ = [
     "TargetingAction",

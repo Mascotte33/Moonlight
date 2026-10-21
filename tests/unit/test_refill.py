@@ -12,6 +12,7 @@ from typing import Any, cast
 
 import pytest
 
+from moonlight.bot.state import Capacity, WorldState
 from moonlight.decision.cavebot import Cavebot, Route, RouteFileLoader
 from moonlight.decision.looting import Looting
 from moonlight.decision.refill import (
@@ -21,8 +22,7 @@ from moonlight.decision.refill import (
     RefillConfig,
     RefillPhase,
 )
-from moonlight.input import FakeInput
-from moonlight.state import Capacity, WorldState
+from moonlight.hardware.input import FakeInput
 
 ROUTE: dict[str, Any] = {
     "name": "refill",

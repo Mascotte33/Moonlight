@@ -340,7 +340,7 @@ class CalibrationProfile:
 
 def default_profiles_dir() -> Path:
     """Return the ``profiles/`` directory next to the package."""
-    return Path(__file__).resolve().parent / "profiles"
+    return Path(__file__).resolve().parent.parent / "profiles"
 
 
 def list_profiles(directory: str | Path | None = None) -> list[str]:

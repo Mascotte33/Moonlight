@@ -25,7 +25,7 @@ T08 golden frames).
 We do NOT hard-code absolute pixel coordinates: the caller passes a
 calibrated region ``Rect = (x, y, w, h)`` (from ``calibrate.py`` /
 ``profiles/<name>.json``). :class:`VitalsReader` can be built from a
-:class:`moonlight.calibrate.CalibrationProfile` so the ``hp_bar`` /
+:class:`moonlight.setup.calibrate.CalibrationProfile` so the ``hp_bar`` /
 ``mp_bar`` regions are picked up automatically, while still allowing each
 ``read_*`` call to override the region explicitly.
 
@@ -122,7 +122,7 @@ def bar_percent(
 
     Args:
         frame: RGB ``(H, W, 3)`` ``uint8`` capture (as produced by
-            ``moonlight.capture``).
+            ``moonlight.perception.capture``).
         region: Bar region ``(x, y, w, h)`` in frame coordinates.
         fill_rgb: The fill colour of the bar (e.g. :data:`HP_FILL_RGB`), or
             several accepted colours (e.g. :data:`HP_FILL_COLOURS`).
@@ -156,7 +156,7 @@ def bar_percent(
 class VitalsReader:
     """Read HP% and MP% from captured frames using calibrated regions.
 
-    Construct from a :class:`moonlight.calibrate.CalibrationProfile` (which
+    Construct from a :class:`moonlight.setup.calibrate.CalibrationProfile` (which
     stores the ``hp_bar`` / ``mp_bar`` regions) and/or explicit region
     tuples. The stored regions are the defaults used when ``read_*`` is
     called without an explicit region.

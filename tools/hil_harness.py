@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "tests" / "hil")]
 
-from moonlight.input import ArduinoInput, ArduinoInputError, ClickSide  # noqa: E402
+from moonlight.hardware.input import ArduinoInput, ArduinoInputError, ClickSide  # noqa: E402
 
 DEFAULT_PORT = "COM5" if sys.platform == "win32" else "/dev/ttyACM0"
 MAX_PING_MS = 50.0

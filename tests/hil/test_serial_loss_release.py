@@ -12,7 +12,7 @@ from collections.abc import Callable
 import pytest
 from mock_serial import MockBus
 
-from moonlight.input import ArduinoInputError, ClickSide, DeviceLostError
+from moonlight.hardware.input import ArduinoInputError, ClickSide, DeviceLostError
 
 
 def test_release_all_sends_x_while_connected(monkeypatch: pytest.MonkeyPatch) -> None:

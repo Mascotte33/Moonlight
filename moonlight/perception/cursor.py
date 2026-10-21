@@ -30,7 +30,7 @@ Implementation notes
   logical mouse position — or ``None`` when no match reaches
   ``match_threshold`` (fail closed: no position, never a fabricated one).
 * Frames are RGB ``(H, W, 3)`` ``uint8`` arrays as produced by
-  ``moonlight.capture``. Matching runs on the small region crop, never on
+  ``moonlight.perception.capture``. Matching runs on the small region crop, never on
   the full frame (zero disk I/O, in-memory numpy only).
 """
 
@@ -89,7 +89,7 @@ class CursorReader:
     """Read the rendered mouse-cursor position from captured frames.
 
     Construct with the cursor region (explicitly, or from a
-    :class:`moonlight.calibrate.CalibrationProfile` carrying a
+    :class:`moonlight.setup.calibrate.CalibrationProfile` carrying a
     ``cursor`` region) and the cursor templates. :meth:`read` then
     returns the center of the best template match in frame coordinates,
     or ``None``.

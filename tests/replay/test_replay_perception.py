@@ -22,7 +22,7 @@ import cv2
 import numpy as np
 import pytest
 
-from moonlight.calibrate import CalibrationProfile, default_profiles_dir
+from moonlight.bot.state import Position
 from moonlight.perception import (
     BattleEntry,
     BattleReader,
@@ -37,7 +37,7 @@ from moonlight.perception import (
     VitalsReader,
 )
 from moonlight.perception.loot import TITLE_TEMPLATE, LootReader, LootWindow
-from moonlight.state import Position
+from moonlight.setup.calibrate import CalibrationProfile, default_profiles_dir
 from tests.golden_labels import PlaceholderLabelsError, load_golden_labels
 
 ROOT = Path(__file__).resolve().parents[2]

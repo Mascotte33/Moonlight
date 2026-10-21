@@ -12,6 +12,7 @@ from typing import Any, cast
 
 import pytest
 
+from moonlight.bot.state import WorldState
 from moonlight.decision.alarms import (
     ALARM_PRIORITY,
     AlarmAction,
@@ -21,7 +22,6 @@ from moonlight.decision.alarms import (
     RecommendedAction,
     Severity,
 )
-from moonlight.state import WorldState
 
 
 class FakeClock:

@@ -38,8 +38,8 @@ from typing import TypedDict, cast
 
 import pytest
 
-from moonlight.calibrate import default_profiles_dir
 from moonlight.perception.battle import BattleEntry
+from moonlight.setup.calibrate import default_profiles_dir
 from tests.golden_labels import PlaceholderLabelsError, load_golden_labels
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -92,7 +92,7 @@ def _usable_profile() -> object | None:
     """Return the first profile that has a calibrated battle_list rect."""
     if not PROFILE_DIR.is_dir():
         return None
-    from moonlight.calibrate import CalibrationProfile
+    from moonlight.setup.calibrate import CalibrationProfile
 
     for path in sorted(PROFILE_DIR.glob("*.json")):
         try:

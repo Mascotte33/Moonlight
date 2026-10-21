@@ -13,7 +13,6 @@ import time
 import numpy as np
 import pytest
 
-from moonlight.calibrate import CalibrationProfile, Region
 from moonlight.perception.vitals import (
     BAR_BACKGROUND_RGB,
     HP_FILL_RGB,
@@ -21,6 +20,7 @@ from moonlight.perception.vitals import (
     VitalsReader,
     bar_percent,
 )
+from moonlight.setup.calibrate import CalibrationProfile, Region
 
 WIDTH = 100
 HEIGHT = 23

@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.clicker import ClickController
+from moonlight.bot.loop import BotState, DecisionModules, GameLoop, LoopConfig
+from moonlight.bot.state import Position, WorldState
 from moonlight.decision.cavebot import Cavebot, Route, RouteError, RouteFileLoader, Waypoint
-from moonlight.input import ClickSide, FakeInput
-from moonlight.loop import BotState, DecisionModules, GameLoop, LoopConfig
-from moonlight.state import Position, WorldState
+from moonlight.hardware.clicker import ClickController
+from moonlight.hardware.input import ClickSide, FakeInput
 
 MINIMAP = (10, 10, 120, 120)
 GAME = (200, 0, 480, 352)  # 32 px tiles; player tile center = (440, 176)

@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from moonlight.calibrate import CalibrationProfile, Region
-from moonlight.clicker import ClickController
+from moonlight.bot.state import Capacity, WorldState
 from moonlight.decision.looting import OPEN_TIMEOUT_TICKS, Looting, LootingConfig
-from moonlight.input import FakeInput
+from moonlight.hardware.clicker import ClickController
+from moonlight.hardware.input import FakeInput
 from moonlight.perception.cursor import CursorReader
 from moonlight.perception.loot import TITLE_TEMPLATE, LootReader, LootWindow
-from moonlight.state import Capacity, WorldState
+from moonlight.setup.calibrate import CalibrationProfile, Region
 
 REGION = (100, 50, 220, 220)
 TITLE_AT = (110, 60)  # frame coords of the title bar

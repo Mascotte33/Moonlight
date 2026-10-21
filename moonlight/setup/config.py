@@ -4,7 +4,7 @@
 calibration profile name, the serial port, the loop parameters, the
 spell -> hotkey mapping and the per-module decision configs. The module
 configs are the existing dataclasses from ``moonlight.decision`` (and
-:class:`moonlight.loop.LoopConfig`); nothing is re-invented here.
+:class:`moonlight.bot.loop.LoopConfig`); nothing is re-invented here.
 
 A module is **enabled** when its config is not ``None``.
 
@@ -54,7 +54,7 @@ from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
-from moonlight.clicker import ClickerConfig
+from moonlight.bot.loop import GameLoop, LoopConfig
 from moonlight.decision.alarms import AlarmConfig
 from moonlight.decision.buffs import BuffManagerConfig
 from moonlight.decision.cavebot import Route, RouteError, RouteFileLoader
@@ -62,7 +62,7 @@ from moonlight.decision.healing import HealingConfig
 from moonlight.decision.looting import LootingConfig
 from moonlight.decision.refill import RefillConfig
 from moonlight.decision.targeting import TargetingConfig
-from moonlight.loop import GameLoop, LoopConfig
+from moonlight.hardware.clicker import ClickerConfig
 
 __all__ = [
     "DEFAULT_CONFIG_FILE",

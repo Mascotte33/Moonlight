@@ -21,7 +21,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from moonlight.calibrate import CalibrationProfile, Region
 from moonlight.perception.floor import (
     FLOOR_LEVELS,
     GROUND_FLOOR,
@@ -30,6 +29,7 @@ from moonlight.perception.floor import (
     FloorReader,
     TemplateSet,
 )
+from moonlight.setup.calibrate import CalibrationProfile, Region
 
 TEMPLATE_SIZE = 12
 BLOCK_SIZE = 3

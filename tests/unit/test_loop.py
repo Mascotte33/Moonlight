@@ -1,4 +1,4 @@
-"""Unit tests for moonlight.loop (GameLoop).
+"""Unit tests for moonlight.bot.loop (GameLoop).
 
 Fully hermetic: no hardware, no Windows, no real sleeps on the game
 paths. Timing uses an injectable fake clock; F12 uses an injectable
@@ -12,10 +12,10 @@ import time
 from collections.abc import Callable
 from typing import cast
 
-from moonlight.input import FakeInput
-from moonlight.loop import BotState, GameLoop, LoopConfig
-from moonlight.safety import VK_F12, F12Monitor, RateLimiter
-from moonlight.state import Monster, WorldState
+from moonlight.bot.loop import BotState, GameLoop, LoopConfig
+from moonlight.bot.safety import VK_F12, F12Monitor, RateLimiter
+from moonlight.bot.state import Monster, WorldState
+from moonlight.hardware.input import FakeInput
 
 PERIOD = 1.0 / 20.0  # 50 ms
 

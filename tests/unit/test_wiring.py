@@ -10,16 +10,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from moonlight import wiring
-from moonlight.calibrate import REGIONS, CalibrationProfile, Region
-from moonlight.config import BotConfig, CavebotConfig
+from moonlight.bot import wiring
+from moonlight.bot.loop import LoopConfig
+from moonlight.bot.state import WorldState
 from moonlight.decision.buffs import BuffManagerConfig
 from moonlight.decision.cavebot import Route, Waypoint
 from moonlight.decision.looting import LootingConfig
 from moonlight.decision.refill import RefillConfig
-from moonlight.input import FakeInput
-from moonlight.loop import LoopConfig
-from moonlight.state import WorldState
+from moonlight.hardware.input import FakeInput
+from moonlight.setup.calibrate import REGIONS, CalibrationProfile, Region
+from moonlight.setup.config import BotConfig, CavebotConfig
 
 
 def make_profile() -> CalibrationProfile:
@@ -166,7 +166,7 @@ def test_targeting_without_resolver_warns(
     def frame_provider() -> np.ndarray:
         return frame
 
-    with caplog.at_level(logging.WARNING, logger="moonlight.wiring"):
+    with caplog.at_level(logging.WARNING, logger="moonlight.bot.wiring"):
         wiring.build_loop(
             cfg,
             make_profile(),
@@ -191,7 +191,7 @@ def test_minimap_start_seeds_minimap_reader(monkeypatch: pytest.MonkeyPatch) -> 
     layer: make_perceive passes minimap_start through to MinimapReader as
     initial_position, so reported positions are absolute world coordinates.
     """
-    from moonlight.state import Position
+    from moonlight.bot.state import Position
 
     captured: dict[str, object] = {}
 
@@ -228,7 +228,7 @@ def test_minimap_start_seeds_minimap_reader(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_lost_minimap_clears_state_position(monkeypatch: pytest.MonkeyPatch) -> None:
     """F-17: a lost tracker publishes "unknown" (0,0,0), not a stale position."""
-    from moonlight.state import Position
+    from moonlight.bot.state import Position
 
     class _LostMinimap:
         lost = True
@@ -251,7 +251,7 @@ def test_lost_minimap_clears_state_position(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_tick_grabber_folds_the_cursor_read_into_one_grab_per_tick() -> None:
     """P2 + P5: a clicking tick still makes ONE screen grab (regions + cursor ROI)."""
-    from moonlight.clicker import ClickController
+    from moonlight.hardware.clicker import ClickController
     from moonlight.perception.cursor import CursorReader
 
     fake = FakeInput(cursor=(80, 80))

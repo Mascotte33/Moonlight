@@ -14,7 +14,7 @@ import customtkinter as ctk
 from moonlight.gui.tabs.base import Tab, section, stat_label, stat_num
 
 if TYPE_CHECKING:  # pragma: no cover
-    from moonlight.state import WorldState
+    from moonlight.bot.state import WorldState
 
 __all__ = ["StatusTab"]
 

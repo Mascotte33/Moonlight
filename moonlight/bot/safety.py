@@ -2,7 +2,7 @@
 
 :class:`RateLimitedInput` caps the serial commands that reach the device
 (F-20); :class:`F12Monitor` polls the keyboard and fires the kill switch;
-:func:`beep_alert` is the operator alert sink. :class:`moonlight.loop.GameLoop`
+:func:`beep_alert` is the operator alert sink. :class:`moonlight.bot.loop.GameLoop`
 wires all three.
 """
 
@@ -15,7 +15,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from moonlight.input import ClickSide, InputBackend
+from moonlight.hardware.input import ClickSide, InputBackend
 
 __all__ = [
     "VK_F12",
@@ -26,7 +26,7 @@ __all__ = [
     "default_key_state",
 ]
 
-logger = logging.getLogger("moonlight.safety")
+logger = logging.getLogger("moonlight.bot.safety")
 
 #: Win32 virtual-key code for F12.
 VK_F12 = 0x7B

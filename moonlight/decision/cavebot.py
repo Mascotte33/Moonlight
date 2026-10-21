@@ -43,11 +43,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from moonlight.clicker import ClickController
-from moonlight.input import ClickSide, InputBackend
+from moonlight.bot.state import Position, WorldState
+from moonlight.hardware.clicker import ClickController
+from moonlight.hardware.input import ClickSide, InputBackend
 from moonlight.perception.floor import MAX_FLOOR, MIN_FLOOR
 from moonlight.perception.minimap import Rect
-from moonlight.state import Position, WorldState
 
 __all__ = [
     "ACTIONS",

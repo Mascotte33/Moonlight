@@ -1,7 +1,7 @@
 """Alarm decisions (T25).
 
 Detects dangerous situations and turns them into alarm actions, given
-:class:`moonlight.state.WorldState`. In the loop's priority state machine
+:class:`moonlight.bot.state.WorldState`. In the loop's priority state machine
 ALARM is priority 2 (below KILL, above EMERGENCY_HEAL): an alarm preempts
 attack/loot/walk while healing continues.
 
@@ -46,7 +46,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
-from moonlight.state import WorldState
+from moonlight.bot.state import WorldState
 
 __all__ = [
     "ALARM_PRIORITY",
