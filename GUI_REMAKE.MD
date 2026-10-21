@@ -478,6 +478,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 #### Phase 3 corrections (owner feedback on PR #5, see PHASE3_CORRECTIONS.MD)
 
 ### T2.F4.K2 — One switch per module
+- ✅ Done in commit eca8d60.
 - What: Settings › Modules owns every `<module>.enabled` switch and adds Attack spells. The Healing, Targeting, Cavebot (Cavebot, Looting, Refill) and Spell attack tabs drop their own switch. Two switches for one module meant the last tab saved won, so Healing and Targeting came back on.
 - Needs: T2.F4.K1
 - Files: moonlight/gui/tabs/settings.py, healing.py, targeting.py, cavebot.py, spell_attack.py, tests/unit/test_gui_options.py
