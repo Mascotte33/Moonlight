@@ -352,6 +352,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_dashboard.py tests/unit/test_gui_bottombar.py` passes, with a test of each dot from a `WorldState`. Owner checks: with `--no-bot` every dot is red; the Arduino dot turns green after Test connection.
 
 ### T1.F3.K1 — Current task
+- ✅ Done in commit 40e619c.
 - What: the loop reports what it did last tick in `stats()["current_task"]`: `Idle`, `Healing`, `Attacking`, `Looting` or `Walking to waypoint N`. The Dashboard shows it under the stat cards.
 - Needs: T1.F1.K1
 - Files: moonlight/bot/loop.py, moonlight/gui/tabs/dashboard.py, tests/unit/test_loop.py
