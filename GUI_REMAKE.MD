@@ -573,6 +573,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: pytest stays green. Owner checks: type X, Y, Z and press Rope, and a rope row shows in the table.
 
 ### T3.F9.K4 — First waypoint is the start
+- ✅ Done in commit 41d7257.
 
 The bot always starts on the route's first waypoint. Minimap tracking takes its
 X, Y, Z as the start position, unless `minimap_start` is set in the config. The
