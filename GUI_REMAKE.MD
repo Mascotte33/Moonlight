@@ -573,6 +573,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: pytest stays green. Owner checks: type X, Y, Z and press Rope, and a rope row shows in the table.
 
 ### T3.F9.K3 — Start position
+- ✅ Done in commit 88fadf2.
 
 The Cavebot box gets a "Start position" row with X, Y and Z boxes. They save to
 `minimap_start`, the tile the bot starts on, so minimap tracking knows where it
