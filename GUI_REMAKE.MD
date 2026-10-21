@@ -412,6 +412,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_cavebot.py` passes (the line text from index and length). Owner checks: wait for calibration.
 
 ### T3.F2.K1 — Start from waypoint N
+- ✅ Done in commit 290fc52.
 - What: a number entry "Start from waypoint" (1 to the route's length). Start sets the route's `current` to N − 1 before the loop runs. It is saved as `cavebot.start_index` in `CavebotConfig` (default 0).
 - Needs: T3.F1.K1
 - Files: moonlight/setup/config.py, moonlight/bot/wiring.py, moonlight/gui/tabs/cavebot.py, tests/unit/test_loop_wiring.py
