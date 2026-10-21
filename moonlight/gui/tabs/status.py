@@ -19,7 +19,14 @@ from moonlight.gui.tabs.base import Tab, section, stat_label, stat_num
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.bot.state import WorldState
 
-__all__ = ["StatusTab"]
+__all__ = ["StatusTab", "age_text"]
+
+
+def age_text(last_update: float, now: float) -> str:
+    """How long ago ``last_update`` was, e.g. "updated 3 s ago"; "never" at 0."""
+    if last_update <= 0:
+        return "never"
+    return f"updated {max(0, int(now - last_update))} s ago"
 
 
 class StatusTab(Tab):
@@ -65,8 +72,23 @@ class StatusTab(Tab):
         pos_grid = ctk.CTkFrame(pos, fg_color="transparent")
         pos_grid.pack(fill="both", expand=True)
         pos_grid.grid_columnconfigure((0, 1), weight=1)
-        self.lbl_position = stat_label(pos_grid, "Minimap position")
-        self.lbl_position.grid(row=0, column=0, sticky="ew", padx=10, pady=(8, 2))
+        row = ctk.CTkFrame(pos_grid, fg_color="transparent")
+        row.grid(row=0, column=0, sticky="ew", padx=10, pady=(8, 2))
+        self.lbl_position = ctk.CTkLabel(
+            row, text="--", anchor="w", font=ctk.CTkFont(family=theme.MONO, size=theme.SIZE_HEADING)
+        )
+        self.lbl_position.pack(side="left")
+        ctk.CTkButton(
+            row,
+            text="Copy",
+            width=60,
+            command=self._copy_position,
+            fg_color=theme.RAISED,
+            hover_color=theme.HOVER,
+        ).pack(side="left", padx=theme.UNIT)
+        self.lbl_age = ctk.CTkLabel(row, text="never", anchor="w", text_color=theme.TEXT_MUTED)
+        self.lbl_age.pack(side="left", padx=theme.UNIT)
+        self._parent = parent
         self.lbl_capacity = stat_label(pos_grid, "Capacity")
         self.lbl_capacity.grid(row=0, column=1, sticky="ew", padx=10, pady=(8, 2))
         self.lbl_buffs = stat_label(pos_grid, "Buffs")
@@ -104,6 +126,10 @@ class StatusTab(Tab):
         self.lbl_proc.pack(anchor="w", padx=10, pady=(0, 8))
         self._sys_t = 0.0
         self._cpu = sysinfo.cpu_times()
+
+    def _copy_position(self) -> None:
+        self._parent.clipboard_clear()
+        self._parent.clipboard_append(self.lbl_position.cget("text"))
 
     def _update_system(self) -> None:
         now = time.monotonic()
@@ -167,9 +193,12 @@ class StatusTab(Tab):
             self._set_text(self.mon_box, mon)
 
         pos = snap.position
-        self.lbl_position.configure(
-            text=f"Minimap position: {pos.x}, {pos.y} (z {pos.z})"
-        )
+        text = f"{pos.x}, {pos.y}, {pos.z}"
+        if self.lbl_position.cget("text") != text:
+            self.lbl_position.configure(text=text)
+        age = age_text(snap.last_update, time.monotonic())
+        if self.lbl_age.cget("text") != age:
+            self.lbl_age.configure(text=age)
         cap = snap.capacity
         self.lbl_capacity.configure(
             text=f"Capacity: {cap.weight:.1f} / {cap.max_weight:.1f}"
