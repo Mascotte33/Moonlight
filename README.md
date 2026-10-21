@@ -52,10 +52,11 @@ flowchart LR
 | `moonlight/perception/` | Readers: HP/MP, battle list, minimap, floor, monster sprites, cursor, loot window, server-log OCR |
 | `moonlight/state.py` | `WorldState` — the snapshot shared between perception and decision |
 | `moonlight/decision/` | Healing, targeting, buffs, alarms, cavebot, looting, refill |
-| `moonlight/loop.py` | 20 Hz priority state machine, rate limiting, kill switch |
+| `moonlight/loop.py` | 20 Hz priority state machine |
+| `moonlight/safety.py` | Wire-level rate limit, F12 kill switch, operator alert |
+| `moonlight/wiring.py` | Builds the bot loop from config + profile (`build_loop`) |
 | `moonlight/input.py`, `clicker.py` | Input backends (`ArduinoInput`, `FakeInput`) and closed-loop clicking |
 | `moonlight/gui/` | 10-tab desktop GUI (customtkinter) |
-| `moonlight/cli.py` | `moonlight` command: `run`, `profiles`, `calibrate`, `check` |
 | `firmware/` | Arduino Leonardo HID firmware and [wire protocol](firmware/README.md) |
 | `tests/` | Unit, golden, replay, safety, perf and hardware-in-the-loop suites ([details](tests/README.md)) |
 | `tools/` | Benchmarks, Arduino verification, labelling and calibration helpers ([details](tools/README.md)) |
@@ -105,13 +106,16 @@ pip install -e .
 python tools/arduino_verify.py
 
 # 3. Calibrate the screen regions for your client window
-moonlight calibrate my-profile
+python -m moonlight.calibrate moonlight_user
 
-# 4. Launch the desktop GUI
-python -m moonlight.gui
+# 4. Check the setup (config, Arduino, profile, perception)
+python tools/check_setup.py
+
+# 5. Launch the desktop GUI (or double-click "Start Moonlight GUI.bat")
+python -m moonlight
 ```
 
-Use `python -m moonlight.gui --no-bot` to open the GUI without starting the bot loop.
+Use `python -m moonlight --no-bot` to open the GUI without starting the bot loop.
 
 ## Development
 

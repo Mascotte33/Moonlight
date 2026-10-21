@@ -11,7 +11,10 @@ on synthetic numpy frames, `FakeInput`, and monkeypatched serial.
 | `test_input.py` | `input.py` (InputBackend, FakeInput, protocol encoder) | 50 |
 | `test_state.py` | `state.py` (WorldState) | 17 |
 | `test_calibrate.py` | `calibrate.py` (regions, landmark, save/load) | 35 |
-| `test_loop.py` | `loop.py` (20 Hz loop, priority machine, kill switch) | 32 |
+| `test_loop.py` | `loop.py` (20 Hz loop, priority machine) | 33 |
+| `test_safety.py` | `safety.py` (rate limiter, F12 kill switch) | 7 |
+| `test_wiring.py` | `wiring.py` (bot assembly, `build_loop`) | 9 |
+| `test_check_setup.py` | `tools/check_setup.py` (missing region → FAIL) | 1 |
 | `test_vitals.py` | `perception/vitals.py` (HP/MP bar reading) | 35 |
 | `test_battle.py` | `perception/battle.py` (battle list, selection) | 36 |
 | `test_minimap.py` | `perception/minimap.py` (player position, radar scroll) | 30 |

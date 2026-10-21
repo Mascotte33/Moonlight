@@ -5,6 +5,12 @@ used to prepare assets (golden frames, calibration), benchmark, debug, and
 manage hardware. Excluded from the strict `ruff`/`mypy` package lint (see
 `pyproject.toml`); smoke-test them directly.
 
+## Setup check
+
+| File | Purpose |
+|------|---------|
+| `check_setup.py` | `[OK]`/`[FAIL]` per check: config, Arduino port, profile, each enabled module's calibration regions, perception imports; Tesseract is a `[WARN]`. Exit 0 = ready. Run: `python tools/check_setup.py [profile]` |
+
 ## Arduino
 
 | File | Purpose |
