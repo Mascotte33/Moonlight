@@ -7,11 +7,12 @@ dropdown holds names.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import customtkinter as ctk
 
-from moonlight.bot.state import WorldState
+from moonlight.bot.state import Position, WorldState
 from moonlight.decision.cavebot import Route, RouteError, RouteFileLoader
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
@@ -22,6 +23,7 @@ __all__ = [
     "OPTIONS",
     "ROUTE",
     "CavebotTab",
+    "add_waypoint",
     "apply_cavebot",
     "picked_route",
     "route_names",
@@ -69,6 +71,19 @@ def waypoint_table(route: Route | None, current: int | None = None) -> str:
 def waypoint_line(current: int | None, total: int) -> str:
     """"Waypoint N of M" for 0-based *current*, or "Not running" for None."""
     return "Not running" if current is None else f"Waypoint {current + 1} of {total}"
+
+
+def add_waypoint(path: Path, pos: Position) -> str:
+    """Append *pos* as a ``walk`` waypoint to route file *path*; the result text.
+
+    Position ``(0, 0, 0)`` is unknown and adds nothing.
+    """
+    if (pos.x, pos.y, pos.z) == (0, 0, 0):
+        return "Position unknown"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["waypoints"].append({"x": pos.x, "y": pos.y, "z": pos.z, "action": "walk"})
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return f"Added {pos.x}, {pos.y}, {pos.z}"
 
 
 def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
@@ -128,7 +143,19 @@ class CavebotTab(Tab):
         )
         self.wp_list.pack(fill="both", expand=True, padx=theme.PAD, pady=(theme.PAD, 0))
         self.lbl_current = ctk.CTkLabel(wps, text="Not running", anchor="w")
-        self.lbl_current.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
+        self.lbl_current.pack(fill="x", padx=theme.PAD)
+        add = ctk.CTkFrame(wps, fg_color="transparent")
+        add.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
+        ctk.CTkButton(
+            add,
+            text="Add current position",
+            command=self._add_position,
+            fg_color=theme.RAISED,
+            hover_color=theme.HOVER,
+        ).pack(side="left")
+        self.lbl_added = ctk.CTkLabel(add, text="", anchor="w", text_color=theme.TEXT_MUTED)
+        self.lbl_added.pack(side="left", padx=theme.UNIT)
+        self._pos = Position(0, 0, 0)
         self._routes_dir = Path()
         self._route: Route | None = None
         self._error = ""
@@ -172,7 +199,16 @@ class CavebotTab(Tab):
         self.wp_list.insert("1.0", text)
         self.wp_list.configure(state="disabled")
 
+    def _add_position(self) -> None:
+        name = self.menu_route.get()
+        if name == NO_ROUTES:
+            self.lbl_added.configure(text="No route picked")
+            return
+        self.lbl_added.configure(text=add_waypoint(self._routes_dir / f"{name}.json", self._pos))
+        self._show_route(name)
+
     def on_poll(self, snap: WorldState) -> None:
+        self._pos = snap.position
         self._draw()
 
     def reload_options(self) -> None:
