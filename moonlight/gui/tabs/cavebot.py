@@ -81,14 +81,18 @@ def picked_route(cfg: BotConfig) -> str:
 
 
 def waypoint_table(route: Route | None, current: int | None = None) -> str:
-    """*route*'s waypoints as a text table, row *current* (0-based) marked ``>``."""
+    """*route*'s waypoints as a text table, row *current* (0-based) marked ``>``.
+
+    The first waypoint is where the bot starts, so its row says START.
+    """
     if route is None or not route.waypoints:
         return "No waypoints loaded"
     lines = [f" {'#':>3}  {'action':<7}{'x':>6}{'y':>6}{'z':>4}  label"]
     for i, wp in enumerate(route.waypoints):
         mark = ">" if i == current else " "
+        start = "  START" if i == 0 else ""
         lines.append(
-            f"{mark}{i + 1:>3}  {wp.action:<7}{wp.x:>6}{wp.y:>6}{wp.z:>4}  {wp.label}"
+            f"{mark}{i + 1:>3}  {wp.action:<7}{wp.x:>6}{wp.y:>6}{wp.z:>4}  {wp.label}{start}"
         )
     return "\n".join(lines)
 
