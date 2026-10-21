@@ -13,12 +13,11 @@ from __future__ import annotations
 
 import argparse
 import time
-from pathlib import Path
 
 import customtkinter as ctk
 
 from moonlight.bot.state import WorldState
-from moonlight.gui import config_bridge, theme
+from moonlight.gui import theme
 from moonlight.gui.loop_factory import build_gui_loop
 from moonlight.gui.state_bridge import (
     BotController,
@@ -79,27 +78,18 @@ class GuiApp:
 
     def __init__(
         self,
-        config_path: Path | str | None = None,
         start_bot: bool = True,
     ) -> None:
         theme.apply()
 
-        self.config_path = (
-            Path(config_path)
-            if config_path is not None
-            else config_bridge.default_config_path()
-        )
         self.state = WorldState()
         self.log = LogFeed()
-        self.config_store = config_bridge.ConfigStore(None, self.config_path)
         self.hardware = HardwareController(log=self.log)
         self.ctx = GuiContext(
             state=self.state,
-            config_store=self.config_store,
             hardware=self.hardware,
             log=self.log,
         )
-        self.ctx.profile_name = self.config_store.config.profile_name
 
         self.root = ctk.CTk()
         self.root.title("MOONLIGHT — Tibia automation")
@@ -334,11 +324,10 @@ class GuiApp:
                 pass
 
     def on_close(self) -> None:
-        """Window close: stop the bot, close hardware, persist config."""
+        """Window close: stop the bot and close hardware."""
         try:
             self.stop_bot()
             self.hardware.disconnect()
-            self.config_store.save()
         finally:
             self.root.destroy()
 
@@ -357,18 +346,12 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
-        "--config",
-        type=Path,
-        default=None,
-        help="path to config.json (default: <repo>/data/config.json)",
-    )
-    parser.add_argument(
         "--no-bot",
         action="store_true",
         help="start the GUI without launching the bot loop thread",
     )
     args = parser.parse_args(argv)
 
-    app = GuiApp(config_path=args.config, start_bot=not args.no_bot)
+    app = GuiApp(start_bot=not args.no_bot)
     app.root.mainloop()
     return 0

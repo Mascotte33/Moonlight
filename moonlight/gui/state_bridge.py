@@ -36,7 +36,6 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from moonlight.bot.state import WorldState
 from moonlight.gui import loop_factory
-from moonlight.gui.config_bridge import BotConfig, ConfigStore
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.bot.loop import GameLoop
@@ -419,15 +418,13 @@ class GuiContext:
 
     Tabs receive this in their constructor (dependency injection) so they can
     be built and tested without a display: they read ``ctx.state`` snapshots
-    in :meth:`on_poll` and mutate config through ``ctx.config_store``.
+    in :meth:`on_poll`; options go through ``config_savers``.
     """
 
     state: WorldState
-    config_store: ConfigStore
     hardware: HardwareController
     log: LogFeed
     controller: BotController | None = None
-    profile_name: str | None = None
     #: Called after another named config is picked (tabs refill their options).
     config_listeners: list[Callable[[], None]] = field(default_factory=list)
     #: Each tab's ``apply()``; Settings' Save runs them all.
@@ -444,10 +441,6 @@ class GuiContext:
         """Write every tab's options into the picked config."""
         for save in self.config_savers:
             save()
-
-    def active_config(self) -> BotConfig:
-        """A fresh copy of the live config (thread-safe)."""
-        return self.config_store.snapshot()
 
     def bot_running(self) -> bool:
         """True while the bot loop thread is alive (False in --no-bot)."""
