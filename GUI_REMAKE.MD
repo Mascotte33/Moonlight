@@ -324,6 +324,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_targeting.py` passes, with tests for each mode, including that `"all"` behaves as today. Owner checks: add a creature, Save, reopen, and it is still in the list.
 
 ### T6.F1.K1 — Attack spells in the bot and the tab
+- ✅ Done in commit 9a910de.
 - What: today no bot module casts attack spells. Add one:
   - `moonlight/decision/attack_spells.py` with `AttackSpellsConfig`: `single_spell`, `aoe_spell`, `aoe_min_monsters` (default 3), `mana_reserve_percent` (default 20), `cooldown_ms` (default 2000);
   - each tick with a selected target and MP above the reserve, it casts the AoE spell when at least `aoe_min_monsters` monsters are on screen, else the single spell. Blank spell = not used. The keys come from `hotkeys`, like healing;
