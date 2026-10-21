@@ -16,8 +16,10 @@ imported and unit-tested headlessly.
 
 from __future__ import annotations
 
+import ctypes
 import re
 import shutil
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -46,11 +48,32 @@ __all__ = [
     "pick_config",
     "picked_config",
     "save_config_as",
+    "window_titles",
 ]
 
 #: Named configs live here as ``<name>.json``; ``last.txt`` holds the pick.
 CONFIGS_DIR = Path("configs")
 _NAME = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def window_titles() -> list[str]:
+    """Titles of the visible top-level windows, sorted; empty off Windows."""
+    if sys.platform != "win32":
+        return []
+    user32 = ctypes.windll.user32
+    titles: set[str] = set()
+
+    def add(hwnd: int, _lparam: int) -> bool:
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length and user32.IsWindowVisible(hwnd):
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            titles.add(buf.value)
+        return True
+
+    proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    user32.EnumWindows(proc(add), 0)
+    return sorted(titles)
 
 
 def config_names(configs_dir: str | Path = CONFIGS_DIR) -> list[str]:
@@ -252,7 +275,7 @@ def build_gui_loop(
     # call time so importing this module never pulls in mss.
     from moonlight.perception.capture import ScreenCapture
 
-    capture = ScreenCapture()
+    capture = ScreenCapture(window_title=real_config.window_title)
     return build_loop(
         real_config,
         profile,

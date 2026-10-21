@@ -167,3 +167,24 @@ def test_log_commands_switch(on: bool) -> None:
     backend.press_combo("F1")
     lines = [msg for _, _, msg in log.recent()]
     assert lines == (["input: press F1"] if on else [])
+
+
+def test_start_passes_window_title_to_capture(
+    profile_dir: Path, tmp_path: Path, state: WorldState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import moonlight.perception.capture as capture
+
+    seen: list[str] = []
+
+    class SpyCapture(capture.ScreenCapture):
+        def __init__(self, window_title: str = capture.TIBIA_WINDOW_TITLE) -> None:
+            seen.append(window_title)
+            super().__init__(window_title=window_title)
+
+    monkeypatch.setattr(capture, "ScreenCapture", SpyCapture)
+    path = _config_file(tmp_path, simulation=True)
+    replace(BotConfig.load(path), window_title="Tibia - Test").save(path)
+    build_gui_loop(
+        hardware=HardwareController(), state=state, config_path=path, profiles_dir=profile_dir
+    )
+    assert seen == ["Tibia - Test"]

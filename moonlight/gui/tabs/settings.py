@@ -19,6 +19,7 @@ from moonlight.gui.loop_factory import (
     load_real_config,
     picked_config,
     save_config_as,
+    window_titles,
 )
 from moonlight.gui.tabs.base import Option, Tab, section, write_option
 from moonlight.setup.config import ConfigError
@@ -27,6 +28,7 @@ __all__ = ["MODULE_SWITCHES", "OPTIONS", "SettingsTab"]
 
 OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
+    Option("Game window", "window_title", "dropdown"),
 ]
 MODULE_SWITCHES = [
     Option(name.capitalize(), f"{name}.enabled", "switch")
@@ -77,6 +79,19 @@ class SettingsTab(Tab):
             font=ctk.CTkFont(size=theme.SIZE_TITLE, weight="bold"),
             text_color=theme.TEXT_MUTED,
         ).pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0), before=rows[len(OPTIONS)])
+        window_row = rows[[o.field for o in OPTIONS].index("window_title")]
+        (self.menu_window,) = [
+            w for w in window_row.winfo_children() if isinstance(w, ctk.CTkOptionMenu)
+        ]
+        ctk.CTkButton(
+            window_row,
+            text="Refresh",
+            width=80,
+            command=self._refresh_windows,
+            fg_color=theme.RAISED,
+            hover_color=theme.HOVER,
+        ).pack(side="right", padx=theme.UNIT)
+        self._refresh_windows()
         for option, row in zip(self.options, rows, strict=True):
             for switch in row.winfo_children():
                 if isinstance(switch, ctk.CTkSwitch):
@@ -85,6 +100,9 @@ class SettingsTab(Tab):
             self.box_options, text="", anchor="w", text_color=theme.BLOOD
         )
         self.lbl_options.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, theme.PAD))
+
+    def _refresh_windows(self) -> None:
+        self.menu_window.configure(values=window_titles() or ["No windows found"])
 
     def _check_switch(self, field: str) -> None:
         """Flip a module switch back when the config would refuse it."""
