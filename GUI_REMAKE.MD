@@ -534,6 +534,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: pytest stays green. Owner checks: the Refill sub-tab explains how refill works.
 
 ### T5.F1.K3 — Select creatures, then Remove
+- ✅ Done in commit 4cb1c0c.
 - What: the creature list becomes a list you can click. Select one or more names (Ctrl or Shift for several), then Remove deletes them.
 - Needs: T5.F1.K1
 - Files: moonlight/gui/tabs/targeting.py, tests/unit/test_gui_options.py
