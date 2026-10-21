@@ -494,6 +494,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_options.py` passes, with a test for each plain reason. Owner checks: turn on Looting; it flips back and its row says why.
 
 ### T0.F3.K2 — Sliders: whole numbers and a typed box
+- ✅ Done in commit f12cd80.
 - What: every slider moves in whole numbers and has a box next to it to type the value. Typing and sliding keep each other in step. Covers Tick rate and the Healing values.
 - Needs: T0.F3.K1
 - Files: moonlight/gui/tabs/base.py, tests/unit/test_gui_options.py
