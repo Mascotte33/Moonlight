@@ -259,6 +259,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: pytest stays green. Owner checks: with the Arduino plugged in, Detect lists its port.
 
 ### T7.F3.K1 — Log every Arduino command
+- ✅ Done in commit 4218e1e.
 - What: add `BotConfig.log_commands: bool = False` and a switch for it in Hardware. When it is on, Start wraps the input backend so every command it sends goes to the event log (`ctx.log`) as one line.
 - Needs: T7.F1.K1
 - Files: moonlight/setup/config.py, moonlight/gui/loop_factory.py (`make_backend`), moonlight/gui/tabs/hardware.py, tests/unit/test_loop_factory.py
