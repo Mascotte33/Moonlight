@@ -40,7 +40,7 @@ bot) and **look like** [Tibiaeye](https://github.com/GGotha/tibiaeye)'s GUI.
    - Live updates go in `on_poll()`.
    - Writing to the config goes in `apply()`.
 3. **Named configs.** Settings has a dropdown of the saved configs in `configs/`
-   and a **Save as** button that saves the current values under a new name.
+   and **New**, **Save** and **Delete** buttons (T0.F1.K5).
    Apply writes the picked config at once. Start runs the picked config. The
    GUI remembers the last pick.
 4. **Changes apply on Start.** The bot reads its config when it starts. To use
@@ -121,6 +121,13 @@ Write every task as one block, so an agent can do it with no other context:
 - Don't touch: the tab files.
 - Done when: pytest stays green. Owner checks: every tab opens from the sidebar; the active one is highlighted.
 
+### S.F1.K2 — Blue hover on sidebar entries
+- What: a hovered, not-selected sidebar entry turns soft blue `NAV_HOVER` (`#2a3d5e`), weaker than the selected entry's `MANA`. It replaces the unused `NAV_ACTIVE`.
+- Needs: S.F1.K1
+- Files: moonlight/gui/theme.py, moonlight/gui/app.py (`select_tab` only), GUI_REMAKE.MD (Colors table)
+- Don't touch: the tab files.
+- Done when: pytest stays green. Owner checks: hovering a not-selected sidebar entry shows a soft blue; the selected entry stays the stronger blue.
+
 ### S.F2.K1 — Top bar
 - ✅ Done in commit 3df15fc.
 - What: one bar pinned to the top of the window, across its full width (above the sidebar too): HP bar + %, MP bar + %, state dot + text (Running / Paused / Stopped), and ▶ Start / ⏸ Pause / ■ Stop icon buttons. It belongs to the window, not to a tab, so it never changes or scrolls away. Put the text formatting in a plain function so it can be tested.
@@ -193,6 +200,16 @@ Write every task as one block, so an agent can do it with no other context:
 - Don't touch: `tools/check_setup.py` (it already takes `--config configs/<name>.json`).
 - Done when: `pytest tests/unit/test_gui_configs.py` passes, with tests that Save as writes the named file, a bad name is refused, the dropdown lists the files, the last pick is restored, and the first run creates `configs/default.json`. Owner checks: Save as a new name, pick it in the dropdown, change a value, Apply, Stop then Start, and the bot uses the new value.
 - ✅ Done in commit 6f584d9. The owner check waits until a tab uses options (the tab tasks) and calibration lets Start run.
+
+### T0.F1.K5 — Config buttons: New, Save, Delete
+- What: in Settings, next to the config dropdown:
+  - **Save as** becomes **New**, with the same behaviour;
+  - **Save** writes every tab's current option values into the picked config (each tab's `apply()`);
+  - **Delete** asks, then deletes the picked config and picks the first one left. The only config left can't be deleted.
+- Needs: T0.F1.K3
+- Files: moonlight/gui/tabs/settings.py, moonlight/gui/state_bridge.py, moonlight/gui/loop_factory.py, moonlight/gui/tabs/base.py, tests/unit/test_gui_configs.py
+- Don't touch: the other tab files.
+- Done when: `pytest tests/unit/test_gui_configs.py` passes, with tests that Delete removes the file and picks another, the only config can't be deleted, and Save runs every tab's `apply()`. Owner checks: New makes a config; Delete asks, then removes it from the dropdown.
 
 #### Phase 3: Tabs
 
