@@ -296,6 +296,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_options.py` passes, with tests that switching looting off and on keeps its values, and that cavebot with no route is refused. Owner checks: turn Looting off, Save, reopen, and it is still off.
 
 ### T2.F3.K1 — Window picker
+- ✅ Done in commit d6541a2.
 - What: add `BotConfig.window_title: str` (default: the capture's `TIBIA_WINDOW_TITLE`). Start passes it to `ScreenCapture` (`loop_factory.py`). Settings gets a dropdown of the titles of open windows plus **Refresh**. The titles come from `EnumWindows` via `ctypes` on Windows, and the list is empty elsewhere. No new dependency.
 - Needs: T2.F2.K1
 - Files: moonlight/setup/config.py, moonlight/gui/loop_factory.py, moonlight/gui/tabs/settings.py, tests/unit/test_config.py, tests/unit/test_loop_factory.py
