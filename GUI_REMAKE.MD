@@ -475,6 +475,94 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Don't touch: moonlight/setup/config.py.
 - Done when: pytest stays green and `grep -rn "config_bridge\|gui.routes\|config_store" moonlight tests` finds nothing. Owner checks: every tab opens.
 
+#### Phase 3 corrections (owner feedback on PR #5, see PHASE3_CORRECTIONS.MD)
+
+### T2.F4.K2 — One switch per module
+- What: Settings › Modules owns every `<module>.enabled` switch and adds Attack spells. The Healing, Targeting, Cavebot (Cavebot, Looting, Refill) and Spell attack tabs drop their own switch. Two switches for one module meant the last tab saved won, so Healing and Targeting came back on.
+- Needs: T2.F4.K1
+- Files: moonlight/gui/tabs/settings.py, healing.py, targeting.py, cavebot.py, spell_attack.py, tests/unit/test_gui_options.py
+- Don't touch: moonlight/setup/config.py.
+- Done when: `pytest tests/unit/test_gui_options.py` passes, with a test that no config field is shown by two tabs. Owner checks: turn Healing and Targeting off, Save, reopen the GUI, and both are still off.
+
+### T2.F4.K3 — Modules explained, and why a switch stays off
+- What: one line under **Modules** says what the switches do. When a switch can't turn on, the reason shows in that switch's row in plain words (Cavebot needs a route; Looting, Refill and Buffs need a reader the bot doesn't have yet; Refill needs Cavebot and Looting; a spell needs a hotkey).
+- Needs: T2.F4.K2
+- Files: moonlight/gui/tabs/settings.py, tests/unit/test_gui_options.py
+- Don't touch: moonlight/setup/config.py.
+- Done when: `pytest tests/unit/test_gui_options.py` passes, with a test for each plain reason. Owner checks: turn on Looting; it flips back and its row says why.
+
+### T0.F3.K2 — Sliders: whole numbers and a typed box
+- What: every slider moves in whole numbers and has a box next to it to type the value. Typing and sliding keep each other in step. Covers Tick rate and the Healing values.
+- Needs: T0.F3.K1
+- Files: moonlight/gui/tabs/base.py, tests/unit/test_gui_options.py
+- Don't touch: the tab files.
+- Done when: `pytest tests/unit/test_gui_options.py` passes, with a test that a typed value is read back as a whole number. Owner checks: type 25 as the tick rate, Save, reopen, and it is 25.
+
+### T4.F1.K2 — Healing grouped
+- What: three groups, each an HP % (Cure has none) with its spell and hotkey just under it: Emergency, Normal, Cure. Mana and cooldown go in their own group.
+- Needs: T4.F1.K1
+- Files: moonlight/gui/tabs/healing.py, tests/unit/test_gui_healing.py
+- Don't touch: moonlight/decision/healing.py.
+- Done when: `pytest tests/unit/test_gui_healing.py` passes. Owner checks: Emergency HP % sits right above the emergency spell and hotkey.
+
+### T1.F3.K2 — Current task stands out
+- What: Current task moves to the top of the Dashboard in a large font, above the stat cards.
+- Needs: T1.F3.K1
+- Files: moonlight/gui/tabs/dashboard.py
+- Don't touch: other tabs.
+- Done when: pytest stays green. Owner checks: Current task is the first thing on the Dashboard.
+
+### T3.F8.K2 — Drop Max items per corpse
+- What: remove the slider from the Loot sub-tab. The bot loots with one hotkey and never reads `looting.max_items_per_loot`. The config field stays, so older config files still load.
+- Needs: T3.F8.K1
+- Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
+- Don't touch: moonlight/decision/looting.py.
+- Done when: pytest stays green. Owner checks: the Loot sub-tab has no Max items per corpse.
+
+### T3.F7.K2 — Refill explained
+- What: a short text at the top of the Refill sub-tab: at the trigger cap the bot walks the refill route to its `storage` label, deposits until the stop cap, then walks to the `farming` label.
+- Needs: T3.F7.K1
+- Files: moonlight/gui/tabs/cavebot.py
+- Don't touch: moonlight/decision/refill.py.
+- Done when: pytest stays green. Owner checks: the Refill sub-tab explains how refill works.
+
+### T5.F1.K3 — Select creatures, then Remove
+- What: the creature list becomes a list you can click. Select one or more names (Ctrl or Shift for several), then Remove deletes them.
+- Needs: T5.F1.K1
+- Files: moonlight/gui/tabs/targeting.py, tests/unit/test_gui_options.py
+- Don't touch: moonlight/decision/targeting.py.
+- Done when: pytest stays green. Owner checks: add three creatures, select two, Remove, Save, reopen, and one is left.
+
+### T5.F4.K1 — Attack spells in Targeting
+- What: the Spell attack tab's options move into the Targeting tab as an **Attack spells** section. The Spell attack tab is removed.
+- Needs: T6.F1.K1, T2.F4.K2
+- Files: moonlight/gui/tabs/targeting.py, spell_attack.py, tabs/__init__.py, moonlight/gui/app.py, tests/unit/test_attack_spells.py
+- Don't touch: moonlight/decision/attack_spells.py.
+- Done when: pytest stays green. Owner checks: Targeting shows Attack spells; their values are kept after Save and reopening.
+
+### T3.F9.K1 — Route editor in Cavebot (Recorder merged)
+- What: the Recorder moves into Cavebot's Route sub-tab as one route editor. Picking a route loads it into the editor. Add waypoint (any bot action, at the typed X, Y, Z or the live position), Undo, Clear, recording with auto-add and F-key hotkeys, and Save route all live there. "Add current position" becomes Add waypoint with X, Y, Z blank. The waypoint line ("Not running") and every message sit above the table, so they are always in view. With no routes, the dropdown area says to record one. The Recorder tab is removed.
+- Needs: T8.F4.K1, T3.F6.K1
+- Files: moonlight/gui/tabs/cavebot.py, recorder.py, tabs/__init__.py, moonlight/gui/app.py, tests/unit/test_gui_cavebot.py, tests/unit/test_gui_recorder.py
+- Don't touch: moonlight/decision/cavebot.py.
+- Done when: pytest stays green, with the recorder tests kept. Owner checks: with no route, press Add waypoint and a message says why. Type X, Y, Z, add two waypoints, name and save the route, and it shows in the route dropdown. "Not running" shows above the table.
+
+#### Phase 4: bot features asked for in Phase 3
+
+These need bot code first. Each gets its GUI part in the same task.
+
+### T4.F2.K1 — Potion healing
+- What: HP potion and MP potion, each with a hotkey and a % to use it at, in the bot's healing module and in the Healing tab.
+- Files: moonlight/decision/healing.py, moonlight/gui/tabs/healing.py, their tests
+
+### T3.F10.K1 — Node, stand and lure waypoints
+- What: new cavebot actions. Node: reached within a few tiles. Stand: reached only on the exact tile. Lure: walk without attacking. They show in the route editor's action list.
+- Files: moonlight/decision/cavebot.py, the targeting gate in moonlight/bot/loop.py, moonlight/gui/tabs/recorder.py, their tests
+
+### T6.F2.K1 — Attack spell per creature
+- What: each creature in the Targeting list can have its own attack spell, plus a **Use for all monsters** spell for the rest.
+- Files: moonlight/decision/attack_spells.py, moonlight/gui/tabs/targeting.py, their tests
+
 #### Not planned yet
 
 These need bot features that don't exist. They get tasks when the bot can do them:
