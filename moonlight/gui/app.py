@@ -33,7 +33,6 @@ from moonlight.gui.tabs.dashboard import DashboardTab
 from moonlight.gui.tabs.diagnostics import DiagnosticsTab
 from moonlight.gui.tabs.hardware import HardwareTab
 from moonlight.gui.tabs.healing import HealingTab
-from moonlight.gui.tabs.recorder import RecorderTab
 from moonlight.gui.tabs.settings import SettingsTab
 from moonlight.gui.tabs.status import StatusTab
 from moonlight.gui.tabs.targeting import TargetingTab
@@ -58,7 +57,6 @@ TAB_ORDER = (
     HealingTab,
     TargetingTab,
     HardwareTab,
-    RecorderTab,
     StatusTab,
     DiagnosticsTab,
 )
