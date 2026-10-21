@@ -24,6 +24,7 @@ from moonlight.gui.state_bridge import (
     GuiContext,
     HardwareController,
     LogFeed,
+    topbar_text,
 )
 from moonlight.gui.tabs.base import Tab
 from moonlight.gui.tabs.cavebot import CavebotTab
@@ -41,6 +42,13 @@ from moonlight.gui.tabs.targeting import TargetingTab
 POLL_MS = 100
 
 SIDEBAR_WIDTH = 200
+
+#: Top-bar state dot color per state text.
+STATE_COLORS = {
+    "Running": theme.LIFE,
+    "Paused": theme.AMBER,
+    "Stopped": theme.TEXT_MUTED,
+}
 
 #: The ten tabs in display order.
 TAB_ORDER = (
@@ -91,7 +99,7 @@ class GuiApp:
         self.root.geometry("1100x740")
         self.root.minsize(880, 580)
 
-        self._build_header()
+        self._build_topbar()
 
         body = ctk.CTkFrame(self.root, fg_color="transparent", corner_radius=0)
         body.pack(fill="both", expand=True, pady=(6, 0))
@@ -157,34 +165,59 @@ class GuiApp:
 
     # -- header / bot control ----------------------------------------------
 
-    def _build_header(self) -> None:
-        header = ctk.CTkFrame(self.root, corner_radius=0, fg_color="transparent")
-        header.pack(fill="x", padx=10, pady=(10, 0))
-        self.lbl_bot = ctk.CTkLabel(
-            header, text="bot: stopped", font=ctk.CTkFont(size=theme.SIZE_BODY)
+    def _build_topbar(self) -> None:
+        bar = ctk.CTkFrame(self.root, corner_radius=0, fg_color=theme.PANEL)
+        bar.pack(fill="x")
+        ctk.CTkFrame(self.root, height=1, fg_color=theme.RAISED, corner_radius=0).pack(
+            fill="x"
         )
-        self.lbl_bot.pack(side="left", padx=12)
-        self.btn_stop = ctk.CTkButton(
-            header,
-            text="Stop bot",
-            command=self.stop_bot,
-            width=110,
-            fg_color=theme.BLOOD,
-            hover_color=theme.BLOOD_HOVER,
-            text_color=theme.NIGHT,
-            state="disabled",
+        mono = ctk.CTkFont(family=theme.MONO, size=theme.SIZE_BODY)
+        pad = theme.PAD
+
+        def vital(name: str, color: str) -> tuple[ctk.CTkProgressBar, ctk.CTkLabel]:
+            ctk.CTkLabel(bar, text=name, font=mono).pack(
+                side="left", padx=(pad, theme.UNIT), pady=pad
+            )
+            progress = ctk.CTkProgressBar(bar, width=120, progress_color=color)
+            progress.set(0)
+            progress.pack(side="left")
+            pct = ctk.CTkLabel(bar, text="0%", width=40, font=mono)
+            pct.pack(side="left", padx=(theme.UNIT, theme.GAP))
+            return progress, pct
+
+        self.bar_hp, self.lbl_hp = vital("HP", theme.LIFE)
+        self.bar_mp, self.lbl_mp = vital("MP", theme.MANA)
+
+        buttons = (
+            ("■ Stop", self.stop_bot, theme.BLOOD, theme.BLOOD_HOVER),
+            ("⏸ Pause", self.pause_bot, theme.AMBER, theme.AMBER_HOVER),
+            ("▶ Start", self.start_bot, theme.LIFE, theme.LIFE_HOVER),
         )
-        self.btn_stop.pack(side="right", padx=(6, 6))
-        self.btn_start = ctk.CTkButton(
-            header,
-            text="Start bot",
-            command=self.start_bot,
-            width=110,
-            fg_color=theme.LIFE,
-            hover_color=theme.LIFE_HOVER,
-            text_color=theme.NIGHT,
-        )
-        self.btn_start.pack(side="right")
+        made: list[ctk.CTkButton] = []
+        for text, command, color, hover in buttons:
+            btn = ctk.CTkButton(
+                bar,
+                text=text,
+                command=command,
+                width=90,
+                fg_color=color,
+                hover_color=hover,
+                text_color=theme.NIGHT,
+            )
+            btn.pack(side="right", padx=(0, theme.UNIT if made else theme.GAP))
+            made.append(btn)
+        self.btn_stop, self.btn_pause, self.btn_start = made
+        self.lbl_state = ctk.CTkLabel(bar, text="Stopped", font=mono)
+        self.lbl_state.pack(side="right", padx=(theme.UNIT, pad))
+        self.lbl_dot = ctk.CTkLabel(bar, text="●", text_color=theme.TEXT_MUTED)
+        self.lbl_dot.pack(side="right")
+
+    def pause_bot(self) -> None:
+        """Pause = the controller's stop(), same as Settings' pause."""
+        ctrl = self.ctx.controller
+        if ctrl is not None:
+            ctrl.stop()
+        self._update_topbar()
 
     def start_bot(self) -> None:
         """Start the real bot loop through :mod:`moonlight.bot.wiring` (F-13).
@@ -211,22 +244,31 @@ class GuiApp:
             return
         self.ctx.controller = BotController(loop, log=self.log)
         self.ctx.controller.start()
-        self._update_header()
+        self._update_topbar()
 
     def stop_bot(self) -> None:
         """Stop the bot loop thread (idempotent)."""
         ctrl = self.ctx.controller
         if ctrl is not None:
             ctrl.stop()
-        self._update_header()
+        self._update_topbar()
 
-    def _update_header(self) -> None:
+    def _update_topbar(self) -> None:
+        ctrl = self.ctx.controller
         running = self.ctx.bot_running()
-        self.lbl_bot.configure(
-            text="bot: running" if running else "bot: stopped"
+        snap = self.ctx.state.snapshot()
+        hp, mp, state = topbar_text(
+            snap, running, ctrl.state if ctrl is not None else None
         )
+        self.bar_hp.set(min(max(snap.hp_percent / 100, 0.0), 1.0))
+        self.bar_mp.set(min(max(snap.mp_percent / 100, 0.0), 1.0))
+        self.lbl_hp.configure(text=hp)
+        self.lbl_mp.configure(text=mp)
+        self.lbl_state.configure(text=state)
+        self.lbl_dot.configure(text_color=STATE_COLORS[state])
         self.btn_start.configure(state="disabled" if running else "normal")
-        self.btn_stop.configure(state="normal" if running else "disabled")
+        for btn in (self.btn_pause, self.btn_stop):
+            btn.configure(state="normal" if running else "disabled")
 
     # -- poll loop -----------------------------------------------------------
 
@@ -236,7 +278,7 @@ class GuiApp:
             snap = self.ctx.state.snapshot()
             for tab in self.tabs.values():
                 tab.on_poll(snap)
-            self._update_header()
+            self._update_topbar()
         except Exception as exc:  # noqa: BLE001 - the poller must survive
             self.log.warn(f"poll error: {exc!r}")
         finally:

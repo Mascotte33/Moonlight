@@ -46,7 +46,24 @@ __all__ = [
     "HardwareController",
     "LogFeed",
     "StatePoller",
+    "topbar_text",
 ]
+
+
+def topbar_text(
+    snap: WorldState, running: bool, bot_state: Any = None
+) -> tuple[str, str, str]:
+    """Top-bar texts: ``(hp "73%", mp "40%", state "Running"/"Paused"/"Stopped")``.
+
+    *bot_state* is the loop's ``BotState`` (a ``StrEnum``; compared by value).
+    """
+    if not running:
+        state = "Stopped"
+    elif bot_state == "paused":
+        state = "Paused"
+    else:
+        state = "Running"
+    return f"{snap.hp_percent:.0f}%", f"{snap.mp_percent:.0f}%", state
 
 
 # ---------------------------------------------------------------------------
