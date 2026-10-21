@@ -115,3 +115,11 @@ def test_blank_deposit_hotkey_writes_none(tmp_path: Path) -> None:
     assert cfg.off["refill"].deposit_hotkey == "F5"
     cfg = apply_cavebot(cfg, {"refill.deposit_hotkey": ""})
     assert cfg.off["refill"].deposit_hotkey is None
+
+
+def test_loot_values_are_written(tmp_path: Path) -> None:
+    cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
+    cfg = apply_cavebot(cfg, {"looting.max_items_per_loot": 12.0,
+                              "looting.move_all_hotkey": "", "looting.min_cap_to_loot": "5"})
+    kept = cfg.off["looting"]
+    assert (kept.max_items_per_loot, kept.move_all_hotkey, kept.min_cap_to_loot) == (12, None, 5.0)
