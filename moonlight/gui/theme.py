@@ -22,7 +22,6 @@ __all__ = [
     "MANA",
     "MANA_HOVER",
     "MONO",
-    "NAV_HOVER",
     "NIGHT",
     "PAD",
     "PANEL",
@@ -45,8 +44,7 @@ __all__ = [
 NIGHT = "#0d1117"
 PANEL = "#171b22"
 RAISED = "#22262c"
-HOVER = "#2c313a"
-NAV_HOVER = "#2a3d5e"
+HOVER = "#2a3d5e"
 TEXT = "#e7edf2"
 TEXT_DIM = "#b6b8bd"
 TEXT_MUTED = "#7c8186"

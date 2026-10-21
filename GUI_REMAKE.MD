@@ -154,6 +154,13 @@ Write every task as one block, so an agent can do it with no other context:
 - Don't touch: the tab files (their buttons get it in their tab tasks).
 - Done when: `pytest tests/unit/test_gui_theme.py` passes. Owner checks: with `--no-bot`, the top bar's Pause and Stop are grey, and they get their color back when the bot runs.
 
+### S.F6.K3 — One soft blue hover for dark controls
+- What: `HOVER` becomes the soft blue `#2a3d5e`, so every dark button and dropdown hovers the same blue as the sidebar. `NAV_HOVER` goes away; the sidebar uses `HOVER`. Colored buttons keep their own `*_HOVER`.
+- Needs: S.F1.K2
+- Files: moonlight/gui/theme.py, moonlight/gui/app.py (`select_tab` only), GUI_REMAKE.MD (Colors table)
+- Don't touch: the tab files.
+- Done when: pytest stays green and nothing uses `NAV_HOVER`. Owner checks: New, Save and the config dropdown hover the same soft blue as the sidebar.
+
 #### Phase 2: Config (needed by every tab task)
 
 ### T0.F1.K1 — Config can save
@@ -274,7 +281,7 @@ the same everywhere.
 | `NIGHT` | `#0d1117` | window and sidebar background |
 | `PANEL` | `#171b22` | cards |
 | `RAISED` | `#22262c` | inputs, card borders, hovered rows |
-| `NAV_HOVER` | `#2a3d5e` | hovered sidebar entry (soft blue; the selected entry is `MANA`) |
+| `HOVER` | `#2a3d5e` | hovered dark buttons, dropdowns and sidebar entries (soft blue; the selected entry is `MANA`) |
 | `TEXT` | `#e7edf2` | values, headings |
 | `TEXT_DIM` | `#b6b8bd` | labels |
 | `TEXT_MUTED` | `#7c8186` | section titles, hints, disabled |
