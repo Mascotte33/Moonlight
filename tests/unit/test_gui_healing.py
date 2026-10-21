@@ -14,12 +14,14 @@ VALUES: dict[str, object] = {
     "healing.heal_cooldown_ms": 750.0,
     "healing.emergency_spell": "exura vita",
     "healing.normal_spell": "exura",
-    "healing.cure_spell": "exana pox",
+    "healing.cure_poison": "exana pox",
+    "healing.cure_burn": "",
 }
 COMBOS = {
     "healing.emergency_spell": "F3",
     "healing.normal_spell": "F2",
-    "healing.cure_spell": "F4",
+    "healing.cure_poison": "F4",
+    "healing.cure_burn": "F5",
 }
 
 
@@ -50,4 +52,22 @@ def test_each_spell_sits_under_its_hp_percent() -> None:
     fields = {t: [o.field for o in g] for t, g in GROUPS}
     assert fields["Emergency"] == ["healing.emergency_hp_percent", "healing.emergency_spell"]
     assert fields["Normal"] == ["healing.normal_hp_percent", "healing.normal_spell"]
-    assert fields["Cure"] == ["healing.cure_spell"]
+    assert len(fields["Cure"]) == 6
+
+
+def test_each_condition_has_its_own_cure() -> None:
+    cfg = apply_healing(BotConfig.default(), VALUES, COMBOS)
+    assert cfg.healing is not None
+    # The blank burn spell is not cured, and its hotkey is not saved.
+    assert cfg.healing.cure_spells() == {"poison": "exana pox"}
+
+
+def test_old_single_cure_spell_still_loads() -> None:
+    data = BotConfig.default().to_dict()
+    heal = data["modules"]["healing"]
+    for c in ("poison", "burn"):
+        del heal[f"cure_{c}"]
+    heal.update(cure_spell="exura gran", cure_conditions=["poison", "burn", "drain"])
+    healing = BotConfig.from_dict(data).healing
+    assert healing is not None
+    assert healing.cure_spells() == {"poison": "exura gran", "burn": "exura gran"}

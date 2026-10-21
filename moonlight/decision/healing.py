@@ -4,8 +4,8 @@ Decides when and how to heal based on :class:`moonlight.bot.state.WorldState`:
 
 * **EMERGENCY** (loop priority 3): HP at or below the emergency threshold
   -> cast the emergency spell immediately.
-* **CURE**: a curable condition (paralyze, poison, ...) is active ->
-  cast the cure spell.
+* **CURE**: a condition in :data:`CURES` is active and has a spell ->
+  cast that condition's own cure spell.
 * **NORMAL** (loop priority 4): HP at or below the normal threshold ->
   cast the normal spell when convenient.
 
@@ -47,6 +47,7 @@ from moonlight.bot.state import WorldState
 from moonlight.hardware.input import InputBackend
 
 __all__ = [
+    "CURES",
     "EMERGENCY_COOLDOWN_KEY",
     "NORMAL_COOLDOWN_KEY",
     "HealType",
@@ -77,6 +78,10 @@ def cure_cooldown_key(condition: str) -> str:
     return f"cure:{condition}"
 
 
+#: Curable conditions (``WorldState.buffs`` names), highest priority first.
+CURES = ("paralyze", "poison", "burn", "energy", "curse", "bleed")
+
+
 @dataclass(frozen=True)
 class HealingConfig:
     """Tunable healing parameters (defaults are the T14 spec values)."""
@@ -93,17 +98,19 @@ class HealingConfig:
     normal_spell: str = "exura"
     """Spell spoken for normal heals."""
 
-    cure_spell: str = "exura gran"
-    """Spell spoken to cure conditions."""
+    cure_paralyze: str = ""
+    cure_poison: str = ""
+    cure_burn: str = ""
+    cure_energy: str = ""
+    cure_curse: str = ""
+    cure_bleed: str = ""
+    """Each condition's cure spell (``cure_<condition>``); blank = not cured."""
 
     heal_cooldown_ms: int = 500
     """Minimum interval in ms between two actions sharing one cooldown key."""
 
     mana_threshold: float = 20.0
     """No spell is cast while MP is below this % (0.0 = unknown MP passes)."""
-
-    cure_conditions: tuple[str, ...] = ("paralyze", "poison", "burn", "drain")
-    """Condition names (from ``WorldState.buffs``) to cure, highest priority first."""
 
     def validate(self) -> HealingConfig:
         """Check invariants and return self (fail fast, loop-style validation).
@@ -123,22 +130,16 @@ class HealingConfig:
             )
         if self.heal_cooldown_ms <= 0:
             raise ValueError("heal_cooldown_ms must be > 0")
-        for name in ("emergency_spell", "normal_spell", "cure_spell"):
+        for name in ("emergency_spell", "normal_spell"):
             spell = getattr(self, name).strip()
             if not spell:
                 raise ValueError(f"{name} must be a non-empty spell")
-        seen: set[str] = set()
-        for condition in self.cure_conditions:
-            if not condition or any(ch.isspace() for ch in condition):
-                raise ValueError(
-                    f"cure_conditions entry must be non-empty without whitespace, "
-                    f"got {condition!r}"
-                )
-            key = condition.lower()
-            if key in seen:
-                raise ValueError(f"duplicate cure condition: {condition}")
-            seen.add(key)
         return self
+
+    def cure_spells(self) -> dict[str, str]:
+        """Condition -> cure spell, for conditions that have one, in :data:`CURES` order."""
+        spells = {c: getattr(self, f"cure_{c}").strip() for c in CURES}
+        return {c: s for c, s in spells.items() if s}
 
 
 @dataclass(frozen=True)
@@ -284,14 +285,14 @@ class HealingDecision:
     def _cure_candidates(self, state: WorldState) -> list[HealingAction]:
         """Cure actions for active conditions, in config priority order."""
         actions: list[HealingAction] = []
-        for condition in self.config.cure_conditions:
+        for condition, spell in self.config.cure_spells().items():
             remaining = self._condition_remaining(state, condition)
             if remaining is None:
                 continue
             actions.append(
                 HealingAction(
                     type=HealType.CURE,
-                    spell=self.config.cure_spell,
+                    spell=spell,
                     reason=(
                         f"active condition: {condition} "
                         f"({remaining:.1f}s remaining)"

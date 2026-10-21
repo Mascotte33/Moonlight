@@ -68,7 +68,7 @@ from moonlight.decision.alarms import AlarmConfig
 from moonlight.decision.attack_spells import AttackSpellsConfig
 from moonlight.decision.buffs import BuffManagerConfig
 from moonlight.decision.cavebot import Route, RouteError, RouteFileLoader
-from moonlight.decision.healing import HealingConfig
+from moonlight.decision.healing import CURES, HealingConfig
 from moonlight.decision.looting import LootingConfig
 from moonlight.decision.refill import RefillConfig
 from moonlight.decision.targeting import TargetingConfig
@@ -263,6 +263,8 @@ class BotConfig:
                 raise ConfigError(f"modules.{name}.enabled must be true or false")
             if not enabled and not section:
                 continue
+            if name == "healing":
+                _old_cure(section)
             if name == "cavebot":
                 value = _cavebot(section, routes_dir)
             else:
@@ -338,9 +340,7 @@ class BotConfig:
         spells: list[str] = []
         if self.healing is not None:
             h = self.healing
-            spells += [h.emergency_spell, h.normal_spell]
-            if h.cure_conditions:
-                spells.append(h.cure_spell)
+            spells += [h.emergency_spell, h.normal_spell, *h.cure_spells().values()]
         if self.attack_spells is not None:
             a = self.attack_spells
             spells += [s for s in (a.single_spell, a.aoe_spell) if s]
@@ -408,6 +408,14 @@ def _section(cfg: Any) -> dict[str, Any]:
             "start_index": cfg.start_index,
         }
     return asdict(cfg)
+
+
+def _old_cure(section: dict[str, Any]) -> None:
+    """Turn a pre-T4.F1.K3 ``cure_spell`` + ``cure_conditions`` into ``cure_<condition>``."""
+    spell = section.pop("cure_spell", None)
+    for condition in section.pop("cure_conditions", None) or ():
+        if spell and condition in CURES:
+            section.setdefault(f"cure_{condition}", spell)
 
 
 def _cavebot(section: dict[str, Any], routes_dir: Path) -> CavebotConfig:
