@@ -510,6 +510,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_healing.py` passes. Owner checks: Emergency HP % sits right above the emergency spell and hotkey.
 
 ### T1.F3.K2 — Current task stands out
+- ✅ Done in commit 1524124.
 - What: Current task moves to the top of the Dashboard in a large font, above the stat cards.
 - Needs: T1.F3.K1
 - Files: moonlight/gui/tabs/dashboard.py
