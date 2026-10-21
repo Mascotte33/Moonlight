@@ -112,3 +112,10 @@ def test_max_monsters_writes_targeting_field() -> None:
     assert cfg.targeting is not None and cfg.targeting.max_monsters_to_engage == 7
     with pytest.raises(ConfigError):
         write_option(cfg, opt, 11)
+
+
+def test_off_module_without_kept_values_shows_defaults() -> None:
+    cfg = BotConfig.default()
+    assert cfg.attack_spells is None and "attack_spells" not in cfg.off
+    assert read_option(cfg, "attack_spells.aoe_min_monsters") == 3
+    assert read_option(cfg, "cavebot.rope_hotkey") is None

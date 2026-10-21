@@ -97,7 +97,8 @@ def _cast(value: object, hint: Any, field: str) -> object:
 def read_option(cfg: BotConfig, field: str) -> object:
     """The value *field* has in *cfg*, using a turned-off module's kept values.
 
-    ``None`` when an off module has no kept values.
+    An off module with no kept values shows its defaults; ``None`` when it
+    has none (cavebot needs a route).
     """
     head, *rest = field.split(".")
     if head in MODULES and rest == ["enabled"]:
@@ -107,7 +108,10 @@ def read_option(cfg: BotConfig, field: str) -> object:
     if head in MODULES:
         node = getattr(cfg, head) or cfg.off.get(head)
         if node is None:
-            return None
+            try:
+                node = _field_type([head])()
+            except TypeError:
+                return None
     else:
         rest = [head, *rest]
     for name in rest:

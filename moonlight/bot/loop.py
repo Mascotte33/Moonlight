@@ -102,6 +102,7 @@ from moonlight.hardware.input import InputBackend
 
 if TYPE_CHECKING:
     from moonlight.decision.alarms import AlarmAction, AlarmDecision
+    from moonlight.decision.attack_spells import AttackSpells
     from moonlight.decision.buffs import BuffManager
     from moonlight.decision.cavebot import Cavebot
     from moonlight.decision.healing import HealingDecision
@@ -194,6 +195,7 @@ class DecisionModules:
 
     healing: HealingDecision | None = None
     targeting: TargetingDecision | None = None
+    attack_spells: AttackSpells | None = None
     buffs: BuffManager | None = None
     alarms: AlarmDecision | None = None
     cavebot: Cavebot | None = None
@@ -715,6 +717,9 @@ class GameLoop:
         # ponytail: the attack key takes the client's next target, not
         # necessarily targeting's target_name; click the battle-list row
         # once picking a specific monster matters.
+        spells = self.modules.attack_spells
+        if spells is not None and self._send(snap, lambda: spells.cast(snap, self.input)):
+            return
         selected = snap.selected_target
         if selected is None and self._target is None:
             return  # decided from a stale snapshot; skip this tick

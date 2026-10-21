@@ -1,116 +1,102 @@
-"""Spell attack tab — AoE vs single-target spell groups + mana reserve (T39).
+"""Spell attack tab: attack spells, their hotkeys and the mana reserve (T6.F1.K1).
 
-Edits :class:`~moonlight.gui.config_bridge.SpellAttackParams`. These are part
-of the targeting/spell configuration and are consumed by the spell-attack
-decision module once it lands (T24); the GUI edits + persists them now.
-Validation reuses the params' own ``validate()``.
+Same layout as the Healing tab: ``OPTIONS`` plus a hotkey box next to each
+spell, saved into ``hotkeys`` by :func:`apply_attack_spells`.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import customtkinter as ctk
 
-from moonlight.gui.config_bridge import BotConfig, SpellAttackParams
-from moonlight.gui.tabs.base import Tab, section
+from moonlight.gui import theme
+from moonlight.gui.loop_factory import load_real_config, picked_config
+from moonlight.gui.tabs.base import Option, Tab, read_option, section, write_option
+from moonlight.setup.config import BotConfig, ConfigError
 
-if TYPE_CHECKING:  # pragma: no cover
-    from moonlight.bot.state import WorldState
+__all__ = ["OPTIONS", "SPELLS", "SpellAttackTab", "apply_attack_spells"]
 
-__all__ = ["SpellAttackTab"]
+OPTIONS = [
+    Option("Attack spells", "attack_spells.enabled", "switch"),
+    Option("Single-target spell", "attack_spells.single_spell", "entry"),
+    Option("AoE spell", "attack_spells.aoe_spell", "entry"),
+    Option("AoE from monsters", "attack_spells.aoe_min_monsters", "slider", min=1, max=10),
+    Option("Keep mana above %", "attack_spells.mana_reserve_percent", "slider", min=0, max=100),
+    Option("Cooldown (ms)", "attack_spells.cooldown_ms", "slider", min=0, max=5000),
+]
+SPELLS = [o.field for o in OPTIONS if o.field.endswith("_spell")]
+
+
+# ponytail: same shape as healing.apply_healing; share it if a third tab needs hotkeys.
+def apply_attack_spells(
+    cfg: BotConfig, values: dict[str, object], combos: dict[str, str]
+) -> BotConfig:
+    """*cfg* with the option *values* and each spell's hotkey from *combos*.
+
+    Raises:
+        ConfigError: For a refused value or a spell with no hotkey.
+    """
+    data = cfg.to_dict()
+    hotkeys = dict(data.get("hotkeys") or {})
+    for field, combo in combos.items():
+        spell = str(values[field]).strip()
+        if spell and combo.strip():
+            hotkeys[spell] = combo.strip()
+    data["hotkeys"] = hotkeys
+    cfg = BotConfig.from_dict(data)
+    for option in OPTIONS:
+        if option.field in values:
+            cfg = write_option(cfg, option, values[option.field])
+    return cfg
 
 
 class SpellAttackTab(Tab):
-    """Single-target vs AoE spell groups and the mana reserve."""
+    """Attack spells, saved into the picked config."""
 
     title = "Spell Attack"
+    options = OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
-        parent.grid_columnconfigure(0, weight=1)
-        box = section(parent, "Spell groups")
-        box.pack(fill="both", expand=True, padx=10, pady=10)
-        box_grid = ctk.CTkFrame(box, fg_color="transparent")
-        box_grid.pack(fill="both", expand=True)
-        box_grid.grid_columnconfigure(1, weight=1)
+        box = section(parent, "Attack spells")
+        box.pack(fill="x", padx=10, pady=10)
+        self.build_options(box)
+        rows = [w for w in box.winfo_children() if isinstance(w, ctk.CTkFrame)]
+        self._hotkeys: dict[str, ctk.CTkEntry] = {}
+        for option, row in zip(OPTIONS, rows, strict=True):
+            if option.field in SPELLS:
+                entry = ctk.CTkEntry(
+                    row,
+                    width=70,
+                    placeholder_text="hotkey",
+                    fg_color=theme.NIGHT,
+                    border_color=theme.RAISED,
+                )
+                entry.pack(side="right", padx=theme.UNIT)
+                self._hotkeys[option.field] = entry
+        self.lbl_msg = ctk.CTkLabel(box, text="", anchor="w", text_color=theme.BLOOD)
+        self.lbl_msg.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, theme.PAD))
+        self._fill_hotkeys(load_real_config())
 
-        self.var_single_on = ctk.BooleanVar()
-        self.var_aoe_on = ctk.BooleanVar()
-        self.var_single_combo = ctk.StringVar()
-        self.var_aoe_combo = ctk.StringVar()
-        self.var_mana = ctk.StringVar()
+    def _fill_hotkeys(self, cfg: BotConfig) -> None:
+        combos = cfg.spell_combos
+        for field, entry in self._hotkeys.items():
+            entry.delete(0, "end")
+            combo = combos.get(str(read_option(cfg, field)), "")
+            if combo:
+                entry.insert(0, combo)
 
-        self.chk_single = ctk.CTkCheckBox(
-            box_grid, text="Single-target group enabled", variable=self.var_single_on
-        )
-        self.chk_single.grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=2)
-        ctk.CTkLabel(box_grid, text="Single-target combo", anchor="w").grid(
-            row=1, column=0, sticky="w", padx=8, pady=4
-        )
-        self.ent_single = ctk.CTkEntry(box_grid, textvariable=self.var_single_combo, width=160)
-        self.ent_single.grid(row=1, column=1, sticky="w", padx=8, pady=4)
-        self.chk_aoe = ctk.CTkCheckBox(box_grid, text="AoE group enabled", variable=self.var_aoe_on)
-        self.chk_aoe.grid(row=2, column=0, columnspan=2, sticky="w", padx=8, pady=2)
-        ctk.CTkLabel(box_grid, text="AoE combo", anchor="w").grid(
-            row=3, column=0, sticky="w", padx=8, pady=4
-        )
-        self.ent_aoe = ctk.CTkEntry(box_grid, textvariable=self.var_aoe_combo, width=160)
-        self.ent_aoe.grid(row=3, column=1, sticky="w", padx=8, pady=4)
-        ctk.CTkLabel(box_grid, text="Mana reserve % (keep MP above this)", anchor="w").grid(
-            row=4, column=0, sticky="w", padx=8, pady=4
-        )
-        self.ent_mana = ctk.CTkEntry(box_grid, textvariable=self.var_mana, width=160)
-        self.ent_mana.grid(row=4, column=1, sticky="w", padx=8, pady=4)
+    def reload_options(self) -> None:
+        super().reload_options()
+        self._fill_hotkeys(load_real_config())
 
-        io_box = section(parent, "Apply / live MP")
-        io_box.pack(fill="x", padx=10, pady=(4, 10))
-        self.btn_apply = ctk.CTkButton(io_box, text="Apply + save", width=130)
-        self.btn_apply.pack(side="left", padx=(10, 4), pady=8)
-        self.lbl_msg = ctk.CTkLabel(io_box, text="", anchor="w")
-        self.lbl_msg.pack(side="left", padx=12, pady=8)
-        self.btn_apply.configure(command=self._on_apply)
-        self._load(self.ctx.active_config())
-
-    def _load(self, cfg: BotConfig) -> None:
-        s: SpellAttackParams = cfg.spells
-        self.var_single_on.set(s.single_target_enabled)
-        self.var_aoe_on.set(s.aoe_enabled)
-        self.var_single_combo.set(s.single_spell_combo)
-        self.var_aoe_combo.set(s.aoe_spell_combo)
-        self.var_mana.set(str(s.mana_reserve_percent))
-
-    def _collect(self) -> SpellAttackParams:
+    def apply(self) -> BotConfig:
+        path = picked_config()
+        values = {field: read() for field, read in self._readers.items()}
+        combos = {field: entry.get() for field, entry in self._hotkeys.items()}
         try:
-            mana = float(self.var_mana.get())
-        except ValueError as exc:
-            raise ValueError("mana reserve must be a number") from exc
-        params = SpellAttackParams(
-            single_target_enabled=bool(self.var_single_on.get()),
-            aoe_enabled=bool(self.var_aoe_on.get()),
-            single_spell_combo=self.var_single_combo.get().strip(),
-            aoe_spell_combo=self.var_aoe_combo.get().strip(),
-            mana_reserve_percent=mana,
-        )
-        params.validate()  # raises ValueError on bad values
-        return params
-
-    def _on_apply(self) -> None:
-        try:
-            params = self._collect()
-        except ValueError as exc:
-            self.lbl_msg.configure(text=f"invalid: {exc}")
-            return
-
-        def mutate(cfg: BotConfig) -> None:
-            cfg.spells = params
-
-        try:
-            self.ctx.config_store.update(mutate)
-        except ValueError as exc:
-            self.lbl_msg.configure(text=f"invalid: {exc}")
-            return
-        self.lbl_msg.configure(text="applied + saved")
-
-    def on_poll(self, snap: WorldState) -> None:
-        mp = snap.mp_percent
-        self.lbl_msg.configure(text=f"live MP {mp:.0f}%")
+            cfg = apply_attack_spells(load_real_config(path), values, combos)
+        except ConfigError as exc:
+            self.lbl_msg.configure(text=str(exc))
+            raise
+        self.lbl_msg.configure(text="")
+        cfg.save(path)
+        return cfg

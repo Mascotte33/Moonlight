@@ -55,6 +55,7 @@ logger = logging.getLogger(__name__)
 MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "healing": ("hp_bar", "mp_bar"),
     "targeting": ("battle_list",),
+    "attack_spells": ("battle_list", "mp_bar"),
     "cavebot": ("minimap", "floor_indicator", "game_grid"),
     "looting": ("loot_window",),
     "refill": ("capacity",),
@@ -295,6 +296,7 @@ def build_loop(
             (e.g. cavebot without a minimap/game_grid region).
     """
     from moonlight.decision.alarms import AlarmDecision
+    from moonlight.decision.attack_spells import AttackSpells
     from moonlight.decision.buffs import BuffManager
     from moonlight.decision.healing import HealingDecision
     from moonlight.decision.targeting import TargetingDecision
@@ -320,6 +322,8 @@ def build_loop(
             "unknown-named battle entries are treated as UNKNOWN and will "
             "NOT be auto-attacked"
         )
+    if config.attack_spells is not None:
+        m.attack_spells = AttackSpells(config.attack_spells, combos, clock=clock)
     if config.buffs is not None:
         m.buffs = BuffManager(config.buffs, spell_combos=combos, clock=clock)
     if config.alarms is not None:
