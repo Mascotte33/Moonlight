@@ -167,3 +167,11 @@ def test_typed_slider_value_is_a_whole_number(text: str, value: int) -> None:
 def test_whole_number_fits_a_float_field() -> None:
     cfg = write_option(BotConfig.default(), HP, 65)
     assert cfg.healing is not None and cfg.healing.normal_hp_percent == 65
+
+
+def test_remove_drops_the_selected_creatures() -> None:
+    from moonlight.gui.tabs.targeting import remove_creatures
+
+    names = ["Rat", "Cave Rat", "Troll"]
+    assert remove_creatures(names, (0, 2), "") == ["Cave Rat"]
+    assert remove_creatures(names, (), "troll") == ["Rat", "Cave Rat"]
