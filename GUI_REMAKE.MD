@@ -155,6 +155,7 @@ Write every task as one block, so an agent can do it with no other context:
 - Done when: `pytest tests/unit/test_gui_theme.py` passes. Owner checks: with `--no-bot`, the top bar's Pause and Stop are grey, and they get their color back when the bot runs.
 
 ### S.F6.K3 — One soft blue hover for dark controls
+- ✅ Done in commit 1afbb3b.
 - What: `HOVER` becomes the soft blue `#2a3d5e`, so every dark button and dropdown hovers the same blue as the sidebar. `NAV_HOVER` goes away; the sidebar uses `HOVER`. Colored buttons keep their own `*_HOVER`.
 - Needs: S.F1.K2
 - Files: moonlight/gui/theme.py, moonlight/gui/app.py (`select_tab` only), GUI_REMAKE.MD (Colors table)
