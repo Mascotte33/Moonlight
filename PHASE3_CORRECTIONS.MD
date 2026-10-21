@@ -49,3 +49,11 @@ Left out because they are already planned:
 - Let the user select creatures in the list, then press **Remove** on the selected ones.
 - Move the **Attack spells** section into the Targeting tab.
 - Set a different attack spell for each creature, plus a **Use for all monsters** option. Needs bot code first.
+
+## Second review
+
+### Cavebot
+- Replace the action dropdown and **Add waypoint** with one button per waypoint type (walk, rope, shovel, ladder, label, goto). A button adds that waypoint at the typed X, Y, Z, or at the bot's position when they are blank.
+
+### Healing
+- **Cure** had one spell for every condition. In Tibia each condition has its own cure. Give each condition (paralyze, poison, burning, electrified, cursed, bleeding) its own spell and hotkey. A blank spell means that condition is not cured.
