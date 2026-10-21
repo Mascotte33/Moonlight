@@ -122,6 +122,7 @@ Write every task as one block, so an agent can do it with no other context:
 - Done when: pytest stays green. Owner checks: every tab opens from the sidebar; the active one is highlighted.
 
 ### S.F1.K2 — Blue hover on sidebar entries
+- ✅ Done in commit 82dd06d.
 - What: a hovered, not-selected sidebar entry turns soft blue `NAV_HOVER` (`#2a3d5e`), weaker than the selected entry's `MANA`. It replaces the unused `NAV_ACTIVE`.
 - Needs: S.F1.K1
 - Files: moonlight/gui/theme.py, moonlight/gui/app.py (`select_tab` only), GUI_REMAKE.MD (Colors table)
