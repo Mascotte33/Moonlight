@@ -129,6 +129,8 @@ class CavebotConfig:
     route: Route
     rope_hotkey: str = "F9"
     shovel_hotkey: str = "F10"
+    #: 0-based waypoint the route starts at.
+    start_index: int = 0
 
 
 @dataclass(frozen=True)
@@ -347,6 +349,12 @@ class BotConfig:
         missing = sorted({s for s in spells if s not in self.spell_combos})
         if missing:
             raise ConfigError(f"no hotkey configured for spell(s): {missing}")
+        if self.cavebot is not None:
+            n = len(self.cavebot.route.waypoints)
+            if not 0 <= self.cavebot.start_index < n:
+                raise ConfigError(
+                    f"cavebot start waypoint {self.cavebot.start_index + 1} is outside 1..{n}"
+                )
         if self.refill is not None and (self.cavebot is None or self.looting is None):
             raise ConfigError("refill needs the cavebot and looting modules enabled")
         # F-09: unreachable gates must be honest. Looting and refill read
@@ -397,6 +405,7 @@ def _section(cfg: Any) -> dict[str, Any]:
             "route": cfg.route.name,
             "rope_hotkey": cfg.rope_hotkey,
             "shovel_hotkey": cfg.shovel_hotkey,
+            "start_index": cfg.start_index,
         }
     return asdict(cfg)
 
@@ -409,8 +418,11 @@ def _cavebot(section: dict[str, Any], routes_dir: Path) -> CavebotConfig:
         route = RouteFileLoader.load(routes_dir / f"{name}.json")
     except RouteError as exc:
         raise ConfigError(f"modules.cavebot: {exc}") from exc
-    _reject_unknown(section, {"rope_hotkey", "shovel_hotkey"}, "modules.cavebot")
-    keys = {k: _coerce(v, str, f"modules.cavebot.{k}") for k, v in section.items()}
+    _reject_unknown(section, {"rope_hotkey", "shovel_hotkey", "start_index"}, "modules.cavebot")
+    keys = {
+        k: _coerce(v, int if k == "start_index" else str, f"modules.cavebot.{k}")
+        for k, v in section.items()
+    }
     return CavebotConfig(route=route, **keys)
 
 

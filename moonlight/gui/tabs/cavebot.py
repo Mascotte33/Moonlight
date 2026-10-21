@@ -16,7 +16,7 @@ from moonlight.decision.cavebot import Route, RouteError, RouteFileLoader
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.tabs.base import Option, Tab, read_option, section, write_option
-from moonlight.setup.config import BotConfig
+from moonlight.setup.config import BotConfig, ConfigError
 
 __all__ = [
     "OPTIONS",
@@ -31,9 +31,12 @@ __all__ = [
 
 NO_ROUTES = "No routes"
 ROUTE = Option("Route", "cavebot.route", "dropdown")
+#: Shown 1-based; ``cavebot.start_index`` is 0-based.
+START = Option("Start from waypoint", "cavebot.start_index", "entry")
 OPTIONS = [
     Option("Cavebot", "cavebot.enabled", "switch"),
     ROUTE,
+    START,
     Option("Rope hotkey", "cavebot.rope_hotkey", "entry"),
     Option("Shovel hotkey", "cavebot.shovel_hotkey", "entry"),
 ]
@@ -73,12 +76,19 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
 
     With no route on disk picked nothing changes, so Save still works for
     an off cavebot without routes. A blank hotkey keeps its default.
+    The start waypoint is given 1-based.
 
     Raises:
         ConfigError: For a refused value.
     """
     if values.get(ROUTE.field) not in route_names(cfg.routes_dir):
         return cfg
+    start = values.get(START.field, "")
+    if start != "":
+        try:
+            values = {**values, START.field: int(str(start)) - 1}
+        except ValueError:
+            raise ConfigError(f"start waypoint {start!r} is not a whole number") from None
     for option in sorted(OPTIONS, key=lambda o: o is not ROUTE):
         if values.get(option.field, "") != "":
             cfg = write_option(cfg, option, values[option.field])
@@ -132,6 +142,8 @@ class CavebotTab(Tab):
         self.menu_route.configure(values=names or [NO_ROUTES])
         picked = picked_route(cfg)
         self.menu_route.set(picked if picked in names else (names[0] if names else NO_ROUTES))
+        start = read_option(cfg, START.field)
+        self._writers[START.field](start + 1 if isinstance(start, int) else 1)
         self._show_route(self.menu_route.get())
 
     def _show_route(self, name: str) -> None:

@@ -84,3 +84,10 @@ def test_live_route_is_none_without_a_running_bot() -> None:
     loop = SimpleNamespace(modules=SimpleNamespace(cavebot=cavebot))
     ctx = SimpleNamespace(controller=SimpleNamespace(loop=loop), bot_running=lambda: True)
     assert GuiContext.live_route(ctx) == "r"  # type: ignore[arg-type]
+
+
+def test_start_waypoint_is_given_one_based(tmp_path: Path) -> None:
+    cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
+    cfg = apply_cavebot(cfg, {"cavebot.enabled": True, "cavebot.route": "rotworms",
+                              "cavebot.start_index": "2"})
+    assert cfg.cavebot is not None and cfg.cavebot.start_index == 1

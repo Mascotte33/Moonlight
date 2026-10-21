@@ -360,6 +360,7 @@ def build_loop(
                 clock=clock,
             )
             m.cavebot.start()
+            m.cavebot.route.current = cb.start_index
         if config.looting is not None:
             from moonlight.decision.looting import Looting
             from moonlight.perception.loot import LootReader
