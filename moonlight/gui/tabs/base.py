@@ -49,6 +49,7 @@ __all__ = [
     "read_option", "section",
     "stat_label",
     "stat_num",
+    "typed_value",
     "write_option",
 ]
 
@@ -284,6 +285,15 @@ class Tab:
         return cfg
 
 
+def typed_value(text: str, low: int, high: int, fallback: int) -> int:
+    """*text* as a whole number inside low..high, or *fallback* if it isn't one."""
+    try:
+        value = round(float(text))
+    except ValueError:
+        return fallback
+    return min(max(value, low), high)
+
+
 def _control(
     row: ctk.CTkFrame, option: Option
 ) -> tuple[Callable[[], object], Callable[[object], None]]:
@@ -305,27 +315,46 @@ def _control(
         fallback = choices[0] if choices else ""
         return lambda: menu.get(), lambda v: menu.set(fallback if v is None else str(v))
     if option.control == "slider":
-        low = option.min if option.min is not None else 0.0
-        high = option.max if option.max is not None else 100.0
-        shown = ctk.CTkLabel(
-            row, width=48, anchor="e", font=ctk.CTkFont(family=theme.MONO, size=theme.SIZE_BODY)
+        low = int(option.min if option.min is not None else 0)
+        high = int(option.max if option.max is not None else 100)
+        box = ctk.CTkEntry(
+            row,
+            width=56,
+            justify="right",
+            font=ctk.CTkFont(family=theme.MONO, size=theme.SIZE_BODY),
+            fg_color=theme.NIGHT,
+            border_color=theme.RAISED,
         )
+
+        def show(value: float) -> None:
+            box.delete(0, "end")
+            box.insert(0, str(round(value)))
+
         slider = ctk.CTkSlider(
             row,
             from_=low,
             to=high,
+            number_of_steps=max(high - low, 1),
             button_color=theme.MANA,
-            command=lambda v: shown.configure(text=f"{v:g}"),
+            command=show,
         )
-        shown.pack(side="right")
+        box.pack(side="right")
         slider.pack(side="right", padx=theme.UNIT)
 
-        def put_slider(value: object) -> None:
-            start = value if isinstance(value, int | float) else low
-            slider.set(start)
-            shown.configure(text=f"{start:g}")
+        def get_slider() -> int:
+            value = typed_value(box.get(), low, high, round(slider.get()))
+            slider.set(value)
+            show(value)
+            return value
 
-        return lambda: slider.get(), put_slider
+        def put_slider(value: object) -> None:
+            start = round(value) if isinstance(value, int | float) else low
+            slider.set(start)
+            show(start)
+
+        for event in ("<Return>", "<FocusOut>"):
+            box.bind(event, lambda _e: get_slider())
+        return get_slider, put_slider
     entry = ctk.CTkEntry(row, fg_color=theme.NIGHT, border_color=theme.RAISED)
     entry.pack(side="right")
 
