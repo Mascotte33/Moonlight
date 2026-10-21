@@ -46,7 +46,6 @@ OPTIONS = [
 LOOT_OPTIONS = [
     Option("Loot hotkey", "looting.loot_hotkey", "entry"),
     Option("Move-all hotkey (blank = none)", "looting.move_all_hotkey", "entry"),
-    Option("Max items per corpse", "looting.max_items_per_loot", "slider", 1, 50),
     Option("Min cap to loot (oz)", "looting.min_cap_to_loot", "entry"),
 ]
 REFILL_ROUTE = Option("Refill route", "refill.route_name", "dropdown")
