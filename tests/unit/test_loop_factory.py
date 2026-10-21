@@ -24,7 +24,7 @@ import pytest
 
 from moonlight.bot.state import WorldState
 from moonlight.gui.loop_factory import build_gui_loop, make_backend
-from moonlight.gui.state_bridge import HardwareController
+from moonlight.gui.state_bridge import HardwareController, LogFeed
 from moonlight.hardware.input import FakeInput, NoArduinoFoundError
 from moonlight.setup.calibrate import REGIONS, CalibrationProfile, Region
 from moonlight.setup.config import BotConfig
@@ -158,3 +158,12 @@ def test_build_gui_loop_no_silent_fakeinput(
     # The controller recorded the error and has no active backend.
     assert hw.backend is None
     assert hw.last_error is not None
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_log_commands_switch(on: bool) -> None:
+    log = LogFeed()
+    backend = make_backend(_config(simulation=True, log_commands=on), HardwareController(log=log))
+    backend.press_combo("F1")
+    lines = [msg for _, _, msg in log.recent()]
+    assert lines == (["input: press F1"] if on else [])
