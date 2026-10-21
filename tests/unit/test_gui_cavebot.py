@@ -6,10 +6,8 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from moonlight.bot.state import Position
 from moonlight.decision.cavebot import RouteFileLoader
 from moonlight.gui.tabs.cavebot import (
-    add_waypoint,
     apply_cavebot,
     picked_route,
     route_names,
@@ -91,20 +89,6 @@ def test_start_waypoint_is_given_one_based(tmp_path: Path) -> None:
     cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
     cfg = apply_cavebot(cfg, {"cavebot.route": "rotworms", "cavebot.start_index": "2"})
     assert cfg.off["cavebot"].start_index == 1
-
-
-def test_add_waypoint_stores_the_live_position(tmp_path: Path) -> None:
-    path = _routes(tmp_path) / "rotworms.json"
-    assert add_waypoint(path, Position(105, 210, 8)) == "Added 105, 210, 8"
-    wp = RouteFileLoader.load(path).waypoints[-1]
-    assert (wp.x, wp.y, wp.z, wp.action) == (105, 210, 8, "walk")
-
-
-def test_unknown_position_adds_nothing(tmp_path: Path) -> None:
-    path = _routes(tmp_path) / "rotworms.json"
-    before = path.read_text(encoding="utf-8")
-    assert add_waypoint(path, Position(0, 0, 0)) == "Position unknown"
-    assert path.read_text(encoding="utf-8") == before
 
 
 def test_blank_deposit_hotkey_writes_none(tmp_path: Path) -> None:

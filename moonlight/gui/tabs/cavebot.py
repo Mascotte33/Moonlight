@@ -2,21 +2,32 @@
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, read by
 :class:`RouteFileLoader`. ``cavebot.route`` and ``refill.route_name`` are
-saved by name, so their dropdowns hold names.
+saved by name, so their dropdowns hold names. The Route sub-tab is also the
+route editor: the picked route loads into it, and waypoints are added by
+hand or recorded while walking (T3.F9.K1).
 """
 
 from __future__ import annotations
 
-import json
+import queue
+from collections.abc import Callable
 from pathlib import Path
 
 import customtkinter as ctk
 
 from moonlight.bot.state import Position, WorldState
-from moonlight.decision.cavebot import Route, RouteError, RouteFileLoader
+from moonlight.decision.cavebot import ACTIONS, Route, RouteError, RouteFileLoader, Waypoint
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.tabs.base import Option, Tab, read_option, section, write_option
+from moonlight.gui.tabs.recorder import (
+    HOTKEYS,
+    Hotkeys,
+    make_waypoint,
+    save_route,
+    should_add,
+    status_line,
+)
 from moonlight.setup.config import BotConfig, ConfigError
 
 __all__ = [
@@ -25,7 +36,6 @@ __all__ = [
     "REFILL_OPTIONS",
     "ROUTE",
     "CavebotTab",
-    "add_waypoint",
     "apply_cavebot",
     "picked_route",
     "route_names",
@@ -87,19 +97,6 @@ def waypoint_line(current: int | None, total: int) -> str:
     return "Not running" if current is None else f"Waypoint {current + 1} of {total}"
 
 
-def add_waypoint(path: Path, pos: Position) -> str:
-    """Append *pos* as a ``walk`` waypoint to route file *path*; the result text.
-
-    Position ``(0, 0, 0)`` is unknown and adds nothing.
-    """
-    if (pos.x, pos.y, pos.z) == (0, 0, 0):
-        return "Position unknown"
-    data = json.loads(path.read_text(encoding="utf-8"))
-    data["waypoints"].append({"x": pos.x, "y": pos.y, "z": pos.z, "action": "walk"})
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    return f"Added {pos.x}, {pos.y}, {pos.z}"
-
-
 def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
     """*cfg* with the cavebot, loot and refill option *values*.
 
@@ -134,6 +131,20 @@ def _menu(box: ctk.CTkFrame, options: list[Option], option: Option) -> ctk.CTkOp
     return next(
         w for w in rows[options.index(option)].winfo_children()
         if isinstance(w, ctk.CTkOptionMenu)
+    )
+
+
+def _entry(parent: ctk.CTkFrame, hint: str, width: int) -> ctk.CTkEntry:
+    entry = ctk.CTkEntry(
+        parent, width=width, placeholder_text=hint, fg_color=theme.NIGHT, border_color=theme.RAISED
+    )
+    entry.pack(side="left", padx=(theme.UNIT, 0))
+    return entry
+
+
+def _button(parent: ctk.CTkFrame, text: str, command: Callable[[], None]) -> ctk.CTkButton:
+    return ctk.CTkButton(
+        parent, text=text, width=90, command=command, fg_color=theme.RAISED, hover_color=theme.HOVER
     )
 
 
@@ -189,40 +200,81 @@ class CavebotTab(Tab):
             fg_color=theme.RAISED,
             hover_color=theme.HOVER,
         ).pack(side="right", padx=theme.UNIT)
-        ctk.CTkFrame(box, height=theme.UNIT, fg_color="transparent").pack()
+        self.lbl_hint = ctk.CTkLabel(box, text="", anchor="w", text_color=theme.TEXT_DIM)
+        self.lbl_hint.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
-        wps = section(page, "Waypoints")
+        wps = section(page, "Route editor")
         wps.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        self.wp_list = ctk.CTkTextbox(
-            wps, height=200, wrap="none", font=ctk.CTkFont(family=theme.MONO)
+        status = ctk.CTkFrame(wps, fg_color="transparent")
+        status.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self.lbl_current = ctk.CTkLabel(status, text="Not running", anchor="w")
+        self.lbl_current.pack(side="left")
+        self.lbl_pos = ctk.CTkLabel(
+            status, text=status_line(False, Position(0, 0, 0)), text_color=theme.TEXT_DIM
         )
-        self.wp_list.pack(fill="both", expand=True, padx=theme.PAD, pady=(theme.PAD, 0))
-        self.lbl_current = ctk.CTkLabel(wps, text="Not running", anchor="w")
-        self.lbl_current.pack(fill="x", padx=theme.PAD)
+        self.lbl_pos.pack(side="right")
+        self.lbl_msg = ctk.CTkLabel(wps, text="", anchor="w", text_color=theme.AMBER)
+        self.lbl_msg.pack(fill="x", padx=theme.PAD)
+
         add = ctk.CTkFrame(wps, fg_color="transparent")
-        add.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
-        ctk.CTkButton(
-            add,
-            text="Add current position",
-            command=self._add_position,
-            fg_color=theme.RAISED,
-            hover_color=theme.HOVER,
-        ).pack(side="left")
-        self.lbl_added = ctk.CTkLabel(add, text="", anchor="w", text_color=theme.TEXT_MUTED)
-        self.lbl_added.pack(side="left", padx=theme.UNIT)
+        add.pack(fill="x", padx=theme.PAD)
+        self.var_type = ctk.StringVar(value="walk")
+        ctk.CTkOptionMenu(add, values=list(ACTIONS), variable=self.var_type, width=90).pack(
+            side="left"
+        )
+        self.ent_label = _entry(add, "label", 90)
+        self.ent_x, self.ent_y, self.ent_z = (_entry(add, axis, 60) for axis in "XYZ")
+        buttons = (("Clear", self._clear), ("Undo", self._undo), ("Add waypoint", self._add))
+        for text, command in buttons:
+            _button(add, text, command).pack(side="right", padx=(theme.UNIT, 0))
+
+        rec = ctk.CTkFrame(wps, fg_color="transparent")
+        rec.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self.btn_record = _button(rec, "Start recording", self._toggle)
+        self.btn_record.configure(width=130)
+        self.btn_record.pack(side="left")
+        ctk.CTkLabel(rec, text="add walk every").pack(side="left", padx=(theme.PAD, 0))
+        self.ent_tiles = _entry(rec, "", 40)
+        self.ent_tiles.insert(0, "5")
+        ctk.CTkLabel(rec, text="tiles").pack(side="left", padx=theme.UNIT)
+        keys = "  ".join(f"{k} {a}" for k, a in sorted(HOTKEYS.items()))
+        ctk.CTkLabel(
+            rec, text=keys, text_color=theme.TEXT_MUTED, font=ctk.CTkFont(family=theme.MONO)
+        ).pack(side="right")
+
+        save = ctk.CTkFrame(wps, fg_color="transparent")
+        save.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        _button(save, "Save route", self._save).pack(side="right", padx=(theme.UNIT, 0))
+        self.ent_name = _entry(save, "route name, e.g. rotworms", 140)
+        self.ent_name.pack_configure(fill="x", expand=True, padx=0)
+
+        self.wp_list = ctk.CTkTextbox(
+            wps, height=160, wrap="none", font=ctk.CTkFont(family=theme.MONO)
+        )
+        self.wp_list.pack(fill="both", expand=True, padx=theme.PAD, pady=theme.PAD)
         self._pos = Position(0, 0, 0)
         self._routes_dir = Path()
-        self._route: Route | None = None
+        self._waypoints: list[Waypoint] = []
         self._error = ""
         self._text = ""
+        self._recording = False
+        self._pressed: queue.Queue[str] = queue.Queue()
+        self._hotkeys = Hotkeys(self._pressed)
+        self.btn_record.bind("<Destroy>", lambda _e: self._hotkeys.stop(), add="+")
         self._reload()
+
+    def _refresh_names(self) -> list[str]:
+        names = route_names(self._routes_dir)
+        self.menu_route.configure(values=names or [NO_ROUTES])
+        self.menu_refill_route.configure(values=names or [NO_ROUTES])
+        hint = "No routes yet. Add waypoints below, name the route, then Save route."
+        self.lbl_hint.configure(text="" if names else hint)
+        return names
 
     def _reload(self) -> None:
         cfg = load_real_config()
         self._routes_dir = Path(cfg.routes_dir)
-        names = route_names(self._routes_dir)
-        self.menu_route.configure(values=names or [NO_ROUTES])
-        self.menu_refill_route.configure(values=names or [NO_ROUTES])
+        names = self._refresh_names()
         picked = picked_route(cfg)
         self.menu_route.set(picked if picked in names else (names[0] if names else NO_ROUTES))
         start = read_option(cfg, START.field)
@@ -230,23 +282,30 @@ class CavebotTab(Tab):
         self._show_route(self.menu_route.get())
 
     def _show_route(self, name: str) -> None:
-        self._route = None
+        """Load route *name* into the editor."""
+        self._waypoints = []
         self._error = ""
         if name != NO_ROUTES:
             try:
-                self._route = RouteFileLoader.load(self._routes_dir / f"{name}.json")
+                route = RouteFileLoader.load(self._routes_dir / f"{name}.json")
+                self._waypoints = list(route.waypoints)
             except RouteError as exc:
                 self._error = str(exc)
+            self.ent_name.delete(0, "end")
+            self.ent_name.insert(0, name)
         self._draw()
 
     def _draw(self) -> None:
         live = self.ctx.live_route()
-        route = live if live is not None else self._route
+        route = live if live is not None else Route("editor", waypoints=self._waypoints)
         current = live.current if live is not None else None
         text = self._error if live is None and self._error else waypoint_table(route, current)
-        line = waypoint_line(current, len(route.waypoints) if route else 0)
-        if self.lbl_current.cget("text") != line:
-            self.lbl_current.configure(text=line)
+        for label, value in (
+            (self.lbl_current, waypoint_line(current, len(route.waypoints))),
+            (self.lbl_pos, status_line(self._recording, self._pos)),
+        ):
+            if label.cget("text") != value:
+                label.configure(text=value)
         if text == self._text:
             return
         self._text = text
@@ -255,16 +314,69 @@ class CavebotTab(Tab):
         self.wp_list.insert("1.0", text)
         self.wp_list.configure(state="disabled")
 
-    def _add_position(self) -> None:
-        name = self.menu_route.get()
-        if name == NO_ROUTES:
-            self.lbl_added.configure(text="No route picked")
+    def _add_action(self, action: str) -> None:
+        manual = (self.ent_x.get(), self.ent_y.get(), self.ent_z.get())
+        try:
+            wp = make_waypoint(action, self.ent_label.get(), manual, self._pos)
+        except RouteError as exc:
+            self.lbl_msg.configure(text=str(exc))
             return
-        self.lbl_added.configure(text=add_waypoint(self._routes_dir / f"{name}.json", self._pos))
-        self._show_route(name)
+        self._waypoints.append(wp)
+        self._error = ""
+        self.lbl_msg.configure(text=f"Added {wp.action} ({len(self._waypoints)} waypoints)")
+        self._draw()
+
+    def _add(self) -> None:
+        self._add_action(self.var_type.get())
+
+    def _undo(self) -> None:
+        if self._waypoints:
+            self._waypoints.pop()
+            self._draw()
+
+    def _clear(self) -> None:
+        self._waypoints.clear()
+        self._draw()
+
+    def _save(self) -> None:
+        name = self.ent_name.get().strip()
+        try:
+            path = save_route(self._routes_dir, name, self._waypoints)
+        except (OSError, RouteError) as exc:
+            self.lbl_msg.configure(text=f"Save failed: {exc}")
+            return
+        self._refresh_names()
+        self.menu_route.set(name)
+        self.lbl_msg.configure(text=f"Saved {path}")
+
+    def _toggle(self) -> None:
+        self._recording = not self._recording
+        self.btn_record.configure(text="Stop recording" if self._recording else "Start recording")
+        if self._recording:
+            self._hotkeys.start()
+            if self._hotkeys.failed:
+                self.lbl_msg.configure(
+                    text=f"Hotkeys in use elsewhere: {', '.join(self._hotkeys.failed)}"
+                )
+        else:
+            self._hotkeys.stop()
+        self._draw()
 
     def on_poll(self, snap: WorldState) -> None:
-        self._pos = snap.position
+        self._pos = pos = snap.position
+        if self._recording:
+            while not self._pressed.empty():
+                action = self._pressed.get_nowait()
+                if action == "undo":
+                    self._undo()
+                else:
+                    self._add_action(action)
+            try:
+                tiles = max(1, int(self.ent_tiles.get()))
+            except ValueError:
+                tiles = 5
+            if should_add(self._waypoints, pos, tiles):
+                self._waypoints.append(Waypoint(pos.x, pos.y, pos.z))
         self._draw()
 
     def reload_options(self) -> None:
