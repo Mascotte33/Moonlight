@@ -428,6 +428,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_cavebot.py` passes (adding a waypoint stores the live x/y/z; unknown position adds nothing). Owner checks: the button is in the Cavebot tab.
 
 ### T3.F7.K1 — Refill sub-tab
+- ✅ Done in commit 2595846.
 - What: a **Refill** sub-tab in Cavebot with `OPTIONS` for what the bot has: `refill.enabled`, `refill.trigger_cap` and `refill.stop_cap` (entries, oz), `refill.route_name` (dropdown of routes), `refill.storage_hotkey`, `refill.deposit_hotkey` (blank = no deposit). Remove the GUI-only refill HP %, MP % and deposit fields. Potion counts wait (see Not planned yet).
 - Needs: T3.F1.K1
 - Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
