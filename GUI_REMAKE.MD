@@ -40,6 +40,122 @@ A task is one change that can be built, tested and committed on its own.
 
 Missing entirely: Calibrate and Check setup buttons (card `task_21b3ca41`), Buffs and Alarms tabs (the decision modules exist, no GUI), Looting settings.
 
+## Target design (from Tibiaeye)
+
+The remake copies the **look and features** of [Tibiaeye](https://github.com/GGotha/tibiaeye)'s GUI
+(screenshots in its `readme/` folder). Its code has no license, so **do not copy
+code from it**; build each function in our code, following the rules below.
+"Today" says what Moonlight already has: ✅ works, 🟡 exists but not wired to
+the bot / incomplete, ❌ missing.
+
+### S — App shell (on every tab)
+
+| ID | Function | Today |
+|---|---|---|
+| S.F1 | Left sidebar navigation (logo + one entry per tab, active tab highlighted) instead of top tabs | ❌ (top tab bar) |
+| S.F2 | Top bar: HP bar + %, MP bar + %, bot state dot + text (Stopped / Running / Paused) | ❌ |
+| S.F3 | Top bar: Start ▶ / Pause ⏸ / Stop ■ buttons, usable from any tab | ❌ (only in Settings) |
+| S.F4 | Bottom bar: connection dots (Screen, Arduino, Bot) | ❌ |
+| S.F5 | Bottom bar: CPU % and memory MB of the bot process, with small bars | ❌ |
+| S.F6 | Dark theme: card panels with small uppercase section titles | 🟡 (dark, no cards) |
+
+### T1 — Dashboard
+
+| ID | Function | Today |
+|---|---|---|
+| T1.F1 | Stat cards: Uptime, Ticks, Creatures, HP % | 🟡 (ticks, creatures, HP; no uptime) |
+| T1.F2 | Bot health: one dot per perception reader (capture, vitals, battle, minimap, …), green/red | ❌ |
+| T1.F3 | Current task card (Idle / Healing / Attacking / Walking to waypoint N …) | ❌ |
+| T1.F4 | Battle list panel | ✅ |
+| T1.F5 | Recent events panel | ✅ |
+
+### T2 — Settings
+
+| ID | Function | Today |
+|---|---|---|
+| T2.F1 | Big Start / Pause / Stop buttons + status text | ✅ |
+| T2.F2 | Tick rate (seconds) | 🟡 (not read by the bot) |
+| T2.F3 | Window picker (dropdown of open windows) + Refresh | 🟡 (text field) |
+| T2.F4 | Module toggles: Healing, Cavebot, Loot (with loot hotkey), Stuck alert (with timeout s), Session logging, Screen overlay, Debug overlay (grid + creatures) | 🟡 (Healing, Loot, Cavebot, Overlay only; not read by the bot) |
+| T2.F5 | Server save: enable + save time (CET) | ❌ |
+| T2.F6 | Auto-reconnect section (below server save; contents not visible in the screenshot) | ❌ |
+
+### T3 — Cavebot
+
+| ID | Function | Today |
+|---|---|---|
+| T3.F1 | Route file path + Browse, Reload, Load route | 🟡 (dropdown of saved routes) |
+| T3.F2 | Start from waypoint N | ❌ |
+| T3.F3 | Loop route toggle | ✅ |
+| T3.F4 | Waypoint table (#, type, coordinates) with the current waypoint marked `>` | 🟡 (list, no current marker) |
+| T3.F5 | "Current: waypoint N of M" line | ❌ |
+| T3.F6 | Add current position as a waypoint (owner request) | ❌ |
+| T3.F7 | Refill sub-tab: city; refill when HP potions < N, MP potions < N, capacity < N oz (toggle); refill to HP/MP potion counts and potion types; deposit gold before refill; return-to label | 🟡 (HP%/MP% thresholds and deposit only) |
+| T3.F8 | Loot sub-tab (contents not visible in the screenshot) | ❌ |
+
+### T4 — Healing
+
+| ID | Function | Today |
+|---|---|---|
+| T4.F1 | HP/MP thresholds for potions and spells (no screenshot; from the README) | 🟡 (not read by the bot) |
+
+### T5 — Targeting
+
+| ID | Function | Today |
+|---|---|---|
+| T5.F1 | Whitelist **or** blacklist mode switch | 🟡 (both lists, no mode) |
+| T5.F2 | Creature list editor | 🟡 |
+| T5.F3 | Attack nearest creature in range (behaviour, README) | 🟡 (picks first in battle list, or lowest HP) |
+
+### T6 — Spell attack
+
+| ID | Function | Today |
+|---|---|---|
+| T6.F1 | AoE and single-target spell groups | 🟡 (no decision module uses them) |
+| T6.F2 | Mana reserve protection | 🟡 |
+
+### T7 — Hardware
+
+| ID | Function | Today |
+|---|---|---|
+| T7.F1 | Hardware mode radio with one-line description each. Tibiaeye: Software / Capture card / Arduino + mss / Full hardware. Moonlight only needs **Arduino + mss** and **Simulation** (no input) | 🟡 (simulation checkbox) |
+| T7.F2 | Serial port field + Detect button + dropdown of available ports | 🟡 (field, auto-detect when blank) |
+| T7.F3 | Debug: log every Arduino command | ❌ |
+| T7.F4 | Test connection button | ✅ (PONG check) |
+| T7.F5 | Capture card device index | skip (we don't use a capture card) |
+
+### T8 — Recorder
+
+| ID | Function | Today |
+|---|---|---|
+| T8.F1 | Output file + Browse, Load | 🟡 |
+| T8.F2 | Status line (Not recording / Recording) + live position | 🟡 |
+| T8.F3 | Start / Stop recording | ❌ |
+| T8.F4 | Add-waypoint buttons with hotkeys: Walk F6, Rope F7, Shovel F8, Ladder F4, Label F9, Refill check F10 | 🟡 (type dropdown, no hotkeys) |
+| T8.F5 | Stairs: Move down / Move up + direction (north/south/east/west) | ❌ |
+| T8.F6 | Actions: Undo (F5) | ❌ |
+| T8.F7 | Recorded waypoint table (#, type, coordinates) | ✅ |
+
+### T9 — Status
+
+| ID | Function | Today |
+|---|---|---|
+| T9.F1 | System resources: CPU % and RAM % bars, memory MB, thread count | ❌ |
+| T9.F2 | Player stats: HP/MP bars; capacity, food, speed, stamina | 🟡 (HP/MP, capacity) |
+| T9.F3 | Position: coordinates + Copy button, floor, "last update N s ago" | 🟡 (no copy, no age) |
+| T9.F4 | Battle info: creatures in range | ✅ |
+
+### T10 — Diagnostics
+
+| ID | Function | Today |
+|---|---|---|
+| T10.F1 | Subsystem health: one dot + last result per reader (capture, vitals, battle, minimap, floor, …) | ❌ |
+| T10.F2 | Connections: Arduino dot + status | ❌ |
+| T10.F3 | Recovery status: stuck, reconnect, safe mode | ❌ |
+| T10.F4 | Recent errors log | 🟡 (event log tail) |
+
+Not taken from Tibiaeye: Telemetry (no telemetry server here), the capture card mode.
+
 ## Rules every tab follows
 
 1. **One config.** Tabs read and write the real config (`moonlight_config.json`,
