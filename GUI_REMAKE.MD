@@ -5,11 +5,17 @@ bot) and **look like** [Tibiaeye](https://github.com/GGotha/tibiaeye)'s GUI.
 
 ## Start here (for agents)
 
-1. Read **Rules** below. They apply to every task.
-2. Pick a task from **Tasks**. Do T0 first; everything builds on it.
+1. Read **Rules** and **Testing** below. They apply to every task.
+2. Pick a task from **Tasks** whose **Needs** are done. T0 comes first; everything builds on it.
 3. Look up your tab in **Tabs** for what it should end up with.
 4. Style it with **Look**. Use `moonlight/gui/theme.py`, never raw colors.
-5. One task = one commit. pytest, `ruff check` and `mypy moonlight tests` stay green.
+5. Touch only the task's **Files**. **Don't touch** lists what is off limits.
+6. One task = one commit. pytest, `ruff check` and `mypy moonlight tests` stay green.
+
+**Stop and ask the owner** (don't work around it) when:
+- the **Done when** check can't be met as written;
+- the change needs a file outside the task's **Files**;
+- a Tibiaeye screenshot doesn't show what a function should do.
 
 > **Tibiaeye has no license.** Copy its look and features from the
 > screenshots only. Never copy, paste or adapt its code.
@@ -18,12 +24,12 @@ bot) and **look like** [Tibiaeye](https://github.com/GGotha/tibiaeye)'s GUI.
 
 ## Rules
 
-1. **One config.** Tabs read and write the real config: `moonlight_config.json`,
-   loaded by `moonlight/setup/config.py`. The GUI's own copy
-   (`gui/config_bridge.py` and `data/config.json`) is deleted in T0.
-2. **One tab pattern.** Each tab file starts with an `OPTIONS` list, one entry
-   per option (label, config field, control type).
-   - Add an option = add one entry. Remove it = delete the entry.
+1. **One config.** Tabs read and write the real config: `BotConfig` in
+   `moonlight/setup/config.py`, stored in `moonlight_config.json` (repo root).
+   The GUI's own copy (`gui/config_bridge.py`, saving to `data/config.json`)
+   is deleted in T0.
+2. **One tab pattern.** Each tab file starts with an `OPTIONS` list (shape in
+   T0.F3.K1). Add an option = add one entry. Remove it = delete the entry.
    - Buttons and custom widgets go in `build()`.
    - Live updates go in `on_poll()`.
    - Writing to the config goes in `apply()`.
@@ -36,6 +42,33 @@ bot) and **look like** [Tibiaeye](https://github.com/GGotha/tibiaeye)'s GUI.
 (`gui/loop_factory.py`) builds the bot from `moonlight_config.json`. Only
 simulation mode, serial port, baud rate and profile name get through. Editing a
 healing threshold in the GUI changes nothing in the running bot.
+
+**Facts about the config agents need:**
+- `BotConfig` can load (`BotConfig.load`, `from_dict`) but **cannot save yet**.
+  T0.F1.K1 adds that.
+- It is a **frozen** dataclass. Change a value with `dataclasses.replace`, never by assignment.
+- Module sections (`healing`, `targeting`, `cavebot`, …) are `None` when the
+  module is off. Writing an option into a `None` section creates it with defaults first.
+- `moonlight_config.json` may not exist. `load_real_config` in
+  `gui/loop_factory.py` then returns `BotConfig.default()`.
+
+**Already exists, reuse it:**
+- `tabs/base.py`: the `Tab` base class (`build`, `on_poll`) and `section()`,
+  which already builds a titled card. Restyle these; don't add a second card widget.
+- `gui/state_bridge.py`: the bot state and loop control the tabs read from.
+
+---
+
+## Testing
+
+There are no GUI tests yet. Put new ones in `tests/unit/` (e.g.
+`tests/unit/test_gui_options.py`).
+
+- **Test the logic, not the widgets.** No test opens a window. Test what can
+  run headless: an option change produces the right `BotConfig`, saving writes
+  the file, the top bar's text is formatted right.
+- **Visual checks are the owner's.** "Done when" lists them as **Owner checks:**.
+  Don't claim them as tested.
 
 ---
 
@@ -53,55 +86,85 @@ Write every task as one block, so an agent can do it with no other context:
 ```
 ### T3.F6.K1 — Add current waypoint
 - What: a button that appends the player's current minimap position to the route.
-- Files: moonlight/gui/tabs/cavebot.py, tests/gui/test_cavebot_tab.py
-- Done when: clicking it adds a waypoint with the live x/y/z; a test covers it.
+- Needs: T0.F3.K1
+- Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
+- Don't touch: other tabs.
+- Done when: `pytest tests/unit/test_gui_cavebot.py` passes (adding a waypoint stores the live x/y/z). Owner checks: the button is in the Cavebot tab.
 ```
 
 ---
 
 ## Tasks
 
-### T0.F1.K1 — One config
-- What: every tab reads/writes the real `BotConfig` (`moonlight/setup/config.py`). Delete `gui/config_bridge.py`'s copy and `data/config.json`.
-- Files: moonlight/gui/config_bridge.py, moonlight/gui/loop_factory.py, moonlight/gui/tabs/*.py, tests/gui/
-- Done when: change a Healing threshold in the GUI, press Start, and the bot uses the new value; a test proves it.
+### T0.F1.K1 — Config can save
+- What: add `BotConfig.to_dict()` (the exact JSON `from_dict` reads; cavebot is saved as its route name) and `BotConfig.save(path)`.
+- Files: moonlight/setup/config.py, tests/unit/test_config.py
+- Don't touch: the GUI.
+- Done when: `pytest tests/unit/test_config.py` passes, with a test that `BotConfig.from_dict(cfg.to_dict()) == cfg` for `BotConfig.default()` and for a config with every section set.
 
-### T0.F1.K2 — Apply saves, remove Save/Load config
-- What: each tab's Apply writes `moonlight_config.json`. Remove Save config / Load config from Settings.
-- Files: moonlight/gui/tabs/settings.py, moonlight/gui/tabs/*.py, tests/gui/
-- Done when: Apply on any tab changes the file on disk; Settings has no Save/Load buttons.
+### T0.F1.K2 — Start uses only the real config
+- What: `gui/loop_factory.py` builds the bot from `moonlight_config.json` alone. Delete `gui/config_bridge.py`. Tabs that imported it read and write `BotConfig` through `GuiContext` (`gui/state_bridge.py`) until their own tab task converts them.
+- Needs: T0.F1.K1
+- Files: moonlight/gui/config_bridge.py, moonlight/gui/loop_factory.py, moonlight/gui/state_bridge.py, moonlight/gui/tabs/*.py (imports only), tests/unit/test_loop_factory.py
+- Don't touch: the tabs' layout.
+- Done when: `pytest tests/unit/test_loop_factory.py` passes; `grep -rn config_bridge moonlight` finds nothing. Owner checks: the GUI still opens and Start works.
+
+### T0.F3.K1 — Tab option pattern
+- What: add the shared pattern from Rule 2 to `tabs/base.py`. One option is:
+  `Option(label: str, field: str, control: "slider" | "switch" | "entry" | "dropdown", min: float | None = None, max: float | None = None, choices: list[str] | None = None)`,
+  where `field` is a dotted path into `BotConfig`, e.g. `"healing.normal_hp_percent"`. `Tab` builds one control per entry and gets a default `apply()` that writes every option into a new `BotConfig` with `dataclasses.replace`, then saves it.
+- Needs: T0.F1.K1
+- Files: moonlight/gui/tabs/base.py, tests/unit/test_gui_options.py
+- Don't touch: the tab files (each tab task converts its own tab).
+- Done when: `pytest tests/unit/test_gui_options.py` passes, with tests that a dotted-path write gives the right `BotConfig`, a write into a `None` section creates it, and out-of-range values are refused.
+
+### T0.F1.K3 — Apply saves, remove Save/Load config
+- What: Apply on each tab saves `moonlight_config.json` (the `apply()` from T0.F3.K1). Remove Save config / Load config from Settings.
+- Needs: T0.F1.K2, T0.F3.K1
+- Files: moonlight/gui/tabs/settings.py, tests/unit/test_gui_options.py
+- Done when: `pytest tests/unit/test_gui_options.py` passes (apply writes the file). Owner checks: Settings has no Save/Load buttons.
 
 ### S.F6.K1 — Theme file
-- What: add `moonlight/gui/theme.py` with the colors, fonts, spacing and radii from **Look**. Replace every raw color in `gui/` with a theme name.
+- What: add `moonlight/gui/theme.py` with the colors, fonts, spacing and radii from **Look**. Replace every raw color in `gui/` with a theme name. Restyle `section()` in `tabs/base.py` as the card.
 - Files: moonlight/gui/theme.py, moonlight/gui/app.py, moonlight/gui/tabs/*.py
-- Done when: `grep -rn '"#' moonlight/gui` finds colors only in `theme.py`.
+- Don't touch: layout and behavior; colors and fonts only.
+- Done when: `grep -rn '"#' moonlight/gui` finds colors only in `theme.py`. Owner checks: every tab uses the Look colors.
 
 ### S.F1.K1 — Sidebar navigation
 - What: replace the top tab bar with a left sidebar (logo, one entry per tab, active entry highlighted).
-- Files: moonlight/gui/app.py, tests/gui/
-- Done when: every tab opens from the sidebar; the active one is highlighted.
+- Needs: S.F6.K1
+- Files: moonlight/gui/app.py
+- Don't touch: the tab files.
+- Done when: pytest stays green. Owner checks: every tab opens from the sidebar; the active one is highlighted.
 
 ### S.F2.K1 — Top bar
-- What: one bar pinned to the top of the window, across its full width (above the sidebar too): HP bar + %, MP bar + %, state dot + text (Running / Paused / Stopped), and ▶ Start / ⏸ Pause / ■ Stop icon buttons. It belongs to the window, not to a tab, so it never changes or scrolls away.
-- Files: moonlight/gui/app.py, moonlight/gui/state_bridge.py, tests/gui/
-- Done when: switching between any tabs leaves the bar in place; HP/MP and state update live; the buttons work from any tab.
+- What: one bar pinned to the top of the window, across its full width (above the sidebar too): HP bar + %, MP bar + %, state dot + text (Running / Paused / Stopped), and ▶ Start / ⏸ Pause / ■ Stop icon buttons. It belongs to the window, not to a tab, so it never changes or scrolls away. Put the text formatting in a plain function so it can be tested.
+- Needs: S.F6.K1
+- Files: moonlight/gui/app.py, moonlight/gui/state_bridge.py, tests/unit/test_gui_topbar.py
+- Don't touch: the tab files (Settings keeps its buttons until its tab task).
+- Done when: `pytest tests/unit/test_gui_topbar.py` passes (HP/MP % and state text from a `WorldState`). Owner checks: switching tabs leaves the bar in place; HP/MP update live; the buttons work from any tab.
 
 ### S.F4.K1 — Bottom bar
 - What: a strip at the bottom: Screen, Arduino and Bot dots; CPU % and memory MB of the bot process.
-- Files: moonlight/gui/app.py, tests/gui/
-- Done when: unplugging the Arduino turns its dot red within a second.
-
-### T0.F2.K1 — Live reload (later)
-- What: the running loop picks up config changes without Stop/Start.
-- Files: moonlight/bot/loop.py, moonlight/bot/wiring.py, moonlight/gui/loop_factory.py
-- Done when: changing a Healing threshold while the bot runs takes effect within one tick; a test proves it.
+- Needs: S.F6.K1
+- Files: moonlight/gui/app.py, tests/unit/test_gui_bottombar.py
+- Don't touch: the tab files.
+- Done when: `pytest tests/unit/test_gui_bottombar.py` passes (dot color from a status value). Owner checks: unplugging the Arduino turns its dot red within a second.
 
 ### T2.F7.K1 — Start calibration button
 - What: in Settings, a **Start calibration** button that opens the calibration window (`moonlight/setup/calibrate.py`) for the current profile, plus an editable **UI scale** number read from and saved to that profile's `ui_scale`. The rest of calibration is in `CALIBRATION.MD`.
-- Files: moonlight/gui/tabs/settings.py, tests/gui/
-- Done when: the button opens the calibration window and saving it replaces the profile; changing UI scale and pressing Apply writes it to the profile.
+- Needs: CALIBRATION.MD C2.F3.K1 and C3.F1.K1
+- Files: moonlight/gui/tabs/settings.py, tests/unit/test_gui_options.py
+- Don't touch: calibrate.py, autofind.py.
+- Done when: `pytest tests/unit/test_gui_options.py` passes (UI scale writes the profile). Owner checks: the button opens the calibration window, and saving replaces the profile.
 
-_Tab tasks: the owner says what each tab needs; they get written up here in the format above._
+### T0.F2.K1 — Live reload (later)
+- What: the running loop picks up config changes without Stop/Start.
+- Needs: T0.F1.K3
+- Files: moonlight/bot/loop.py, moonlight/bot/wiring.py, moonlight/gui/loop_factory.py
+- Done when: do not build yet.
+
+_Tab tasks: the owner says what each tab needs; they get written up here in the format above. Each tab task also converts that tab to the T0.F3.K1 pattern._
 
 ---
 
