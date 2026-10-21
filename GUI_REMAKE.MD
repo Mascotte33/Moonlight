@@ -572,13 +572,6 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Don't touch: moonlight/decision/cavebot.py.
 - Done when: pytest stays green. Owner checks: type X, Y, Z and press Rope, and a rope row shows in the table.
 
-### T3.F9.K3 — Start position
-
-The Cavebot box gets a "Start position" row with X, Y and Z boxes. They save to
-`minimap_start`, the tile the bot starts on, so minimap tracking knows where it
-is. All three blank saves none. Anything other than three whole numbers of 0 or
-more is refused on Save.
-
 #### Phase 4: bot features asked for in Phase 3
 
 These need bot code first. Each gets its GUI part in the same task.

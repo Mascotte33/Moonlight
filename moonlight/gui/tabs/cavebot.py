@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import queue
 from collections.abc import Callable
-from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
@@ -39,7 +38,6 @@ __all__ = [
     "ROUTE",
     "CavebotTab",
     "apply_cavebot",
-    "apply_start",
     "picked_route",
     "route_names",
     "waypoint_line",
@@ -128,23 +126,6 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
     return cfg
 
 
-def apply_start(cfg: BotConfig, xyz: list[str]) -> BotConfig:
-    """*cfg* with ``minimap_start`` from the X, Y, Z boxes; all blank means none.
-
-    Raises:
-        ConfigError: Unless all three are blank or all are whole numbers 0 or more.
-    """
-    if not any(v.strip() for v in xyz):
-        return replace(cfg, minimap_start=None)
-    try:
-        x, y, z = (int(v) for v in xyz)
-    except ValueError:
-        raise ConfigError(f"start position needs three whole numbers, got {xyz!r}") from None
-    if min(x, y, z) < 0:
-        raise ConfigError(f"start position can not be negative, got {(x, y, z)!r}")
-    return replace(cfg, minimap_start=(x, y, z))
-
-
 def _menu(box: ctk.CTkFrame, options: list[Option], option: Option) -> ctk.CTkOptionMenu:
     """The dropdown :meth:`Tab.build_options` made for *option* in *box*."""
     rows = [w for w in box.winfo_children() if isinstance(w, ctk.CTkFrame)]
@@ -220,15 +201,6 @@ class CavebotTab(Tab):
             fg_color=theme.RAISED,
             hover_color=theme.HOVER,
         ).pack(side="right", padx=theme.UNIT)
-        start = ctk.CTkFrame(box, fg_color="transparent")
-        start.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
-        ctk.CTkLabel(start, text="Start position (tile you start the bot on)", anchor="w").pack(
-            side="left"
-        )
-        self.ent_start = [_entry(start, axis, 70) for axis in "XYZ"]
-        for entry in reversed(self.ent_start):
-            entry.pack_forget()
-            entry.pack(side="right", padx=(theme.UNIT, 0))
         self.lbl_hint = ctk.CTkLabel(box, text="", anchor="w", text_color=theme.TEXT_DIM)
         self.lbl_hint.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
@@ -310,11 +282,6 @@ class CavebotTab(Tab):
         self.menu_route.set(picked if picked in names else (names[0] if names else NO_ROUTES))
         start = read_option(cfg, START.field)
         self._writers[START.field](start + 1 if isinstance(start, int) else 1)
-        for entry, value in zip(self.ent_start, cfg.minimap_start or ("", "", ""), strict=True):
-            if entry.get():
-                entry.delete(0, "end")
-            if value != "":
-                entry.insert(0, str(value))
         self._show_route(self.menu_route.get())
 
     def _show_route(self, name: str) -> None:
@@ -420,6 +387,5 @@ class CavebotTab(Tab):
         path = picked_config()
         values = {field: read() for field, read in self._readers.items()}
         cfg = apply_cavebot(load_real_config(path), values)
-        cfg = apply_start(cfg, [e.get() for e in self.ent_start])
         cfg.save(path)
         return cfg
