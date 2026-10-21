@@ -336,6 +336,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_attack_spells.py` passes, with tests for AoE vs single, the mana reserve, the cooldown, and no target = no cast. Owner checks: values are kept after Save and reopening. "The bot casts" waits for calibration.
 
 ### T1.F1.K1 — Dashboard stat cards
+- ✅ Done in commit 3312350.
 - What: four stat cards: Uptime (from the loop's `uptime_seconds`, shown as `h:mm:ss`), Ticks, Creatures on screen, HP %. Values use the hero size from **Look**. Remove the module list read from the GUI config (Settings has the switches). The text formatting is a plain function.
 - Needs: T0.F1.K3
 - Files: moonlight/gui/tabs/dashboard.py, tests/unit/test_gui_dashboard.py
