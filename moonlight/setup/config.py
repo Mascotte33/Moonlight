@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import json
 import types
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
@@ -230,6 +230,38 @@ class BotConfig:
         cfg = cls(**kwargs)
         cfg.validate()
         return cfg
+
+    def to_dict(self) -> dict[str, Any]:
+        """The JSON :meth:`from_dict` reads; cavebot is saved by its route name."""
+        data: dict[str, Any] = {
+            f.name: getattr(self, f.name) for f in fields(self) if f.name not in MODULES
+        }
+        if self.hotkeys is None:
+            del data["hotkeys"]
+        data["loop"] = asdict(self.loop)
+        data["clicker"] = asdict(self.clicker)
+        modules: dict[str, Any] = {}
+        for name in MODULES:
+            cfg = getattr(self, name)
+            if cfg is None:
+                modules[name] = {"enabled": False}
+            elif isinstance(cfg, CavebotConfig):
+                modules[name] = {
+                    "enabled": True,
+                    "route": cfg.route.name,
+                    "rope_hotkey": cfg.rope_hotkey,
+                    "shovel_hotkey": cfg.shovel_hotkey,
+                }
+            else:
+                modules[name] = {"enabled": True, **asdict(cfg)}
+        data["modules"] = modules
+        # Round-trip through JSON so Paths become str and tuples become lists.
+        result: dict[str, Any] = json.loads(json.dumps(data, default=str))
+        return result
+
+    def save(self, path: str | Path) -> None:
+        """Write :meth:`to_dict` to *path* as JSON."""
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
 
     def validate(self) -> BotConfig:
         """Cross-field checks; return self.
