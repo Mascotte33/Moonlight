@@ -304,6 +304,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_config.py tests/unit/test_loop_factory.py` passes, with tests that `window_title` round-trips and that Start passes it to the capture. Owner checks: with the game open, its window is in the dropdown.
 
 ### T5.F1.K1 — Targeting options
+- ✅ Done in commit 8521608.
 - What: convert Targeting to `OPTIONS`:
   - `targeting.enabled`, `targeting.prefer_low_hp`, `targeting.player_protection`: switches;
   - `targeting.max_monsters_to_engage`: slider 1–10;
