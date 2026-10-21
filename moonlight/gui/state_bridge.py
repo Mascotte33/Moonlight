@@ -426,6 +426,8 @@ class GuiContext:
     profile_name: str | None = None
     #: Called after another named config is picked (tabs refill their options).
     config_listeners: list[Callable[[], None]] = field(default_factory=list)
+    #: Each tab's ``apply()``; Settings' Save runs them all.
+    config_savers: list[Callable[[], object]] = field(default_factory=list)
 
     def pick_config(self, name: str) -> Path:
         """Pick named config *name* and tell every listener."""
@@ -433,6 +435,11 @@ class GuiContext:
         for listener in self.config_listeners:
             listener()
         return path
+
+    def save_config(self) -> None:
+        """Write every tab's options into the picked config."""
+        for save in self.config_savers:
+            save()
 
     def active_config(self) -> BotConfig:
         """A fresh copy of the live config (thread-safe)."""

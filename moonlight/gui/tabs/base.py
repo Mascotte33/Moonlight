@@ -201,6 +201,7 @@ class Tab:
         """One labelled control per entry in ``options``, filled from the config."""
         if self.options:
             self.ctx.config_listeners.append(self.reload_options)
+            self.ctx.config_savers.append(self.apply)
         cfg = load_real_config()
         for option in self.options:
             row = ctk.CTkFrame(parent, fg_color="transparent")

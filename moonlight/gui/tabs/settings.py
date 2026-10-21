@@ -3,8 +3,9 @@
 Start / Pause (stop) / Kill drive the bot loop thread (via the controller);
 the tick rate, window target and input mode fields edit the live
 :class:`~moonlight.gui.config_bridge.BotConfig` (thread-safe store).
-The config dropdown picks a named config in ``configs/`` and Save as copies
-the picked one under a new name (T0.F1.K3).
+The config dropdown picks a named config in ``configs/``; New copies the
+picked one under a new name, Save writes every tab's options into it and
+Delete removes it (T0.F1.K3, T0.F1.K5).
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import customtkinter as ctk
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import (
     config_names,
+    delete_config,
     load_real_config,
     picked_config,
     save_config_as,
@@ -151,8 +153,19 @@ class SettingsTab(Tab):
         )
         self.menu_config.set(picked_config().stem)
         self.menu_config.pack(side="left", padx=(10, 4), pady=8)
-        self.btn_save_as = ctk.CTkButton(io_box, text="Save as", width=110)
-        self.btn_save_as.pack(side="left", padx=4, pady=8)
+        self.btn_new = ctk.CTkButton(io_box, text="New", width=80)
+        self.btn_new.pack(side="left", padx=4, pady=8)
+        self.btn_save = ctk.CTkButton(io_box, text="Save", width=80)
+        self.btn_save.pack(side="left", padx=4, pady=8)
+        self.btn_delete = ctk.CTkButton(
+            io_box,
+            text="Delete",
+            width=80,
+            fg_color=theme.BLOOD,
+            hover_color=theme.BLOOD_HOVER,
+            text_color=theme.NIGHT,
+        )
+        self.btn_delete.pack(side="left", padx=4, pady=8)
         self.lbl_io = ctk.CTkLabel(io_box, text="", anchor="w")
         self.lbl_io.pack(side="left", padx=12, pady=8)
         self._bind_buttons()
@@ -167,7 +180,9 @@ class SettingsTab(Tab):
         self.btn_start.configure(command=self._on_start)
         self.btn_pause.configure(command=self._on_pause)
         self.btn_kill.configure(command=self._on_kill)
-        self.btn_save_as.configure(command=self._on_save_as)
+        self.btn_new.configure(command=self._on_new)
+        self.btn_save.configure(command=self._on_save)
+        self.btn_delete.configure(command=self._on_delete)
 
     # -- field <-> config helpers ------------------------------------------
 
@@ -246,8 +261,8 @@ class SettingsTab(Tab):
         self.ctx.pick_config(name)
         self.lbl_io.configure(text=f"picked {name}")
 
-    def _on_save_as(self) -> None:
-        name = ctk.CTkInputDialog(text="Config name:", title="Save as").get_input()
+    def _on_new(self) -> None:
+        name = ctk.CTkInputDialog(text="Config name:", title="New config").get_input()
         if not name:
             return
         cfg = load_real_config()
@@ -255,7 +270,7 @@ class SettingsTab(Tab):
             try:
                 save_config_as(cfg, name)
             except FileExistsError:
-                if not messagebox.askyesno("Save as", f"{name} exists. Overwrite it?"):
+                if not messagebox.askyesno("New config", f"{name} exists. Overwrite it?"):
                     return
                 save_config_as(cfg, name, overwrite=True)
         except ConfigError as exc:
@@ -265,6 +280,28 @@ class SettingsTab(Tab):
         self.menu_config.set(name)
         self._on_pick(name)
         self.lbl_io.configure(text=f"saved {name}")
+
+    def _on_save(self) -> None:
+        try:
+            self.ctx.save_config()
+        except ConfigError as exc:
+            self.lbl_io.configure(text=str(exc))
+            return
+        self.lbl_io.configure(text=f"saved {self.menu_config.get()}")
+
+    def _on_delete(self) -> None:
+        name = self.menu_config.get()
+        if not messagebox.askyesno("Delete config", f"Delete {name}?"):
+            return
+        try:
+            picked = delete_config(name)
+        except ConfigError as exc:
+            self.lbl_io.configure(text=str(exc))
+            return
+        self.menu_config.configure(values=config_names())
+        self.menu_config.set(picked.stem)
+        self._on_pick(picked.stem)
+        self.lbl_io.configure(text=f"deleted {name}")
 
     # -- per-poll status ------------------------------------------------------
 

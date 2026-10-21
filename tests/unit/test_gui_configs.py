@@ -1,4 +1,4 @@
-"""T0.F1.K3: named configs in configs/ (no window opened)."""
+"""T0.F1.K3 and K5: named configs in configs/ (no window opened)."""
 
 from __future__ import annotations
 
@@ -8,13 +8,17 @@ from pathlib import Path
 
 import pytest
 
+from moonlight.bot.state import WorldState
+from moonlight.gui.config_bridge import ConfigStore
 from moonlight.gui.loop_factory import (
     config_names,
+    delete_config,
     load_real_config,
     pick_config,
     picked_config,
     save_config_as,
 )
+from moonlight.gui.state_bridge import GuiContext, HardwareController, LogFeed
 from moonlight.setup.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
 
 
@@ -68,3 +72,37 @@ def test_last_pick_is_restored() -> None:
     assert Path("configs/last.txt").read_text() == "a"
     assert picked_config() == Path("configs/a.json")
     assert load_real_config().simulation is False
+
+
+def test_delete_removes_file_and_picks_another() -> None:
+    save_config_as(BotConfig.default(), "a")
+    save_config_as(BotConfig.default(), "b")
+    assert delete_config("b") == Path("configs/a.json")
+    assert config_names() == ["a"]
+    assert picked_config() == Path("configs/a.json")
+
+
+def test_delete_keeps_the_pick_when_another_goes() -> None:
+    save_config_as(BotConfig.default(), "a")
+    save_config_as(BotConfig.default(), "b")
+    assert delete_config("a") == Path("configs/b.json")
+
+
+def test_only_config_cannot_be_deleted() -> None:
+    save_config_as(BotConfig.default(), "a")
+    with pytest.raises(ConfigError):
+        delete_config("a")
+    assert config_names() == ["a"]
+
+
+def test_save_runs_every_tabs_apply() -> None:
+    calls: list[str] = []
+    ctx = GuiContext(
+        state=WorldState(),
+        config_store=ConfigStore(None, Path("gui.json")),
+        hardware=HardwareController(),
+        log=LogFeed(),
+    )
+    ctx.config_savers.extend([lambda: calls.append("a"), lambda: calls.append("b")])
+    ctx.save_config()
+    assert calls == ["a", "b"]
