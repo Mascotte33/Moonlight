@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
-from moonlight.gui import routes
+from moonlight.gui import routes, theme
 from moonlight.gui.tabs.base import Tab, section, stat_label
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -122,7 +122,7 @@ class RecorderTab(Tab):
             btns2.grid_columnconfigure(col, weight=1)
 
         self.lbl_status = ctk.CTkLabel(
-            rfile_grid, text="", anchor="w", font=ctk.CTkFont(size=11)
+            rfile_grid, text="", anchor="w", font=ctk.CTkFont(size=theme.SIZE_TITLE)
         )
         self.lbl_status.grid(row=3, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10))
         self._refresh_routes()

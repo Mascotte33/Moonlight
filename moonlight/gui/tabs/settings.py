@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
+from moonlight.gui import theme
 from moonlight.gui.tabs.base import Tab, section
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -49,16 +50,31 @@ class SettingsTab(Tab):
         # -- lifecycle controls -------------------------------------------
         ctrl_box = section(parent, "Bot control")
         ctrl_box.pack(fill="x", padx=10, pady=(10, 4))
-        self.btn_start = ctk.CTkButton(ctrl_box, text="Start", width=110)
+        self.btn_start = ctk.CTkButton(
+            ctrl_box,
+            text="Start",
+            width=110,
+            fg_color=theme.LIFE,
+            hover_color=theme.LIFE_HOVER,
+            text_color=theme.NIGHT,
+        )
         self.btn_start.pack(side="left", padx=(10, 4), pady=8)
-        self.btn_pause = ctk.CTkButton(ctrl_box, text="Pause (stop)", width=110)
+        self.btn_pause = ctk.CTkButton(
+            ctrl_box,
+            text="Pause (stop)",
+            width=110,
+            fg_color=theme.AMBER,
+            hover_color=theme.AMBER_HOVER,
+            text_color=theme.NIGHT,
+        )
         self.btn_pause.pack(side="left", padx=4, pady=8)
         self.btn_kill = ctk.CTkButton(
             ctrl_box,
             text="Kill (F12)",
             width=110,
-            fg_color="#8a2d2d",
-            hover_color="#a83a3a",
+            fg_color=theme.BLOOD,
+            hover_color=theme.BLOOD_HOVER,
+            text_color=theme.NIGHT,
         )
         self.btn_kill.pack(side="left", padx=4, pady=8)
         self.lbl_status = ctk.CTkLabel(ctrl_box, text="stopped", anchor="w")

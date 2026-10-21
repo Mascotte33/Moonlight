@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
+from moonlight.gui import theme
+
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.bot.state import WorldState
     from moonlight.gui.state_bridge import GuiContext
@@ -26,14 +28,20 @@ __all__ = ["Tab", "section", "stat_label", "stat_num"]
 
 def section(parent: ctk.CTkFrame, title: str) -> ctk.CTkFrame:
     """A titled, inset frame (consistent look across tabs)."""
-    box = ctk.CTkFrame(parent, fg_color=("gray85", "gray17"), corner_radius=8)
+    box = ctk.CTkFrame(
+        parent,
+        fg_color=theme.PANEL,
+        border_width=1,
+        border_color=theme.RAISED,
+        corner_radius=theme.RADIUS_CARD,
+    )
     ctk.CTkLabel(
         box,
-        text=title,
+        text=title.upper(),
         anchor="w",
-        font=ctk.CTkFont(weight="bold"),
-        text_color=("gray20", "gray85"),
-    ).pack(fill="x", padx=10, pady=(8, 0))
+        font=ctk.CTkFont(size=theme.SIZE_TITLE, weight="bold"),
+        text_color=theme.TEXT_MUTED,
+    ).pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0))
     return box
 
 
@@ -43,7 +51,7 @@ def stat_label(parent: ctk.CTkFrame, title: str) -> ctk.CTkLabel:
         parent,
         text=f"{title}: --",
         anchor="w",
-        font=ctk.CTkFont(family="Consolas", size=12),
+        font=ctk.CTkFont(family=theme.MONO, size=theme.SIZE_BODY),
     )
 
 
