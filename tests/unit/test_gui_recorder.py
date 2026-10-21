@@ -1,4 +1,4 @@
-"""Recorder tab saves bot routes and records (T8.F1.K1, T8.F3.K1)."""
+"""Recorder tab saves bot routes and records (T8.F1.K1-T8.F4.K1)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,14 @@ import pytest
 
 from moonlight.bot.state import Position
 from moonlight.decision.cavebot import RouteError, RouteFileLoader, Waypoint
-from moonlight.gui.tabs.recorder import make_waypoint, save_route, should_add, status_line
+from moonlight.gui.tabs.recorder import (
+    HOTKEYS,
+    make_waypoint,
+    save_route,
+    should_add,
+    status_line,
+    vk_code,
+)
 
 
 def test_saved_route_loads_with_the_bot_loader(tmp_path: Path) -> None:
@@ -58,3 +65,22 @@ def test_long_step_or_floor_change_adds() -> None:
 def test_status_line() -> None:
     assert status_line(False, Position(0, 0, 0)) == "Not recording · position unknown"
     assert status_line(True, Position(1, 2, 7)) == "Recording · 1, 2, 7"
+
+
+def test_each_hotkey_maps_to_its_action() -> None:
+    assert HOTKEYS == {
+        "F6": "walk",
+        "F7": "rope",
+        "F8": "shovel",
+        "F4": "ladder",
+        "F9": "label",
+        "F5": "undo",
+    }
+    assert [vk_code(k) for k in ("F4", "F5", "F6", "F7", "F8", "F9")] == [
+        0x73,
+        0x74,
+        0x75,
+        0x76,
+        0x77,
+        0x78,
+    ]
