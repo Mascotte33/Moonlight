@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING
 
 from moonlight.bot.state import WorldState
 from moonlight.bot.wiring import build_loop, capture_providers
-from moonlight.gui.config_bridge import BotConfig as GuiBotConfig
 from moonlight.hardware.input import FakeInput, InputBackend
 from moonlight.setup.config import DEFAULT_CONFIG_FILE, BotConfig
 from moonlight.setup.profile import ProfileManager
@@ -37,9 +36,9 @@ __all__ = ["build_gui_loop", "load_profile", "load_real_config", "make_backend"]
 def load_real_config(config_path: str | Path | None = None) -> BotConfig:
     """Load the authoritative real :class:`~moonlight.setup.config.BotConfig`.
 
-    The GUI Start loads the ``config.yaml``
-    file, or :meth:`~moonlight.setup.config.BotConfig.default` when the file does
-    not exist yet.
+    The GUI Start loads ``moonlight_config.json``, or
+    :meth:`~moonlight.setup.config.BotConfig.default` when the file does not
+    exist yet.
     """
     path = Path(config_path) if config_path is not None else Path(DEFAULT_CONFIG_FILE)
     # A missing config file means "use safe defaults" (fresh install); a
@@ -56,12 +55,10 @@ def load_profile(
     return ProfileManager(profiles_dir).load(profile_name)
 
 
-def make_backend(
-    gui_config: GuiBotConfig, hardware: HardwareController
-) -> InputBackend:
+def make_backend(config: BotConfig, hardware: HardwareController) -> InputBackend:
     """Create the input backend for the GUI Start button (F-13).
 
-    * ``gui_config.simulation`` set → a :class:`~moonlight.hardware.input.FakeInput`
+    * ``config.simulation`` set → a :class:`~moonlight.hardware.input.FakeInput`
       (the operator explicitly opted into simulation).
     * Otherwise a real :class:`~moonlight.hardware.input.ArduinoInput` opened through
       the shared :class:`~moonlight.gui.state_bridge.HardwareController`,
@@ -70,16 +67,12 @@ def make_backend(
       :class:`~moonlight.hardware.input.NoArduinoFoundError` propagates — the Start
       fails with a clear message instead of silently going fake (F-13).
     """
-    if gui_config.simulation:
+    if config.simulation:
         return FakeInput()
-    return hardware.connect(
-        port=gui_config.serial_port or None,
-        baudrate=gui_config.serial_baudrate,
-    )
+    return hardware.connect(port=config.serial_port or None, baudrate=config.serial_baudrate)
 
 
 def build_gui_loop(
-    gui_config: GuiBotConfig,
     *,
     hardware: HardwareController,
     state: WorldState,
@@ -93,8 +86,6 @@ def build_gui_loop(
     builds a bare ``GameLoop`` with no ``perceive`` (which stops on tick 1).
 
     Args:
-        gui_config: The GUI-level config-bridge snapshot (serial port,
-            profile name, the explicit ``simulation`` toggle).
         hardware: The shared hardware controller (owns the Arduino).
         state: The shared :class:`~moonlight.bot.state.WorldState` to mutate.
         config_path: Path to the real config file; ``None`` uses the default.
@@ -109,11 +100,8 @@ def build_gui_loop(
             module (raised by :func:`moonlight.bot.wiring.build_loop`).
     """
     real_config = load_real_config(config_path)
-    profile = load_profile(
-        gui_config.profile_name or real_config.profile,
-        profiles_dir or real_config.profiles_dir,
-    )
-    backend = make_backend(gui_config, hardware)
+    profile = load_profile(real_config.profile, profiles_dir or real_config.profiles_dir)
+    backend = make_backend(real_config, hardware)
     # Real screen capture: frame provider + focus check (F-13). Imported at
     # call time so importing this module never pulls in mss.
     from moonlight.perception.capture import ScreenCapture

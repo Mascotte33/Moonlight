@@ -13,6 +13,8 @@ JSON format (``moonlight_config.json``)::
     {
       "profile": "moonlight_user",         # default profile (F-11)
       "serial_port": null,                 # null = auto-detect the Arduino
+      "serial_baudrate": 115200,
+      "simulation": false,                 # true = FakeInput, no Arduino (F-13)
       "profiles_dir": null,                # null = moonlight/profiles
       "templates_dir": "data/templates",   # cursor/*.png, loot/*.png
       "routes_dir": "data/waypoints",
@@ -85,6 +87,8 @@ MODULES = ("healing", "targeting", "buffs", "alarms", "cavebot", "looting", "ref
 _TOP_KEYS = {
     "profile",
     "serial_port",
+    "serial_baudrate",
+    "simulation",
     "profiles_dir",
     "templates_dir",
     "routes_dir",
@@ -118,6 +122,10 @@ class BotConfig:
 
     profile: str
     serial_port: str | None = None
+    serial_baudrate: int = 115200
+    #: F-13: true runs on a FakeInput instead of the Arduino. A missing
+    #: Arduino with this off is a hard error, never a silent fallback.
+    simulation: bool = False
     profiles_dir: Path | None = None
     templates_dir: Path = Path("data/templates")
     routes_dir: Path = Path("data/waypoints")
@@ -197,6 +205,8 @@ class BotConfig:
         for key in (
             "profile",
             "serial_port",
+            "serial_baudrate",
+            "simulation",
             "profiles_dir",
             "templates_dir",
             "routes_dir",

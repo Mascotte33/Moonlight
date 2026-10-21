@@ -6,12 +6,12 @@ bot) and **look like** [Tibiaeye](https://github.com/GGotha/tibiaeye)'s GUI.
 ## Start here (for agents)
 
 1. Read **Rules** and **Testing** below. They apply to every task.
-2. Do the next task in **Tasks** whose **Needs** are done. They are listed in build order: Look (S) first, then the config work (T0), then the tabs.
+2. Do the next task in **Tasks** without a ✅ line, whose **Needs** all have one. They are listed in build order: Look (S) first, then the config work (T0), then the tabs.
 3. Look up your tab in **Tabs** for what it should end up with.
 4. Style it with **Look**. Use `moonlight/gui/theme.py`, never raw colors.
 5. Touch only the task's **Files**. **Don't touch** lists what is off limits.
 6. pytest, `ruff check` and `mypy moonlight tests` stay green.
-7. **Do one task, then stop.** Don't commit; the owner checks and commits. End with a report:
+7. **Do one task, then stop.** Don't commit; the owner checks and commits. When it is committed, add `- ✅ Done in commit <hash>.` under the task's heading. End with a report:
    - **Changed:** each file and what changed in it, one line each.
    - **What to expect:** what the owner will see when they open the GUI (`python -m moonlight.gui --no-bot`).
    - **Check it:** the commands you ran and their result, then the **Owner checks** from the task as a list to tick.
@@ -107,12 +107,14 @@ Write every task as one block, so an agent can do it with no other context:
 #### Phase 1: Look
 
 ### S.F6.K1 — Theme file
+- ✅ Done in commit 3204a08.
 - What: add `moonlight/gui/theme.py` with the colors, fonts, spacing and radii from **Look**. Replace every raw color in `gui/` with a theme name. Restyle `section()` in `tabs/base.py` as the card.
 - Files: moonlight/gui/theme.py, moonlight/gui/app.py, moonlight/gui/tabs/*.py
 - Don't touch: layout and behavior; colors and fonts only.
 - Done when: `grep -rn '"#' moonlight/gui` finds colors only in `theme.py`. Owner checks: every tab uses the Look colors.
 
 ### S.F1.K1 — Sidebar navigation
+- ✅ Done in commit 7aacf8a.
 - What: replace the top tab bar with a left sidebar (logo, one entry per tab, active entry highlighted).
 - Needs: S.F6.K1
 - Files: moonlight/gui/app.py
@@ -120,6 +122,7 @@ Write every task as one block, so an agent can do it with no other context:
 - Done when: pytest stays green. Owner checks: every tab opens from the sidebar; the active one is highlighted.
 
 ### S.F2.K1 — Top bar
+- ✅ Done in commit 3df15fc.
 - What: one bar pinned to the top of the window, across its full width (above the sidebar too): HP bar + %, MP bar + %, state dot + text (Running / Paused / Stopped), and ▶ Start / ⏸ Pause / ■ Stop icon buttons. It belongs to the window, not to a tab, so it never changes or scrolls away. Put the text formatting in a plain function so it can be tested.
 - Needs: S.F6.K1
 - Files: moonlight/gui/app.py, moonlight/gui/state_bridge.py, tests/unit/test_gui_topbar.py
@@ -128,6 +131,7 @@ Write every task as one block, so an agent can do it with no other context:
 - Deferred: "HP/MP update live", "the buttons work from any tab" and "Pause stops the bot" need a calibrated client. The owner tests them once calibration (CALIBRATION.MD) is in.
 
 ### S.F4.K1 — Bottom bar
+- ✅ Done in commit 4ab171e.
 - What: a strip at the bottom: Screen, Arduino and Bot dots; CPU % of the whole PC (0–100) and memory MB of the bot process. No new dependency (`psutil` is not installed): CPU % from `GetSystemTimes` deltas via `ctypes` on Windows (`—` elsewhere), memory from `GetProcessMemoryInfo` via `ctypes` on Windows, `—` elsewhere. Screen = `WorldState.screen_ok`; Arduino = green when `HardwareController.backend` is connected; Bot = `BotController.is_running`.
 - Needs: S.F6.K1
 - Files: moonlight/gui/app.py, tests/unit/test_gui_bottombar.py
@@ -135,6 +139,7 @@ Write every task as one block, so an agent can do it with no other context:
 - Done when: `pytest tests/unit/test_gui_bottombar.py` passes (dot color from a status value). Owner checks: the Arduino dot turns green after Test connection succeeds; the Bot dot follows Start/Stop; CPU and MB update.
 
 ### S.F6.K2 — Disabled buttons
+- ✅ Done in commit 286b910.
 - What: a disabled button is `RAISED` with `TEXT_MUTED` text, whatever its enabled color. Today a disabled LIFE/AMBER/BLOOD button keeps its fill and its grey text is hard to read (the top bar's Pause and Stop).
 - Needs: S.F2.K1
 - Files: moonlight/gui/theme.py, moonlight/gui/app.py, tests/unit/test_gui_theme.py
@@ -144,12 +149,14 @@ Write every task as one block, so an agent can do it with no other context:
 #### Phase 2: Config (needed by every tab task)
 
 ### T0.F1.K1 — Config can save
+- ✅ Done in commit a1345df.
 - What: add `BotConfig.to_dict()` (the exact JSON `from_dict` reads; cavebot is saved as its route name) and `BotConfig.save(path)`.
 - Files: moonlight/setup/config.py, tests/unit/test_config.py
 - Don't touch: the GUI.
 - Done when: `pytest tests/unit/test_config.py` passes, with a test that `BotConfig.from_dict(cfg.to_dict()) == cfg` for `BotConfig.default()` and for a config with every section set.
 
 ### T0.F1.K4 — Turned-off modules keep their values
+- ✅ Done in commit 68972dd.
 - What: a module that is off keeps its last values, so turning it back on restores them instead of the defaults. Add `BotConfig.off: dict[str, <module config>]`, which holds the values of each module that is off. `from_dict` reads a section like `{"enabled": false, "normal_hp_percent": 65}` into `off`, and `to_dict` writes it back the same way. The bot never reads `off`, so an off module stays `None` and stays off.
 - Needs: T0.F1.K1
 - Files: moonlight/setup/config.py, tests/unit/test_config.py
@@ -157,11 +164,11 @@ Write every task as one block, so an agent can do it with no other context:
 - Done when: `pytest tests/unit/test_config.py` passes, with a test that an off healing section with `normal_hp_percent: 65` round-trips, and that the bot still sees healing as off.
 
 ### T0.F1.K2 — Start uses only the real config
-- What: `gui/loop_factory.py` builds the bot from `moonlight_config.json` alone. Delete `gui/config_bridge.py`. Tabs that imported it read and write `BotConfig` through `GuiContext` (`gui/state_bridge.py`) until their own tab task converts them.
+- What: Start builds the bot from `moonlight_config.json` alone. `BotConfig` gets `simulation` and `serial_baudrate`, so nothing Start needs comes from the GUI's copy. `gui/config_bridge.py` stays for now, because the tabs still use its GUI-only fields. The last tab task deletes it once every tab is converted.
 - Needs: T0.F1.K1
-- Files: moonlight/gui/config_bridge.py, moonlight/gui/loop_factory.py, moonlight/gui/state_bridge.py, moonlight/gui/tabs/*.py (imports only), tests/unit/test_loop_factory.py
-- Don't touch: the tabs' layout.
-- Done when: `pytest tests/unit/test_loop_factory.py` passes; `grep -rn config_bridge moonlight` finds nothing. Owner checks: the GUI still opens and Start works.
+- Files: moonlight/setup/config.py, moonlight/gui/loop_factory.py, moonlight/gui/app.py (`start_bot` only), tests/unit/test_loop_factory.py
+- Don't touch: the tabs, `gui/config_bridge.py`.
+- Done when: `pytest tests/unit/test_loop_factory.py` passes and `loop_factory.py` doesn't import `config_bridge`. Owner checks: the GUI still opens, and Start follows `"simulation"` in `moonlight_config.json`.
 
 ### T0.F3.K1 — Tab option pattern
 - What: add the shared pattern from Rule 2 to `tabs/base.py`. One option is:
