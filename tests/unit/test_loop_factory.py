@@ -1,4 +1,4 @@
-"""F-13: the GUI "Start bot" builds the REAL loop through ``cli.build_loop``.
+"""F-13: the GUI "Start bot" builds the REAL loop through ``wiring.build_loop``.
 
 Covers the four F-13 guarantees (see ``docs/senior_review_findings.md``):
 

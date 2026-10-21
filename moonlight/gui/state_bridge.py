@@ -16,7 +16,7 @@ Connects the GUI to the real bot runtime without touching bot logic:
 
 .. note::
    The GUI's "Start bot" does **not** run perception in a side thread. It
-   builds the real bot loop through :func:`moonlight.cli.build_loop` (see
+   builds the real bot loop through :func:`moonlight.wiring.build_loop` (see
    :mod:`moonlight.gui.app`), which wires a real screen capture, the focus
    gate and every enabled decision module. The previous ``PerceptionWriter``
    background thread was removed (F-13): it duplicated ``make_perceive`` and

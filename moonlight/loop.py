@@ -421,7 +421,7 @@ class F12Monitor:
 class GameLoop:
     """The 20 Hz main game loop with the priority state machine.
 
-    Typical usage (wired up by ``cli.build_loop``)::
+    Typical usage (wired up by ``wiring.build_loop``)::
 
         loop = GameLoop(world_state, input_backend)
         loop.run()  # blocks until kill / stop() / screen_ok goes false

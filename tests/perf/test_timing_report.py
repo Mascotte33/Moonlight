@@ -21,7 +21,6 @@ import numpy as np
 import pytest
 
 from moonlight.calibrate import CalibrationProfile, default_profiles_dir
-from moonlight.cli import make_perceive
 from moonlight.decision.alarms import AlarmDecision
 from moonlight.decision.buffs import BuffManager
 from moonlight.decision.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
@@ -43,6 +42,7 @@ from moonlight.perception import (
 )
 from moonlight.perception.loot import TITLE_TEMPLATE, LootReader, LootWindow
 from moonlight.state import Capacity, Monster, Position, WorldState
+from moonlight.wiring import make_perceive
 
 pytestmark = pytest.mark.slow
 
@@ -260,8 +260,8 @@ def test_production_tick_within_budget(tmp_path: Path) -> None:
         pytest.skip("no golden frames or calibration profile")
     from moonlight.calibrate import Region
     from moonlight.capture import ScreenCapture
-    from moonlight.cli import TickGrabber, build_loop, capture_regions
     from moonlight.config import BotConfig
+    from moonlight.wiring import TickGrabber, build_loop, capture_regions
 
     bgr = cv2.imread(str(paths[0]))
     assert bgr is not None, paths[0]

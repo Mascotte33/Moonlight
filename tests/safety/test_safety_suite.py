@@ -3,7 +3,7 @@
 Offline: ``FakeInput`` captures every wire line, ``WorldState`` is set by hand,
 the loop clock is fake. ``python -m pytest tests/safety/ -v``.
 
-Tests 13-18 (T32a / F-19) run the production wiring instead: ``cli.build_loop``
+Tests 13-18 (T32a / F-19) run the production wiring instead: ``wiring.build_loop``
 + ``make_perceive`` over a real golden frame with a toggleable focus check.
 """
 
@@ -21,7 +21,6 @@ import numpy as np
 import pytest
 
 from moonlight.calibrate import CalibrationProfile, default_profiles_dir
-from moonlight.cli import build_loop
 from moonlight.clicker import ClickController
 from moonlight.config import BotConfig
 from moonlight.decision.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
@@ -32,6 +31,7 @@ from moonlight.input import ClickSide, FakeInput
 from moonlight.loop import BotState, DecisionModules, F12Monitor, GameLoop, LoopConfig
 from moonlight.perception.loot import LootWindow
 from moonlight.state import Capacity, Monster, Position, WorldState
+from moonlight.wiring import build_loop
 
 pytestmark = pytest.mark.safety
 
@@ -334,7 +334,7 @@ def test_12_refill_only_starts_above_cap_threshold(tmp_path: Path) -> None:
     assert gl.current_state is BotState.REFILL
 
 
-# -- F-19: the production wiring (cli.build_loop + make_perceive + focus) ---------
+# -- F-19: the production wiring (wiring.build_loop + make_perceive + focus) ---------
 
 GOLDEN_LOW_HP = (
     Path(__file__).resolve().parents[2]
@@ -350,7 +350,7 @@ needs_golden = pytest.mark.skipif(
 
 
 class Built:
-    """A loop built by ``cli.build_loop`` over a real golden frame (HP ~41%)."""
+    """A loop built by ``wiring.build_loop`` over a real golden frame (HP ~41%)."""
 
     def __init__(self, **frame_overrides: Any) -> None:
         bgr = cv2.imread(str(GOLDEN_LOW_HP))
