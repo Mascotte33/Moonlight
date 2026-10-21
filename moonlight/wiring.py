@@ -21,7 +21,8 @@ import numpy as np
 from moonlight.calibrate import CalibrationProfile
 from moonlight.config import MODULES, BotConfig
 from moonlight.input import InputBackend
-from moonlight.loop import DecisionModules, GameLoop, RateLimitedInput, beep_alert
+from moonlight.loop import DecisionModules, GameLoop
+from moonlight.safety import RateLimitedInput, beep_alert
 from moonlight.state import WorldState
 
 if TYPE_CHECKING:

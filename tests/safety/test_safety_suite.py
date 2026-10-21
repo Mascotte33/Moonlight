@@ -28,8 +28,9 @@ from moonlight.decision.healing import HealingConfig, HealingDecision, HealType
 from moonlight.decision.looting import Looting, LootingConfig
 from moonlight.decision.refill import Refill, RefillConfig
 from moonlight.input import ClickSide, FakeInput
-from moonlight.loop import BotState, DecisionModules, F12Monitor, GameLoop, LoopConfig
+from moonlight.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.perception.loot import LootWindow
+from moonlight.safety import F12Monitor
 from moonlight.state import Capacity, Monster, Position, WorldState
 from moonlight.wiring import build_loop
 

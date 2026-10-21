@@ -1,4 +1,4 @@
-"""Unit tests for moonlight.loop (GameLoop, RateLimiter, F12Monitor).
+"""Unit tests for moonlight.loop (GameLoop).
 
 Fully hermetic: no hardware, no Windows, no real sleeps on the game
 paths. Timing uses an injectable fake clock; F12 uses an injectable
@@ -12,17 +12,9 @@ import time
 from collections.abc import Callable
 from typing import cast
 
-import pytest
-
 from moonlight.input import FakeInput
-from moonlight.loop import (
-    VK_F12,
-    BotState,
-    F12Monitor,
-    GameLoop,
-    LoopConfig,
-    RateLimiter,
-)
+from moonlight.loop import BotState, GameLoop, LoopConfig
+from moonlight.safety import VK_F12, F12Monitor, RateLimiter
 from moonlight.state import Monster, WorldState
 
 PERIOD = 1.0 / 20.0  # 50 ms
@@ -131,75 +123,6 @@ class TestBotStatePriority:
         assert BotState.PAUSED.priority == 1
         assert BotState.IDLE.priority == 9
         assert BotState.ALARM.priority < BotState.EMERGENCY_HEAL.priority
-
-
-class TestRateLimiter:
-    def test_initial_burst_limited_to_capacity(self) -> None:
-        rl = RateLimiter(rate=10.0, capacity=3.0)
-        assert all(rl.try_acquire() for _ in range(3))
-        assert not rl.try_acquire()
-
-    def test_refills_at_rate(self) -> None:
-        c = FakeClock()
-        rl = RateLimiter(rate=10.0, capacity=1.0, clock=c)
-        assert rl.try_acquire()
-        assert not rl.try_acquire()
-        c.advance(0.1)  # one token at 10/s
-        assert rl.try_acquire()
-        assert not rl.try_acquire()
-
-    def test_tokens_capped_at_capacity(self) -> None:
-        c = FakeClock()
-        rl = RateLimiter(rate=10.0, capacity=2.0, clock=c)
-        c.advance(10.0)  # would add 100 tokens
-        assert rl.try_acquire()
-        assert rl.try_acquire()
-        assert not rl.try_acquire()
-
-    def test_invalid_rate(self) -> None:
-        with pytest.raises(ValueError):
-            RateLimiter(rate=0.0)
-        with pytest.raises(ValueError):
-            RateLimiter(rate=-1.0)
-
-
-class TestF12Monitor:
-    def test_rising_edge_triggers_on_press(self) -> None:
-        presses: list[int] = []
-        key = KeySim()
-        mon = F12Monitor(on_press=lambda: presses.append(1), poll_interval=0.002, key_state=key)
-        mon.start()
-        try:
-            # Wait until the monitor has taken at least one sample (with the
-            # key up), so prev_down is reliably initialized to False.
-            assert wait_until(lambda: key.samples >= 1)
-            key.down(VK_F12)
-            assert wait_until(lambda: len(presses) == 1)
-            # A held key must not retrigger.
-            time.sleep(0.05)
-            assert len(presses) == 1
-            key.up(VK_F12)
-            time.sleep(0.05)
-            key.down(VK_F12)
-            assert wait_until(lambda: len(presses) == 2)
-        finally:
-            mon.stop()
-        assert not mon.running
-
-    def test_no_press_without_key(self) -> None:
-        presses: list[int] = []
-        key = KeySim()
-        mon = F12Monitor(on_press=lambda: presses.append(1), poll_interval=0.002, key_state=key)
-        mon.start()
-        try:
-            time.sleep(0.05)
-            assert presses == []
-        finally:
-            mon.stop()
-
-    def test_invalid_poll_interval(self) -> None:
-        with pytest.raises(ValueError):
-            F12Monitor(on_press=lambda: None, poll_interval=0.0)
 
 
 class TestGameLoopSafety:
