@@ -1,4 +1,4 @@
-"""T4.F1.K1: Healing tab options and spell hotkeys (no window opened)."""
+"""T4.F1.K1, T4.F1.K2: Healing tab options and spell hotkeys (no window opened)."""
 
 from __future__ import annotations
 
@@ -41,3 +41,13 @@ def test_apply_writes_thresholds_and_hotkeys() -> None:
 def test_spell_with_no_hotkey_is_refused() -> None:
     with pytest.raises(ConfigError, match="exura vita"):
         apply_healing(BotConfig.default(), VALUES, {**COMBOS, "healing.emergency_spell": " "})
+
+
+def test_each_spell_sits_under_its_hp_percent() -> None:
+    from moonlight.gui.tabs.healing import GROUPS
+
+    assert [t for t, _ in GROUPS] == ["Emergency", "Normal", "Cure", "Mana and cooldown"]
+    fields = {t: [o.field for o in g] for t, g in GROUPS}
+    assert fields["Emergency"] == ["healing.emergency_hp_percent", "healing.emergency_spell"]
+    assert fields["Normal"] == ["healing.normal_hp_percent", "healing.normal_spell"]
+    assert fields["Cure"] == ["healing.cure_spell"]

@@ -19,17 +19,25 @@ from moonlight.setup.config import BotConfig, ConfigError
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.bot.state import WorldState
 
-__all__ = ["OPTIONS", "SPELLS", "HealingTab", "apply_healing"]
+__all__ = ["GROUPS", "OPTIONS", "SPELLS", "HealingTab", "apply_healing"]
 
-OPTIONS = [
-    Option("Emergency heal at HP %", "healing.emergency_hp_percent", "slider", min=0, max=100),
-    Option("Normal heal at HP %", "healing.normal_hp_percent", "slider", min=0, max=100),
-    Option("Keep mana above %", "healing.mana_threshold", "slider", min=0, max=100),
-    Option("Heal cooldown (ms)", "healing.heal_cooldown_ms", "slider", min=0, max=2000),
-    Option("Emergency spell", "healing.emergency_spell", "entry"),
-    Option("Normal spell", "healing.normal_spell", "entry"),
-    Option("Cure spell", "healing.cure_spell", "entry"),
+#: Each heal's HP % with its spell just under it (T4.F1.K2).
+GROUPS = [
+    ("Emergency", [
+        Option("Heal at HP %", "healing.emergency_hp_percent", "slider", min=0, max=100),
+        Option("Spell", "healing.emergency_spell", "entry"),
+    ]),
+    ("Normal", [
+        Option("Heal at HP %", "healing.normal_hp_percent", "slider", min=0, max=100),
+        Option("Spell", "healing.normal_spell", "entry"),
+    ]),
+    ("Cure", [Option("Spell", "healing.cure_spell", "entry")]),
+    ("Mana and cooldown", [
+        Option("Keep mana above %", "healing.mana_threshold", "slider", min=0, max=100),
+        Option("Heal cooldown (ms)", "healing.heal_cooldown_ms", "slider", min=0, max=2000),
+    ]),
 ]
+OPTIONS = [o for _, group in GROUPS for o in group]
 SPELLS = [o.field for o in OPTIONS if o.field.endswith("_spell")]
 
 
@@ -66,13 +74,15 @@ class HealingTab(Tab):
     options = OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
-        box = section(parent, "Healing")
-        box.pack(fill="x", padx=10, pady=10)
-        self.build_options(box)
-        rows = [w for w in box.winfo_children() if isinstance(w, ctk.CTkFrame)]
         self._hotkeys: dict[str, ctk.CTkEntry] = {}
-        for option, row in zip(OPTIONS, rows, strict=True):
-            if option.field in SPELLS:
+        for title, group in GROUPS:
+            box = section(parent, title)
+            box.pack(fill="x", padx=10, pady=(10, 0))
+            self.build_options(box, group)
+            rows = [w for w in box.winfo_children() if isinstance(w, ctk.CTkFrame)]
+            for option, row in zip(group, rows, strict=True):
+                if option.field not in SPELLS:
+                    continue
                 entry = ctk.CTkEntry(
                     row,
                     width=70,
@@ -82,10 +92,11 @@ class HealingTab(Tab):
                 )
                 entry.pack(side="right", padx=theme.UNIT)
                 self._hotkeys[option.field] = entry
+            ctk.CTkFrame(box, height=theme.PAD, fg_color="transparent").pack()
         self.lbl_msg = ctk.CTkLabel(
-            box, text="", anchor="w", text_color=theme.BLOOD
+            parent, text="", anchor="w", text_color=theme.BLOOD
         )
-        self.lbl_msg.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, theme.PAD))
+        self.lbl_msg.pack(fill="x", padx=10, pady=(theme.UNIT, 0))
         self.lbl_live = ctk.CTkLabel(
             parent, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
         )
