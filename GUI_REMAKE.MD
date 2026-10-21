@@ -468,6 +468,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_recorder.py` passes, with a test that each key maps to its action. Owner checks: while recording in the game, F7 adds a rope waypoint and F5 removes it.
 
 ### T0.F1.K6 — Delete the GUI's config copy
+- ✅ Done in commit 50b7ad7.
 - What: delete `moonlight/gui/config_bridge.py`, `moonlight/gui/routes.py`, `ctx.config_store` and their tests. Every tab now reads and writes `BotConfig`.
 - Needs: every tab task above.
 - Files: moonlight/gui/config_bridge.py, moonlight/gui/routes.py, moonlight/gui/state_bridge.py, moonlight/gui/app.py, their tests
