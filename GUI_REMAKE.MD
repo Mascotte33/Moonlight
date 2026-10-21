@@ -273,7 +273,7 @@ the same everywhere.
 | `NIGHT` | `#0d1117` | window and sidebar background |
 | `PANEL` | `#171b22` | cards |
 | `RAISED` | `#22262c` | inputs, card borders, hovered rows |
-| `NAV_ACTIVE` | `#1e2332` | unused (too faint for the selected entry; owner picked `MANA`) |
+| `NAV_HOVER` | `#2a3d5e` | hovered sidebar entry (soft blue; the selected entry is `MANA`) |
 | `TEXT` | `#e7edf2` | values, headings |
 | `TEXT_DIM` | `#b6b8bd` | labels |
 | `TEXT_MUTED` | `#7c8186` | section titles, hints, disabled |
