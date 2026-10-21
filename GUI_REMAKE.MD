@@ -82,9 +82,9 @@ Write every task as one block, so an agent can do it with no other context:
 - Done when: every tab opens from the sidebar; the active one is highlighted.
 
 ### S.F2.K1 — Top bar
-- What: a bar above every tab: HP bar + %, MP bar + %, bot state dot + text, Start / Pause / Stop buttons.
+- What: one bar pinned to the top of the window, across its full width (above the sidebar too): HP bar + %, MP bar + %, state dot + text (Running / Paused / Stopped), and ▶ Start / ⏸ Pause / ■ Stop icon buttons. It belongs to the window, not to a tab, so it never changes or scrolls away.
 - Files: moonlight/gui/app.py, moonlight/gui/state_bridge.py, tests/gui/
-- Done when: HP/MP and state update live on every tab; the buttons work from any tab.
+- Done when: switching between any tabs leaves the bar in place; HP/MP and state update live; the buttons work from any tab.
 
 ### S.F4.K1 — Bottom bar
 - What: a strip at the bottom: Screen, Arduino and Bot dots; CPU % and memory MB of the bot process.
@@ -111,8 +111,19 @@ running, am I safe (HP/MP), is anything broken. So the GUI should feel like a
 **night-time instrument panel**: dark, quiet, dense, and color only where it
 means something.
 
-**Focal point.** The top bar's state and HP/MP bars lead on every tab. Tab
-content comes second.
+**Focal point.** The top bar: HP, MP, Running/Paused/Stopped and the ▶ ⏸ ■
+buttons. It spans the whole window above the sidebar and the tab, and stays put
+whatever tab is open. Tab content comes second.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ HP ████████░░ 82%   MP ████░░░░ 47%   ● Running   ▶ ⏸ ■ │  top bar (always)
+├────────────┬─────────────────────────────────────────────┤
+│ sidebar    │ current tab                                 │
+├────────────┴─────────────────────────────────────────────┤
+│ ● Screen  ● Arduino  ● Bot              CPU 7% · 184 MB  │  bottom bar (always)
+└──────────────────────────────────────────────────────────┘
+```
 
 **Signature.** Status dots. One small dot per subsystem (screen, vitals, battle
 list, minimap, Arduino), green or red. The same dots appear in the bottom bar,
@@ -155,7 +166,7 @@ lighter than their card.
 - Base unit 4 px. Padding inside a card: 12. Gap between cards: 12. Gap between sections: 24.
 - Radius: 6 for buttons and inputs, 10 for cards.
 - Depth: color steps plus a 1 px `RAISED` border on cards. No shadows (Tk can't do them well on dark).
-- Sidebar: 200 px wide, same `NIGHT` as the window, one `RAISED` line on its right edge.
+- Sidebar: 200 px wide, below the top bar, same `NIGHT` as the window, one `RAISED` line on its right edge.
 - Every control has hover, pressed and disabled states; every list has an empty state ("No waypoints loaded").
 
 ---
@@ -169,8 +180,8 @@ Legend: ✅ works · 🟡 exists but incomplete or not wired to the bot · ❌ m
 | ID | Function | Today |
 |---|---|---|
 | S.F1 | Left sidebar navigation | ❌ top tab bar |
-| S.F2 | Top bar: HP + %, MP + %, state dot + text | ❌ |
-| S.F3 | Top bar: Start / Pause / Stop, usable from any tab | ❌ only in Settings |
+| S.F2 | Top bar, full window width, always visible: HP + %, MP + %, state dot + text | ❌ |
+| S.F3 | Top bar: ▶ Start / ⏸ Pause / ■ Stop icon buttons | ❌ only in Settings |
 | S.F4 | Bottom bar: Screen, Arduino, Bot dots | ❌ |
 | S.F5 | Bottom bar: CPU % and memory MB | ❌ |
 | S.F6 | Theme (see Look) | 🟡 dark, no cards, raw colors |
