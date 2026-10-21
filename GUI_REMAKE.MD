@@ -192,6 +192,7 @@ Write every task as one block, so an agent can do it with no other context:
 - Files: moonlight/gui/tabs/settings.py, moonlight/gui/state_bridge.py, moonlight/gui/loop_factory.py, moonlight/gui/tabs/base.py (`apply()` saves the picked config; controls refill on a pick), tests/unit/test_gui_configs.py
 - Don't touch: `tools/check_setup.py` (it already takes `--config configs/<name>.json`).
 - Done when: `pytest tests/unit/test_gui_configs.py` passes, with tests that Save as writes the named file, a bad name is refused, the dropdown lists the files, the last pick is restored, and the first run creates `configs/default.json`. Owner checks: Save as a new name, pick it in the dropdown, change a value, Apply, Stop then Start, and the bot uses the new value.
+- ✅ Done in commit 6f584d9. The owner check waits until a tab uses options (the tab tasks) and calibration lets Start run.
 
 #### Phase 3: Tabs
 
