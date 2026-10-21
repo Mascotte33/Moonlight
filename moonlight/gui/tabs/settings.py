@@ -24,7 +24,7 @@ from moonlight.gui.loop_factory import (
 from moonlight.gui.tabs.base import Option, Tab, section, write_option
 from moonlight.setup.config import ConfigError
 
-__all__ = ["MODULE_SWITCHES", "OPTIONS", "SettingsTab"]
+__all__ = ["MODULE_SWITCHES", "OPTIONS", "SettingsTab", "plain_reason"]
 
 OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
@@ -37,6 +37,24 @@ MODULE_SWITCHES = [
         "healing", "targeting", "attack_spells", "cavebot", "looting", "refill", "buffs", "alarms"
     )
 ]
+
+#: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
+REASONS = [
+    ("cavebot.route", "Cavebot needs a route. Record one on the Cavebot tab first."),
+    ("monster-name", "Looting needs a monster-name reader, which the bot doesn't have yet."),
+    ("capacity perception", "Refill needs a capacity reader, which the bot doesn't have yet."),
+    ("buff-icon", "Buffs needs a buff-icon reader, which the bot doesn't have yet."),
+    ("refill needs", "Refill needs Cavebot and Looting on."),
+    ("no hotkey", "Set a hotkey for each spell first ({spells})."),
+]
+
+
+def plain_reason(message: str) -> str:
+    """The plain-words reason for a refused switch, or *message* itself."""
+    for key, text in REASONS:
+        if key in message:
+            return text.format(spells=message.partition(": ")[2].strip("[]").replace("'", ""))
+    return message
 
 
 class SettingsTab(Tab):
@@ -82,6 +100,12 @@ class SettingsTab(Tab):
             font=ctk.CTkFont(size=theme.SIZE_TITLE, weight="bold"),
             text_color=theme.TEXT_MUTED,
         ).pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0), before=rows[len(OPTIONS)])
+        ctk.CTkLabel(
+            self.box_options,
+            text="Each switch turns one bot module on or off. An off module keeps its values.",
+            anchor="w",
+            text_color=theme.TEXT_DIM,
+        ).pack(fill="x", padx=theme.PAD, before=rows[len(OPTIONS)])
         window_row = rows[[o.field for o in OPTIONS].index("window_title")]
         (self.menu_window,) = [
             w for w in window_row.winfo_children() if isinstance(w, ctk.CTkOptionMenu)
@@ -95,14 +119,14 @@ class SettingsTab(Tab):
             hover_color=theme.HOVER,
         ).pack(side="right", padx=theme.UNIT)
         self._refresh_windows()
+        self._reasons: dict[str, ctk.CTkLabel] = {}
         for option, row in zip(self.options, rows, strict=True):
             for switch in row.winfo_children():
                 if isinstance(switch, ctk.CTkSwitch):
                     switch.configure(command=lambda f=option.field: self._check_switch(f))
-        self.lbl_options = ctk.CTkLabel(
-            self.box_options, text="", anchor="w", text_color=theme.BLOOD
-        )
-        self.lbl_options.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, theme.PAD))
+                    reason = ctk.CTkLabel(row, text="", anchor="w", text_color=theme.BLOOD)
+                    reason.pack(side="left", padx=theme.UNIT)
+                    self._reasons[option.field] = reason
 
     def _refresh_windows(self) -> None:
         self.menu_window.configure(values=window_titles() or ["No windows found"])
@@ -115,9 +139,9 @@ class SettingsTab(Tab):
                 cfg = write_option(cfg, option, self._readers[option.field]())
         except ConfigError as exc:
             self._writers[field](not self._readers[field]())
-            self.lbl_options.configure(text=str(exc))
+            self._reasons[field].configure(text=plain_reason(str(exc)))
             return
-        self.lbl_options.configure(text="")
+        self._reasons[field].configure(text="")
 
     # -- named configs -------------------------------------------------------
 
