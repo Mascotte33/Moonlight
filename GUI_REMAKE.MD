@@ -267,6 +267,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_loop_factory.py` passes, with a test that a sent command shows up in the log when the switch is on and not when it is off. Owner checks: switch on, Start in simulation, and Dashboard's Recent events shows the commands.
 
 ### T4.F1.K1 — Healing options
+- ✅ Done in commit 1fd07ee.
 - What: convert Healing to `OPTIONS`:
   - `healing.enabled`: switch;
   - `healing.emergency_hp_percent`, `healing.normal_hp_percent`, `healing.mana_threshold`: sliders 0–100;
