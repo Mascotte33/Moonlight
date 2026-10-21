@@ -241,13 +241,13 @@ class Tab:
         """Update widgets from a state snapshot (default: no-op)."""
         return None
 
-    def build_options(self, parent: ctk.CTkFrame) -> None:
-        """One labelled control per entry in ``options``, filled from the config."""
-        if self.options:
+    def build_options(self, parent: ctk.CTkFrame, options: list[Option] | None = None) -> None:
+        """One labelled control per entry in *options* (default ``options``)."""
+        if self.options and self.apply not in self.ctx.config_savers:
             self.ctx.config_listeners.append(self.reload_options)
             self.ctx.config_savers.append(self.apply)
         cfg = load_real_config()
-        for option in self.options:
+        for option in self.options if options is None else options:
             row = ctk.CTkFrame(parent, fg_color="transparent")
             row.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
             ctk.CTkLabel(
