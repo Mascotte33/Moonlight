@@ -444,6 +444,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: `pytest tests/unit/test_gui_cavebot.py` passes. Owner checks: values are kept after Save and reopening.
 
 ### T8.F1.K1 — Recorder saves bot routes
+- ✅ Done in commit d765861.
 - What: the Recorder saves and loads routes in the bot's format in `routes_dir` (x, y, z, action, label), so the Cavebot can run them. Output file = a route name entry, plus a dropdown of existing routes to load. Waypoint types become the bot's actions: walk, rope, shovel, ladder, label, goto.
 - Needs: T3.F1.K1
 - Files: moonlight/gui/tabs/recorder.py, tests/unit/test_gui_recorder.py
