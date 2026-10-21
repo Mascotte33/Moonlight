@@ -47,11 +47,19 @@ class DashboardTab(Tab):
 
         cards = ctk.CTkFrame(parent, fg_color="transparent")
         cards.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+        self.lbl_task = ctk.CTkLabel(
+            cards,
+            text="Current task: Idle",
+            anchor="w",
+            font=ctk.CTkFont(size=theme.SIZE_HERO, weight="bold"),
+            text_color=theme.TEXT,
+        )
+        self.lbl_task.grid(row=0, column=0, columnspan=len(CARDS), sticky="ew", pady=(0, theme.PAD))
         self._cards: dict[str, ctk.CTkLabel] = {}
         for col, name in enumerate(CARDS):
             cards.grid_columnconfigure(col, weight=1, uniform="card")
             box = section(cards, name)
-            box.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else theme.UNIT, 0))
+            box.grid(row=1, column=col, sticky="ew", padx=(0 if col == 0 else theme.UNIT, 0))
             value = ctk.CTkLabel(
                 box,
                 text="—",
@@ -62,12 +70,8 @@ class DashboardTab(Tab):
             value.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
             self._cards[name] = value
 
-        self.lbl_task = ctk.CTkLabel(
-            cards, text="Current task: Idle", anchor="w", text_color=theme.TEXT_DIM
-        )
-        self.lbl_task.grid(row=1, column=0, columnspan=len(CARDS), sticky="ew", pady=theme.UNIT)
         box = section(cards, "Bot health")
-        box.grid(row=2, column=0, columnspan=len(CARDS), sticky="ew")
+        box.grid(row=2, column=0, columnspan=len(CARDS), sticky="ew", pady=(theme.UNIT, 0))
         dots = ctk.CTkFrame(box, fg_color="transparent")
         dots.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
         self._dots: dict[str, ctk.CTkLabel] = {}
