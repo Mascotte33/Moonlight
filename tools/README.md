@@ -25,15 +25,6 @@ manage hardware. Excluded from the strict `ruff`/`mypy` package lint (see
 | `bench_capture.py` | Benchmark capture FPS (mss vs dxcam/DXGI) at Tibia window sizes, DPI-aware. |
 | `capture_bench_*.json` | Benchmark result artifacts (baseline, LLM-contention, final). |
 
-## DxCam (DXGI desktop-duplication) probes
-
-| File | Purpose |
-|------|---------|
-| `dxcam_test.py`, `dxcam_test2.py` | Basic DxCam capture probes. |
-| `dxcam_fps_test.py` | Measure DxCam FPS. |
-| `dxcam_raw_test.py` | Raw DxCam frame dump. |
-| `dxcam_debug.py` | DxCam debugging harness. |
-
 ## Local-LLM contention
 
 | File | Purpose |
