@@ -210,6 +210,7 @@ Write every task as one block, so an agent can do it with no other context:
 - Files: moonlight/gui/tabs/settings.py, moonlight/gui/state_bridge.py, moonlight/gui/loop_factory.py, moonlight/gui/tabs/base.py, tests/unit/test_gui_configs.py
 - Don't touch: the other tab files.
 - Done when: `pytest tests/unit/test_gui_configs.py` passes, with tests that Delete removes the file and picks another, the only config can't be deleted, and Save runs every tab's `apply()`. Owner checks: New makes a config; Delete asks, then removes it from the dropdown.
+- ✅ Done in commit 06ece84.
 
 #### Phase 3: Tabs
 
