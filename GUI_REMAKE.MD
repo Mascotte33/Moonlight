@@ -6,11 +6,16 @@ bot) and **look like** [Tibiaeye](https://github.com/GGotha/tibiaeye)'s GUI.
 ## Start here (for agents)
 
 1. Read **Rules** and **Testing** below. They apply to every task.
-2. Pick a task from **Tasks** whose **Needs** are done. T0 comes first; everything builds on it.
+2. Do the next task in **Tasks** whose **Needs** are done. They are listed in build order: Look (S) first, then the config work (T0), then the tabs.
 3. Look up your tab in **Tabs** for what it should end up with.
 4. Style it with **Look**. Use `moonlight/gui/theme.py`, never raw colors.
 5. Touch only the task's **Files**. **Don't touch** lists what is off limits.
-6. One task = one commit. pytest, `ruff check` and `mypy moonlight tests` stay green.
+6. pytest, `ruff check` and `mypy moonlight tests` stay green.
+7. **Do one task, then stop.** Don't commit; the owner checks and commits. End with a report:
+   - **Changed:** each file and what changed in it, one line each.
+   - **What to expect:** what the owner will see when they open the GUI (`python -m moonlight.gui --no-bot`).
+   - **Check it:** the commands you ran and their result, then the **Owner checks** from the task as a list to tick.
+   - **Not done / unsure:** anything skipped or guessed.
 
 **Stop and ask the owner** (don't work around it) when:
 - the **Done when** check can't be met as written;
@@ -25,7 +30,8 @@ bot) and **look like** [Tibiaeye](https://github.com/GGotha/tibiaeye)'s GUI.
 ## Rules
 
 1. **One config.** Tabs read and write the real config: `BotConfig` in
-   `moonlight/setup/config.py`, stored in `moonlight_config.json` (repo root).
+   `moonlight/setup/config.py`, stored as a named file in `configs/` (repo root),
+   e.g. `configs/rotworms.json`. Until T0.F1.K3 it is `moonlight_config.json`.
    The GUI's own copy (`gui/config_bridge.py`, saving to `data/config.json`)
    is deleted in T0.
 2. **One tab pattern.** Each tab file starts with an `OPTIONS` list (shape in
@@ -33,8 +39,10 @@ bot) and **look like** [Tibiaeye](https://github.com/GGotha/tibiaeye)'s GUI.
    - Buttons and custom widgets go in `build()`.
    - Live updates go in `on_poll()`.
    - Writing to the config goes in `apply()`.
-3. **Apply saves.** Apply writes `moonlight_config.json` at once. Settings has
-   no Save/Load config.
+3. **Named configs.** Settings has a dropdown of the saved configs in `configs/`
+   and a **Save as** button that saves the current values under a new name.
+   Apply writes the picked config at once. Start runs the picked config. The
+   GUI remembers the last pick.
 4. **Changes apply on Start.** The bot reads its config when it starts. To use
    new values, press Stop, then Start. Live reload comes later (T0.F2.K1).
 
@@ -48,7 +56,7 @@ healing threshold in the GUI changes nothing in the running bot.
   T0.F1.K1 adds that.
 - It is a **frozen** dataclass. Change a value with `dataclasses.replace`, never by assignment.
 - Module sections (`healing`, `targeting`, `cavebot`, …) are `None` when the
-  module is off. Writing an option into a `None` section creates it with defaults first.
+  module is off. Writing an option into a `None` section creates it from its kept values in `BotConfig.off` (T0.F1.K4), or from defaults if there are none.
 - `moonlight_config.json` may not exist. `load_real_config` in
   `gui/loop_factory.py` then returns `BotConfig.default()`.
 
@@ -96,33 +104,7 @@ Write every task as one block, so an agent can do it with no other context:
 
 ## Tasks
 
-### T0.F1.K1 — Config can save
-- What: add `BotConfig.to_dict()` (the exact JSON `from_dict` reads; cavebot is saved as its route name) and `BotConfig.save(path)`.
-- Files: moonlight/setup/config.py, tests/unit/test_config.py
-- Don't touch: the GUI.
-- Done when: `pytest tests/unit/test_config.py` passes, with a test that `BotConfig.from_dict(cfg.to_dict()) == cfg` for `BotConfig.default()` and for a config with every section set.
-
-### T0.F1.K2 — Start uses only the real config
-- What: `gui/loop_factory.py` builds the bot from `moonlight_config.json` alone. Delete `gui/config_bridge.py`. Tabs that imported it read and write `BotConfig` through `GuiContext` (`gui/state_bridge.py`) until their own tab task converts them.
-- Needs: T0.F1.K1
-- Files: moonlight/gui/config_bridge.py, moonlight/gui/loop_factory.py, moonlight/gui/state_bridge.py, moonlight/gui/tabs/*.py (imports only), tests/unit/test_loop_factory.py
-- Don't touch: the tabs' layout.
-- Done when: `pytest tests/unit/test_loop_factory.py` passes; `grep -rn config_bridge moonlight` finds nothing. Owner checks: the GUI still opens and Start works.
-
-### T0.F3.K1 — Tab option pattern
-- What: add the shared pattern from Rule 2 to `tabs/base.py`. One option is:
-  `Option(label: str, field: str, control: "slider" | "switch" | "entry" | "dropdown", min: float | None = None, max: float | None = None, choices: list[str] | None = None)`,
-  where `field` is a dotted path into `BotConfig`, e.g. `"healing.normal_hp_percent"`. `Tab` builds one control per entry and gets a default `apply()` that writes every option into a new `BotConfig` with `dataclasses.replace`, then saves it.
-- Needs: T0.F1.K1
-- Files: moonlight/gui/tabs/base.py, tests/unit/test_gui_options.py
-- Don't touch: the tab files (each tab task converts its own tab).
-- Done when: `pytest tests/unit/test_gui_options.py` passes, with tests that a dotted-path write gives the right `BotConfig`, a write into a `None` section creates it, and out-of-range values are refused.
-
-### T0.F1.K3 — Apply saves, remove Save/Load config
-- What: Apply on each tab saves `moonlight_config.json` (the `apply()` from T0.F3.K1). Remove Save config / Load config from Settings.
-- Needs: T0.F1.K2, T0.F3.K1
-- Files: moonlight/gui/tabs/settings.py, tests/unit/test_gui_options.py
-- Done when: `pytest tests/unit/test_gui_options.py` passes (apply writes the file). Owner checks: Settings has no Save/Load buttons.
+#### Phase 1: Look
 
 ### S.F6.K1 — Theme file
 - What: add `moonlight/gui/theme.py` with the colors, fonts, spacing and radii from **Look**. Replace every raw color in `gui/` with a theme name. Restyle `section()` in `tabs/base.py` as the card.
@@ -143,13 +125,66 @@ Write every task as one block, so an agent can do it with no other context:
 - Files: moonlight/gui/app.py, moonlight/gui/state_bridge.py, tests/unit/test_gui_topbar.py
 - Don't touch: the tab files (Settings keeps its buttons until its tab task).
 - Done when: `pytest tests/unit/test_gui_topbar.py` passes (HP/MP % and state text from a `WorldState`). Owner checks: switching tabs leaves the bar in place; HP/MP update live; the buttons work from any tab.
+- Deferred: "HP/MP update live", "the buttons work from any tab" and "Pause stops the bot" need a calibrated client. The owner tests them once calibration (CALIBRATION.MD) is in.
 
 ### S.F4.K1 — Bottom bar
-- What: a strip at the bottom: Screen, Arduino and Bot dots; CPU % and memory MB of the bot process.
+- What: a strip at the bottom: Screen, Arduino and Bot dots; CPU % of the whole PC (0–100) and memory MB of the bot process. No new dependency (`psutil` is not installed): CPU % from `GetSystemTimes` deltas via `ctypes` on Windows (`—` elsewhere), memory from `GetProcessMemoryInfo` via `ctypes` on Windows, `—` elsewhere. Screen = `WorldState.screen_ok`; Arduino = green when `HardwareController.backend` is connected; Bot = `BotController.is_running`.
 - Needs: S.F6.K1
 - Files: moonlight/gui/app.py, tests/unit/test_gui_bottombar.py
 - Don't touch: the tab files.
-- Done when: `pytest tests/unit/test_gui_bottombar.py` passes (dot color from a status value). Owner checks: unplugging the Arduino turns its dot red within a second.
+- Done when: `pytest tests/unit/test_gui_bottombar.py` passes (dot color from a status value). Owner checks: the Arduino dot turns green after Test connection succeeds; the Bot dot follows Start/Stop; CPU and MB update.
+
+### S.F6.K2 — Disabled buttons
+- What: a disabled button is `RAISED` with `TEXT_MUTED` text, whatever its enabled color. Today a disabled LIFE/AMBER/BLOOD button keeps its fill and its grey text is hard to read (the top bar's Pause and Stop).
+- Needs: S.F2.K1
+- Files: moonlight/gui/theme.py, moonlight/gui/app.py, tests/unit/test_gui_theme.py
+- Don't touch: the tab files (their buttons get it in their tab tasks).
+- Done when: `pytest tests/unit/test_gui_theme.py` passes. Owner checks: with `--no-bot`, the top bar's Pause and Stop are grey, and they get their color back when the bot runs.
+
+#### Phase 2: Config (needed by every tab task)
+
+### T0.F1.K1 — Config can save
+- What: add `BotConfig.to_dict()` (the exact JSON `from_dict` reads; cavebot is saved as its route name) and `BotConfig.save(path)`.
+- Files: moonlight/setup/config.py, tests/unit/test_config.py
+- Don't touch: the GUI.
+- Done when: `pytest tests/unit/test_config.py` passes, with a test that `BotConfig.from_dict(cfg.to_dict()) == cfg` for `BotConfig.default()` and for a config with every section set.
+
+### T0.F1.K4 — Turned-off modules keep their values
+- What: a module that is off keeps its last values, so turning it back on restores them instead of the defaults. Add `BotConfig.off: dict[str, <module config>]`, which holds the values of each module that is off. `from_dict` reads a section like `{"enabled": false, "normal_hp_percent": 65}` into `off`, and `to_dict` writes it back the same way. The bot never reads `off`, so an off module stays `None` and stays off.
+- Needs: T0.F1.K1
+- Files: moonlight/setup/config.py, tests/unit/test_config.py
+- Don't touch: the GUI, `bot/loop.py`, `bot/wiring.py`.
+- Done when: `pytest tests/unit/test_config.py` passes, with a test that an off healing section with `normal_hp_percent: 65` round-trips, and that the bot still sees healing as off.
+
+### T0.F1.K2 — Start uses only the real config
+- What: `gui/loop_factory.py` builds the bot from `moonlight_config.json` alone. Delete `gui/config_bridge.py`. Tabs that imported it read and write `BotConfig` through `GuiContext` (`gui/state_bridge.py`) until their own tab task converts them.
+- Needs: T0.F1.K1
+- Files: moonlight/gui/config_bridge.py, moonlight/gui/loop_factory.py, moonlight/gui/state_bridge.py, moonlight/gui/tabs/*.py (imports only), tests/unit/test_loop_factory.py
+- Don't touch: the tabs' layout.
+- Done when: `pytest tests/unit/test_loop_factory.py` passes; `grep -rn config_bridge moonlight` finds nothing. Owner checks: the GUI still opens and Start works.
+
+### T0.F3.K1 — Tab option pattern
+- What: add the shared pattern from Rule 2 to `tabs/base.py`. One option is:
+  `Option(label: str, field: str, control: "slider" | "switch" | "entry" | "dropdown", min: float | None = None, max: float | None = None, choices: list[str] | None = None)`,
+  where `field` is a dotted path into `BotConfig`, e.g. `"healing.normal_hp_percent"`. `Tab` builds one control per entry and gets a default `apply()` that writes every option into a new `BotConfig` with `dataclasses.replace`, then saves it.
+- Needs: T0.F1.K1
+- Files: moonlight/gui/tabs/base.py, tests/unit/test_gui_options.py
+- Don't touch: the tab files (each tab task converts its own tab).
+- Done when: `pytest tests/unit/test_gui_options.py` passes, with tests that a dotted-path write gives the right `BotConfig`, a write into a `None` section creates it, and out-of-range values are refused.
+
+### T0.F1.K3 — Named configs: dropdown, Save as, Apply saves
+- What: configs live in `configs/<name>.json`. Settings replaces its Save config / Load config buttons with:
+  - a **dropdown** of the names in `configs/`. Picking one loads it into every tab;
+  - a **Save as** button that asks for a name and saves the current values as `configs/<name>.json`, then picks it. A name that already exists asks before overwriting. Names are letters, digits, `-` and `_`;
+  - Apply on each tab saves the picked config (the `apply()` from T0.F3.K1). Start builds the bot from the picked config (`load_real_config(path)` in `gui/loop_factory.py`).
+  - The last pick is stored in `configs/last.txt` and picked again on the next start.
+  - First run with an empty `configs/`: copy `moonlight_config.json` to `configs/default.json` if it exists, else save `BotConfig.default()` there.
+- Needs: T0.F1.K2, T0.F3.K1
+- Files: moonlight/gui/tabs/settings.py, moonlight/gui/state_bridge.py, moonlight/gui/loop_factory.py, tests/unit/test_gui_configs.py
+- Don't touch: `tools/check_setup.py` (it already takes `--config configs/<name>.json`).
+- Done when: `pytest tests/unit/test_gui_configs.py` passes, with tests that Save as writes the named file, a bad name is refused, the dropdown lists the files, the last pick is restored, and the first run creates `configs/default.json`. Owner checks: Save as a new name, pick it in the dropdown, change a value, Apply, Stop then Start, and the bot uses the new value.
+
+#### Phase 3: Tabs
 
 ### T2.F7.K1 — Start calibration button
 - What: in Settings, a **Start calibration** button that opens the calibration window (`moonlight/setup/calibrate.py`) for the current profile, plus an editable **UI scale** number read from and saved to that profile's `ui_scale`. The rest of calibration is in `CALIBRATION.MD`.
@@ -164,7 +199,7 @@ Write every task as one block, so an agent can do it with no other context:
 - Files: moonlight/bot/loop.py, moonlight/bot/wiring.py, moonlight/gui/loop_factory.py
 - Done when: do not build yet.
 
-_Tab tasks: the owner says what each tab needs; they get written up here in the format above. Each tab task also converts that tab to the T0.F3.K1 pattern._
+_Tab tasks (T1–T10) are not written yet. They get written here, in the format above, before Phase 3 starts. Each tab task also converts that tab to the T0.F3.K1 pattern._
 
 ---
 
@@ -210,12 +245,12 @@ the same everywhere.
 | `NIGHT` | `#0d1117` | window and sidebar background |
 | `PANEL` | `#171b22` | cards |
 | `RAISED` | `#22262c` | inputs, card borders, hovered rows |
-| `NAV_ACTIVE` | `#1e2332` | selected sidebar entry |
+| `NAV_ACTIVE` | `#1e2332` | unused (too faint for the selected entry; owner picked `MANA`) |
 | `TEXT` | `#e7edf2` | values, headings |
 | `TEXT_DIM` | `#b6b8bd` | labels |
 | `TEXT_MUTED` | `#7c8186` | section titles, hints, disabled |
 | `LIFE` | `#73c9a5` | HP bar, Start, "running", healthy dot |
-| `MANA` | `#6ba4f8` | MP bar, links, focus |
+| `MANA` | `#6ba4f8` | MP bar, links, focus, selected sidebar entry (`NIGHT` text) |
 | `AMBER` | `#c99b3e` | Pause, "paused", warnings |
 | `BLOOD` | `#e55d51` | Stop, errors, failed dot |
 

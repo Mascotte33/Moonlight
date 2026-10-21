@@ -173,3 +173,40 @@ def test_load_missing_or_bad_json(tmp_path: Path) -> None:
     top.write_text("[]")
     with pytest.raises(ConfigError):
         BotConfig.load(top)
+
+
+def test_to_dict_roundtrip_default() -> None:
+    cfg = BotConfig.default()
+    assert BotConfig.from_dict(cfg.to_dict()) == cfg
+
+
+def test_save_roundtrip_every_section(tmp_path: Path) -> None:
+    route_file(tmp_path / "routes")
+    data = raw(
+        healing={"enabled": True, "normal_hp_percent": 65},
+        targeting={"enabled": True},
+        buffs={
+            "enabled": True,
+            "buffs": [{"buff_name": "haste", "spell": "utani hur", "priority": 1}],
+        },
+        alarms={"enabled": True},
+        cavebot={"enabled": True, "route": "hunt", "rope_hotkey": "F5"},
+        looting={"enabled": True},
+        refill={"enabled": True, "trigger_cap": 80.0},
+    )
+    data["hotkeys"]["utani hur"] = "F3"
+    data.update(
+        serial_port="COM7",
+        profiles_dir=str(tmp_path / "profiles"),
+        routes_dir=str(tmp_path / "routes"),
+        minimap_start=[100, 200, 7],
+        loop={"tick_rate": 10.0},
+        clicker={"open_loop": True},
+        monster_name_source=True,
+        capacity_source=True,
+        buff_icon_source=True,
+    )
+    cfg = BotConfig.from_dict(data)
+    path = tmp_path / "saved.json"
+    cfg.save(path)
+    assert BotConfig.load(path) == cfg
