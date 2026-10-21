@@ -218,15 +218,17 @@ class CavebotTab(Tab):
 
         add = ctk.CTkFrame(wps, fg_color="transparent")
         add.pack(fill="x", padx=theme.PAD)
-        self.var_type = ctk.StringVar(value="walk")
-        ctk.CTkOptionMenu(add, values=list(ACTIONS), variable=self.var_type, width=90).pack(
-            side="left"
-        )
         self.ent_label = _entry(add, "label", 90)
         self.ent_x, self.ent_y, self.ent_z = (_entry(add, axis, 60) for axis in "XYZ")
-        buttons = (("Clear", self._clear), ("Undo", self._undo), ("Add waypoint", self._add))
-        for text, command in buttons:
+        for text, command in (("Clear", self._clear), ("Undo", self._undo)):
             _button(add, text, command).pack(side="right", padx=(theme.UNIT, 0))
+        # T3.F9.K2: one button per waypoint type, at X, Y, Z or the bot's position.
+        kinds = ctk.CTkFrame(wps, fg_color="transparent")
+        kinds.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        for action in ACTIONS:
+            button = _button(kinds, action.capitalize(), lambda a=action: self._add_action(a))
+            button.configure(width=70)
+            button.pack(side="left", padx=(0, theme.UNIT))
 
         rec = ctk.CTkFrame(wps, fg_color="transparent")
         rec.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
@@ -267,7 +269,7 @@ class CavebotTab(Tab):
         names = route_names(self._routes_dir)
         self.menu_route.configure(values=names or [NO_ROUTES])
         self.menu_refill_route.configure(values=names or [NO_ROUTES])
-        hint = "No routes yet. Add waypoints below, name the route, then Save route."
+        hint = "No routes yet. Press a waypoint button below, name the route, then Save route."
         self.lbl_hint.configure(text="" if names else hint)
         return names
 
@@ -325,9 +327,6 @@ class CavebotTab(Tab):
         self._error = ""
         self.lbl_msg.configure(text=f"Added {wp.action} ({len(self._waypoints)} waypoints)")
         self._draw()
-
-    def _add(self) -> None:
-        self._add_action(self.var_type.get())
 
     def _undo(self) -> None:
         if self._waypoints:
