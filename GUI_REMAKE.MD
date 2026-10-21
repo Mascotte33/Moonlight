@@ -164,6 +164,7 @@ Write every task as one block, so an agent can do it with no other context:
 - Done when: `pytest tests/unit/test_config.py` passes, with a test that an off healing section with `normal_hp_percent: 65` round-trips, and that the bot still sees healing as off.
 
 ### T0.F1.K2 — Start uses only the real config
+- ✅ Done in commit 477ba5c. The two Start owner checks wait until the calibration has `game_grid` and `status_icons`.
 - What: Start builds the bot from `moonlight_config.json` alone. `BotConfig` gets `simulation` and `serial_baudrate`, so nothing Start needs comes from the GUI's copy. `gui/config_bridge.py` stays for now, because the tabs still use its GUI-only fields. The last tab task deletes it once every tab is converted.
 - Needs: T0.F1.K1
 - Files: moonlight/setup/config.py, moonlight/gui/loop_factory.py, moonlight/gui/app.py (`start_bot` only), tests/unit/test_loop_factory.py
