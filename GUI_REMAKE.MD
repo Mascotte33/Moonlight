@@ -565,6 +565,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Done when: pytest stays green, with tests that each condition casts its own spell, a blank one is skipped, and an old file loads. Owner checks: the Cure group has six rows; type exana pox with a hotkey for Poison, Save, reopen, and it is kept. "The bot cures" waits for the buff icon reader.
 
 ### T3.F9.K2 — One button per waypoint type
+- ✅ Done in commit f5a7ca0.
 - What: the route editor's action dropdown and Add waypoint become one button per action (Walk, Rope, Shovel, Ladder, Label, Goto). A button adds that waypoint at the typed X, Y, Z, or the bot's position when blank.
 - Needs: T3.F9.K1
 - Files: moonlight/gui/tabs/cavebot.py, tests/unit/test_gui_cavebot.py
