@@ -1,7 +1,6 @@
 """T28 replay: every perception reader over the 200 golden frames.
 
-Frames are read from ``golde-screenshots/`` (falling back to
-``tests/golden/``); labels from ``tests/golden/labels.json``. The reader
+Frames are read from ``tests/golden/``; labels from ``tests/golden/labels.json``. The reader
 APIs are the real ones (see tests/perf/test_golden_smoke.py for the template
 cuts used by the unlabelled readers). Labels carry no sprite/loot/log truth
 and only placeholder battle data (monster_count 0), so those readers get
@@ -41,7 +40,7 @@ from moonlight.setup.calibrate import CalibrationProfile, default_profiles_dir
 from tests.golden_labels import PlaceholderLabelsError, load_golden_labels
 
 ROOT = Path(__file__).resolve().parents[2]
-FRAME_DIRS = (ROOT / "golde-screenshots", ROOT / "tests" / "golden")
+FRAME_DIRS = (ROOT / "tests" / "golden",)
 LABELS = ROOT / "tests" / "golden" / "labels.json"
 PROFILE = default_profiles_dir() / "moonlight_user.json"
 

@@ -47,7 +47,7 @@ from moonlight.setup.calibrate import CalibrationProfile, default_profiles_dir
 pytestmark = pytest.mark.slow
 
 ROOT = Path(__file__).resolve().parents[2]
-FRAME_DIRS = (ROOT / "golde-screenshots", ROOT / "tests" / "golden")
+FRAME_DIRS = (ROOT / "tests" / "golden",)
 PROFILE = default_profiles_dir() / "moonlight_user.json"
 N_FRAMES = 10
 RUNS = 100
