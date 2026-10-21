@@ -1,8 +1,8 @@
 """Calibration profile manager (T40).
 
 Thin, single source of truth for ``profiles/<name>.json`` on top of
-:class:`moonlight.calibrate.CalibrationProfile`. The GUI and the CLI
-both delegate here.
+:class:`moonlight.calibrate.CalibrationProfile`. The GUI and
+``tools/check_setup.py`` delegate here.
 """
 
 from __future__ import annotations

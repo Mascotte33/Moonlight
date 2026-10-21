@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 #: Calibration regions each enabled decision module needs, derived from the
 #: perception readers in :func:`make_perceive` / :func:`build_loop`.
-#: ``moonlight check`` uses this to report per-module readiness (F-11): a
+#: ``tools/check_setup.py`` uses this to report per-module readiness (F-11): a
 #: module is MISSING when any of its required regions is absent from the
 #: profile. ``looting`` and ``refill`` reference regions that are not part of
 #: the standard calibration set (they need dedicated readers, T34), so they

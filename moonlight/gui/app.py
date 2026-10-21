@@ -138,15 +138,14 @@ class GuiApp:
         self.btn_start.pack(side="right")
 
     def start_bot(self) -> None:
-        """Start the real bot loop through the CLI wiring (F-13).
+        """Start the real bot loop through :mod:`moonlight.wiring` (F-13).
 
         Builds the loop via :func:`moonlight.gui.loop_factory.build_gui_loop`,
         which wires a real screen capture (frame provider + focus check) and
         every enabled decision module — never a bare :class:`GameLoop`
         without ``perceive`` (which would stop on the first tick). A missing
         Arduino requires the explicit *simulation* toggle (Hardware tab);
-        there is no silent :class:`FakeInput` fallback (F-13). For supervised
-        headless runs use the CLI (``moonlight run``).
+        there is no silent :class:`FakeInput` fallback (F-13).
         """
         if self.ctx.bot_running():
             return
@@ -208,7 +207,7 @@ class GuiApp:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entry point for ``python -m moonlight.gui``.
+    """Entry point for ``python -m moonlight`` / ``python -m moonlight.gui``.
 
     ``--help`` prints usage and exits 0 without creating any window.
     """

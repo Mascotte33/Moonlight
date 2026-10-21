@@ -21,8 +21,7 @@ Connects the GUI to the real bot runtime without touching bot logic:
    gate and every enabled decision module. The previous ``PerceptionWriter``
    background thread was removed (F-13): it duplicated ``make_perceive`` and
    hard-coded ``client_focused = True``, which would have bypassed the
-   safety focus gate. For headless/supervised runs use the CLI
-   (``moonlight run``) — the GUI is a supervisory front-end.
+   safety focus gate.
 """
 
 from __future__ import annotations

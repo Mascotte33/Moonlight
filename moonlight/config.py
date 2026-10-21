@@ -42,8 +42,8 @@ require their perception source (``monster_name_source`` /
 ``capacity_source`` / ``buff_icon_source``) to be true (F-09 / F-10).
 Fields left out of a module section take the dataclass defaults.
 
-The default profile is ``moonlight_user`` (F-11); ``moonlight run`` and
-``moonlight check`` use it when no profile is given on the command line.
+The default profile is ``moonlight_user`` (F-11); the GUI and
+``tools/check_setup.py`` use it when no profile is given.
 """
 
 from __future__ import annotations

@@ -5,12 +5,10 @@ The GUI must never run a bare :class:`moonlight.loop.GameLoop` with no
 Instead the Start action builds the loop through
 :func:`moonlight.wiring.build_loop`, which wires a **real** screen capture
 (frame provider + focus check), the focus gate and every enabled decision
-module — exactly the wiring the CLI's ``run`` subcommand uses.
+module.
 
 A missing Arduino requires an explicit *simulation* toggle — there is **no**
-silent :class:`moonlight.input.FakeInput` fallback (F-13). Headless /
-supervised runs use the CLI (``moonlight run``); the GUI is a supervisory
-front-end and T33 uses the CLI.
+silent :class:`moonlight.input.FakeInput` fallback (F-13).
 
 This module deliberately has no GUI (customtkinter) imports so it can be
 imported and unit-tested headlessly.
@@ -39,7 +37,7 @@ __all__ = ["build_gui_loop", "load_profile", "load_real_config", "make_backend"]
 def load_real_config(config_path: str | Path | None = None) -> BotConfig:
     """Load the authoritative real :class:`~moonlight.config.BotConfig`.
 
-    The GUI Start uses the same config source as the CLI: the ``config.yaml``
+    The GUI Start loads the ``config.yaml``
     file, or :meth:`~moonlight.config.BotConfig.default` when the file does
     not exist yet.
     """

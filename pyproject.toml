@@ -19,9 +19,6 @@ dependencies = [
     "customtkinter>=5.2",
 ]
 
-[project.scripts]
-moonlight = "moonlight.cli:main"
-
 [project.optional-dependencies]
 # dxcam is optional, Windows only, for lower-latency capture
 dxcam = [
