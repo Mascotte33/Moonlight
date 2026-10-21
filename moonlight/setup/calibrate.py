@@ -193,9 +193,14 @@ class CalibrationProfile:
         self,
         landmark: Point | None = None,
         regions: dict[str, Region] | None = None,
+        window_size: tuple[int, int] | None = None,
+        ui_scale: float = 1.0,
     ) -> None:
         self.landmark: Point = (0, 0) if landmark is None else (int(landmark[0]), int(landmark[1]))
         self.regions: dict[str, Region] = dict(regions) if regions else {}
+        #: Game area ``(width, height)`` at calibration; ``None`` in old profiles.
+        self.window_size = window_size
+        self.ui_scale = ui_scale
 
     # -- construction -------------------------------------------------------
 
@@ -224,7 +229,19 @@ class CalibrationProfile:
                 raise CalibrationError(f"Region {name!r} must be [x, y, w, h]")
             regions[str(name)] = Region.from_list([int(v) for v in value])
 
-        return cls(landmark=landmark, regions=regions)
+        size = data.get("window_size")
+        if size is not None and (not isinstance(size, (list, tuple)) or len(size) != 2):
+            raise CalibrationError("'window_size' must be a 2-element [width, height] list")
+        scale = data.get("ui_scale", 1.0)
+        if not isinstance(scale, (int, float)) or scale <= 0:
+            raise CalibrationError("'ui_scale' must be a positive number")
+
+        return cls(
+            landmark=landmark,
+            regions=regions,
+            window_size=None if size is None else (int(size[0]), int(size[1])),
+            ui_scale=float(scale),
+        )
 
     @classmethod
     def load(cls, path: str | Path) -> CalibrationProfile:
@@ -307,6 +324,8 @@ class CalibrationProfile:
                 name: region.to_list
                 for name, region in self.regions.items()
             },
+            "window_size": None if self.window_size is None else list(self.window_size),
+            "ui_scale": self.ui_scale,
         }
 
     def save(self, path: str | Path) -> Path:

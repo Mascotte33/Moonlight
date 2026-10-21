@@ -122,6 +122,15 @@ class TestProfileSerialization:
         assert restored.landmark == (10, 20)
         assert restored["hp_bar"] == Region(1, 2, 3, 4)
 
+    def test_window_size_and_ui_scale_roundtrip(self) -> None:
+        p = CalibrationProfile(window_size=(2560, 1369), ui_scale=1.5)
+        restored = CalibrationProfile.from_dict(p.to_dict())
+        assert (restored.window_size, restored.ui_scale) == ((2560, 1369), 1.5)
+
+    def test_old_profile_without_size_or_scale_loads(self) -> None:
+        restored = CalibrationProfile.from_dict({"landmark": [0, 0], "regions": {}})
+        assert (restored.window_size, restored.ui_scale) == (None, 1.0)
+
     def test_from_dict_missing_landmark(self) -> None:
         with pytest.raises(CalibrationError):
             CalibrationProfile.from_dict({"regions": {}})
