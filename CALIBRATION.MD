@@ -108,6 +108,7 @@ C2.F2.K3 to K6, C3), then the Start check (C4).
 - Warning: after this, the owner's current profile is off by the title bar height until they recalibrate. Say so in the commit message.
 
 ### C2.F2.K1 — Finder skeleton
+- ✅ Done in commit 5e990c3.
 - What: new `moonlight/setup/autofind.py` with an empty `FINDERS` list (Rule 2) and `find_regions(screenshot) -> tuple[dict[str, Rect], list[str]]`, returning found boxes and the names that weren't found. A finder that returns `None` or raises lands in the missing list.
 - Files: moonlight/setup/autofind.py, tests/unit/test_autofind.py
 - Don't touch: calibrate.py, the readers.
