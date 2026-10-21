@@ -1,4 +1,4 @@
-"""Recorder tab: capture waypoints and save them as bot routes (T8.F1.K1).
+"""Recorder tab: record waypoints and save them as bot routes (T8.F1.K1, T8.F3.K1).
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, in the format
 :class:`RouteFileLoader` reads, so the Cavebot tab can pick and run them.
@@ -19,7 +19,7 @@ from moonlight.gui.loop_factory import load_real_config
 from moonlight.gui.tabs.base import Tab, section, stat_label
 from moonlight.gui.tabs.cavebot import route_names, waypoint_table
 
-__all__ = ["RecorderTab", "make_waypoint", "save_route"]
+__all__ = ["RecorderTab", "make_waypoint", "save_route", "should_add", "status_line"]
 
 NO_ROUTES = "No routes"
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
@@ -46,6 +46,24 @@ def make_waypoint(
     if (live.x, live.y, live.z) == (0, 0, 0):
         raise RouteError("Position unknown")
     return Waypoint(live.x, live.y, live.z, action)
+
+
+def should_add(waypoints: list[Waypoint], pos: Position, min_tiles: int) -> bool:
+    """True when *pos* is *min_tiles* from the last positioned waypoint or on a new floor."""
+    if (pos.x, pos.y, pos.z) == (0, 0, 0):
+        return False
+    last = next((wp for wp in reversed(waypoints) if wp.action not in ("label", "goto")), None)
+    if last is None or last.z != pos.z:
+        return True
+    return max(abs(pos.x - last.x), abs(pos.y - last.y)) >= min_tiles
+
+
+def status_line(recording: bool, pos: Position) -> str:
+    """ "Recording" or "Not recording", plus *pos* when known."""
+    state = "Recording" if recording else "Not recording"
+    if (pos.x, pos.y, pos.z) == (0, 0, 0):
+        return f"{state} · position unknown"
+    return f"{state} · {pos.x}, {pos.y}, {pos.z}"
 
 
 def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
@@ -81,8 +99,17 @@ class RecorderTab(Tab):
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(2, weight=1)
 
-        self.lbl_pos = stat_label(parent, "Position")
-        self.lbl_pos.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 2))
+        top = ctk.CTkFrame(parent, fg_color="transparent")
+        top.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 2))
+        self.btn_record = ctk.CTkButton(top, text="Start recording", command=self._toggle)
+        self.btn_record.pack(side="left")
+        ctk.CTkLabel(top, text="Add walk every").pack(side="left", padx=(theme.PAD, 4))
+        self.var_tiles = ctk.StringVar(value="5")
+        ctk.CTkEntry(top, textvariable=self.var_tiles, width=50).pack(side="left")
+        ctk.CTkLabel(top, text="tiles").pack(side="left", padx=4)
+        self.lbl_pos = ctk.CTkLabel(top, text=status_line(False, Position(0, 0, 0)), anchor="e")
+        self.lbl_pos.pack(side="right")
+        self._recording = False
         self.lbl_count = stat_label(parent, "Waypoints")
         self.lbl_count.grid(row=1, column=0, sticky="ew", padx=10)
         self._pos = Position(0, 0, 0)
@@ -237,11 +264,28 @@ class RecorderTab(Tab):
         self._redraw_list()
         self._status(f"Loaded {name} ({len(route.waypoints)} waypoints)")
 
+    def _toggle(self) -> None:
+        self._recording = not self._recording
+        self.btn_record.configure(text="Stop recording" if self._recording else "Start recording")
+        self._draw_status()
+
+    def _draw_status(self) -> None:
+        text = status_line(self._recording, self._pos)
+        if self.lbl_pos.cget("text") != text:
+            self.lbl_pos.configure(text=text)
+
     def _status(self, text: str) -> None:
         self.lbl_status.configure(text=text)
 
     def on_poll(self, snap: WorldState) -> None:
-        self._pos = snap.position
-        text = f"Position: {self._pos.x}, {self._pos.y}, {self._pos.z}"
-        if self.lbl_pos.cget("text") != text:
-            self.lbl_pos.configure(text=text)
+        self._pos = pos = snap.position
+        self._draw_status()
+        if not self._recording:
+            return
+        try:
+            tiles = max(1, int(self.var_tiles.get()))
+        except ValueError:
+            tiles = 5
+        if should_add(self._waypoints, pos, tiles):
+            self._waypoints.append(Waypoint(pos.x, pos.y, pos.z))
+            self._redraw_list()
