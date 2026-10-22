@@ -511,7 +511,9 @@ class GameLoop:
         if 0.0 < hp <= normal:
             return BotState.NORMAL_HEAL
         m = self.modules
-        if m.targeting is not None:
+        if m.cavebot is not None and m.cavebot.luring():
+            pass  # a lure waypoint walks past monsters
+        elif m.targeting is not None:
             if self._target is not None:  # flee was already handled as ALARM
                 return BotState.ATTACK
         elif snap.selected_target is not None and snap.selected_target.name:
