@@ -173,8 +173,8 @@ class RouteFileLoader:
         for key in ("x", "y", "z"):
             value = item.get(key)
             # bool is an int subclass; reject it explicitly.
-            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-                raise RouteError(f"waypoint {index}: {key!r} must be a non-negative int")
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise RouteError(f"waypoint {index}: {key!r} must be an int")
             coords.append(value)
         if not MIN_FLOOR <= coords[2] <= MAX_FLOOR:
             raise RouteError(f"waypoint {index}: z must be {MIN_FLOOR}..{MAX_FLOOR}")

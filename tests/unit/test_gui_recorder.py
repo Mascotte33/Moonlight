@@ -31,6 +31,11 @@ def test_saved_route_loads_with_the_bot_loader(tmp_path: Path) -> None:
     assert route.waypoints == wps
 
 
+def test_negative_coordinates_save(tmp_path: Path) -> None:
+    wps = [Waypoint(-5, -12, 7, "stand")]
+    assert RouteFileLoader.load(save_route(tmp_path, "minus", wps)).waypoints == wps
+
+
 def test_bad_routes_are_refused(tmp_path: Path) -> None:
     with pytest.raises(RouteError):
         save_route(tmp_path, "rotworms", [])

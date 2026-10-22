@@ -251,7 +251,7 @@ class CalibrationTab(Tab):
             font=ctk.CTkFont(size=theme.SIZE_BODY),
         )
         self.lbl_summary.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        self.summary = tk.Canvas(self.idle, bg=theme.NIGHT, highlightthickness=0)
+        self.summary = tk.Canvas(self.idle, bg=theme.NIGHT, highlightthickness=0, height=500)
         self.summary.pack(fill="both", expand=True, padx=theme.PAD, pady=theme.PAD)
         self.summary.bind("<Configure>", lambda _e: self.render_summary())
         self.refill_profiles()
@@ -284,7 +284,9 @@ class CalibrationTab(Tab):
             fg_color=theme.LIFE, hover_color=theme.LIFE_HOVER, text_color=theme.NIGHT,
         )
         self.btn_save.pack(side="left")
-        self.canvas = tk.Canvas(self.work, bg=theme.NIGHT, highlightthickness=0, takefocus=1)
+        self.canvas = tk.Canvas(
+            self.work, bg=theme.NIGHT, highlightthickness=0, takefocus=1, height=500
+        )
         self.canvas.pack(fill="both", expand=True, padx=theme.PAD, pady=theme.PAD)
         for event, handler in (
             ("<Return>", lambda _e: self._key_keep()),

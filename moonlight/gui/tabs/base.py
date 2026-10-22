@@ -230,8 +230,8 @@ class Tab:
     title: str = "Tab"
     #: The tab's config options; a tab file sets this to its ``OPTIONS``.
     options: ClassVar[Sequence[Option]] = ()
-    #: Long forms scroll; tabs that fill the page with grid weights don't.
-    scrolls: ClassVar[bool] = False
+    #: Every tab scrolls, so a short window still reaches the bottom.
+    scrolls: ClassVar[bool] = True
 
     def __init__(self, ctx: GuiContext) -> None:
         self.ctx = ctx

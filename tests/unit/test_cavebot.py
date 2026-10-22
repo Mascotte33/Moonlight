@@ -139,7 +139,6 @@ def test_readme_example_is_valid() -> None:
         {"name": "r", "waypoints": []},
         {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7, "action": "fly"}]},
         {"name": "r", "waypoints": [{"x": 1, "y": 1}]},
-        {"name": "r", "waypoints": [{"x": -1, "y": 1, "z": 7}]},
         {"name": "r", "waypoints": [{"x": 1.5, "y": 1, "z": 7}]},
         {"name": "r", "waypoints": [{"x": True, "y": 1, "z": 7}]},
         {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 16}]},
