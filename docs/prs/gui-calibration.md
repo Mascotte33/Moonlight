@@ -82,12 +82,14 @@ flowchart LR
   t9["C2.F4.K1"]:::done
   t10["C2.F4.K2"]:::done
   t11["C2.F4.K3"]
-  t12["C3.F1.K1"]
-  t13["C3.F2.K1"]
-  t14["C3.F3.K1"]
-  t15["C3.F4.K1"]
-  t16["C4.F1.K1"]
-  t17["C4.F2.K1"]:::later
+  t12["C2.F4.K4"]
+  t13["C2.F4.K5"]
+  t14["C3.F1.K1"]
+  t15["C3.F2.K1"]
+  t16["C3.F3.K1"]
+  t17["C3.F4.K1"]
+  t18["C4.F1.K1"]
+  t19["C4.F2.K1"]:::later
   f0[".gitignore"]
   f1["GUI_REMAKE.MD"]
   f2["data/templates/anchors/*.png"]
@@ -104,96 +106,106 @@ flowchart LR
   f13["moonlight/setup/autofind.py"]
   f14["moonlight/setup/calibrate.py"]
   f15["moonlight/setup/calibration_steps.py"]
-  f16["tests/unit/test_autofind.py"]
-  f17["tests/unit/test_battle.py"]
-  f18["tests/unit/test_calibrate.py"]
-  f19["tests/unit/test_calibration_steps.py"]
-  f20["tests/unit/test_capture.py"]
-  f21["tests/unit/test_floor.py"]
-  f22["tests/unit/test_gui_calibration.py"]
-  f23["tests/unit/test_loop_factory.py"]
-  f24["tests/unit/test_looting.py"]
-  f25["tests/unit/test_minimap.py"]
-  f26["tests/unit/test_sprites.py"]
-  f27["tools/calibrate_auto.py"]
+  f16["moonlight/setup/profile.py"]
+  f17["tests/unit/test_autofind.py"]
+  f18["tests/unit/test_battle.py"]
+  f19["tests/unit/test_calibrate.py"]
+  f20["tests/unit/test_calibration_steps.py"]
+  f21["tests/unit/test_capture.py"]
+  f22["tests/unit/test_floor.py"]
+  f23["tests/unit/test_gui_calibration.py"]
+  f24["tests/unit/test_loop_factory.py"]
+  f25["tests/unit/test_looting.py"]
+  f26["tests/unit/test_minimap.py"]
+  f27["tests/unit/test_sprites.py"]
+  f28["tools/calibrate_auto.py"]
   c0(["Bar finders"])
   c1(["Calibration steps"])
   c2(["Finder registry"])
   c3(["Game area coordinates"])
   c4(["Profile fields"])
   t0 -.-> f7
-  t0 -.-> f20
+  t0 -.-> f21
   t1 -.-> f0
   t1 -.-> f2
   t1 -.-> f12
   t2 -.-> f13
-  t2 -.-> f16
+  t2 -.-> f17
   t2 --> t3
   t3 -.-> f13
-  t3 -.-> f27
-  t3 -.-> f16
+  t3 -.-> f28
+  t3 -.-> f17
   t1 --> t4
   t2 --> t4
   t4 -.-> f13
-  t4 -.-> f16
+  t4 -.-> f17
   t1 --> t5
   t2 --> t5
   t5 -.-> f13
-  t5 -.-> f16
+  t5 -.-> f17
   t1 --> t6
   t2 --> t6
   t6 -.-> f13
-  t6 -.-> f16
+  t6 -.-> f17
   t1 --> t7
   t2 --> t7
   t7 -.-> f13
-  t7 -.-> f16
+  t7 -.-> f17
   t8 -.-> f14
-  t8 -.-> f18
+  t8 -.-> f19
   t8 --> t9
   t9 -.-> f15
-  t9 -.-> f19
+  t9 -.-> f20
   t9 --> t10
   t2 --> t10
   t10 -.-> f5
   t10 -.-> f3
-  t10 -.-> f22
+  t10 -.-> f23
   t10 --> t11
   t11 -.-> f14
-  t11 -.-> f18
+  t11 -.-> f19
   t11 -.-> f1
-  t1 --> t12
-  t2 --> t12
   t10 --> t12
-  t12 -.-> f13
   t12 -.-> f5
-  t12 -.-> f16
+  t12 -.-> f15
+  t12 -.-> f23
+  t12 -.-> f20
   t12 --> t13
-  t13 -.-> f6
-  t13 -.-> f17
-  t12 --> t14
-  t14 -.-> f10
-  t14 -.-> f25
-  t12 --> t15
-  t15 -.-> f8
-  t15 -.-> f11
-  t15 -.-> f9
-  t15 -.-> f21
-  t15 -.-> f26
-  t15 -.-> f24
-  t8 --> t16
-  t12 --> t16
-  t16 -.-> f4
-  t16 -.-> f13
-  t16 -.-> f23
-  t16 --> t17
+  t13 -.-> f5
+  t13 -.-> f16
+  t13 -.-> f23
+  t1 --> t14
+  t2 --> t14
+  t10 --> t14
+  t14 -.-> f13
+  t14 -.-> f5
+  t14 -.-> f17
+  t14 --> t15
+  t15 -.-> f6
+  t15 -.-> f18
+  t14 --> t16
+  t16 -.-> f10
+  t16 -.-> f26
+  t14 --> t17
+  t17 -.-> f8
+  t17 -.-> f11
+  t17 -.-> f9
+  t17 -.-> f22
+  t17 -.-> f27
+  t17 -.-> f25
+  t8 --> t18
+  t14 --> t18
+  t18 -.-> f4
+  t18 -.-> f13
+  t18 -.-> f24
+  t18 --> t19
   f5 --- c1
   f7 --- c3
   f13 --- c0
   f13 --- c2
   f14 --- c4
   f15 --- c1
-  f27 --- c0
+  f28 --- c0
 ```
 <!-- graph:end -->
 
@@ -272,17 +284,19 @@ Build order. Status lives in each task file's front matter and shows in the grap
 5. [C2.F4.K1](../tasks/gui-calibration/C2.F4.K1.md) Calibration steps (no screen yet)
 6. [C2.F4.K2](../tasks/gui-calibration/C2.F4.K2.md) Calibration tab
 7. [C2.F4.K3](../tasks/gui-calibration/C2.F4.K3.md) Delete the old calibration window
-8. [C2.F1.K1](../tasks/gui-calibration/C2.F1.K1.md) Reference images (Claude makes, owner approves)
-9. [C2.F2.K3](../tasks/gui-calibration/C2.F2.K3.md) Battle list finder
-10. [C2.F2.K4](../tasks/gui-calibration/C2.F2.K4.md) Minimap finder
-11. [C2.F2.K5](../tasks/gui-calibration/C2.F2.K5.md) Floor indicator finder
-12. [C2.F2.K6](../tasks/gui-calibration/C2.F2.K6.md) Game grid and status icons finders
-13. [C3.F1.K1](../tasks/gui-calibration/C3.F1.K1.md) Measure the UI scale
-14. [C3.F2.K1](../tasks/gui-calibration/C3.F2.K1.md) Battle list uses the scale
-15. [C3.F3.K1](../tasks/gui-calibration/C3.F3.K1.md) Minimap uses the scale
-16. [C3.F4.K1](../tasks/gui-calibration/C3.F4.K1.md) Templates use the scale
-17. [C4.F1.K1](../tasks/gui-calibration/C4.F1.K1.md) Check the layout at Start
-18. [C4.F2.K1](../tasks/gui-calibration/C4.F2.K1.md) Repeat the check while running (later)
+8. [C2.F4.K4](../tasks/gui-calibration/C2.F4.K4.md) Calibration tab fixes
+9. [C2.F4.K5](../tasks/gui-calibration/C2.F4.K5.md) Named calibrations
+10. [C2.F1.K1](../tasks/gui-calibration/C2.F1.K1.md) Reference images (Claude makes, owner approves)
+11. [C2.F2.K3](../tasks/gui-calibration/C2.F2.K3.md) Battle list finder
+12. [C2.F2.K4](../tasks/gui-calibration/C2.F2.K4.md) Minimap finder
+13. [C2.F2.K5](../tasks/gui-calibration/C2.F2.K5.md) Floor indicator finder
+14. [C2.F2.K6](../tasks/gui-calibration/C2.F2.K6.md) Game grid and status icons finders
+15. [C3.F1.K1](../tasks/gui-calibration/C3.F1.K1.md) Measure the UI scale
+16. [C3.F2.K1](../tasks/gui-calibration/C3.F2.K1.md) Battle list uses the scale
+17. [C3.F3.K1](../tasks/gui-calibration/C3.F3.K1.md) Minimap uses the scale
+18. [C3.F4.K1](../tasks/gui-calibration/C3.F4.K1.md) Templates use the scale
+19. [C4.F1.K1](../tasks/gui-calibration/C4.F1.K1.md) Check the layout at Start
+20. [C4.F2.K1](../tasks/gui-calibration/C4.F2.K1.md) Repeat the check while running (later)
 
 ## Owner checks
 
@@ -290,4 +304,6 @@ Collected for the PR. Ticked by the owner.
 
 - [ ] C1.F1.K1: recalibrate once, since the old profile is off by the title bar height.
 - [ ] C2.F4.K2: calibrate on the live client and from a golden screenshot, fix one box from the review, Esc and save what you have.
+- [ ] C2.F4.K4: Esc then Cancel, arrows between areas, area sentences, readable instructions.
+- [ ] C2.F4.K5: save as a new name, switch calibrations, the bot uses the picked one.
 - [ ] C2.F1.K1: approve the anchor crops and the `game_grid` / `status_icons` boxes.
