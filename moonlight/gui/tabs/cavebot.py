@@ -51,12 +51,12 @@ START = Option("Start from waypoint", "cavebot.start_index", "entry")
 OPTIONS = [
     ROUTE,
     START,
-    Option("Rope hotkey", "cavebot.rope_hotkey", "entry"),
-    Option("Shovel hotkey", "cavebot.shovel_hotkey", "entry"),
+    Option("Rope hotkey", "cavebot.rope_hotkey", "hotkey"),
+    Option("Shovel hotkey", "cavebot.shovel_hotkey", "hotkey"),
 ]
 LOOT_OPTIONS = [
-    Option("Loot hotkey", "looting.loot_hotkey", "entry"),
-    Option("Move-all hotkey (blank = none)", "looting.move_all_hotkey", "entry"),
+    Option("Loot hotkey", "looting.loot_hotkey", "hotkey"),
+    Option("Move-all hotkey (blank = none)", "looting.move_all_hotkey", "hotkey"),
     Option("Min cap to loot (oz)", "looting.min_cap_to_loot", "entry"),
 ]
 REFILL_ROUTE = Option("Refill route", "refill.route_name", "dropdown")
@@ -64,8 +64,8 @@ REFILL_OPTIONS = [
     Option("Start refill at used cap %", "refill.trigger_cap", "entry"),
     Option("Stop at used cap %", "refill.stop_cap", "entry"),
     REFILL_ROUTE,
-    Option("Storage hotkey", "refill.storage_hotkey", "entry"),
-    Option("Deposit hotkey (blank = none)", "refill.deposit_hotkey", "entry"),
+    Option("Storage hotkey", "refill.storage_hotkey", "hotkey"),
+    Option("Deposit hotkey (blank = none)", "refill.deposit_hotkey", "hotkey"),
 ]
 
 

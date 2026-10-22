@@ -14,7 +14,7 @@ import customtkinter as ctk
 
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
-from moonlight.gui.tabs.base import Option, Tab, read_option, section, write_option
+from moonlight.gui.tabs.base import HotkeyBox, Option, Tab, read_option, section, write_option
 from moonlight.setup.config import BotConfig, ConfigError
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -34,7 +34,7 @@ OPTIONS = [
     Option("Max monsters to engage", "targeting.max_monsters_to_engage", "slider", min=1, max=10),
     Option("Prefer lowest-HP monster", "targeting.prefer_low_hp", "switch"),
     Option("Flee when a player is on screen", "targeting.player_protection", "switch"),
-    Option("Attack hotkey", "loop.attack_combo", "entry"),
+    Option("Attack hotkey", "loop.attack_combo", "hotkey"),
     Option("Creatures", "targeting.mode", "dropdown", choices=["all", "whitelist", "blacklist"]),
 ]
 ATTACK_OPTIONS = [
@@ -96,6 +96,7 @@ class TargetingTab(Tab):
     """Targeting rules and attack spells, saved into the picked config."""
 
     title = "Targeting"
+    scrolls = True
     options = OPTIONS + ATTACK_OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
@@ -136,18 +137,12 @@ class TargetingTab(Tab):
         spells.pack(fill="x", padx=10, pady=10)
         self.build_options(spells, ATTACK_OPTIONS)
         rows = [w for w in spells.winfo_children() if isinstance(w, ctk.CTkFrame)]
-        self._hotkeys: dict[str, ctk.CTkEntry] = {}
+        self._hotkeys: dict[str, HotkeyBox] = {}
         for option, row in zip(ATTACK_OPTIONS, rows, strict=True):
             if option.field in SPELLS:
-                entry = ctk.CTkEntry(
-                    row,
-                    width=70,
-                    placeholder_text="hotkey",
-                    fg_color=theme.NIGHT,
-                    border_color=theme.RAISED,
-                )
-                entry.pack(side="right", padx=theme.UNIT)
-                self._hotkeys[option.field] = entry
+                hotkey = HotkeyBox(row, self.submit)
+                hotkey.pack(side="right", padx=theme.UNIT)
+                self._hotkeys[option.field] = hotkey
         self.lbl_msg = ctk.CTkLabel(spells, text="", anchor="w", text_color=theme.BLOOD)
         self.lbl_msg.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, theme.PAD))
         cfg = load_real_config()
@@ -163,11 +158,8 @@ class TargetingTab(Tab):
 
     def _fill_hotkeys(self, cfg: BotConfig) -> None:
         combos = cfg.spell_combos
-        for field, entry in self._hotkeys.items():
-            entry.delete(0, "end")
-            combo = combos.get(str(read_option(cfg, field)), "")
-            if combo:
-                entry.insert(0, combo)
+        for field, hotkey in self._hotkeys.items():
+            hotkey.set(combos.get(str(read_option(cfg, field)), ""))
 
     def _show_creatures(self) -> None:
         self.list_creatures.delete(0, "end")
@@ -197,7 +189,7 @@ class TargetingTab(Tab):
     def apply(self) -> BotConfig:
         path = picked_config()
         values = {field: read() for field, read in self._readers.items()}
-        combos = {field: entry.get() for field, entry in self._hotkeys.items()}
+        combos = {field: hotkey.get() for field, hotkey in self._hotkeys.items()}
         try:
             cfg = apply_targeting(load_real_config(path), values, self._creatures)
             cfg = apply_attack_spells(cfg, values, combos)

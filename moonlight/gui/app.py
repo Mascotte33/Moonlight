@@ -119,12 +119,13 @@ class GuiApp:
         content.grid_rowconfigure(0, weight=1)
 
         self.tabs: dict[str, Tab] = {}
-        self._pages: dict[str, ctk.CTkFrame] = {}
+        self._pages: dict[str, ctk.CTkFrame | ctk.CTkScrollableFrame] = {}
         self._nav: dict[str, ctk.CTkButton] = {}
         for tab_cls in TAB_ORDER:
             tab = tab_cls(self.ctx)
             title = tab.title
-            page = ctk.CTkFrame(content, fg_color="transparent")
+            frame = ctk.CTkScrollableFrame if tab.scrolls else ctk.CTkFrame
+            page = frame(content, fg_color="transparent")
             page.grid(row=0, column=0, sticky="nsew")
             page.grid_columnconfigure(0, weight=1)
             page.grid_rowconfigure(0, weight=1)
@@ -150,7 +151,7 @@ class GuiApp:
 
     def select_tab(self, title: str) -> None:
         """Raise ``title``'s page and highlight its sidebar entry."""
-        self._pages[title].tkraise()
+        self._pages[title].lift()
         for name, btn in self._nav.items():
             active = name == title
             btn.configure(

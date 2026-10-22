@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import pytest
 
-from moonlight.gui.tabs.base import Option, read_option, write_option
+from moonlight.gui.tabs.base import Option, combo_from_key, read_option, write_option
 from moonlight.setup.config import BotConfig, ConfigError
 
 HP = Option("Heal at HP %", "healing.normal_hp_percent", "slider", min=0, max=100)
@@ -175,3 +175,25 @@ def test_remove_drops_the_selected_creatures() -> None:
     names = ["Rat", "Cave Rat", "Troll"]
     assert remove_creatures(names, (0, 2), "") == ["Cave Rat"]
     assert remove_creatures(names, (), "troll") == ["Rat", "Cave Rat"]
+
+
+@pytest.mark.parametrize(
+    ("keysym", "keycode", "state", "combo"),
+    [
+        ("F1", 0x70, 0, "F1"),
+        ("F2", 0x71, 0x4, "ctrl+F2"),
+        ("A", 0x41, 0x1, "shift+a"),
+        ("exclam", 0x31, 0x1, "shift+1"),
+        ("Next", 0x22, 0x20000, "alt+pgdn"),
+        ("space", 0x20, 0, "space"),
+    ],
+)
+def test_a_key_press_becomes_a_device_combo(
+    keysym: str, keycode: int, state: int, combo: str
+) -> None:
+    assert combo_from_key(keysym, keycode, state) == combo
+
+
+@pytest.mark.parametrize("keysym", ["Control_L", "Shift_R", "Alt_L", "Caps_Lock"])
+def test_a_lone_modifier_is_no_combo(keysym: str) -> None:
+    assert combo_from_key(keysym, 0x11, 0x4) is None

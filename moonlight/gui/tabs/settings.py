@@ -61,6 +61,7 @@ class SettingsTab(Tab):
     """Named configs (pick, New, Save, Delete) and core options."""
 
     title = "Settings"
+    scrolls = True
     options = [*OPTIONS, *MODULE_SWITCHES]
 
     def build(self, parent: ctk.CTkFrame) -> None:
