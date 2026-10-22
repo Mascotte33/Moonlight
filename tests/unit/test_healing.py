@@ -422,3 +422,50 @@ class TestHealingAction:
     def test_cure_cooldown_key_format(self) -> None:
         assert cure_cooldown_key("paralyze") == "cure:paralyze"
         assert cure_cooldown_key("poison") != cure_cooldown_key("paralyze")
+
+
+POTIONS = HealingConfig(
+    hp_potion="health potion",
+    hp_potion_percent=50.0,
+    mp_potion="mana potion",
+    mp_potion_percent=40.0,
+)
+
+
+class TestPotions:
+    """T4.F2.K1: HP and MP potions at their own %."""
+
+    def test_off_by_default(self) -> None:
+        healer, _ = make_healer(HealingConfig())
+        assert HealingConfig().potions() == {}
+        assert healer.decide(make_state(hp=100.0, mp=5.0)) is None
+
+    def test_mp_potion_ignores_the_mana_gate(self) -> None:
+        healer, _ = make_healer(POTIONS)
+        action = healer.decide(make_state(hp=60.0, mp=10.0))
+        assert action is not None
+        assert (action.type, action.spell, action.cooldown_key) == (
+            HealType.POTION, "mana potion", "potion:mp"
+        )
+
+    def test_hp_potion_follows_the_emergency_spell(self) -> None:
+        healer, _ = make_healer(POTIONS, spell_combos={"exura gran": "F1", "health potion": "F5"})
+        snap = make_state(hp=20.0)
+        first = healer.decide(snap)
+        assert first is not None and first.type == HealType.EMERGENCY
+        healer.send(first, FakeInput())
+        second = healer.decide(snap)
+        assert second is not None and second.spell == "health potion"
+
+    def test_hp_potion_beats_the_normal_heal(self) -> None:
+        healer, _ = make_healer(POTIONS)
+        action = healer.decide(make_state(hp=45.0))
+        assert action is not None and action.spell == "health potion"
+
+    def test_unknown_bar_uses_no_potion(self) -> None:
+        healer, _ = make_healer(POTIONS)
+        assert healer.decide(make_state(hp=100.0, mp=0.0)) is None
+
+    def test_percent_out_of_range_rejected(self) -> None:
+        with pytest.raises(ValueError, match="hp_potion_percent"):
+            HealingConfig(hp_potion_percent=101.0).validate()

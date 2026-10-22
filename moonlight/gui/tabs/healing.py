@@ -1,4 +1,4 @@
-"""Healing tab: HP/MP thresholds, heal spells and their hotkeys (T4.F1.K1).
+"""Healing tab: HP/MP thresholds, heal spells, potions and their hotkeys (T4.F1.K1).
 
 The thresholds and spells are ``OPTIONS``. Each spell also gets a hotkey
 box that writes ``hotkeys[<spell>]``; ``hotkeys`` is a dict, so that part
@@ -39,6 +39,13 @@ GROUPS = [
         Option("Electrified (exana vis)", "healing.cure_energy", "entry"),
         Option("Cursed (exana mort)", "healing.cure_curse", "entry"),
         Option("Bleeding (exana kor)", "healing.cure_bleed", "entry"),
+    ]),
+    # T4.F2.K1: a potion is used at its % even when mana is too low for spells.
+    ("Potions", [
+        Option("HP potion at HP %", "healing.hp_potion_percent", "slider", min=0, max=100),
+        Option("HP potion", "healing.hp_potion", "entry"),
+        Option("MP potion at MP %", "healing.mp_potion_percent", "slider", min=0, max=100),
+        Option("MP potion", "healing.mp_potion", "entry"),
     ]),
     ("Mana and cooldown", [
         Option("Keep mana above %", "healing.mana_threshold", "slider", min=0, max=100),
