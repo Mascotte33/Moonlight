@@ -83,9 +83,10 @@ def test_tick_rate_option_writes_loop_tick_rate() -> None:
 
 
 def _switch(name: str) -> Option:
+    from moonlight.gui.tabs.cavebot import SWITCH
     from moonlight.gui.tabs.settings import MODULE_SWITCHES
 
-    (option,) = [o for o in MODULE_SWITCHES if o.field == f"{name}.enabled"]
+    (option,) = [o for o in [*MODULE_SWITCHES, SWITCH] if o.field == f"{name}.enabled"]
     return option
 
 
@@ -100,8 +101,10 @@ def test_looting_switch_off_and_on_keeps_values() -> None:
 
 
 def test_cavebot_switch_without_route_refused() -> None:
+    from moonlight.gui.tabs.cavebot import SWITCH
+
     with pytest.raises(ConfigError, match="route"):
-        write_option(BotConfig.default(), _switch("cavebot"), True)
+        write_option(BotConfig.default(), SWITCH, True)
 
 
 def test_max_monsters_writes_targeting_field() -> None:

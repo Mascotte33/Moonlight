@@ -6,6 +6,8 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from moonlight.decision.cavebot import RouteFileLoader
 from moonlight.gui.tabs.cavebot import (
     apply_cavebot,
@@ -14,7 +16,7 @@ from moonlight.gui.tabs.cavebot import (
     waypoint_line,
     waypoint_table,
 )
-from moonlight.setup.config import BotConfig
+from moonlight.setup.config import BotConfig, ConfigError
 
 
 def _routes(tmp_path: Path) -> Path:
@@ -110,3 +112,15 @@ def test_loot_tab_has_no_unused_max_items() -> None:
     from moonlight.gui.tabs.cavebot import LOOT_OPTIONS
 
     assert "looting.max_items_per_loot" not in [o.field for o in LOOT_OPTIONS]
+
+
+def test_switch_on_with_picked_route(tmp_path: Path) -> None:
+    cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
+    cfg = apply_cavebot(cfg, {"cavebot.route": "rotworms", "cavebot.enabled": True})
+    assert cfg.cavebot is not None and picked_route(cfg) == "rotworms"
+
+
+def test_switch_on_without_route_refused(tmp_path: Path) -> None:
+    cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
+    with pytest.raises(ConfigError, match="cavebot.route"):
+        apply_cavebot(cfg, {"cavebot.route": "Pick a route", "cavebot.enabled": True})
