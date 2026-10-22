@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import queue
 from collections.abc import Callable
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
@@ -53,6 +54,12 @@ SWITCH = Option("Cavebot on", "cavebot.enabled", "switch")
 ROUTE = Option("Route", "cavebot.route", "dropdown")
 #: Waypoint buttons, one row each: walking, changing floor, jumping.
 KIND_ROWS = (ACTIONS[:4], ACTIONS[4:8], ACTIONS[8:])
+#: Direction pad: (arrow, dx, dy) in 3x3 order. Up is north, y - 1.
+DIRECTIONS = (
+    ("↖", -1, -1), ("↑", 0, -1), ("↗", 1, -1),
+    ("←", -1, 0), ("•", 0, 0), ("→", 1, 0),
+    ("↙", -1, 1), ("↓", 0, 1), ("↘", 1, 1),
+)
 #: Shown 1-based; ``cavebot.start_index`` is 0-based.
 START = Option("Start from waypoint", "cavebot.start_index", "entry")
 OPTIONS = [
@@ -249,6 +256,13 @@ class CavebotTab(Tab):
             for col, action in enumerate(group):
                 button = _button(kinds, action.capitalize(), partial(self._add_action, action))
                 button.grid(row=row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
+        # A stand waypoint one sqm away from X, Y, Z or the bot; the middle one is that sqm.
+        pad = ctk.CTkFrame(kinds, fg_color="transparent")
+        pad.grid(row=0, column=len(KIND_ROWS[0]), rowspan=len(KIND_ROWS), padx=(theme.PAD, 0))
+        for i, (arrow, dx, dy) in enumerate(DIRECTIONS):
+            button = _button(pad, arrow, partial(self._add_step, dx, dy))
+            button.configure(width=32)
+            button.grid(row=i // 3, column=i % 3, padx=1, pady=1)
 
         rec = ctk.CTkFrame(wps, fg_color="transparent")
         rec.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
@@ -362,6 +376,19 @@ class CavebotTab(Tab):
         self._waypoints.append(wp)
         self._error = ""
         self.lbl_msg.configure(text=f"Added {wp.action} ({len(self._waypoints)} waypoints)")
+        self._draw()
+
+    def _add_step(self, dx: int, dy: int) -> None:
+        """Add a stand waypoint *dx*, *dy* sqm from X, Y, Z or the bot."""
+        manual = (self.ent_x.get(), self.ent_y.get(), self.ent_z.get())
+        try:
+            wp = make_waypoint("stand", "", manual, self._pos)
+        except RouteError as exc:
+            self.lbl_msg.configure(text=str(exc))
+            return
+        self._waypoints.append(replace(wp, x=wp.x + dx, y=wp.y + dy))
+        self._error = ""
+        self.lbl_msg.configure(text=f"Added stand ({len(self._waypoints)} waypoints)")
         self._draw()
 
     def _undo(self) -> None:

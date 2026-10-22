@@ -131,3 +131,11 @@ def test_every_waypoint_type_has_a_button() -> None:
     from moonlight.gui.tabs.cavebot import KIND_ROWS
 
     assert sum(KIND_ROWS, ()) == ACTIONS
+
+
+def test_direction_pad_is_every_neighbour_and_the_middle() -> None:
+    from moonlight.gui.tabs.cavebot import DIRECTIONS
+
+    offsets = [(dx, dy) for _, dx, dy in DIRECTIONS]
+    assert offsets == [(dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+    assert dict((a, (dx, dy)) for a, dx, dy in DIRECTIONS)["↑"] == (0, -1)
