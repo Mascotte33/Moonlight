@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import fields, replace
+from dataclasses import astuple, fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -20,7 +20,7 @@ import numpy as np
 
 from moonlight.bot.loop import DecisionModules, GameLoop
 from moonlight.bot.safety import RateLimitedInput, beep_alert
-from moonlight.bot.state import WorldState
+from moonlight.bot.state import Position, WorldState
 from moonlight.hardware.input import InputBackend
 from moonlight.setup.calibrate import CalibrationProfile
 from moonlight.setup.config import MODULES, BotConfig
@@ -213,7 +213,6 @@ def make_perceive(
     coordinates (seed + accumulated relative offset) instead of relative to
     wherever the bot started.
     """
-    from moonlight.bot.state import Position
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
@@ -222,11 +221,8 @@ def make_perceive(
     vitals = VitalsReader(profile)
     battle = BattleReader(profile)
     floor = FloorReader(profile)
-    seed = (
-        Position(minimap_start[0], minimap_start[1], minimap_start[2])
-        if minimap_start is not None
-        else None
-    )
+    # (0, 0, 0) means "unknown", so an unseeded tracker starts away from it.
+    seed = Position(*minimap_start) if minimap_start is not None else Position(1000, 1000, 7)
     minimap = MinimapReader(profile, floor_reader=floor, initial_position=seed)
 
     def perceive() -> None:
@@ -330,7 +326,11 @@ def build_loop(
             profile,
             frames.refresh,
             focus_check,
-            minimap_start=start_position(config),
+            # A restarted bot keeps tracking from where the last one was.
+            minimap_start=(
+                astuple(state.position) if state.position != Position(0, 0, 0)
+                else start_position(config)
+            ),
         ),
         clock=clock,
         sleep_fn=sleep_fn,
@@ -357,14 +357,18 @@ def needs_restart(old: BotConfig, new: BotConfig) -> bool:
     """True when *new* changes something only a fresh bot can take.
 
     That is any field outside :data:`LIVE_FIELDS` (port, window, tick
-    rate...), or a module switched on or off, since the captured regions
-    depend on which modules run.
+    rate...), or a module switched on that reads a screen region the
+    running bot does not capture. Switching a module off never restarts.
     """
     # doc: docs/prs/gui-calibration.md#live-apply
     names = [f.name for f in fields(old) if f.name not in LIVE_FIELDS]
     if any(getattr(old, n) != getattr(new, n) for n in names):
         return True
-    return any((getattr(old, n) is None) != (getattr(new, n) is None) for n in MODULES)
+
+    def regions(cfg: BotConfig) -> set[str]:
+        return {r for m in _enabled_modules(cfg) for r in MODULE_REGIONS[m]}
+
+    return not regions(new) <= regions(old) | set(_PERCEIVE_REGIONS) | {"game_grid"}
 
 
 def build_modules(
@@ -464,7 +468,7 @@ def build_modules(
                 shovel_hotkey=cb.shovel_hotkey,
                 clock=clock,
             )
-            if prev is None:
+            if prev is None or prev.cavebot is None:
                 m.cavebot.start()
                 m.cavebot.route.current = cb.start_index
             else:

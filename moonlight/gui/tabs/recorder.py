@@ -22,6 +22,7 @@ __all__ = [
     "HOTKEYS",
     "Hotkeys",
     "make_waypoint",
+    "route_path",
     "save_route",
     "should_add",
     "status_line",
@@ -133,14 +134,24 @@ def status_line(recording: bool, pos: Position) -> str:
     return f"{state} · {pos.x}, {pos.y}, {pos.z}"
 
 
+def route_path(routes_dir: Path, name: str) -> Path:
+    """The file of route *name* in *routes_dir*.
+
+    Raises:
+        RouteError: For a name that is not a plain file name.
+    """
+    if not _NAME_RE.match(name):
+        raise RouteError("route name: letters, digits, space, '.', '_' or '-'")
+    return Path(routes_dir) / f"{name}.json"
+
+
 def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
     """Write *waypoints* as route *name* in *routes_dir*; the file path.
 
     Raises:
         RouteError: For a bad name or a route the bot would refuse.
     """
-    if not _NAME_RE.match(name):
-        raise RouteError("route name: letters, digits, space, '.', '_' or '-'")
+    path = route_path(routes_dir, name)
     raw = {
         "name": name,
         "waypoints": [
@@ -151,7 +162,6 @@ def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
         ],
     }
     RouteFileLoader.parse(raw)
-    path = Path(routes_dir) / f"{name}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
     return path

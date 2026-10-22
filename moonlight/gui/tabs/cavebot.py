@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
+from tkinter import messagebox
 
 import customtkinter as ctk
 
@@ -26,6 +27,7 @@ from moonlight.gui.tabs.recorder import (
     HOTKEYS,
     Hotkeys,
     make_waypoint,
+    route_path,
     save_route,
     should_add,
     status_line,
@@ -219,14 +221,12 @@ class CavebotTab(Tab):
         self.menu_route.configure(command=self._pick_route)
         (switch,) = [w for w in _row(box, OPTIONS, SWITCH) if isinstance(w, ctk.CTkSwitch)]
         switch.configure(command=self._turn)
-        ctk.CTkButton(
-            self.menu_route.master,
-            text="Reload",
-            width=70,
-            command=self._reload,
-            fg_color=theme.RAISED,
-            hover_color=theme.HOVER,
-        ).pack(side="right", padx=theme.UNIT)
+        for text, command in (("Delete", self._delete), ("Load", self._load), ("New", self._new)):
+            button = _button(self.menu_route.master, text, command)
+            button.configure(width=60)
+            button.pack(side="right", padx=(theme.UNIT, 0))
+        self.ent_name = _entry(self.menu_route.master, "route name", 140)
+        self.ent_name.pack_configure(side="right")
         self.lbl_hint = ctk.CTkLabel(box, text="", anchor="w", text_color=theme.TEXT_DIM)
         self.lbl_hint.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
@@ -278,18 +278,15 @@ class CavebotTab(Tab):
             rec, text=keys, text_color=theme.TEXT_MUTED, font=ctk.CTkFont(family=theme.MONO)
         ).pack(side="right")
 
-        save = ctk.CTkFrame(wps, fg_color="transparent")
-        save.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        _button(save, "Save route", self._save).pack(side="right", padx=(theme.UNIT, 0))
-        self.ent_name = _entry(save, "route name, e.g. rotworms", 140)
-        self.ent_name.pack_configure(fill="x", expand=True, padx=0)
-
         self.wp_list = ctk.CTkTextbox(
             wps, height=160, wrap="none", font=ctk.CTkFont(family=theme.MONO)
         )
         self.wp_list.pack(fill="both", expand=True, padx=theme.PAD, pady=theme.PAD)
+        self.wp_list.tag_config("current", background=theme.MANA, foreground=theme.NIGHT)
         self._pos = Position(0, 0, 0)
         self._routes_dir = Path()
+        #: The route the editor saves to ("" until New or Load).
+        self._name = ""
         self._waypoints: list[Waypoint] = []
         self._error = ""
         self._text = ""
@@ -303,7 +300,7 @@ class CavebotTab(Tab):
         names = route_names(self._routes_dir)
         self.menu_route.configure(values=names or [NO_ROUTES])
         self.menu_refill_route.configure(values=names or [NO_ROUTES])
-        hint = "No routes yet. Press a waypoint button below, name the route, then Save route."
+        hint = "No routes yet. Type a name, press New, then add waypoints below."
         self.lbl_hint.configure(text="" if names else hint)
         return names
 
@@ -337,7 +334,9 @@ class CavebotTab(Tab):
         """Load route *name* into the editor."""
         self._waypoints = []
         self._error = ""
+        self._name = ""
         if name not in (NO_ROUTES, PICK):
+            self._name = name
             try:
                 route = RouteFileLoader.load(self._routes_dir / f"{name}.json")
                 self._waypoints = list(route.waypoints)
@@ -349,11 +348,12 @@ class CavebotTab(Tab):
 
     def _draw(self) -> None:
         live = self.ctx.live_route()
-        route = live if live is not None else Route("editor", waypoints=self._waypoints)
-        current = live.current if live is not None else None
-        text = self._error if live is None and self._error else waypoint_table(route, current)
+        current = live.current if live is not None and live.name == self._name else None
+        route = Route("editor", waypoints=self._waypoints)
+        text = self._error or waypoint_table(route, current)
+        running = waypoint_line(live.current, len(live.waypoints)) if live else "Not running"
         for label, value in (
-            (self.lbl_current, waypoint_line(current, len(route.waypoints))),
+            (self.lbl_current, running),
             (self.lbl_pos, status_line(self._recording, self._pos)),
         ):
             if label.cget("text") != value:
@@ -364,19 +364,33 @@ class CavebotTab(Tab):
         self.wp_list.configure(state="normal")
         self.wp_list.delete("1.0", "end")
         self.wp_list.insert("1.0", text)
+        if current is not None and not self._error:  # line 1 is the header
+            self.wp_list.tag_add("current", f"{current + 2}.0", f"{current + 2}.end")
         self.wp_list.configure(state="disabled")
 
-    def _add_action(self, action: str) -> None:
-        manual = (self.ent_x.get(), self.ent_y.get(), self.ent_z.get())
+    def _changed(self) -> None:
+        """Save the editor to its route, then redraw."""
+        self._error = ""
+        if not self._name:
+            self.lbl_msg.configure(text="Not saved: type a route name and press New")
+        elif self._waypoints:
+            try:
+                save_route(self._routes_dir, self._name, self._waypoints)
+            except (OSError, RouteError) as exc:
+                self.lbl_msg.configure(text=f"Not saved: {exc}")
+        self._draw()
+
+    def _add_action(self, action: str, manual: bool = True) -> None:
+        """Add *action* at X, Y, Z (only when *manual*) or the bot's position."""
+        typed = (self.ent_x.get(), self.ent_y.get(), self.ent_z.get()) if manual else ("",) * 3
         try:
-            wp = make_waypoint(action, self.ent_label.get(), manual, self._pos)
+            wp = make_waypoint(action, self.ent_label.get(), typed, self._pos)
         except RouteError as exc:
             self.lbl_msg.configure(text=str(exc))
             return
         self._waypoints.append(wp)
-        self._error = ""
         self.lbl_msg.configure(text=f"Added {wp.action} ({len(self._waypoints)} waypoints)")
-        self._draw()
+        self._changed()
 
     def _add_step(self, dx: int, dy: int) -> None:
         """Add a stand waypoint *dx*, *dy* sqm from X, Y, Z or the bot."""
@@ -387,30 +401,65 @@ class CavebotTab(Tab):
             self.lbl_msg.configure(text=str(exc))
             return
         self._waypoints.append(replace(wp, x=wp.x + dx, y=wp.y + dy))
-        self._error = ""
         self.lbl_msg.configure(text=f"Added stand ({len(self._waypoints)} waypoints)")
-        self._draw()
+        self._changed()
 
     def _undo(self) -> None:
         if self._waypoints:
             self._waypoints.pop()
-            self._draw()
+            self._changed()
 
     def _clear(self) -> None:
+        """Empty the editor; the route file keeps its waypoints until the next add."""
         self._waypoints.clear()
         self._draw()
 
-    def _save(self) -> None:
+    def _new(self) -> None:
+        """Start a route named in the box; unsaved editor waypoints go into it."""
         name = self.ent_name.get().strip()
         try:
-            path = save_route(self._routes_dir, name, self._waypoints)
-        except (OSError, RouteError) as exc:
-            self.lbl_msg.configure(text=f"Save failed: {exc}")
+            exists = route_path(self._routes_dir, name).exists()
+        except RouteError as exc:
+            self.lbl_msg.configure(text=str(exc))
             return
+        if exists:
+            self.lbl_msg.configure(text=f"Route {name} already exists. Load it instead.")
+            return
+        if self._name:
+            self._waypoints = []
+        self._name = name
+        self._changed()
         self._refresh_names()
+        self.lbl_msg.configure(text=f"New route {name}. Each waypoint you add is saved.")
+
+    def _load(self) -> None:
+        """Load the route named in the box and make it the cavebot's route."""
+        name = self.ent_name.get().strip()
+        if name not in self._refresh_names():
+            self.lbl_msg.configure(text=f"No route named {name!r}")
+            return
         self.menu_route.set(name)
-        self.submit()
-        self.lbl_msg.configure(text=f"Saved {path}")
+        self._pick_route(name)
+        self.lbl_msg.configure(text=f"Loaded {name}")
+
+    def _delete(self) -> None:
+        """Delete the route named in the box, after asking."""
+        name = self.ent_name.get().strip()
+        if name not in route_names(self._routes_dir):
+            self.lbl_msg.configure(text=f"No route named {name!r}")
+            return
+        if name == picked_route(load_real_config()):
+            self.lbl_msg.configure(text=f"The cavebot uses {name}. Pick another route first.")
+            return
+        if not messagebox.askyesno("Delete route", f"Delete route {name}?"):
+            return
+        route_path(self._routes_dir, name).unlink()
+        names = self._refresh_names()
+        if self._name == name:
+            self._name, self._waypoints = "", []
+            self.menu_route.set(PICK if names else NO_ROUTES)
+        self.lbl_msg.configure(text=f"Deleted {name}")
+        self._draw()
 
     def _toggle(self) -> None:
         self._recording = not self._recording
@@ -433,13 +482,14 @@ class CavebotTab(Tab):
                 if action == "undo":
                     self._undo()
                 else:
-                    self._add_action(action)
+                    self._add_action(action, manual=False)
             try:
                 tiles = max(1, int(self.ent_tiles.get()))
             except ValueError:
                 tiles = 5
             if should_add(self._waypoints, pos, tiles):
                 self._waypoints.append(Waypoint(pos.x, pos.y, pos.z))
+                self._changed()
         self._draw()
 
     def reload_options(self) -> None:

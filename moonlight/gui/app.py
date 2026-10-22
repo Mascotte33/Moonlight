@@ -40,6 +40,7 @@ from moonlight.gui.tabs.targeting import TargetingTab
 
 #: Poller period in ms (10 Hz — light enough for a low-spec laptop).
 POLL_MS = 100
+RETRY_S = 5.0  # seconds between tries to start a bot that is down
 
 SIDEBAR_WIDTH = 200
 
@@ -145,6 +146,10 @@ class GuiApp:
             self._nav[title].pack(fill="x", padx=theme.UNIT * 2, pady=1)
         self.select_tab(next(iter(self.tabs)))
 
+        #: Stop, Pause or the kill switch hold the bot down until Start.
+        self._held = not start_bot
+        self._retry_at = 0.0
+        self._start_error = ""
         if start_bot:
             self.start_bot()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -248,6 +253,7 @@ class GuiApp:
 
     def pause_bot(self) -> None:
         """Pause = the controller's stop(), same as Settings' pause."""
+        self._held = True
         ctrl = self.ctx.controller
         if ctrl is not None:
             ctrl.stop()
@@ -285,13 +291,18 @@ class GuiApp:
         ``moonlight_config.json``; a missing Arduino requires its explicit
         ``simulation`` flag. There is no silent :class:`FakeInput` fallback (F-13).
         """
+        self._held = False
         if self.ctx.bot_running():
             return
+        self._retry_at = time.monotonic() + RETRY_S
         try:
             loop = build_gui_loop(hardware=self.hardware, state=self.state)
         except Exception as exc:  # noqa: BLE001 - report, don't crash the app
-            self.log.error(f"could not start bot: {exc!r}")
+            if repr(exc) != self._start_error:  # the retry repeats it every few seconds
+                self.log.error(f"could not start bot: {exc!r}")
+            self._start_error = repr(exc)
             return
+        self._start_error = ""
         if resume and loop.modules.cavebot is not None:
             loop.modules.cavebot.start(nearest=True)
         self.ctx.controller = BotController(loop, log=self.log)
@@ -300,6 +311,7 @@ class GuiApp:
 
     def stop_bot(self) -> None:
         """Stop the bot loop thread (idempotent)."""
+        self._held = True
         ctrl = self.ctx.controller
         if ctrl is not None:
             ctrl.stop()
@@ -334,6 +346,7 @@ class GuiApp:
     def _poll(self) -> None:
         """One poller pass: snapshot the state and refresh every tab."""
         try:
+            self._keep_running()
             snap = self.ctx.state.snapshot()
             for tab in self.tabs.values():
                 tab.on_poll(snap)
@@ -346,6 +359,15 @@ class GuiApp:
                 self.root.after(POLL_MS, self._poll)
             except ctk.TclError:  # window destroyed mid-schedule
                 pass
+
+    def _keep_running(self) -> None:
+        """Start the bot again when it is down and nobody stopped it."""
+        ctrl = self.ctx.controller
+        if ctrl is not None and ctrl.loop.kill_switch_active:
+            self._held = True
+        if self._held or self.ctx.bot_running() or time.monotonic() < self._retry_at:
+            return
+        self.start_bot(resume=ctrl is not None)
 
     def on_close(self) -> None:
         """Window close: stop the bot and close hardware."""

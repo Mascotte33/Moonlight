@@ -11,6 +11,7 @@ from moonlight.decision.cavebot import RouteError, RouteFileLoader, Waypoint
 from moonlight.gui.tabs.recorder import (
     HOTKEYS,
     make_waypoint,
+    route_path,
     save_route,
     should_add,
     status_line,
@@ -89,3 +90,10 @@ def test_each_hotkey_maps_to_its_action() -> None:
         0x77,
         0x78,
     ]
+
+
+def test_route_path_refuses_bad_names(tmp_path: Path) -> None:
+    assert route_path(tmp_path, "rot worms") == tmp_path / "rot worms.json"
+    for bad in ("", "../x", "a/b"):
+        with pytest.raises(RouteError):
+            route_path(tmp_path, bad)

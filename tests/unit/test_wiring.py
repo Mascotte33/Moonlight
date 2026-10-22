@@ -220,10 +220,10 @@ def test_minimap_start_seeds_minimap_reader(monkeypatch: pytest.MonkeyPatch) -> 
     )
     assert captured["initial_position"] == Position(100, 200, 7)
 
-    # Without a seed: initial_position is None (legacy relative behavior).
+    # Without a seed it starts away from (0, 0, 0), which means "unknown".
     captured.clear()
     wiring.make_perceive(state, make_profile(), frame_provider, minimap_start=None)
-    assert captured["initial_position"] is None
+    assert captured["initial_position"] == Position(1000, 1000, 7)
 
 
 def test_lost_minimap_clears_state_position(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -363,7 +363,7 @@ def test_reconfigure_refuses_what_needs_a_restart() -> None:
     old = loop.modules
     assert loop.reconfigure is not None
     assert not loop.reconfigure(replace(cfg, loop=LoopConfig(tick_rate=5)))
-    assert not loop.reconfigure(replace(cfg, alarms=None))  # a module switched off
+    assert not loop.reconfigure(replace(cfg, looting=LootingConfig()))  # reads a new region
     assert not loop.reconfigure(replace(cfg, serial_port="COM9"))
     assert loop.modules is old
 
@@ -385,3 +385,12 @@ def test_new_route_starts_at_its_nearest_waypoint() -> None:
     assert loop.modules.cavebot is not None
     assert loop.modules.cavebot.route.name == "b"
     assert loop.modules.cavebot.route.current == 1
+
+
+def test_cavebot_on_or_off_keeps_the_bot_running() -> None:
+    off = replace(BotConfig.default(), cavebot=None)
+    on = replace(off, cavebot=CavebotConfig(Route("hunt", waypoints=[Waypoint(1, 1, 7)])))
+    assert not wiring.needs_restart(off, on)
+    assert not wiring.needs_restart(on, off)
+    assert wiring.needs_restart(off, replace(off, looting=LootingConfig()))
+    assert not wiring.needs_restart(replace(off, looting=LootingConfig()), off)
