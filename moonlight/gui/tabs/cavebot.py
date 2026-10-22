@@ -51,6 +51,8 @@ PICK = "Pick a route"
 #: The cavebot's only on/off switch (Settings has none for it).
 SWITCH = Option("Cavebot on", "cavebot.enabled", "switch")
 ROUTE = Option("Route", "cavebot.route", "dropdown")
+#: Waypoint buttons, one row each: walking, changing floor, jumping.
+KIND_ROWS = (ACTIONS[:4], ACTIONS[4:8], ACTIONS[8:])
 #: Shown 1-based; ``cavebot.start_index`` is 0-based.
 START = Option("Start from waypoint", "cavebot.start_index", "entry")
 OPTIONS = [
@@ -243,9 +245,10 @@ class CavebotTab(Tab):
         # T3.F9.K2: one button per waypoint type, at X, Y, Z or the bot's position.
         kinds = ctk.CTkFrame(wps, fg_color="transparent")
         kinds.pack(anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0))
-        for i, action in enumerate(ACTIONS):
-            button = _button(kinds, action.capitalize(), partial(self._add_action, action))
-            button.grid(row=i // 3, column=i % 3, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
+        for row, group in enumerate(KIND_ROWS):
+            for col, action in enumerate(group):
+                button = _button(kinds, action.capitalize(), partial(self._add_action, action))
+                button.grid(row=row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
 
         rec = ctk.CTkFrame(wps, fg_color="transparent")
         rec.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))

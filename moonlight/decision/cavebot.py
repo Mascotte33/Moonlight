@@ -1,6 +1,6 @@
 """Cavebot movement (T22).
 
-Waypoint execution: walk/rope/shovel/ladder/label/goto, stuck detection.
+Waypoint execution: walk/rope/shovel/ladder/stairs/label/goto, stuck detection.
 Waypoint format: ``data/waypoints/README.md``.
 
 How a route is executed (one :meth:`Cavebot.step` per 20 Hz loop tick,
@@ -21,7 +21,8 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   attacking off, see :meth:`Cavebot.luring`); ``rope``/``shovel``/``ladder`` click
   the waypoint's tile in the game grid (15x11 tiles, player at slot (7, 5))
   and wait for the expected floor change (rope/ladder: z - 1, shovel:
-  z + 1), retrying every ``reclick_interval``.
+  z + 1), retrying every ``reclick_interval``. ``stairs`` walks onto the
+  exact tile and is done when the floor changes, up or down.
 * **label / goto**: positionless. ``label`` is a jump target; ``goto``
   jumps to the waypoint after the named label (route loops).
 * **Stuck**: position unchanged for ``stuck_timeout`` seconds -> the route
@@ -65,7 +66,9 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 #: Valid waypoint actions.
-ACTIONS = ("walk", "node", "stand", "lure", "rope", "shovel", "ladder", "label", "goto")
+ACTIONS = (
+    "walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto"
+)
 
 #: Actions that need no position (executed immediately).
 _JUMP_ACTIONS = ("label", "goto")
@@ -74,7 +77,7 @@ _JUMP_ACTIONS = ("label", "goto")
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
 
 #: Arrival distance in tiles; every other positional action uses 1.
-_REACH = {"node": 3, "stand": 0}
+_REACH = {"node": 3, "stand": 0, "stairs": 0}
 
 #: Game grid layout (docs/ui_layout.md #10): 15x11 tiles, player at (7, 5).
 GAME_GRID_COLS = 15
@@ -311,6 +314,9 @@ class Cavebot:
         wp = self.route.waypoints[self.route.current]
         if self._expected_z is not None and pos.z == self._expected_z:
             self._advance()  # the rope/shovel/ladder action worked
+            return
+        if pos.z != wp.z and wp.action == "stairs":
+            self._advance()  # stepping on the stairs changed the floor
             return
         if pos.z != wp.z:
             self._resync_floor(pos.z)

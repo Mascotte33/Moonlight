@@ -124,3 +124,10 @@ def test_switch_on_without_route_refused(tmp_path: Path) -> None:
     cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
     with pytest.raises(ConfigError, match="cavebot.route"):
         apply_cavebot(cfg, {"cavebot.route": "Pick a route", "cavebot.enabled": True})
+
+
+def test_every_waypoint_type_has_a_button() -> None:
+    from moonlight.decision.cavebot import ACTIONS
+    from moonlight.gui.tabs.cavebot import KIND_ROWS
+
+    assert sum(KIND_ROWS, ()) == ACTIONS

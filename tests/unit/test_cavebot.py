@@ -529,3 +529,17 @@ def test_lure_waypoint_holds_attacks_until_reached() -> None:
     assert not sim.bot.luring()
     loop.tick()
     assert loop.get_stats()["state"] == BotState.ATTACK.value
+
+
+# -- T8.F5.K1: stairs ---------------------------------------------------------
+
+
+def test_stairs_walks_onto_the_tile_and_is_done_on_a_floor_change() -> None:
+    sim = Sim([Waypoint(105, 100, 7, "stairs"), walk(110, 100, 6)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.pos = Position(104, 100, 7)
+    sim.step()
+    assert sim.reached == []  # next to the stairs is not on them
+    sim.pos = Position(105, 100, 6)  # stepped on, went up
+    sim.step()
+    assert sim.reached == [0] and sim.route.current == 1 and sim.bot.is_active()
