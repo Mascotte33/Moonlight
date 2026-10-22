@@ -115,8 +115,7 @@ pip install -e .
 #    then check the connection
 python tools/arduino_verify.py
 
-# 3. Calibrate the screen regions for your client window
-python -m moonlight.setup.calibrate moonlight_user
+# 3. Calibrate the screen regions in the GUI's Calibration tab (step 5 opens the GUI)
 
 # 4. Check the setup (config, Arduino, profile, perception)
 python tools/check_setup.py

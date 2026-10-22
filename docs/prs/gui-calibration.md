@@ -81,8 +81,8 @@ flowchart LR
   t8["C2.F3.K1"]:::done
   t9["C2.F4.K1"]:::done
   t10["C2.F4.K2"]:::done
-  t11["C2.F4.K3"]
-  t12["C2.F4.K4"]
+  t11["C2.F4.K3"]:::done
+  t12["C2.F4.K4"]:::doing
   t13["C2.F4.K5"]
   t14["C3.F1.K1"]
   t15["C3.F2.K1"]
@@ -92,120 +92,122 @@ flowchart LR
   t19["C4.F2.K1"]:::later
   f0[".gitignore"]
   f1["GUI_REMAKE.MD"]
-  f2["data/templates/anchors/*.png"]
-  f3["moonlight/gui/app.py"]
-  f4["moonlight/gui/loop_factory.py"]
-  f5["moonlight/gui/tabs/calibration.py"]
-  f6["moonlight/perception/battle.py"]
-  f7["moonlight/perception/capture.py"]
-  f8["moonlight/perception/floor.py"]
-  f9["moonlight/perception/loot.py"]
-  f10["moonlight/perception/minimap.py"]
-  f11["moonlight/perception/sprites.py"]
-  f12["moonlight/profiles/moonlight_user.json"]
-  f13["moonlight/setup/autofind.py"]
-  f14["moonlight/setup/calibrate.py"]
-  f15["moonlight/setup/calibration_steps.py"]
-  f16["moonlight/setup/profile.py"]
-  f17["tests/unit/test_autofind.py"]
-  f18["tests/unit/test_battle.py"]
-  f19["tests/unit/test_calibrate.py"]
-  f20["tests/unit/test_calibration_steps.py"]
-  f21["tests/unit/test_capture.py"]
-  f22["tests/unit/test_floor.py"]
-  f23["tests/unit/test_gui_calibration.py"]
-  f24["tests/unit/test_loop_factory.py"]
-  f25["tests/unit/test_looting.py"]
-  f26["tests/unit/test_minimap.py"]
-  f27["tests/unit/test_sprites.py"]
-  f28["tools/calibrate_auto.py"]
+  f2["README.md"]
+  f3["data/templates/anchors/*.png"]
+  f4["moonlight/gui/app.py"]
+  f5["moonlight/gui/loop_factory.py"]
+  f6["moonlight/gui/tabs/calibration.py"]
+  f7["moonlight/perception/battle.py"]
+  f8["moonlight/perception/capture.py"]
+  f9["moonlight/perception/floor.py"]
+  f10["moonlight/perception/loot.py"]
+  f11["moonlight/perception/minimap.py"]
+  f12["moonlight/perception/sprites.py"]
+  f13["moonlight/profiles/moonlight_user.json"]
+  f14["moonlight/setup/autofind.py"]
+  f15["moonlight/setup/calibrate.py"]
+  f16["moonlight/setup/calibration_steps.py"]
+  f17["moonlight/setup/profile.py"]
+  f18["tests/unit/test_autofind.py"]
+  f19["tests/unit/test_battle.py"]
+  f20["tests/unit/test_calibrate.py"]
+  f21["tests/unit/test_calibration_steps.py"]
+  f22["tests/unit/test_capture.py"]
+  f23["tests/unit/test_floor.py"]
+  f24["tests/unit/test_gui_calibration.py"]
+  f25["tests/unit/test_loop_factory.py"]
+  f26["tests/unit/test_looting.py"]
+  f27["tests/unit/test_minimap.py"]
+  f28["tests/unit/test_sprites.py"]
+  f29["tools/calibrate_auto.py"]
   c0(["Bar finders"])
   c1(["Calibration steps"])
   c2(["Finder registry"])
   c3(["Game area coordinates"])
   c4(["Profile fields"])
-  t0 -.-> f7
-  t0 -.-> f21
+  t0 -.-> f8
+  t0 -.-> f22
   t1 -.-> f0
-  t1 -.-> f2
-  t1 -.-> f12
-  t2 -.-> f13
-  t2 -.-> f17
+  t1 -.-> f3
+  t1 -.-> f13
+  t2 -.-> f14
+  t2 -.-> f18
   t2 --> t3
-  t3 -.-> f13
-  t3 -.-> f28
-  t3 -.-> f17
+  t3 -.-> f14
+  t3 -.-> f29
+  t3 -.-> f18
   t1 --> t4
   t2 --> t4
-  t4 -.-> f13
-  t4 -.-> f17
+  t4 -.-> f14
+  t4 -.-> f18
   t1 --> t5
   t2 --> t5
-  t5 -.-> f13
-  t5 -.-> f17
+  t5 -.-> f14
+  t5 -.-> f18
   t1 --> t6
   t2 --> t6
-  t6 -.-> f13
-  t6 -.-> f17
+  t6 -.-> f14
+  t6 -.-> f18
   t1 --> t7
   t2 --> t7
-  t7 -.-> f13
-  t7 -.-> f17
-  t8 -.-> f14
-  t8 -.-> f19
+  t7 -.-> f14
+  t7 -.-> f18
+  t8 -.-> f15
+  t8 -.-> f20
   t8 --> t9
-  t9 -.-> f15
-  t9 -.-> f20
+  t9 -.-> f16
+  t9 -.-> f21
   t9 --> t10
   t2 --> t10
-  t10 -.-> f5
-  t10 -.-> f3
-  t10 -.-> f23
+  t10 -.-> f6
+  t10 -.-> f4
+  t10 -.-> f24
   t10 --> t11
-  t11 -.-> f14
-  t11 -.-> f19
+  t11 -.-> f15
+  t11 -.-> f20
   t11 -.-> f1
+  t11 -.-> f2
   t10 --> t12
-  t12 -.-> f5
-  t12 -.-> f15
-  t12 -.-> f23
-  t12 -.-> f20
+  t12 -.-> f6
+  t12 -.-> f16
+  t12 -.-> f24
+  t12 -.-> f21
   t12 --> t13
-  t13 -.-> f5
-  t13 -.-> f16
-  t13 -.-> f23
+  t13 -.-> f6
+  t13 -.-> f17
+  t13 -.-> f24
   t1 --> t14
   t2 --> t14
   t10 --> t14
-  t14 -.-> f13
-  t14 -.-> f5
-  t14 -.-> f17
+  t14 -.-> f14
+  t14 -.-> f6
+  t14 -.-> f18
   t14 --> t15
-  t15 -.-> f6
-  t15 -.-> f18
+  t15 -.-> f7
+  t15 -.-> f19
   t14 --> t16
-  t16 -.-> f10
-  t16 -.-> f26
+  t16 -.-> f11
+  t16 -.-> f27
   t14 --> t17
-  t17 -.-> f8
-  t17 -.-> f11
   t17 -.-> f9
-  t17 -.-> f22
-  t17 -.-> f27
-  t17 -.-> f25
+  t17 -.-> f12
+  t17 -.-> f10
+  t17 -.-> f23
+  t17 -.-> f28
+  t17 -.-> f26
   t8 --> t18
   t14 --> t18
-  t18 -.-> f4
-  t18 -.-> f13
-  t18 -.-> f24
+  t18 -.-> f5
+  t18 -.-> f14
+  t18 -.-> f25
   t18 --> t19
-  f5 --- c1
-  f7 --- c3
-  f13 --- c0
-  f13 --- c2
-  f14 --- c4
-  f15 --- c1
-  f28 --- c0
+  f6 --- c1
+  f8 --- c3
+  f14 --- c0
+  f14 --- c2
+  f15 --- c4
+  f16 --- c1
+  f29 --- c0
 ```
 <!-- graph:end -->
 

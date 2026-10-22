@@ -224,13 +224,6 @@ Write every task as one block, so an agent can do it with no other context:
 
 #### Phase 3: Tabs
 
-### T2.F7.K1 — Start calibration button
-- What: in Settings, a **Start calibration** button that opens the calibration window (`moonlight/setup/calibrate.py`) for the current profile, plus an editable **UI scale** number read from and saved to that profile's `ui_scale`. The rest of calibration is in `docs/prs/gui-calibration.md`.
-- Needs: docs/tasks/gui-calibration/C2.F3.K1.md and C3.F1.K1
-- Files: moonlight/gui/tabs/settings.py, tests/unit/test_gui_options.py
-- Don't touch: calibrate.py, autofind.py.
-- Done when: `pytest tests/unit/test_gui_options.py` passes (UI scale writes the profile). Owner checks: the button opens the calibration window, and saving replaces the profile.
-
 ### T0.F2.K1 — Live reload (later)
 - What: the running loop picks up config changes without Stop/Start.
 - Needs: T0.F1.K3
