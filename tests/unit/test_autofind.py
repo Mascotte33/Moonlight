@@ -46,3 +46,26 @@ def test_bar_finders_match_the_profile_on_golden_screenshots(name: str) -> None:
         if box is None or max(abs(a - b) for a, b in zip(box, expected, strict=True)) > 3:
             off.append((path.name, box))
     assert not off
+
+
+ANCHORS = Path("data/templates/anchors")
+
+
+@pytest.mark.skipif(
+    not any(GOLDEN.glob("*.png")) or not ANCHORS.is_dir(),
+    reason="golden screenshots or reference images not present",
+)
+def test_battle_list_finder_on_golden_screenshots() -> None:
+    # Two characters keep the list at different heights on screen, so only x, w
+    # and h are compared with the profile. 124 of the frames show the list.
+    expected = json.loads(PROFILE.read_text(encoding="utf-8"))["regions"]["battle_list"]
+    finder = dict(FINDERS)["battle_list"]
+    shots = [cv2.imread(str(p)) for p in sorted(GOLDEN.glob("*.png"))]
+    boxes = [finder(s) for s in shots if s is not None]
+    found = [b for b in boxes if b is not None]
+    assert len(found) == 124
+    off = [b for b in found if max(abs(b[i] - expected[i]) for i in (0, 2, 3)) > 3]
+    assert not off
+    full = cv2.imread(str(GOLDEN / "battle" / "full.png"))
+    if full is not None:
+        assert finder(full) == (2212, 33, 156, 473)

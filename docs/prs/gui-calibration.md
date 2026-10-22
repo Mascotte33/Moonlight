@@ -75,7 +75,7 @@ flowchart LR
   t1["C2.F1.K1"]:::done
   t2["C2.F2.K1"]:::done
   t3["C2.F2.K2"]:::done
-  t4["C2.F2.K3"]
+  t4["C2.F2.K3"]:::done
   t5["C2.F2.K4"]
   t6["C2.F2.K5"]
   t7["C2.F2.K6"]
@@ -127,6 +127,7 @@ flowchart LR
   c2(["Finder registry"])
   c3(["Game area coordinates"])
   c4(["Profile fields"])
+  c5(["Reference images"])
   t0 -.-> f9
   t0 -.-> f23
   t1 -.-> f0
@@ -208,6 +209,7 @@ flowchart LR
   f9 --- c3
   f14 --- c0
   f14 --- c2
+  f14 --- c5
   f15 --- c4
   f16 --- c1
   f30 --- c0

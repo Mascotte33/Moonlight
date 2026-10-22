@@ -7,7 +7,10 @@ returns the area's box, or ``None`` when it can't find it.
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import cache
+from pathlib import Path
 
+import cv2
 import numpy as np
 
 from moonlight.setup.calibrate import Rect
@@ -83,11 +86,50 @@ def _bars(screenshot: np.ndarray) -> tuple[Rect, Rect]:
     return detect_bars(rgb)
 
 
+# doc: docs/prs/gui-calibration.md#reference-images
+ANCHORS_DIR = Path("data/templates/anchors")
+MATCH_MIN = 0.8  # floor indicator scores 0.856 at worst, wrong spots under 0.5
+
+
+@cache
+def _anchor(name: str) -> np.ndarray | None:
+    return cv2.imread(str(ANCHORS_DIR / f"{name}.png"))
+
+
+def _match(screenshot: np.ndarray, name: str) -> tuple[int, int] | None:
+    """Top-left of the reference image's best match, or None if missing or weak."""
+    template = _anchor(name)
+    if template is None:
+        return None
+    scores = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+    _, best, _, (x, y) = cv2.minMaxLoc(scores)
+    return (x, y) if best >= MATCH_MIN else None
+
+
+# The list starts 13 px below the header's top and is 156 px wide. It ends at
+# the window's bottom border, a flat light-grey row.
+BATTLE_TOP, BATTLE_W = 13, 156
+GRIP_W = 12  # the resize grip in the bottom-left corner breaks the grey row
+
+
+def find_battle_list(screenshot: np.ndarray) -> Rect | None:
+    hit = _match(screenshot, "battle_list_header")
+    if hit is None:
+        return None
+    x, y = hit
+    rows = screenshot[y + BATTLE_TOP :, x + GRIP_W : x + BATTLE_W].astype(np.int16)
+    bright = (rows.min(axis=(1, 2)) >= 100) & (np.ptp(rows, axis=(1, 2)) <= 30)
+    if not bright.any():
+        return None
+    return (x, y + BATTLE_TOP, BATTLE_W, int(bright.argmax()))
+
+
 Finder = Callable[[np.ndarray], Rect | None]
 
 FINDERS: list[tuple[str, Finder]] = [
     ("hp_bar", find_hp_bar),
     ("mp_bar", find_mp_bar),
+    ("battle_list", find_battle_list),
 ]
 
 
