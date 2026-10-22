@@ -275,3 +275,22 @@ def test_layout_stop_button_must_stay_at_the_landmark(
     _start_with_window(tmp_path, monkeypatch, frame, landmark=(500, 300))
     with pytest.raises(ValueError, match="Layout changed, recalibrate"):
         _start_with_window(tmp_path, monkeypatch, frame, landmark=(400, 300))
+
+
+def test_watch_layout_pauses_until_the_layout_fits_again(anchors: Path) -> None:
+    from moonlight.gui.loop_factory import LAYOUT_EVERY, watch_layout
+
+    now = [0.0]
+    frame = [np.zeros((600, 800, 3), dtype=np.uint8)]
+    logged: list[str] = []
+    profile = CalibrationProfile(window_size=(800, 600))
+    focused = watch_layout(profile, lambda: frame[0], lambda: True, logged.append, lambda: now[0])
+    assert focused()
+    frame[0] = np.zeros((500, 800, 3), dtype=np.uint8)
+    assert focused()  # not checked again yet
+    now[0] = LAYOUT_EVERY
+    assert not focused() and not focused()
+    frame[0] = np.zeros((600, 800, 3), dtype=np.uint8)
+    now[0] = 2 * LAYOUT_EVERY
+    assert focused()
+    assert logged == ["Layout changed, recalibrate, bot paused", "Layout fits again, resuming"]

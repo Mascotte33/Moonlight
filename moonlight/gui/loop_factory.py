@@ -21,6 +21,7 @@ import logging
 import re
 import shutil
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -42,6 +43,7 @@ __all__ = [
     "LoggedInput",
     "build_gui_loop",
     "check_layout",
+    "watch_layout",
     "config_names",
     "config_path",
     "delete_config",
@@ -277,6 +279,41 @@ def check_layout(
             raise ValueError(LAYOUT_CHANGED)
 
 
+LAYOUT_EVERY = 5.0  # s between layout checks while the bot runs
+
+
+# doc: docs/prs/gui-calibration.md#layout-check
+def watch_layout(
+    profile: CalibrationProfile,
+    frame: Callable[[], Any],
+    focused: Callable[[], bool],
+    log: Callable[[str], None],
+    clock: Callable[[], float] = time.monotonic,
+) -> Callable[[], bool]:
+    """*focused*, but False while the layout no longer fits *profile*.
+
+    The loop pauses while focus is False, so a changed layout pauses the bot
+    and it resumes when the layout fits again. Checks every ``LAYOUT_EVERY`` s.
+    """
+    ok, next_at = True, clock() + LAYOUT_EVERY
+
+    def check() -> bool:
+        nonlocal ok, next_at
+        if clock() >= next_at:
+            next_at = clock() + LAYOUT_EVERY
+            try:
+                check_layout(profile, frame, lambda _: None)
+                fits = True
+            except ValueError:
+                fits = False
+            if fits != ok:
+                log("Layout fits again, resuming" if fits else f"{LAYOUT_CHANGED}, bot paused")
+            ok = fits
+        return ok and focused()
+
+    return check
+
+
 def build_gui_loop(
     *,
     hardware: HardwareController,
@@ -315,10 +352,6 @@ def build_gui_loop(
     log = hardware.log.info if hardware.log is not None else logger.info
     check_layout(profile, capture.get_frame, log)  # before the Arduino opens
     backend = make_backend(real_config, hardware)
-    return build_loop(
-        real_config,
-        profile,
-        backend,
-        state=state,
-        **capture_providers(capture, profile, real_config),
-    )
+    providers = capture_providers(capture, profile, real_config)
+    providers["focus_check"] = watch_layout(profile, capture.get_frame, capture.is_focused, log)
+    return build_loop(real_config, profile, backend, state=state, **providers)
