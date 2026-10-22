@@ -88,12 +88,12 @@ def _bars(screenshot: np.ndarray) -> tuple[Rect, Rect]:
 
 # doc: docs/prs/gui-calibration.md#reference-images
 ANCHORS_DIR = Path("data/templates/anchors")
-MATCH_MIN = 0.8  # floor indicator scores 0.856 at worst, wrong spots under 0.5
+MATCH_MIN = 0.8  # floor indicator scores 0.837 at worst, wrong spots under 0.5
 
 
 @cache
 def _anchor(name: str) -> np.ndarray | None:
-    return cv2.imread(str(ANCHORS_DIR / f"{name}.png"))
+    return cv2.imread(str(ANCHORS_DIR / f"{name}.png"), cv2.IMREAD_GRAYSCALE)
 
 
 def _match(screenshot: np.ndarray, name: str) -> tuple[int, int] | None:
@@ -101,7 +101,9 @@ def _match(screenshot: np.ndarray, name: str) -> tuple[int, int] | None:
     template = _anchor(name)
     if template is None:
         return None
-    scores = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+    # Grey is about 3x faster than colour and finds the same spots.
+    grey = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+    scores = cv2.matchTemplate(grey, template, cv2.TM_CCOEFF_NORMED)
     _, best, _, (x, y) = cv2.minMaxLoc(scores)
     return (x, y) if best >= MATCH_MIN else None
 
@@ -148,6 +150,39 @@ def find_floor_indicator(screenshot: np.ndarray) -> Rect | None:
     return (hit[0] + FLOOR_OFFSET[0], hit[1] + FLOOR_OFFSET[1], *FLOOR_SIZE)
 
 
+# The game view has a flat dark-grey line along its top and left edges, and
+# shows 15 x 11 square tiles.
+GRID_TILES = (15, 11)
+MIN_GRID_W = 600
+
+
+def find_game_grid(screenshot: np.ndarray) -> Rect | None:
+    img = screenshot.astype(np.int16)
+    dark = (np.ptp(img, axis=2) <= 3) & (img[..., 0] >= 14) & (img[..., 0] <= 34)
+    best: Rect | None = None
+    for y in range(dark.shape[0] - 1):
+        for x0, x1 in _runs(dark[y]):
+            w = x1 - x0 - 1  # the line covers both corners
+            if w < MIN_GRID_W or (best is not None and w <= best[2]):
+                continue
+            col = dark[y:, x0]
+            h = (int(col.argmin()) if not col.all() else len(col)) - 2
+            if abs(w * GRID_TILES[1] - h * GRID_TILES[0]) <= GRID_TILES[0]:
+                best = (x0 + 1, y + 1, w, h)
+    return best
+
+
+# The status icons sit in the row left of the Stop button.
+STATUS_OFFSET, STATUS_SIZE = (-118, 0), (108, 12)
+
+
+def find_status_icons(screenshot: np.ndarray) -> Rect | None:
+    hit = _match(screenshot, "stop_button")
+    if hit is None:
+        return None
+    return (hit[0] + STATUS_OFFSET[0], hit[1] + STATUS_OFFSET[1], *STATUS_SIZE)
+
+
 Finder = Callable[[np.ndarray], Rect | None]
 
 FINDERS: list[tuple[str, Finder]] = [
@@ -156,6 +191,8 @@ FINDERS: list[tuple[str, Finder]] = [
     ("battle_list", find_battle_list),
     ("minimap", find_minimap),
     ("floor_indicator", find_floor_indicator),
+    ("game_grid", find_game_grid),
+    ("status_icons", find_status_icons),
 ]
 
 
