@@ -136,6 +136,18 @@ def find_minimap(screenshot: np.ndarray) -> Rect | None:
     return (hit[0] + MINIMAP_OFFSET[0], hit[1] + MINIMAP_OFFSET[1], *MINIMAP_SIZE)
 
 
+# The reference image is wider than the indicator so the static frame pins it.
+# The ladder alone repeats and slipped 4 px on other floors.
+FLOOR_OFFSET, FLOOR_SIZE = (2, 6), (22, 72)
+
+
+def find_floor_indicator(screenshot: np.ndarray) -> Rect | None:
+    hit = _match(screenshot, "floor_indicator")
+    if hit is None:
+        return None
+    return (hit[0] + FLOOR_OFFSET[0], hit[1] + FLOOR_OFFSET[1], *FLOOR_SIZE)
+
+
 Finder = Callable[[np.ndarray], Rect | None]
 
 FINDERS: list[tuple[str, Finder]] = [
@@ -143,6 +155,7 @@ FINDERS: list[tuple[str, Finder]] = [
     ("mp_bar", find_mp_bar),
     ("battle_list", find_battle_list),
     ("minimap", find_minimap),
+    ("floor_indicator", find_floor_indicator),
 ]
 
 

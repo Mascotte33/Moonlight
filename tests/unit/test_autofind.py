@@ -34,7 +34,13 @@ needs_anchors = pytest.mark.skipif(not ANCHORS.is_dir(), reason="reference image
 
 @pytest.mark.skipif(not any(GOLDEN.glob("*.png")), reason="golden screenshots not present")
 @pytest.mark.parametrize(
-    "name", ["hp_bar", "mp_bar", pytest.param("minimap", marks=needs_anchors)]
+    "name",
+    [
+        "hp_bar",
+        "mp_bar",
+        pytest.param("minimap", marks=needs_anchors),
+        pytest.param("floor_indicator", marks=needs_anchors),
+    ],
 )
 def test_finders_match_the_profile_on_golden_screenshots(name: str) -> None:
     expected = json.loads(PROFILE.read_text(encoding="utf-8"))["regions"][name]
