@@ -328,7 +328,7 @@ class CalibrationTab(Tab):
         self.refill_profiles()
 
     def new_profile(self) -> None:
-        """Ask for a name and pick it; Start calibration then fills it."""
+        """Ask for a name, save it empty and pick it; Start calibration then fills it."""
         name = ctk.CTkInputDialog(text="Name for the new calibration:", title="New").get_input()
         if name is None:  # cancelled
             return
@@ -338,9 +338,11 @@ class CalibrationTab(Tab):
                 f"calibration: bad name {name!r}: use 1 to 40 letters, digits, _ and -"
             )
             return
-        if ProfileManager(load_real_config().profiles_dir).path(name).exists():
+        path = ProfileManager(load_real_config().profiles_dir).path(name)
+        if path.exists():
             self.ctx.log.error(f"calibration: {name} already exists, pick it from the list")
             return
+        CalibrationProfile((0, 0)).save(path)  # empty, so it stays in the list until calibrated
         self.pick_profile(name)
 
     def delete_profile(self) -> None:
