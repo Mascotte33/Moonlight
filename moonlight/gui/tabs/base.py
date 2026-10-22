@@ -421,7 +421,7 @@ def _control(
         hotkey.pack(side="right")
         return hotkey.get, lambda v: hotkey.set("" if v is None else str(v))
     if option.control == "switch":
-        switch = ctk.CTkSwitch(row, text="", progress_color=theme.LIFE)
+        switch = ctk.CTkSwitch(row, text="", progress_color=theme.LIFE, command=on_submit)
         switch.pack(side="right")
         return lambda: bool(switch.get()), lambda v: switch.select() if v else switch.deselect()
     if option.control == "dropdown":
@@ -432,6 +432,7 @@ def _control(
             fg_color=theme.RAISED,
             button_color=theme.RAISED,
             button_hover_color=theme.HOVER,
+            command=(lambda _: on_submit()) if on_submit else None,
         )
         menu.pack(side="right")
         fallback = choices[0] if choices else ""
