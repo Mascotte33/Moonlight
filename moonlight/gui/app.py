@@ -18,7 +18,7 @@ import customtkinter as ctk
 
 from moonlight.bot.state import WorldState
 from moonlight.gui import theme
-from moonlight.gui.loop_factory import build_gui_loop
+from moonlight.gui.loop_factory import build_gui_loop, load_real_config
 from moonlight.gui.state_bridge import (
     BotController,
     GuiContext,
@@ -88,6 +88,7 @@ class GuiApp:
             hardware=self.hardware,
             log=self.log,
         )
+        self.ctx.on_config_change = self.apply_config
 
         self.root = ctk.CTk()
         self.root.title("MOONLIGHT — Tibia automation")
@@ -252,7 +253,29 @@ class GuiApp:
             ctrl.stop()
         self._update_topbar()
 
-    def start_bot(self) -> None:
+    def apply_config(self, restart: bool = False) -> None:
+        """Hand the picked config to the running bot (live apply).
+
+        Module settings swap in place; anything else (port, window, tick
+        rate, a module switched on or off, or *restart*) restarts the bot,
+        which releases all keys first. A refused config is logged and the
+        bot keeps going.
+        """
+        # doc: docs/prs/gui-calibration.md#live-apply
+        ctrl = self.ctx.controller
+        if ctrl is None or not self.ctx.bot_running() or ctrl.loop.reconfigure is None:
+            return
+        try:
+            if not restart and ctrl.loop.reconfigure(load_real_config()):
+                return
+        except Exception as exc:  # noqa: BLE001 - keep the last good modules
+            self.log.error(f"settings not applied: {exc!r}")
+            return
+        self.log.info("settings changed, restarting the bot")
+        ctrl.stop()
+        self.start_bot(resume=True)
+
+    def start_bot(self, *, resume: bool = False) -> None:
         """Start the real bot loop through :mod:`moonlight.bot.wiring` (F-13).
 
         Builds the loop via :func:`moonlight.gui.loop_factory.build_gui_loop`,
@@ -269,6 +292,8 @@ class GuiApp:
         except Exception as exc:  # noqa: BLE001 - report, don't crash the app
             self.log.error(f"could not start bot: {exc!r}")
             return
+        if resume and loop.modules.cavebot is not None:
+            loop.modules.cavebot.start(nearest=True)
         self.ctx.controller = BotController(loop, log=self.log)
         self.ctx.controller.start()
         self._update_topbar()

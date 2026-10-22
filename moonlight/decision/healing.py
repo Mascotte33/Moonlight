@@ -102,10 +102,10 @@ class HealingConfig:
     """HP % at or below which a NORMAL heal triggers (must be > emergency)."""
 
     emergency_spell: str = "exura gran"
-    """Spell spoken for emergency heals."""
+    """Spell spoken for emergency heals; blank = no emergency heal."""
 
     normal_spell: str = "exura"
-    """Spell spoken for normal heals."""
+    """Spell spoken for normal heals; blank = no normal heal."""
 
     cure_paralyze: str = ""
     cure_poison: str = ""
@@ -148,10 +148,6 @@ class HealingConfig:
                 raise ValueError(f"expected 0 <= {name} <= 100, got {getattr(self, name)}")
         if self.heal_cooldown_ms <= 0:
             raise ValueError("heal_cooldown_ms must be > 0")
-        for name in ("emergency_spell", "normal_spell"):
-            spell = getattr(self, name).strip()
-            if not spell:
-                raise ValueError(f"{name} must be a non-empty spell")
         return self
 
     def cure_spells(self) -> dict[str, str]:
@@ -306,7 +302,11 @@ class HealingDecision:
         """Emergency heal, cures and normal heal that are due, in priority order."""
         candidates: list[HealingAction] = []
         hp = state.hp_percent
-        emergency_due = 0.0 < hp <= self.config.emergency_hp_percent
+        # A blank spell is off; the normal heal then covers the emergency range.
+        emergency_due = (
+            bool(self.config.emergency_spell.strip())
+            and 0.0 < hp <= self.config.emergency_hp_percent
+        )
         if emergency_due:
             candidates.append(
                 HealingAction(
@@ -322,6 +322,7 @@ class HealingDecision:
         candidates.extend(self._cure_candidates(state))
         if (
             not emergency_due
+            and self.config.normal_spell.strip()
             and 0.0 < hp <= self.config.normal_hp_percent
         ):
             candidates.append(

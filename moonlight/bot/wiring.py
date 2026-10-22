@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -305,23 +305,117 @@ def build_loop(
         ValueError: If an enabled module cannot be built from *profile*
             (e.g. cavebot without a minimap/game_grid region).
     """
-    from moonlight.decision.alarms import AlarmDecision
-    from moonlight.decision.attack_spells import AttackSpells
-    from moonlight.decision.buffs import BuffManager
-    from moonlight.decision.healing import HealingDecision
-    from moonlight.decision.targeting import TargetingDecision
-
     state = state if state is not None else WorldState()
     frames = FrameCache(frame_provider)
     # F-20: one wire limiter shared by the loop and every module that sends
     # (clicker, cavebot, looting, refill), so the 10/s cap counts serial
     # commands, not actions.
     backend = RateLimitedInput.wrap(backend, config.loop.max_actions_per_second, clock)
+
+    def modules(cfg: BotConfig, old: tuple[BotConfig, DecisionModules] | None) -> DecisionModules:
+        return build_modules(
+            cfg, profile, backend, state, frames, old=old, clock=clock,
+            roi_provider=roi_provider, window_origin=window_origin, on_clicker=on_clicker,
+        )
+
+    current = config
+    m = modules(config, None)
+    loop = GameLoop(
+        state,
+        backend,
+        config.loop,
+        modules=m,
+        perceive=make_perceive(
+            state,
+            profile,
+            frames.refresh,
+            focus_check,
+            minimap_start=start_position(config),
+        ),
+        clock=clock,
+        sleep_fn=sleep_fn,
+        alert=alert,
+    )
+
+    def reconfigure(new: BotConfig) -> bool:
+        nonlocal current
+        if needs_restart(current, new):
+            return False
+        loop.modules = modules(new, (current, loop.modules))
+        current = new
+        return True
+
+    loop.reconfigure = reconfigure
+    return loop
+
+
+#: BotConfig fields a running bot takes without a rebuild (live apply).
+LIVE_FIELDS = (*MODULES, "hotkeys", "clicker", "templates_dir", "routes_dir", "off")
+
+
+def needs_restart(old: BotConfig, new: BotConfig) -> bool:
+    """True when *new* changes something only a fresh bot can take.
+
+    That is any field outside :data:`LIVE_FIELDS` (port, window, tick
+    rate...), or a module switched on or off, since the captured regions
+    depend on which modules run.
+    """
+    # doc: docs/prs/gui-calibration.md#live-apply
+    names = [f.name for f in fields(old) if f.name not in LIVE_FIELDS]
+    if any(getattr(old, n) != getattr(new, n) for n in names):
+        return True
+    return any((getattr(old, n) is None) != (getattr(new, n) is None) for n in MODULES)
+
+
+def build_modules(
+    config: BotConfig,
+    profile: CalibrationProfile,
+    backend: InputBackend,
+    state: WorldState,
+    frames: FrameCache,
+    *,
+    old: tuple[BotConfig, DecisionModules] | None = None,
+    clock: Callable[[], float] | None = None,
+    roi_provider: Callable[[Rect], np.ndarray] | None = None,
+    window_origin: Callable[[], tuple[int, int]] | None = None,
+    on_clicker: Callable[[ClickController], None] | None = None,
+) -> DecisionModules:
+    """The enabled decision modules for *config*.
+
+    With *old* (the running config and its modules) a module whose settings
+    did not change is kept as is, so its cooldowns and route position
+    survive; a rebuilt cavebot walks to the nearest waypoint of its route.
+    """
+    from moonlight.decision.alarms import AlarmDecision
+    from moonlight.decision.attack_spells import AttackSpells
+    from moonlight.decision.buffs import BuffManager
+    from moonlight.decision.healing import HealingDecision
+    from moonlight.decision.targeting import TargetingDecision
+
     combos = config.spell_combos
     m = DecisionModules()
-    if config.healing is not None:
+    prev_cfg, prev = old if old is not None else (None, None)
+
+    def same(*names: str) -> bool:
+        return prev_cfg is not None and all(
+            getattr(prev_cfg, n) == getattr(config, n) for n in names
+        )
+
+    if prev is not None:
+        for name, keys in (
+            ("healing", ("healing", "hotkeys")),
+            ("targeting", ("targeting",)),
+            ("attack_spells", ("attack_spells", "hotkeys")),
+            ("buffs", ("buffs", "hotkeys")),
+            ("alarms", ("alarms",)),
+        ):
+            if same(*keys):
+                setattr(m, name, getattr(prev, name))
+        if same("cavebot", "looting", "refill", "clicker", "templates_dir", "routes_dir"):
+            m.cavebot, m.looting, m.refill = prev.cavebot, prev.looting, prev.refill
+    if config.healing is not None and m.healing is None:
         m.healing = HealingDecision(config.healing, spell_combos=combos, clock=clock)
-    if config.targeting is not None:
+    if config.targeting is not None and m.targeting is None:
         m.targeting = TargetingDecision(config.targeting)
         # F-01 (interim): no name resolver is wired yet (T34), so every
         # battle entry is a nameless/UNKNOWN creature. Targeting treats
@@ -332,14 +426,15 @@ def build_loop(
             "unknown-named battle entries are treated as UNKNOWN and will "
             "NOT be auto-attacked"
         )
-    if config.attack_spells is not None:
+    if config.attack_spells is not None and m.attack_spells is None:
         m.attack_spells = AttackSpells(config.attack_spells, combos, clock=clock)
-    if config.buffs is not None:
+    if config.buffs is not None and m.buffs is None:
         m.buffs = BuffManager(config.buffs, spell_combos=combos, clock=clock)
-    if config.alarms is not None:
+    if config.alarms is not None and m.alarms is None:
         m.alarms = AlarmDecision(config.alarms, clock=clock)
 
-    if config.cavebot is not None or config.looting is not None:
+    walkers = config.cavebot is not None or config.looting is not None
+    if walkers and m.cavebot is None and m.looting is None:
         from moonlight.hardware.clicker import ClickController
         from moonlight.perception.cursor import CursorReader
 
@@ -369,8 +464,11 @@ def build_loop(
                 shovel_hotkey=cb.shovel_hotkey,
                 clock=clock,
             )
-            m.cavebot.start()
-            m.cavebot.route.current = cb.start_index
+            if prev is None:
+                m.cavebot.start()
+                m.cavebot.route.current = cb.start_index
+            else:
+                m.cavebot.start(nearest=True)
         if config.looting is not None:
             from moonlight.decision.looting import Looting
             from moonlight.perception.loot import LootReader
@@ -379,29 +477,14 @@ def build_loop(
             m.looting = Looting(
                 reader, clicker, backend, state, config.looting, frame_provider=frames
             )
-    if config.refill is not None:
+    if config.refill is not None and m.refill is None:
         from moonlight.decision.cavebot import RouteFileLoader
         from moonlight.decision.refill import Refill
 
         assert m.cavebot is not None and m.looting is not None  # BotConfig.validate
         m.refill = Refill(config.refill, m.cavebot, RouteFileLoader(), m.looting, state, backend)
 
-    return GameLoop(
-        state,
-        backend,
-        config.loop,
-        modules=m,
-        perceive=make_perceive(
-            state,
-            profile,
-            frames.refresh,
-            focus_check,
-            minimap_start=start_position(config),
-        ),
-        clock=clock,
-        sleep_fn=sleep_fn,
-        alert=alert,
-    )
+    return m
 
 
 def capture_providers(

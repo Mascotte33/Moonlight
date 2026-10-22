@@ -7,7 +7,6 @@ and FakeInput for the input-backend integration. No hardware, no client.
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
-from typing import Any
 
 import pytest
 
@@ -93,6 +92,13 @@ class TestDecideThresholds:
         # hp 0.0 means "never read" -> must not heal.
         healer, _ = make_healer()
         assert healer.decide(make_state(hp=0.0)) is None
+
+    def test_blank_spell_is_off(self) -> None:
+        healer, _ = make_healer(HealingConfig(emergency_spell=" "))
+        action = healer.decide(make_state(hp=25.0))
+        assert action is not None and action.type is HealType.NORMAL
+        healer, _ = make_healer(HealingConfig(emergency_spell="", normal_spell=""))
+        assert healer.decide(make_state(hp=25.0)) is None
 
     def test_emergency_below_threshold(self) -> None:
         healer, _ = make_healer()
@@ -386,14 +392,6 @@ class TestConfigValidation:
     def test_nonpositive_cooldown_rejected(self) -> None:
         with pytest.raises(ValueError):
             HealingDecision(HealingConfig(heal_cooldown_ms=0))
-
-    @pytest.mark.parametrize("field", ["emergency_spell", "normal_spell"])
-    @pytest.mark.parametrize("value", ["", "   "])
-    def test_invalid_spells_rejected(self, field: str, value: str) -> None:
-        # Dynamic field name: unpack through dict[str, Any] (intentionally invalid input).
-        kwargs: dict[str, Any] = {field: value}
-        with pytest.raises(ValueError):
-            HealingDecision(HealingConfig(**kwargs))
 
     def test_invalid_spell_combo_rejected(self) -> None:
         with pytest.raises(ValueError):

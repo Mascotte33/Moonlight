@@ -1,9 +1,10 @@
 """Settings tab: named configs and core options (T2.F2.K1).
 
-The config dropdown picks a named config in ``configs/``; New copies the
-picked one under a new name, Save writes every tab's options into it and
-Delete removes it (T0.F1.K3, T0.F1.K5). Start/Pause/Kill live in the top
-bar; port, baud rate and simulation live in Hardware.
+The config dropdown picks a named config in ``configs/`` and applies it
+live. Every control saves into the picked config as it changes, so Save
+only writes a copy under a new name (a preset); Delete removes the picked
+one (T0.F1.K3, T0.F1.K5). Start/Pause/Kill live in the top bar; port,
+baud rate and simulation live in Hardware.
 """
 
 from __future__ import annotations
@@ -58,7 +59,7 @@ def plain_reason(message: str) -> str:
 
 
 class SettingsTab(Tab):
-    """Named configs (pick, New, Save, Delete) and core options."""
+    """Named configs (pick, Save as preset, Delete) and core options."""
 
     title = "Settings"
     scrolls = True
@@ -80,7 +81,6 @@ class SettingsTab(Tab):
         self.menu_config.set(picked_config().stem)
         self.menu_config.pack(side="left")
         for text, command, color, hover in (
-            ("New", self._on_new, theme.RAISED, theme.HOVER),
             ("Save", self._on_save, theme.RAISED, theme.HOVER),
             ("Delete", self._on_delete, theme.BLOOD, theme.BLOOD_HOVER),
         ):
@@ -133,7 +133,7 @@ class SettingsTab(Tab):
         self.menu_window.configure(values=window_titles() or ["No windows found"])
 
     def _check_switch(self, field: str) -> None:
-        """Flip a module switch back when the config would refuse it."""
+        """Flip a module switch back when the config would refuse it, else apply it."""
         cfg = load_real_config()
         try:
             for option in self.options:
@@ -143,6 +143,7 @@ class SettingsTab(Tab):
             self._reasons[field].configure(text=plain_reason(str(exc)))
             return
         self._reasons[field].configure(text="")
+        self.submit()
 
     # -- named configs -------------------------------------------------------
 
@@ -150,8 +151,9 @@ class SettingsTab(Tab):
         self.ctx.pick_config(name)
         self.lbl_io.configure(text=f"picked {name}")
 
-    def _on_new(self) -> None:
-        name = ctk.CTkInputDialog(text="Config name:", title="New config").get_input()
+    def _on_save(self) -> None:
+        """Save the picked config as a named preset."""
+        name = ctk.CTkInputDialog(text="Preset name:", title="Save preset").get_input()
         if not name:
             return
         cfg = load_real_config()
@@ -159,7 +161,7 @@ class SettingsTab(Tab):
             try:
                 save_config_as(cfg, name)
             except FileExistsError:
-                if not messagebox.askyesno("New config", f"{name} exists. Overwrite it?"):
+                if not messagebox.askyesno("Save preset", f"{name} exists. Replace it?"):
                     return
                 save_config_as(cfg, name, overwrite=True)
         except ConfigError as exc:
@@ -169,14 +171,6 @@ class SettingsTab(Tab):
         self.menu_config.set(name)
         self._on_pick(name)
         self.lbl_io.configure(text=f"saved {name}")
-
-    def _on_save(self) -> None:
-        try:
-            self.ctx.save_config()
-        except ConfigError as exc:
-            self.lbl_io.configure(text=str(exc))
-            return
-        self.lbl_io.configure(text=f"saved {self.menu_config.get()}")
 
     def _on_delete(self) -> None:
         name = self.menu_config.get()

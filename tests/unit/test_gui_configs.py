@@ -94,13 +94,15 @@ def test_only_config_cannot_be_deleted() -> None:
     assert config_names() == ["a"]
 
 
-def test_save_runs_every_tabs_apply() -> None:
-    calls: list[str] = []
+def test_config_changed_reaches_the_app() -> None:
+    calls: list[bool] = []
     ctx = GuiContext(
         state=WorldState(),
         hardware=HardwareController(),
         log=LogFeed(),
     )
-    ctx.config_savers.extend([lambda: calls.append("a"), lambda: calls.append("b")])
-    ctx.save_config()
-    assert calls == ["a", "b"]
+    ctx.config_changed()  # no app hooked: nothing happens
+    ctx.on_config_change = calls.append
+    ctx.config_changed()
+    ctx.config_changed(restart=True)
+    assert calls == [False, True]

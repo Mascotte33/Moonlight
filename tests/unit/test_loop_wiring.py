@@ -174,6 +174,16 @@ def test_cavebot_is_default_move_provider() -> None:
     cavebot.step.assert_called_once()
 
 
+def test_swapped_cavebot_is_used_next_tick() -> None:
+    old = idle_module(**{"is_active.return_value": True})
+    new = idle_module(**{"is_active.return_value": True})
+    gl, _ = make_loop(make_state(), FakeInput(), cavebot=old)
+    gl.modules = DecisionModules(cavebot=new)
+    gl.tick()
+    new.step.assert_called_once()
+    old.step.assert_not_called()
+
+
 def test_perceive_runs_before_snapshot() -> None:
     ws = make_state()
     with ws.lock():

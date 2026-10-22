@@ -11,8 +11,8 @@ import numpy as np
 import pytest
 
 from moonlight.bot import wiring
-from moonlight.bot.loop import LoopConfig
-from moonlight.bot.state import WorldState
+from moonlight.bot.loop import GameLoop, LoopConfig
+from moonlight.bot.state import Position, WorldState
 from moonlight.decision.buffs import BuffManagerConfig
 from moonlight.decision.cavebot import Route, Waypoint
 from moonlight.decision.looting import LootingConfig
@@ -333,3 +333,55 @@ def test_start_position_is_the_first_waypoint_unless_set() -> None:
     assert wiring.start_position(cfg) == (100, 200, 7)
     assert wiring.start_position(replace(cfg, minimap_start=(1, 2, 3))) == (1, 2, 3)
     assert wiring.start_position(BotConfig.default()) is None
+
+
+# -- live apply ----------------------------------------------------------------
+
+
+def _live_loop(cfg: BotConfig, state: WorldState | None = None) -> GameLoop:
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    return wiring.build_loop(
+        cfg, make_profile(), FakeInput(), frame_provider=lambda: frame, state=state
+    )
+
+
+def test_reconfigure_swaps_only_changed_modules() -> None:
+    cfg = replace(BotConfig.default(), loop=LoopConfig(enable_f12_monitor=False))
+    loop = _live_loop(cfg)
+    old = loop.modules
+    assert cfg.healing is not None and loop.reconfigure is not None
+    new = replace(cfg, healing=replace(cfg.healing, normal_hp_percent=55))
+    assert loop.reconfigure(new)
+    assert loop.modules.healing is not old.healing
+    assert loop.modules.targeting is old.targeting
+    assert loop.modules.alarms is old.alarms
+
+
+def test_reconfigure_refuses_what_needs_a_restart() -> None:
+    cfg = replace(BotConfig.default(), loop=LoopConfig(enable_f12_monitor=False))
+    loop = _live_loop(cfg)
+    old = loop.modules
+    assert loop.reconfigure is not None
+    assert not loop.reconfigure(replace(cfg, loop=LoopConfig(tick_rate=5)))
+    assert not loop.reconfigure(replace(cfg, alarms=None))  # a module switched off
+    assert not loop.reconfigure(replace(cfg, serial_port="COM9"))
+    assert loop.modules is old
+
+
+def test_new_route_starts_at_its_nearest_waypoint() -> None:
+    near = Route("b", waypoints=[Waypoint(100, 100, 7), Waypoint(200, 200, 7)])
+    cfg = replace(
+        BotConfig.default(),
+        loop=LoopConfig(enable_f12_monitor=False),
+        cavebot=CavebotConfig(Route("a", waypoints=[Waypoint(1, 1, 7)])),
+    )
+    state = WorldState()
+    loop = _live_loop(cfg, state)
+    with state.lock():
+        state.position = Position(199, 201, 7)
+    assert loop.reconfigure is not None and loop.reconfigure(
+        replace(cfg, cavebot=CavebotConfig(near))
+    )
+    assert loop.modules.cavebot is not None
+    assert loop.modules.cavebot.route.name == "b"
+    assert loop.modules.cavebot.route.current == 1

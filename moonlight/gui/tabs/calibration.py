@@ -320,11 +320,12 @@ class CalibrationTab(Tab):
         self.load_summary(ProfileManager(cfg.profiles_dir), cfg.profile)
 
     def pick_profile(self, name: str) -> None:
-        """Make the bot use calibration *name* from its next start."""
+        """Make the bot use calibration *name* (a running bot restarts)."""
         path = picked_config()
         cfg = load_real_config(path)
         dataclasses.replace(cfg, profile=name).save(path)
-        self.ctx.log.info(f"calibration: bot uses {name} (from next start)")
+        self.ctx.log.info(f"calibration: bot uses {name}")
+        self.ctx.config_changed()
         self.refill_profiles()
 
     def new_profile(self) -> None:
@@ -625,4 +626,5 @@ class CalibrationTab(Tab):
             self.ctx.log.error(f"calibration: could not save {self.path}: {exc}")
             return False
         self.ctx.log.info(f"profile saved to {self.path}")
+        self.ctx.config_changed(restart=True)  # the bot re-reads the layout
         return True

@@ -248,9 +248,8 @@ class Tab:
 
     def build_options(self, parent: ctk.CTkFrame, options: list[Option] | None = None) -> None:
         """One labelled control per entry in *options* (default ``options``)."""
-        if self.options and self.apply not in self.ctx.config_savers:
+        if self.options and self.reload_options not in self.ctx.config_listeners:
             self.ctx.config_listeners.append(self.reload_options)
-            self.ctx.config_savers.append(self.apply)
         cfg = load_real_config()
         for option in self.options if options is None else options:
             row = ctk.CTkFrame(parent, fg_color="transparent")
@@ -275,11 +274,18 @@ class Tab:
                 self._writers[option.field](read_option(cfg, option.field))
 
     def submit(self) -> None:
-        """Save this tab now (a hotkey's OK); a refused value goes to the log."""
+        """Save this tab and apply it live; a refused value goes to the log.
+
+        Every control calls this when its value changes, so the picked
+        config and the running bot always match the controls.
+        """
+        # doc: docs/prs/gui-calibration.md#live-apply
         try:
             self.apply()
         except ConfigError as exc:
             self.ctx.log.error(str(exc))
+            return
+        self.ctx.config_changed()
 
     def apply(self) -> BotConfig:
         """Write every option into the picked config and save it (Rule 2).
@@ -475,11 +481,16 @@ def _control(
             slider.set(start)
             show(start)
 
-        for event in ("<Return>", "<FocusOut>"):
-            box.bind(event, lambda _e: get_slider())
+        if on_submit is not None:
+            slider.bind("<ButtonRelease-1>", lambda _e: on_submit())
+            for event in ("<Return>", "<FocusOut>"):
+                box.bind(event, lambda _e: on_submit())
         return get_slider, put_slider
     entry = ctk.CTkEntry(row, fg_color=theme.NIGHT, border_color=theme.RAISED)
     entry.pack(side="right")
+    if on_submit is not None:
+        for event in ("<Return>", "<FocusOut>"):
+            entry.bind(event, lambda _e: on_submit())
 
     def put_entry(value: object) -> None:
         entry.delete(0, "end")

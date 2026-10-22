@@ -99,7 +99,8 @@ class Route:
     name: str
     description: str = ""
     waypoints: list[Waypoint] = field(default_factory=list)
-    current: int = 0
+    #: Where the bot is on the route, not part of the route itself.
+    current: int = field(default=0, compare=False)
 
 
 class RouteFileLoader:
