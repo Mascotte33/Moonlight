@@ -28,11 +28,15 @@ def test_found_and_missing_areas_are_split() -> None:
 
 GOLDEN = Path(__file__).resolve().parents[1] / "golden"
 PROFILE = Path(__file__).resolve().parents[1] / "golden_profile" / "moonlight_user.json"
+ANCHORS = Path("data/templates/anchors")
+needs_anchors = pytest.mark.skipif(not ANCHORS.is_dir(), reason="reference images not present")
 
 
 @pytest.mark.skipif(not any(GOLDEN.glob("*.png")), reason="golden screenshots not present")
-@pytest.mark.parametrize("name", ["hp_bar", "mp_bar"])
-def test_bar_finders_match_the_profile_on_golden_screenshots(name: str) -> None:
+@pytest.mark.parametrize(
+    "name", ["hp_bar", "mp_bar", pytest.param("minimap", marks=needs_anchors)]
+)
+def test_finders_match_the_profile_on_golden_screenshots(name: str) -> None:
     expected = json.loads(PROFILE.read_text(encoding="utf-8"))["regions"][name]
     finder = dict(FINDERS)[name]
     labels = json.loads((GOLDEN / "labels.json").read_text(encoding="utf-8"))["frames"]
@@ -48,13 +52,8 @@ def test_bar_finders_match_the_profile_on_golden_screenshots(name: str) -> None:
     assert not off
 
 
-ANCHORS = Path("data/templates/anchors")
-
-
-@pytest.mark.skipif(
-    not any(GOLDEN.glob("*.png")) or not ANCHORS.is_dir(),
-    reason="golden screenshots or reference images not present",
-)
+@pytest.mark.skipif(not any(GOLDEN.glob("*.png")), reason="golden screenshots not present")
+@needs_anchors
 def test_battle_list_finder_on_golden_screenshots() -> None:
     # Two characters keep the list at different heights on screen, so only x, w
     # and h are compared with the profile. 124 of the frames show the list.

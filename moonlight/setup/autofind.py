@@ -124,12 +124,25 @@ def find_battle_list(screenshot: np.ndarray) -> Rect | None:
     return (x, y + BATTLE_TOP, BATTLE_W, int(bright.argmax()))
 
 
+# The reference image is the zoom-button strip right of the map, since the map
+# itself changes as you walk.
+MINIMAP_OFFSET, MINIMAP_SIZE = (-117, -50), (106, 109)
+
+
+def find_minimap(screenshot: np.ndarray) -> Rect | None:
+    hit = _match(screenshot, "minimap_frame")
+    if hit is None:
+        return None
+    return (hit[0] + MINIMAP_OFFSET[0], hit[1] + MINIMAP_OFFSET[1], *MINIMAP_SIZE)
+
+
 Finder = Callable[[np.ndarray], Rect | None]
 
 FINDERS: list[tuple[str, Finder]] = [
     ("hp_bar", find_hp_bar),
     ("mp_bar", find_mp_bar),
     ("battle_list", find_battle_list),
+    ("minimap", find_minimap),
 ]
 
 
