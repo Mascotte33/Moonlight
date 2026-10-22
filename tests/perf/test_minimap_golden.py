@@ -38,7 +38,6 @@ import pytest
 from moonlight.bot.state import Position
 from moonlight.perception.floor import FloorReader
 from moonlight.perception.minimap import MinimapReader
-from moonlight.setup.calibrate import default_profiles_dir
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -55,7 +54,7 @@ LABELS_CANDIDATES = (
 )
 
 #: Same directory the app loads profiles from (moonlight/profiles/).
-PROFILE_DIR = default_profiles_dir()
+PROFILE_DIR = Path(__file__).resolve().parents[1] / "golden_profile"
 
 #: Where per-level floor icons may live (for the z-check).
 TEMPLATE_DIR = REPO_ROOT / "data" / "templates" / "floorLevels"

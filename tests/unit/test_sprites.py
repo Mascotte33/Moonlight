@@ -500,3 +500,15 @@ def test_monster_filter_and_template_cap() -> None:
     assert {d.monster for d in capped.detect(frame)} == {"monster_0"}
     with pytest.raises(ValueError):
         SpriteDetector(max_templates=0)
+
+
+def test_ui_scale_detects_enlarged_sprites() -> None:
+    """At UI scale 1.5 the templates grow with the client and still hit."""
+    frame = make_frame([(0, 70, 60, 0), (1, 160, 110, 0)])
+    big = cv2.resize(frame, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_NEAREST)
+    profile = CalibrationProfile(ui_scale=1.5)
+    profile.set_region("game_grid", Region(75, 60, 300, 240))
+    templates = {f"monster_{i}": [make_template(i, 0)] for i in range(2)}
+    det = SpriteDetector(profile, monster_templates=templates)
+    hits = {(d.monster, d.x, d.y, d.width) for d in det.detect(big)}
+    assert hits == {("monster_0", 105, 90, 30), ("monster_1", 240, 165, 30)}

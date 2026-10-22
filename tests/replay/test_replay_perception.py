@@ -36,13 +36,13 @@ from moonlight.perception import (
     VitalsReader,
 )
 from moonlight.perception.loot import TITLE_TEMPLATE, LootReader, LootWindow
-from moonlight.setup.calibrate import CalibrationProfile, default_profiles_dir
+from moonlight.setup.calibrate import CalibrationProfile
 from tests.golden_labels import PlaceholderLabelsError, load_golden_labels
 
 ROOT = Path(__file__).resolve().parents[2]
 FRAME_DIRS = (ROOT / "tests" / "golden",)
 LABELS = ROOT / "tests" / "golden" / "labels.json"
-PROFILE = default_profiles_dir() / "moonlight_user.json"
+PROFILE = Path(__file__).resolve().parents[1] / "golden_profile" / "moonlight_user.json"
 
 GAME_GRID = (416, 60, 1442, 1056)
 LOG_REGION = (180, 1210, 2020, 135)

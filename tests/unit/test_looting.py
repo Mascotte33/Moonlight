@@ -6,6 +6,7 @@ drawn into a 5x5 grid; hotkeys go to FakeInput.
 
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
 from moonlight.bot.state import Capacity, WorldState
@@ -68,6 +69,17 @@ def test_reader_reads_items_by_slot() -> None:
 def test_reader_open_empty_corpse() -> None:
     window = LootReader(TEMPLATES, profile()).read_loot_window(render({}))
     assert window == LootWindow(open=True, items=[])
+
+
+def test_reader_at_ui_scale() -> None:
+    """At UI scale 1.5 the title, items and slot pitch all grow."""
+    frame = render({0: GOLD, 6: SWORD})
+    big = cv2.resize(frame, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_NEAREST)
+    scaled = CalibrationProfile(
+        regions={"loot_window": Region(150, 75, 330, 330)}, ui_scale=1.5
+    )
+    window = LootReader(TEMPLATES, scaled).read_loot_window(big)
+    assert window == LootWindow(open=True, items=[(0, "gold coin", 1), (6, "sword", 1)])
 
 
 # -- Looting ----------------------------------------------------------------

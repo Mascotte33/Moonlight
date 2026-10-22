@@ -16,7 +16,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   radar) and lets the client's auto-walk path there. The click is re-issued
   only after the player has stood still for ``reclick_interval`` seconds.
 * **Arrival**: within 1 tile (Chebyshev distance) of the waypoint on the
-  same floor. ``walk`` is then done; ``rope``/``shovel``/``ladder`` click
+  same floor; ``node`` within 3 tiles, ``stand`` only on the exact tile.
+  ``walk``/``node``/``stand``/``lure`` are then done (``lure`` walks with
+  attacking off, see :meth:`Cavebot.luring`); ``rope``/``shovel``/``ladder`` click
   the waypoint's tile in the game grid (15x11 tiles, player at slot (7, 5))
   and wait for the expected floor change (rope/ladder: z - 1, shovel:
   z + 1), retrying every ``reclick_interval``.
@@ -63,13 +65,16 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 #: Valid waypoint actions.
-ACTIONS = ("walk", "rope", "shovel", "ladder", "label", "goto")
+ACTIONS = ("walk", "node", "stand", "lure", "rope", "shovel", "ladder", "label", "goto")
 
 #: Actions that need no position (executed immediately).
 _JUMP_ACTIONS = ("label", "goto")
 
 #: Floor change each tile action causes (0 = sky, 15 = deepest).
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
+
+#: Arrival distance in tiles; every other positional action uses 1.
+_REACH = {"node": 3, "stand": 0}
 
 #: Game grid layout (docs/ui_layout.md #10): 15x11 tiles, player at (7, 5).
 GAME_GRID_COLS = 15
@@ -99,7 +104,8 @@ class Route:
     name: str
     description: str = ""
     waypoints: list[Waypoint] = field(default_factory=list)
-    current: int = 0
+    #: Where the bot is on the route, not part of the route itself.
+    current: int = field(default=0, compare=False)
 
 
 class RouteFileLoader:
@@ -272,6 +278,15 @@ class Cavebot:
         """True while the route is running."""
         return self._active
 
+    def luring(self) -> bool:
+        """True while walking to a ``lure`` waypoint: the loop holds attacks."""
+        wps = self.route.waypoints
+        return (
+            self._active
+            and self.route.current < len(wps)
+            and wps[self.route.current].action == "lure"
+        )
+
     def on_waypoint_reached(self, index: int) -> None:
         """Hook called when positional waypoint *index* is reached."""
         logger.debug("cavebot: reached waypoint %d", index)
@@ -300,8 +315,8 @@ class Cavebot:
         if pos.z != wp.z:
             self._resync_floor(pos.z)
             return
-        if max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= 1:
-            if wp.action == "walk":
+        if max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= _REACH.get(wp.action, 1):
+            if wp.action not in _FLOOR_DELTA:
                 self._advance()
             else:
                 self._expected_z = wp.z + _FLOOR_DELTA[wp.action]

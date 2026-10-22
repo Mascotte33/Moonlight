@@ -48,7 +48,7 @@ def test_spell_with_no_hotkey_is_refused() -> None:
 def test_each_spell_sits_under_its_hp_percent() -> None:
     from moonlight.gui.tabs.healing import GROUPS
 
-    assert [t for t, _ in GROUPS] == ["Emergency", "Normal", "Cure", "Mana and cooldown"]
+    assert [t for t, _ in GROUPS] == ["Emergency", "Normal", "Cure", "Potions", "Mana and cooldown"]
     fields = {t: [o.field for o in g] for t, g in GROUPS}
     assert fields["Emergency"] == ["healing.emergency_hp_percent", "healing.emergency_spell"]
     assert fields["Normal"] == ["healing.normal_hp_percent", "healing.normal_spell"]
@@ -71,3 +71,20 @@ def test_old_single_cure_spell_still_loads() -> None:
     healing = BotConfig.from_dict(data).healing
     assert healing is not None
     assert healing.cure_spells() == {"poison": "exura gran", "burn": "exura gran"}
+
+
+def test_potions_get_a_percent_and_a_hotkey() -> None:
+    values = {
+        **VALUES,
+        "healing.hp_potion_percent": 40.0,
+        "healing.hp_potion": "great health potion",
+        "healing.mp_potion_percent": 25.0,
+        "healing.mp_potion": "",
+    }
+    combos = {**COMBOS, "healing.hp_potion": "F6", "healing.mp_potion": "F7"}
+    cfg = apply_healing(BotConfig.default(), values, combos)
+    assert cfg.healing is not None
+    assert cfg.healing.potions() == {"hp": ("great health potion", 40.0)}
+    assert cfg.spell_combos["great health potion"] == "F6"
+    with pytest.raises(ConfigError, match="great health potion"):
+        apply_healing(BotConfig.default(), values, {**combos, "healing.hp_potion": ""})

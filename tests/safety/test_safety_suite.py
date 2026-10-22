@@ -31,7 +31,7 @@ from moonlight.decision.refill import Refill, RefillConfig
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.perception.loot import LootWindow
-from moonlight.setup.calibrate import CalibrationProfile, default_profiles_dir
+from moonlight.setup.calibrate import CalibrationProfile
 from moonlight.setup.config import BotConfig
 
 pytestmark = pytest.mark.safety
@@ -343,7 +343,7 @@ GOLDEN_LOW_HP = (
     / "golden"
     / "2026-07-05_231254331_Secco Cio_LowHealth_1.png"
 )
-USER_PROFILE = default_profiles_dir() / "moonlight_user.json"
+USER_PROFILE = Path(__file__).resolve().parents[1] / "golden_profile" / "moonlight_user.json"
 needs_golden = pytest.mark.skipif(
     not GOLDEN_LOW_HP.is_file() or not USER_PROFILE.is_file(),
     reason="no golden frame or user profile",

@@ -1,9 +1,10 @@
 """Settings tab: named configs and core options (T2.F2.K1).
 
-The config dropdown picks a named config in ``configs/``; New copies the
-picked one under a new name, Save writes every tab's options into it and
-Delete removes it (T0.F1.K3, T0.F1.K5). Start/Pause/Kill live in the top
-bar; port, baud rate and simulation live in Hardware.
+The config dropdown picks a named config in ``configs/`` and applies it
+live. Every control saves into the picked config as it changes; Save
+writes it again on demand, New copies it under a new name and picks the
+copy, Delete removes it (T0.F1.K3, T0.F1.K5). Start/Pause/Kill live in the top bar; port,
+baud rate and simulation live in Hardware.
 """
 
 from __future__ import annotations
@@ -30,17 +31,17 @@ OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
     Option("Game window", "window_title", "dropdown"),
 ]
-#: The only switch for each module; the module tabs have none (T2.F4.K2).
+#: The only switch for each module (T2.F4.K2); the cavebot's is on its own tab.
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
     for name in (
-        "healing", "targeting", "attack_spells", "cavebot", "looting", "refill", "buffs", "alarms"
+        "healing", "targeting", "attack_spells", "looting", "refill", "buffs", "alarms"
     )
 ]
 
 #: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
 REASONS = [
-    ("cavebot.route", "Cavebot needs a route. Record one on the Cavebot tab first."),
+    ("cavebot.route", "Cavebot needs a route. Pick one in the Route dropdown or record one below."),
     ("monster-name", "Looting needs a monster-name reader, which the bot doesn't have yet."),
     ("capacity perception", "Refill needs a capacity reader, which the bot doesn't have yet."),
     ("buff-icon", "Buffs needs a buff-icon reader, which the bot doesn't have yet."),
@@ -61,6 +62,7 @@ class SettingsTab(Tab):
     """Named configs (pick, New, Save, Delete) and core options."""
 
     title = "Settings"
+    scrolls = True
     options = [*OPTIONS, *MODULE_SWITCHES]
 
     def build(self, parent: ctk.CTkFrame) -> None:
@@ -132,7 +134,7 @@ class SettingsTab(Tab):
         self.menu_window.configure(values=window_titles() or ["No windows found"])
 
     def _check_switch(self, field: str) -> None:
-        """Flip a module switch back when the config would refuse it."""
+        """Flip a module switch back when the config would refuse it, else apply it."""
         cfg = load_real_config()
         try:
             for option in self.options:
@@ -142,6 +144,7 @@ class SettingsTab(Tab):
             self._reasons[field].configure(text=plain_reason(str(exc)))
             return
         self._reasons[field].configure(text="")
+        self.submit()
 
     # -- named configs -------------------------------------------------------
 
@@ -149,7 +152,17 @@ class SettingsTab(Tab):
         self.ctx.pick_config(name)
         self.lbl_io.configure(text=f"picked {name}")
 
+    def _on_save(self) -> None:
+        """Write the picked config to its file."""
+        try:
+            load_real_config().save(picked_config())
+        except (ConfigError, OSError) as exc:
+            self.lbl_io.configure(text=str(exc))
+            return
+        self.lbl_io.configure(text=f"saved {self.menu_config.get()}")
+
     def _on_new(self) -> None:
+        """Copy the picked config under a new name and pick the copy."""
         name = ctk.CTkInputDialog(text="Config name:", title="New config").get_input()
         if not name:
             return
@@ -158,7 +171,7 @@ class SettingsTab(Tab):
             try:
                 save_config_as(cfg, name)
             except FileExistsError:
-                if not messagebox.askyesno("New config", f"{name} exists. Overwrite it?"):
+                if not messagebox.askyesno("New config", f"{name} exists. Replace it?"):
                     return
                 save_config_as(cfg, name, overwrite=True)
         except ConfigError as exc:
@@ -168,14 +181,6 @@ class SettingsTab(Tab):
         self.menu_config.set(name)
         self._on_pick(name)
         self.lbl_io.configure(text=f"saved {name}")
-
-    def _on_save(self) -> None:
-        try:
-            self.ctx.save_config()
-        except ConfigError as exc:
-            self.lbl_io.configure(text=str(exc))
-            return
-        self.lbl_io.configure(text=f"saved {self.menu_config.get()}")
 
     def _on_delete(self) -> None:
         name = self.menu_config.get()

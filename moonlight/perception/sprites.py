@@ -57,6 +57,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from moonlight.perception.floor import scale_image
+
 __all__ = [
     "Rect",
     "DEFAULT_MATCH_THRESHOLD",
@@ -231,6 +233,12 @@ class SpriteDetector:
                     self._monsters.append(MonsterTemplates(str(name), frames))
             else:
                 self._monsters = list(monster_templates)
+        scale = float(getattr(profile, "ui_scale", 1.0))
+        if scale != 1.0:
+            self._monsters = [
+                MonsterTemplates(m.name, [scale_image(f, scale) for f in m.frames])
+                for m in self._monsters
+            ]
 
         self._match_threshold = float(match_threshold)
         self._nms_iou = float(nms_iou)

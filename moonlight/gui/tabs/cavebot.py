@@ -29,6 +29,7 @@ from moonlight.gui.tabs.recorder import (
     should_add,
     status_line,
 )
+from moonlight.gui.tabs.settings import plain_reason
 from moonlight.setup.config import BotConfig, ConfigError
 
 __all__ = [
@@ -36,6 +37,7 @@ __all__ = [
     "OPTIONS",
     "REFILL_OPTIONS",
     "ROUTE",
+    "SWITCH",
     "CavebotTab",
     "apply_cavebot",
     "picked_route",
@@ -45,18 +47,22 @@ __all__ = [
 ]
 
 NO_ROUTES = "No routes"
+PICK = "Pick a route"
+#: The cavebot's only on/off switch (Settings has none for it).
+SWITCH = Option("Cavebot on", "cavebot.enabled", "switch")
 ROUTE = Option("Route", "cavebot.route", "dropdown")
 #: Shown 1-based; ``cavebot.start_index`` is 0-based.
 START = Option("Start from waypoint", "cavebot.start_index", "entry")
 OPTIONS = [
+    SWITCH,
     ROUTE,
     START,
-    Option("Rope hotkey", "cavebot.rope_hotkey", "entry"),
-    Option("Shovel hotkey", "cavebot.shovel_hotkey", "entry"),
+    Option("Rope hotkey", "cavebot.rope_hotkey", "hotkey"),
+    Option("Shovel hotkey", "cavebot.shovel_hotkey", "hotkey"),
 ]
 LOOT_OPTIONS = [
-    Option("Loot hotkey", "looting.loot_hotkey", "entry"),
-    Option("Move-all hotkey (blank = none)", "looting.move_all_hotkey", "entry"),
+    Option("Loot hotkey", "looting.loot_hotkey", "hotkey"),
+    Option("Move-all hotkey (blank = none)", "looting.move_all_hotkey", "hotkey"),
     Option("Min cap to loot (oz)", "looting.min_cap_to_loot", "entry"),
 ]
 REFILL_ROUTE = Option("Refill route", "refill.route_name", "dropdown")
@@ -64,8 +70,8 @@ REFILL_OPTIONS = [
     Option("Start refill at used cap %", "refill.trigger_cap", "entry"),
     Option("Stop at used cap %", "refill.stop_cap", "entry"),
     REFILL_ROUTE,
-    Option("Storage hotkey", "refill.storage_hotkey", "entry"),
-    Option("Deposit hotkey (blank = none)", "refill.deposit_hotkey", "entry"),
+    Option("Storage hotkey", "refill.storage_hotkey", "hotkey"),
+    Option("Deposit hotkey (blank = none)", "refill.deposit_hotkey", "hotkey"),
 ]
 
 
@@ -109,7 +115,8 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
     cavebot options are skipped, so Save still works for an off cavebot
     without routes. A blank cavebot hotkey keeps its default; a blank
     deposit or move-all hotkey means none. The start waypoint is given
-    1-based. Loot goes before refill, which needs looting on.
+    1-based. Loot goes before refill, which needs looting on. The switch
+    goes after the route, so turning the cavebot on with no route is refused.
 
     Raises:
         ConfigError: For a refused value.
@@ -122,8 +129,10 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
             except ValueError:
                 raise ConfigError(f"start waypoint {start!r} is not a whole number") from None
         for option in sorted(OPTIONS, key=lambda o: o is not ROUTE):
-            if values.get(option.field, "") != "":
+            if option is not SWITCH and values.get(option.field, "") != "":
                 cfg = write_option(cfg, option, values[option.field])
+    if SWITCH.field in values:
+        cfg = write_option(cfg, SWITCH, values[SWITCH.field])
     for option in LOOT_OPTIONS + REFILL_OPTIONS:
         if option.field in values:
             cfg = write_option(cfg, option, values[option.field])
@@ -132,11 +141,13 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
 
 def _menu(box: ctk.CTkFrame, options: list[Option], option: Option) -> ctk.CTkOptionMenu:
     """The dropdown :meth:`Tab.build_options` made for *option* in *box*."""
+    return next(w for w in _row(box, options, option) if isinstance(w, ctk.CTkOptionMenu))
+
+
+def _row(box: ctk.CTkFrame, options: list[Option], option: Option) -> list[object]:
+    """The widgets in the row :meth:`Tab.build_options` made for *option*."""
     rows = [w for w in box.winfo_children() if isinstance(w, ctk.CTkFrame)]
-    return next(
-        w for w in rows[options.index(option)].winfo_children()
-        if isinstance(w, ctk.CTkOptionMenu)
-    )
+    return list(rows[options.index(option)].winfo_children())
 
 
 def _entry(parent: ctk.CTkFrame, hint: str, width: int) -> ctk.CTkEntry:
@@ -196,7 +207,9 @@ class CavebotTab(Tab):
         box.pack(fill="x", padx=10, pady=10)
         self.build_options(box, OPTIONS)
         self.menu_route = _menu(box, OPTIONS, ROUTE)
-        self.menu_route.configure(command=self._show_route)
+        self.menu_route.configure(command=self._pick_route)
+        (switch,) = [w for w in _row(box, OPTIONS, SWITCH) if isinstance(w, ctk.CTkSwitch)]
+        switch.configure(command=self._turn)
         ctk.CTkButton(
             self.menu_route.master,
             text="Reload",
@@ -229,11 +242,10 @@ class CavebotTab(Tab):
             _button(add, text, command).pack(side="right", padx=(theme.UNIT, 0))
         # T3.F9.K2: one button per waypoint type, at X, Y, Z or the bot's position.
         kinds = ctk.CTkFrame(wps, fg_color="transparent")
-        kinds.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        for action in ACTIONS:
+        kinds.pack(anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0))
+        for i, action in enumerate(ACTIONS):
             button = _button(kinds, action.capitalize(), partial(self._add_action, action))
-            button.configure(width=70)
-            button.pack(side="left", padx=(0, theme.UNIT))
+            button.grid(row=i // 3, column=i % 3, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
 
         rec = ctk.CTkFrame(wps, fg_color="transparent")
         rec.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
@@ -283,16 +295,32 @@ class CavebotTab(Tab):
         self._routes_dir = Path(cfg.routes_dir)
         names = self._refresh_names()
         picked = picked_route(cfg)
-        self.menu_route.set(picked if picked in names else (names[0] if names else NO_ROUTES))
+        self.menu_route.set(picked if picked in names else (PICK if names else NO_ROUTES))
         start = read_option(cfg, START.field)
         self._writers[START.field](start + 1 if isinstance(start, int) else 1)
         self._show_route(self.menu_route.get())
+
+    def _pick_route(self, name: str) -> None:
+        """Load route *name* into the editor and make it the cavebot's route."""
+        self._show_route(name)
+        self.submit()
+
+    def _turn(self) -> None:
+        """Save the switch; flip it back with the reason when it is refused."""
+        try:
+            self.apply()
+        except ConfigError as exc:
+            self._writers[SWITCH.field](False)
+            self.lbl_hint.configure(text=plain_reason(str(exc)))
+            return
+        self.lbl_hint.configure(text="")
+        self.ctx.config_changed()
 
     def _show_route(self, name: str) -> None:
         """Load route *name* into the editor."""
         self._waypoints = []
         self._error = ""
-        if name != NO_ROUTES:
+        if name not in (NO_ROUTES, PICK):
             try:
                 route = RouteFileLoader.load(self._routes_dir / f"{name}.json")
                 self._waypoints = list(route.waypoints)
@@ -351,6 +379,7 @@ class CavebotTab(Tab):
             return
         self._refresh_names()
         self.menu_route.set(name)
+        self.submit()
         self.lbl_msg.configure(text=f"Saved {path}")
 
     def _toggle(self) -> None:

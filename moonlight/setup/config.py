@@ -340,7 +340,9 @@ class BotConfig:
         spells: list[str] = []
         if self.healing is not None:
             h = self.healing
-            spells += [h.emergency_spell, h.normal_spell, *h.cure_spells().values()]
+            spells += [s for s in (h.emergency_spell, h.normal_spell) if s.strip()]
+            spells += h.cure_spells().values()
+            spells += [potion for potion, _ in h.potions().values()]
         if self.attack_spells is not None:
             a = self.attack_spells
             spells += [s for s in (a.single_spell, a.aoe_spell) if s]

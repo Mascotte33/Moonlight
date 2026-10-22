@@ -93,7 +93,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from moonlight.bot.safety import F12Monitor, RateLimitedInput
 from moonlight.bot.state import WorldState
@@ -276,10 +276,13 @@ class GameLoop:
         self.modules = modules if modules is not None else DecisionModules()
         self._perceive = perceive
         self._alert_sink = alert
-        cavebot = self.modules.cavebot
-        if cavebot is not None and move_provider is None and move_action is None:
-            move_provider = lambda _s: cavebot.is_active()  # noqa: E731
-            move_action = cavebot.step
+        #: Takes a new BotConfig while running; False when it needs a rebuild
+        #: (set by ``wiring.build_loop``).
+        self.reconfigure: Callable[[Any], bool] | None = None
+        if move_provider is None and move_action is None:
+            # Looked up every tick, so a cavebot swapped in by reconfigure is used.
+            move_provider = self._cavebot_active
+            move_action = self._cavebot_step
         self._move_provider = move_provider
         self._move_action = move_action
         # Per-tick module decisions (refreshed by _observe each tick).
@@ -319,6 +322,13 @@ class GameLoop:
 
         # (monotonic_time, hp) samples for the fast-HP-drop alarm.
         self._hp_history: deque[tuple[float, float]] = deque()
+
+    def _cavebot_active(self, _snap: WorldState) -> bool:
+        return self.modules.cavebot is not None and self.modules.cavebot.is_active()
+
+    def _cavebot_step(self) -> None:
+        if self.modules.cavebot is not None:
+            self.modules.cavebot.step()
 
     # -- public control ----------------------------------------------------
 
@@ -501,7 +511,9 @@ class GameLoop:
         if 0.0 < hp <= normal:
             return BotState.NORMAL_HEAL
         m = self.modules
-        if m.targeting is not None:
+        if m.cavebot is not None and m.cavebot.luring():
+            pass  # a lure waypoint walks past monsters
+        elif m.targeting is not None:
             if self._target is not None:  # flee was already handled as ALARM
                 return BotState.ATTACK
         elif snap.selected_target is not None and snap.selected_target.name:

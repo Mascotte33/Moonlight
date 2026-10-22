@@ -70,7 +70,7 @@ moonlight/
 | `firmware/` | Arduino Leonardo HID firmware and [wire protocol](firmware/README.md) |
 | `tests/` | Unit, golden, replay, safety, perf and hardware-in-the-loop suites ([details](tests/README.md)) |
 | `tools/` | Benchmarks, Arduino verification, labelling and calibration helpers ([details](tools/README.md)) |
-| `docs/` | Client UI layout, hardware budget, [performance profile](docs/perf_profile.md), review findings |
+| `docs/` | Client UI layout, hardware budget, [PR docs](docs/prs/) and [task files](docs/tasks/) |
 
 ## Feature status
 
@@ -115,8 +115,7 @@ pip install -e .
 #    then check the connection
 python tools/arduino_verify.py
 
-# 3. Calibrate the screen regions for your client window
-python -m moonlight.setup.calibrate moonlight_user
+# 3. Calibrate the screen regions in the GUI's Calibration tab (step 5 opens the GUI)
 
 # 4. Check the setup (config, Arduino, profile, perception)
 python tools/check_setup.py
@@ -173,8 +172,8 @@ flowchart TD
   dependencies), writes a self-contained brief for each task and is the only
   writer of the project tracker.
 - **Role-based agents** — coder, QA, hardware and software research, and a
-  senior reviewer. Each starts fresh from its brief plus a short instructions
-  file in every folder, so no agent depends on another's memory.
+  senior reviewer. Each starts fresh from [RULESET.md](RULESET.md), its task file
+  and the folder README, so no agent depends on another's memory.
 - **Verify gate** — an agent's own "done" is never trusted: the orchestrator
   re-runs the full test suite, ruff and `mypy --strict` and reviews the diff
   before committing.

@@ -27,11 +27,11 @@ from typing import Any
 
 import pytest
 
-from moonlight.setup.calibrate import CalibrationProfile, default_profiles_dir
+from moonlight.setup.calibrate import CalibrationProfile
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GOLDEN_DIRS = (REPO_ROOT / "data" / "golden", REPO_ROOT / "tests" / "golden")
-PROFILE = default_profiles_dir() / "moonlight_user.json"
+PROFILE = Path(__file__).resolve().parents[1] / "golden_profile" / "moonlight_user.json"
 
 #: Game viewport of the golden client layout (not in the profile: only the
 #: smoke test uses it).

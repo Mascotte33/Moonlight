@@ -15,8 +15,10 @@ measured on the T08 golden frames, T28).
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import TypedDict
 
+import cv2
 import numpy as np
 import pytest
 
@@ -474,3 +476,25 @@ class TestPerformance:
         elapsed_ms = (time.perf_counter() - start) * 1000.0 / iterations
         assert elapsed_ms < 15.0, f"read_battle_list took {elapsed_ms:.3f} ms (budget 15 ms)"
         assert len(reader.read_battle_list(frame, region)) == 20
+
+
+BATTLE_SHOT = Path(__file__).resolve().parents[1] / "golden" / "battle" / "full.png"
+
+
+@pytest.mark.skipif(not BATTLE_SHOT.exists(), reason="battle list screenshot not present")
+def test_ui_scale_reads_an_enlarged_battle_list() -> None:
+    shot = cv2.imread(str(BATTLE_SHOT))
+    assert shot is not None
+    crop = cv2.cvtColor(shot[22:506, 2212:2368], cv2.COLOR_BGR2RGB)
+    at_1 = BattleReader(battle_region=(0, 0, 156, 484)).read_battle_list(crop)
+    assert len(at_1) == 12 and [e.index for e in at_1 if e.is_selected] == [4]
+
+    def at_1_5(interpolation: int) -> list[BattleEntry]:
+        big = cv2.resize(crop, None, fx=1.5, fy=1.5, interpolation=interpolation)
+        reader = BattleReader(CalibrationProfile(ui_scale=1.5), battle_region=(0, 0, 234, 726))
+        return reader.read_battle_list(big)
+
+    assert at_1_5(cv2.INTER_NEAREST) == at_1
+    # Smooth enlarging blurs the 1 px red target frame out of tolerance.
+    smooth = at_1_5(cv2.INTER_LINEAR)
+    assert [(e.index, e.hp_percent) for e in smooth] == [(e.index, e.hp_percent) for e in at_1]
