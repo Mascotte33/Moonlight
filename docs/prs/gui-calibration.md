@@ -85,7 +85,7 @@ flowchart LR
   t11["C2.F4.K3"]:::done
   t12["C2.F4.K4"]:::done
   t13["C2.F4.K5"]:::done
-  t14["C3.F1.K1"]
+  t14["C3.F1.K1"]:::done
   t15["C3.F2.K1"]
   t16["C3.F3.K1"]
   t17["C3.F4.K1"]
@@ -128,6 +128,7 @@ flowchart LR
   c3(["Game area coordinates"])
   c4(["Profile fields"])
   c5(["Reference images"])
+  c6(["UI scale"])
   t0 -.-> f9
   t0 -.-> f23
   t1 -.-> f0
@@ -210,6 +211,7 @@ flowchart LR
   f14 --- c0
   f14 --- c2
   f14 --- c5
+  f14 --- c6
   f15 --- c4
   f16 --- c1
   f30 --- c0

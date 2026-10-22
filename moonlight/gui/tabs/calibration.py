@@ -25,7 +25,7 @@ from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.tabs.base import Tab
 from moonlight.perception.capture import CaptureError, ScreenCapture
-from moonlight.setup.autofind import find_regions
+from moonlight.setup.autofind import find_regions, find_ui_scale
 from moonlight.setup.calibrate import (
     REGIONS,
     CalibrationError,
@@ -332,9 +332,13 @@ class CalibrationTab(Tab):
         self.path = ProfileManager(cfg.profiles_dir).path(cfg.profile)
         old = load_old_profile(self.path)
         found = find_regions(shot)[0]
+        scale, landmark = find_ui_scale(shot)
         self.shot = shot
-        self.steps = CalibrationSteps((shot.shape[1], shot.shape[0]), found, old)
-        if old is not None:
+        self.steps = CalibrationSteps((shot.shape[1], shot.shape[0]), found, old, landmark)
+        # No Stop button found: keep the old profile's scale rather than a guessed 1.0.
+        if landmark != (0, 0) or old is None:
+            self.steps.ui_scale = scale
+        else:
             self.steps.ui_scale = old.ui_scale
         self.rough = None
         self.ctx.log.info(f"calibration: found {', '.join(found) or 'nothing'}")

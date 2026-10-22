@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 import pytest
 
-from moonlight.setup.autofind import FINDERS, find_regions
+from moonlight.setup.autofind import FINDERS, find_regions, find_ui_scale
 
 
 def _broken(_shot: np.ndarray) -> None:
@@ -66,3 +66,14 @@ def test_battle_list_height_on_a_tall_window() -> None:
     if full is None:
         pytest.skip("battle list screenshot not present")
     assert dict(FINDERS)["battle_list"](full) == (2212, 33, 156, 473)
+
+
+@pytest.mark.skipif(
+    not (ANCHORS / "stop_button.png").exists(), reason="reference images not present"
+)
+@pytest.mark.skipif(not any(GOLDEN.glob("*.png")), reason="golden screenshots not present")
+def test_ui_scale_from_the_stop_button() -> None:
+    shot = cv2.imread(str(sorted(GOLDEN.glob("*.png"))[0]))
+    assert shot is not None
+    assert find_ui_scale(shot) == (1.0, (2510, 263))
+    assert find_ui_scale(cv2.resize(shot, None, fx=1.5, fy=1.5))[0] == 1.5

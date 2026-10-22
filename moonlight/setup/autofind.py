@@ -13,7 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from moonlight.setup.calibrate import Rect
+from moonlight.setup.calibrate import Point, Rect
 
 # doc: docs/prs/gui-calibration.md#finder-registry
 
@@ -181,6 +181,32 @@ def find_status_icons(screenshot: np.ndarray) -> Rect | None:
     if hit is None:
         return None
     return (hit[0] + STATUS_OFFSET[0], hit[1] + STATUS_OFFSET[1], *STATUS_SIZE)
+
+
+# doc: docs/prs/gui-calibration.md#ui-scale
+SCALES = np.arange(0.5, 3.0001, 0.05)
+
+
+def find_ui_scale(screenshot: np.ndarray) -> tuple[float, Point]:
+    """UI scale and the Stop button's top-left; (1.0, (0, 0)) when not found."""
+    anchor = _anchor("stop_button")
+    if anchor is None:
+        return 1.0, (0, 0)
+    grey = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+    h, w = anchor.shape
+    best, scale, at = MATCH_MIN, 1.0, (0, 0)
+    # ponytail: 51 full-frame matches (a few seconds), fine for a one-off calibration
+    for s in sorted(SCALES, key=lambda s: abs(s - 1)):
+        size = (round(w * s), round(h * s))
+        if size[0] > grey.shape[1] or size[1] > grey.shape[0]:
+            continue
+        res = cv2.matchTemplate(grey, cv2.resize(anchor, size), cv2.TM_CCOEFF_NORMED)
+        _, score, _, loc = cv2.minMaxLoc(res)
+        if score > best:
+            best, scale, at = score, round(float(s), 2), (int(loc[0]), int(loc[1]))
+        if best >= 0.99:
+            break
+    return scale, at
 
 
 Finder = Callable[[np.ndarray], Rect | None]
