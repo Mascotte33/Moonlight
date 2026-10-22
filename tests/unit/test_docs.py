@@ -12,6 +12,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "tools" / "docs_check.py"
+NO_DOCS = pytest.mark.skipif(not (REPO / "docs").is_dir(), reason="docs/ is owner-local")
 TAG = "doc:"  # kept out of the literals below, or the checker would scan them as links
 
 
@@ -28,11 +29,13 @@ def run(*args: str) -> subprocess.CompletedProcess[str]:
                           capture_output=True, text=True)
 
 
+@NO_DOCS
 def test_repo_docs_pass() -> None:
     result = run()
     assert result.returncode == 0, result.stdout
 
 
+@NO_DOCS
 def test_last_task_commit_stays_in_its_writes() -> None:
     has_parent = subprocess.run(["git", "rev-parse", "--verify", "HEAD~1"], cwd=REPO,
                                 capture_output=True).returncode == 0

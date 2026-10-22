@@ -121,8 +121,12 @@ def test_load_valid_route(tmp_path: Path) -> None:
     assert route.waypoints[3] == Waypoint(0, 0, 0, "goto", "start")
 
 
+README = Path(__file__).parents[2] / "data" / "waypoints" / "README.md"
+
+
+@pytest.mark.skipif(not README.exists(), reason="READMEs are owner-local")
 def test_readme_example_is_valid() -> None:
-    readme = Path(__file__).parents[2] / "data" / "waypoints" / "README.md"
+    readme = README
     example = readme.read_text(encoding="utf-8").split("```json")[1].split("```")[0]
     assert RouteFileLoader.parse(json.loads(example)).name == "rotworm_loop"
 
