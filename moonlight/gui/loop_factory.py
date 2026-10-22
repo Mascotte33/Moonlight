@@ -286,14 +286,14 @@ LAYOUT_EVERY = 5.0  # s between layout checks while the bot runs
 def watch_layout(
     profile: CalibrationProfile,
     frame: Callable[[], Any],
-    focused: Callable[[], bool],
     log: Callable[[str], None],
     clock: Callable[[], float] = time.monotonic,
 ) -> Callable[[], bool]:
-    """*focused*, but False while the layout no longer fits *profile*.
+    """False while the layout no longer fits *profile*.
 
-    The loop pauses while focus is False, so a changed layout pauses the bot
+    The loop pauses while this is False, so a changed layout pauses the bot
     and it resumes when the layout fits again. Checks every ``LAYOUT_EVERY`` s.
+    Window focus is not checked: the bot keeps running in the background.
     """
     ok, next_at = True, clock() + LAYOUT_EVERY
 
@@ -309,7 +309,7 @@ def watch_layout(
             if fits != ok:
                 log("Layout fits again, resuming" if fits else f"{LAYOUT_CHANGED}, bot paused")
             ok = fits
-        return ok and focused()
+        return ok
 
     return check
 
@@ -353,5 +353,5 @@ def build_gui_loop(
     check_layout(profile, capture.get_frame, log)  # before the Arduino opens
     backend = make_backend(real_config, hardware)
     providers = capture_providers(capture, profile, real_config)
-    providers["focus_check"] = watch_layout(profile, capture.get_frame, capture.is_focused, log)
+    providers["focus_check"] = watch_layout(profile, capture.get_frame, log)
     return build_loop(real_config, profile, backend, state=state, **providers)

@@ -502,7 +502,6 @@ def capture_providers(
     grabber = TickGrabber(capture, regions, config.clicker.settle_ms)
     return {
         "frame_provider": grabber.frame,
-        "focus_check": capture.is_focused,
         "roi_provider": grabber.roi,
         "window_origin": origin,
         "on_clicker": grabber.attach,

@@ -284,7 +284,7 @@ def test_watch_layout_pauses_until_the_layout_fits_again(anchors: Path) -> None:
     frame = [np.zeros((600, 800, 3), dtype=np.uint8)]
     logged: list[str] = []
     profile = CalibrationProfile(window_size=(800, 600))
-    focused = watch_layout(profile, lambda: frame[0], lambda: True, logged.append, lambda: now[0])
+    focused = watch_layout(profile, lambda: frame[0], logged.append, lambda: now[0])
     assert focused()
     frame[0] = np.zeros((500, 800, 3), dtype=np.uint8)
     assert focused()  # not checked again yet
