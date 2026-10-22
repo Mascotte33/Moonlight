@@ -1,9 +1,9 @@
 # Phase 3 corrections
 
-Owner feedback on PR #5 (Phase 3: Tabs). This file lists only the items that no other phase or task in `GUI_REMAKE.MD` / `CALIBRATION.MD` already plans.
+Owner feedback on PR #5 (Phase 3: Tabs). This file lists only the items that no other phase or task in `GUI_REMAKE.MD` / `docs/prs/gui-calibration.md` already plans.
 
 Left out because they are already planned:
-- The Part B checks (healing, cavebot running, recorder auto-add and hotkeys in the game). They wait for calibration (`CALIBRATION.MD`).
+- The Part B checks (healing, cavebot running, recorder auto-add and hotkeys in the game). They wait for calibration (`docs/prs/gui-calibration.md`).
 - Refill on potion counts. It is under "Not planned yet" in `GUI_REMAKE.MD` and waits for a potion reader.
 
 ## Bugs

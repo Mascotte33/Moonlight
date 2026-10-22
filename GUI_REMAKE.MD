@@ -137,7 +137,7 @@ Write every task as one block, so an agent can do it with no other context:
 - Files: moonlight/gui/app.py, moonlight/gui/state_bridge.py, tests/unit/test_gui_topbar.py
 - Don't touch: the tab files (Settings keeps its buttons until its tab task).
 - Done when: `pytest tests/unit/test_gui_topbar.py` passes (HP/MP % and state text from a `WorldState`). Owner checks: switching tabs leaves the bar in place; HP/MP update live; the buttons work from any tab.
-- Deferred: "HP/MP update live", "the buttons work from any tab" and "Pause stops the bot" need a calibrated client. The owner tests them once calibration (CALIBRATION.MD) is in.
+- Deferred: "HP/MP update live", "the buttons work from any tab" and "Pause stops the bot" need a calibrated client. The owner tests them once calibration (docs/prs/gui-calibration.md) is in.
 
 ### S.F4.K1 — Bottom bar
 - ✅ Done in commit 4ab171e.
@@ -225,8 +225,8 @@ Write every task as one block, so an agent can do it with no other context:
 #### Phase 3: Tabs
 
 ### T2.F7.K1 — Start calibration button
-- What: in Settings, a **Start calibration** button that opens the calibration window (`moonlight/setup/calibrate.py`) for the current profile, plus an editable **UI scale** number read from and saved to that profile's `ui_scale`. The rest of calibration is in `CALIBRATION.MD`.
-- Needs: CALIBRATION.MD C2.F3.K1 and C3.F1.K1
+- What: in Settings, a **Start calibration** button that opens the calibration window (`moonlight/setup/calibrate.py`) for the current profile, plus an editable **UI scale** number read from and saved to that profile's `ui_scale`. The rest of calibration is in `docs/prs/gui-calibration.md`.
+- Needs: docs/tasks/gui-calibration/C2.F3.K1.md and C3.F1.K1
 - Files: moonlight/gui/tabs/settings.py, tests/unit/test_gui_options.py
 - Don't touch: calibrate.py, autofind.py.
 - Done when: `pytest tests/unit/test_gui_options.py` passes (UI scale writes the profile). Owner checks: the button opens the calibration window, and saving replaces the profile.
@@ -718,7 +718,7 @@ Today: everything except Start/Pause/Kill writes the GUI config the bot ignores.
 | T2.F4 | Module toggles: Healing, Cavebot, Loot (+ hotkey), Stuck alert (+ timeout), Session logging, Screen overlay, Debug overlay | 🟡 only Healing, Loot, Cavebot, Overlay; not read by the bot |
 | T2.F5 | Server save: enable + time (CET) | ❌ |
 | T2.F6 | Auto-reconnect (contents not visible in the screenshot) | ❌ |
-| T2.F7 | Start calibration button + UI scale number (see `CALIBRATION.MD`) | ❌ |
+| T2.F7 | Start calibration button + UI scale number (see `docs/prs/gui-calibration.md`) | ❌ |
 
 ### T3 — Cavebot
 

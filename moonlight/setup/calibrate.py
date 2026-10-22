@@ -175,6 +175,7 @@ class Region:
         return f"Region({self.x}, {self.y}, {self.width}, {self.height})"
 
 
+# doc: docs/prs/gui-calibration.md#profile-fields
 class CalibrationProfile:
     """A named set of landmark-relative regions for one client layout.
 

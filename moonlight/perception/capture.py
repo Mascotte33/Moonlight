@@ -133,6 +133,7 @@ class _POINT(ctypes.Structure):
     _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
 
 
+# doc: docs/prs/gui-calibration.md#game-area-coordinates
 def _window_rect(hwnd: int) -> tuple[int, int, int, int] | None:
     """Return the game area (client area, no title bar or borders) of *hwnd*
     as screen ``(left, top, width, height)``, or ``None``."""

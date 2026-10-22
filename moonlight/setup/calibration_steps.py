@@ -1,4 +1,6 @@
-"""The steps of one calibration run, without any drawing (CALIBRATION.MD, C2.F4.K1).
+"""The steps of one calibration run, without any drawing.
+
+doc: docs/prs/gui-calibration.md#calibration-steps
 
 Boxes here are in screenshot pixels. They become landmark-relative only when
 a profile is built.

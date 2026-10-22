@@ -1,4 +1,4 @@
-"""Find the screen areas on a screenshot by themselves (CALIBRATION.MD, C2).
+"""Find the screen areas on a screenshot by themselves.
 
 One finder per area in :data:`FINDERS`. A finder takes a BGR screenshot and
 returns the area's box, or ``None`` when it can't find it.
@@ -11,6 +11,8 @@ from collections.abc import Callable
 import numpy as np
 
 from moonlight.setup.calibrate import Rect
+
+# doc: docs/prs/gui-calibration.md#finder-registry
 
 # HP/MP bars (moved from tools/calibrate_auto.py, checked on 200 screenshots).
 SEARCH_ROWS = 80          # bars live in the top strip of the client
@@ -38,6 +40,7 @@ def mp_fill_mask(rgb: np.ndarray) -> np.ndarray:
     return (b > r + 40) & (b > g + 30) & (g >= r)
 
 
+# doc: docs/prs/gui-calibration.md#bar-finders
 def detect_bars(rgb: np.ndarray) -> tuple[Rect, Rect]:
     """Find the HP and MP bar boxes from the bottom border row."""
     top = rgb[:SEARCH_ROWS]
