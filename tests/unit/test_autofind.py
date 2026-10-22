@@ -27,7 +27,7 @@ def test_found_and_missing_areas_are_split() -> None:
 
 
 GOLDEN = Path(__file__).resolve().parents[1] / "golden"
-PROFILE = Path(__file__).resolve().parents[2] / "moonlight" / "profiles" / "moonlight_user.json"
+PROFILE = Path(__file__).resolve().parents[1] / "golden_profile" / "moonlight_user.json"
 
 
 @pytest.mark.skipif(not any(GOLDEN.glob("*.png")), reason="golden screenshots not present")

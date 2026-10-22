@@ -12,6 +12,7 @@ Fast, offline test suite. No live client, no real Arduino, no GPU. Use `FakeInpu
 | `hil/` | Hardware-in-the-loop: click latency, accuracy, serial-loss release. Offline via `mock_serial.py`. Real device: `python tools/hil_harness.py` | [hil/README.md](hil/README.md) |
 | `safety/` | Safety invariants (kill switch, fail-closed, rate limit, release-all) | [safety/README.md](safety/README.md) |
 | `golden/` | Golden screenshots (`*.png`, git-ignored) and `labels.json`. Labels come from `tools/label_golden.py`. Keep the schema stable. `golden_labels.py` loads them | |
+| `golden_profile/` | The calibration the golden screenshots were taken with. Golden tests use it, never your live profile, so recalibrating does not break them | |
 
 Without `tests/golden/*.png` the golden tests skip. That is expected.
 

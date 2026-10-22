@@ -27,8 +27,6 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.setup.calibrate import default_profiles_dir
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 #: Where golden frames may live (T12 spec lists data/golden/ first).
@@ -44,7 +42,7 @@ LABELS_CANDIDATES = (
 )
 
 #: Same directory the app loads profiles from (moonlight/profiles/).
-PROFILE_DIR = default_profiles_dir()
+PROFILE_DIR = Path(__file__).resolve().parents[1] / "golden_profile"
 
 #: Where per-level floor icons may live.
 TEMPLATE_DIR = REPO_ROOT / "data" / "templates" / "floorLevels"
