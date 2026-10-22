@@ -1,9 +1,9 @@
 """Settings tab: named configs and core options (T2.F2.K1).
 
 The config dropdown picks a named config in ``configs/`` and applies it
-live. Every control saves into the picked config as it changes, so Save
-only writes a copy under a new name (a preset); Delete removes the picked
-one (T0.F1.K3, T0.F1.K5). Start/Pause/Kill live in the top bar; port,
+live. Every control saves into the picked config as it changes; Save
+writes it again on demand, New copies it under a new name and picks the
+copy, Delete removes it (T0.F1.K3, T0.F1.K5). Start/Pause/Kill live in the top bar; port,
 baud rate and simulation live in Hardware.
 """
 
@@ -59,7 +59,7 @@ def plain_reason(message: str) -> str:
 
 
 class SettingsTab(Tab):
-    """Named configs (pick, Save as preset, Delete) and core options."""
+    """Named configs (pick, New, Save, Delete) and core options."""
 
     title = "Settings"
     scrolls = True
@@ -81,6 +81,7 @@ class SettingsTab(Tab):
         self.menu_config.set(picked_config().stem)
         self.menu_config.pack(side="left")
         for text, command, color, hover in (
+            ("New", self._on_new, theme.RAISED, theme.HOVER),
             ("Save", self._on_save, theme.RAISED, theme.HOVER),
             ("Delete", self._on_delete, theme.BLOOD, theme.BLOOD_HOVER),
         ):
@@ -152,8 +153,17 @@ class SettingsTab(Tab):
         self.lbl_io.configure(text=f"picked {name}")
 
     def _on_save(self) -> None:
-        """Save the picked config as a named preset."""
-        name = ctk.CTkInputDialog(text="Preset name:", title="Save preset").get_input()
+        """Write the picked config to its file."""
+        try:
+            load_real_config().save(picked_config())
+        except (ConfigError, OSError) as exc:
+            self.lbl_io.configure(text=str(exc))
+            return
+        self.lbl_io.configure(text=f"saved {self.menu_config.get()}")
+
+    def _on_new(self) -> None:
+        """Copy the picked config under a new name and pick the copy."""
+        name = ctk.CTkInputDialog(text="Config name:", title="New config").get_input()
         if not name:
             return
         cfg = load_real_config()
@@ -161,7 +171,7 @@ class SettingsTab(Tab):
             try:
                 save_config_as(cfg, name)
             except FileExistsError:
-                if not messagebox.askyesno("Save preset", f"{name} exists. Replace it?"):
+                if not messagebox.askyesno("New config", f"{name} exists. Replace it?"):
                     return
                 save_config_as(cfg, name, overwrite=True)
         except ConfigError as exc:
