@@ -18,6 +18,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 
@@ -207,6 +208,16 @@ class TestFloorReader:
         h, w = frame.shape[:2]
         reader = self._reader()
         assert reader.read_floor(frame, (w + 5, h + 5, TEMPLATE_SIZE, TEMPLATE_SIZE)) is None
+
+    def test_ui_scale_reads_an_enlarged_indicator(self) -> None:
+        # The client at UI scale 1.5: templates are enlarged to match.
+        profile = CalibrationProfile(ui_scale=1.5)
+        profile.set_region("floor_indicator", Region(15, 30, 18, 18))
+        reader = FloorReader(profile, template_set=make_templates())
+        for level in FLOOR_LEVELS:
+            frame, _ = make_frame(level)
+            big = cv2.resize(frame, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_NEAREST)
+            assert reader.read_floor(big) == level
 
     def test_region_clipped_to_frame(self) -> None:
         # Region extends past the frame edge: the visible icon still matches.
