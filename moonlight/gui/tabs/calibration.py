@@ -66,7 +66,7 @@ KEY_HELP = "Enter keep  ·  drag redraw  ·  ←/→ move  ·  Backspace back  �
 
 #: One plain sentence per area: exactly what to box.
 AREA_HELP: dict[str, str] = {
-    "hp_bar": "The red HP bar at the top. Box it from its left end to its right end.",
+    "hp_bar": "The green HP bar at the top. Box it from its left end to its right end.",
     "mp_bar": "The blue mana bar next to the HP bar. Box it from its left end to its right end.",
     "battle_list": "The battle list: the rows of creatures, without the window's title bar.",
     "minimap": "The minimap: only the square map, without the buttons around it.",
