@@ -81,3 +81,30 @@ def test_partial_save_uses_confirmed_plus_old() -> None:
     assert p.window_size == (100, 50)
     assert p.regions == {REGIONS[0]: Region(0, 0, 10, 10), REGIONS[1]: Region(9, 9, 9, 9)}
     assert CalibrationSteps((1, 1), FOUND).save_partial().regions == {}
+
+
+def test_next_prev_move_without_confirming() -> None:
+    s = CalibrationSteps((100, 50), FOUND)
+    s.prev()
+    assert s.area == REGIONS[0]
+    s.next()
+    s.next()
+    assert s.area == REGIONS[2] and not s.confirmed and s.boxes == FOUND
+    s.prev()
+    assert s.area == REGIONS[1]
+    for _ in REGIONS:
+        s.next()
+    assert s.area == REGIONS[-1] and not s.in_review
+
+
+def test_next_prev_do_nothing_in_review_or_review_jump() -> None:
+    s = CalibrationSteps((100, 50), FOUND)
+    review(s)
+    s.next()
+    s.prev()
+    assert s.in_review
+    s.pick(REGIONS[3])
+    s.next()
+    assert s.area == REGIONS[3]
+    s.prev()
+    assert s.area == REGIONS[3]

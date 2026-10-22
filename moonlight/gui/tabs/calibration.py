@@ -40,6 +40,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from moonlight.gui.state_bridge import GuiContext
 
 __all__ = [
+    "AREA_HELP",
     "CalibrationTab",
     "box_at",
     "drag_rect",
@@ -60,6 +61,18 @@ MIN_DRAG = 3
 START_DELAY_MS = 3000
 UI_SCALE_RANGE = (0.5, 3.0)
 NO_REFERENCES = "No reference images, draw the boxes by hand"
+KEY_HELP = "Enter keep  ·  drag redraw  ·  ←/→ move  ·  Backspace back  ·  Esc stop"
+
+#: One plain sentence per area: exactly what to box.
+AREA_HELP: dict[str, str] = {
+    "hp_bar": "The red HP bar at the top. Box it from its left end to its right end.",
+    "mp_bar": "The blue mana bar next to the HP bar. Box it from its left end to its right end.",
+    "battle_list": "The battle list: the rows of creatures, without the window's title bar.",
+    "minimap": "The minimap: only the square map, without the buttons around it.",
+    "floor_indicator": "The floor level control next to the minimap.",
+    "status_icons": "The row of small condition icons (poisoned, hasted and so on).",
+    "game_grid": "The whole game view, 15 x 11 tiles, corner to corner.",
+}
 
 
 # -- zoom maths (pure, tested) ---------------------------------------------
@@ -198,12 +211,22 @@ class CalibrationTab(Tab):
 
         self.work = ctk.CTkFrame(parent, fg_color="transparent")
         self.work.grid(row=0, column=0, sticky="nsew")
+        bar = ctk.CTkFrame(self.work, fg_color=theme.RAISED)
+        bar.pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0))
         self.lbl_step = ctk.CTkLabel(
-            self.work, text="", anchor="w", font=ctk.CTkFont(size=theme.SIZE_HEADING)
+            bar, text="", anchor="w", text_color=theme.TEXT,
+            font=ctk.CTkFont(size=theme.SIZE_HEADING, weight="bold"),
         )
-        self.lbl_step.pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0))
-        self.lbl_help = ctk.CTkLabel(self.work, text="", anchor="w", text_color=theme.TEXT_MUTED)
+        self.lbl_step.pack(fill="x", padx=theme.PAD, pady=(theme.GAP, 0))
+        self.lbl_help = ctk.CTkLabel(
+            bar, text="", anchor="w", justify="left", text_color=theme.TEXT,
+            font=ctk.CTkFont(size=theme.SIZE_BODY), wraplength=900,
+        )
         self.lbl_help.pack(fill="x", padx=theme.PAD)
+        ctk.CTkLabel(
+            bar, text=KEY_HELP, anchor="w", text_color=theme.TEXT,
+            font=ctk.CTkFont(size=theme.SIZE_BODY),
+        ).pack(fill="x", padx=theme.PAD, pady=(0, theme.GAP))
         self.review_bar = ctk.CTkFrame(self.work, fg_color="transparent")
         ctk.CTkLabel(self.review_bar, text="UI scale").pack(side="left", padx=(0, theme.UNIT))
         self.ent_scale = ctk.CTkEntry(self.review_bar, width=64, fg_color=theme.NIGHT)
@@ -219,6 +242,8 @@ class CalibrationTab(Tab):
             ("<Return>", lambda _e: self._key_keep()),
             ("<BackSpace>", lambda _e: self._key_back()),
             ("<Escape>", lambda _e: self._key_escape()),
+            ("<Left>", lambda _e: self._key_move(-1)),
+            ("<Right>", lambda _e: self._key_move(1)),
             ("<ButtonPress-1>", self._press),
             ("<B1-Motion>", self._motion),
             ("<ButtonRelease-1>", self._release),
@@ -324,20 +349,20 @@ class CalibrationTab(Tab):
     def _render_area(self, steps: CalibrationSteps) -> None:
         self.review_bar.pack_forget()
         name = steps.area or ""
-        self.lbl_step.configure(text=f"{REGIONS.index(name) + 1}/{len(REGIONS)}  {name}")
+        self.lbl_step.configure(text=f"{REGIONS.index(name) + 1} of {len(REGIONS)}: {name}")
+        hint = AREA_HELP[name]
         if steps.box is not None:
             self._box(steps.box, theme.MANA)
-            hint = "Enter keeps, drag redraws, Backspace goes back, Esc stops"
         elif self.rough is None:
-            hint = "Not found: drag roughly around it to zoom in"
+            hint += " Not found: drag roughly around it to zoom in."
         else:
-            hint = "Drag the box"
+            hint += " Now drag the exact box."
         self.lbl_help.configure(text=hint)
 
     def _render_review(self, steps: CalibrationSteps) -> None:
         self.lbl_step.configure(text="Review")
         missing = [n for n in REGIONS if n not in steps.boxes]
-        hint = "Click a box to fix it, Backspace goes back, Esc stops"
+        hint = "Click a box to fix it. Backspace goes back, Esc stops."
         if missing:
             hint += f"  |  missing: {', '.join(missing)}"
         self.lbl_help.configure(text=hint)
@@ -412,12 +437,22 @@ class CalibrationTab(Tab):
             self.rough = None
             self.render()
 
+    def _key_move(self, step: int) -> None:
+        if self.steps is not None:
+            (self.steps.next if step > 0 else self.steps.prev)()
+            self.rough = None
+            self.render()
+
     def _key_escape(self) -> None:
         if self.steps is None:
             return
-        if messagebox.askyesno("Calibration", "Save what you have?"):
-            self._write(self.steps.save_partial())
+        answer = messagebox.askyesnocancel("Calibration", "Save what you have?")
+        if answer is None:  # Cancel: stay where we were
+            self.canvas.focus_set()
+            return
+        ok = answer and self._write(self.steps.save_partial())
         self.close()
+        self._show_saved(ok)
 
     # -- saving ------------------------------------------------------------
 
@@ -431,15 +466,21 @@ class CalibrationTab(Tab):
             self.ctx.log.error(f"calibration: UI scale must be a number from {low} to {high}")
             return
         steps.ui_scale = scale
-        self._write(steps.save())
+        ok = self._write(steps.save())
         self.close()
+        self._show_saved(ok)
 
-    def _write(self, profile: CalibrationProfile) -> None:
+    def _show_saved(self, ok: bool) -> None:
+        if ok:
+            self.lbl_status.configure(text=f"Saved to {self.path}")
+
+    def _write(self, profile: CalibrationProfile) -> bool:
         if self.path is None:
-            return
+            return False
         try:
             profile.save(self.path)
         except OSError as exc:
             self.ctx.log.error(f"calibration: could not save {self.path}: {exc}")
-            return
+            return False
         self.ctx.log.info(f"profile saved to {self.path}")
+        return True

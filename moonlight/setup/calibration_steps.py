@@ -74,6 +74,16 @@ class CalibrationSteps:
         elif self._index > 0:
             self._index -= 1
 
+    def next(self) -> None:
+        """Move to the next area without confirming. Not in the review or a review jump."""
+        if not self._review and not self._from_review and self._index < len(REGIONS) - 1:
+            self._index += 1
+
+    def prev(self) -> None:
+        """Move to the previous area without confirming. Same limits as :meth:`next`."""
+        if not self._review and not self._from_review and self._index > 0:
+            self._index -= 1
+
     def pick(self, name: str) -> None:
         """From the review, jump to one area; keep or redraw returns here."""
         if self._review and name in REGIONS:

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from moonlight.gui.tabs.calibration import (
+    AREA_HELP,
     MIN_MARGIN,
     box_at,
     drag_rect,
@@ -19,7 +20,7 @@ from moonlight.gui.tabs.calibration import (
     to_screenshot,
     view_rect,
 )
-from moonlight.setup.calibrate import CalibrationProfile, Region
+from moonlight.setup.calibrate import REGIONS, CalibrationProfile, Region
 
 SIZE = (2560, 1369)
 
@@ -104,3 +105,8 @@ def test_load_old_profile(tmp_path: Path) -> None:
     assert old is not None
     assert old.regions["hp_bar"].to_tuple == (1, 2, 3, 4)
     assert old.ui_scale == 1.5
+
+
+def test_every_area_has_help() -> None:
+    assert set(AREA_HELP) == set(REGIONS)
+    assert all(t.endswith(".") for t in AREA_HELP.values())
