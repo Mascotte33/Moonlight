@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 import pytest
 
-from moonlight.setup.autofind import FINDERS, find_regions, find_ui_scale
+from moonlight.setup.autofind import FINDERS, find_game_grid, find_regions, find_ui_scale
 
 
 def _broken(_shot: np.ndarray) -> None:
@@ -77,3 +77,16 @@ def test_ui_scale_from_the_stop_button() -> None:
     assert shot is not None
     assert find_ui_scale(shot) == (1.0, (2510, 263))
     assert find_ui_scale(cv2.resize(shot, None, fx=1.5, fy=1.5))[0] == 1.5
+
+
+def test_game_grid_with_text_over_its_left_line() -> None:
+    # Windowed client: the lag overlay covers the left line, and the bottom
+    # and right edges are a light bevel, not the dark line.
+    shot = np.full((815, 1234, 3), 70, np.uint8)
+    shot[61:574, 37:737] = 150
+    shot[60, 36:738] = 24
+    shot[60:575, 36] = 22
+    shot[71:88, 36] = (0, 0, 0)
+    shot[574, 37:738] = 120
+    shot[61:575, 737] = 115
+    assert find_game_grid(shot) == (37, 61, 700, 513)

@@ -154,7 +154,9 @@ def find_floor_indicator(screenshot: np.ndarray) -> Rect | None:
 
 
 # The game view has a flat dark-grey line along its top and left edges, and
-# shows 15 x 11 square tiles.
+# shows 15 x 11 square tiles. Text such as the lag overlay can cover parts of
+# the left line, so the height comes from the width and the line only has to
+# be mostly dark and end at the bottom corner.
 GRID_TILES = (15, 11)
 MIN_GRID_W = 600
 
@@ -162,16 +164,21 @@ MIN_GRID_W = 600
 def find_game_grid(screenshot: np.ndarray) -> Rect | None:
     img = screenshot.astype(np.int16)
     dark = (np.ptp(img, axis=2) <= 3) & (img[..., 0] >= 14) & (img[..., 0] <= 34)
+    rows = dark.shape[0]
     best: Rect | None = None
-    for y in range(dark.shape[0] - 1):
+    for y in range(rows - 1):
         for x0, x1 in _runs(dark[y]):
             w = x1 - x0 - 1  # the line covers both corners
             if w < MIN_GRID_W or (best is not None and w <= best[2]):
                 continue
-            col = dark[y:, x0]
-            h = (int(col.argmin()) if not col.all() else len(col)) - 2
-            if abs(w * GRID_TILES[1] - h * GRID_TILES[0]) <= GRID_TILES[0]:
-                best = (x0 + 1, y + 1, w, h)
+            guess = round(w * GRID_TILES[1] / GRID_TILES[0])
+            for h in (guess, guess - 1, guess + 1):
+                end = y + h + 1  # bottom corner of the left line
+                if end >= rows or not dark[end, x0] or (end + 1 < rows and dark[end + 1, x0]):
+                    continue
+                if dark[y : end + 1, x0].mean() >= 0.9:
+                    best = (x0 + 1, y + 1, w, h)
+                    break
     return best
 
 
