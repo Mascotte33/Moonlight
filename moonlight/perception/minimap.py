@@ -189,6 +189,9 @@ class MinimapReader:
         if minimap_region is not None:
             self._minimap_region = self._as_rect(minimap_region)
 
+        # doc: docs/prs/gui-calibration.md#ui-scale
+        # One world tile is ui_scale px; the radar size and center follow the crop.
+        self._scale = float(getattr(profile, "ui_scale", 1.0))
         self._floor_reader = floor_reader
         self._floor_region = floor_region
         self._map_matcher = map_matcher
@@ -260,8 +263,8 @@ class MinimapReader:
                 # Phase correlation aliases beyond half the radar.
                 self._lose(f"shift {shift} beyond half the radar")
                 return None
-            dx = -int(round(shift[0]))
-            dy = -int(round(shift[1]))
+            dx = -int(round(shift[0] / self._scale))
+            dy = -int(round(shift[1] / self._scale))
         elif self._prev_gray is not None and z == self._prev_z:
             # Radar changed with no floor change: teleport or a big jump.
             self._lose("radar changed with no trusted shift")
@@ -312,7 +315,7 @@ class MinimapReader:
         if h < 5 or w < 5:
             return False
         cy, cx = h // 2, w // 2
-        r = 2
+        r = max(2, round(2 * self._scale))
         area = crop[cy - r : cy + r + 1, cx - r : cx + r + 1, :3].astype(np.int16)
         ref = np.array(self._player_marker_rgb, dtype=np.int16)
         matches = (np.abs(area - ref) <= self._marker_tolerance).all(axis=2)
