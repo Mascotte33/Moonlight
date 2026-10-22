@@ -1,104 +1,108 @@
-"""The steps of one calibration run, without any drawing.
+"""Calibration steps: walk the areas of ``REGIONS`` with no drawing.
 
-doc: docs/prs/gui-calibration.md#calibration-steps
-
-Boxes here are in screenshot pixels. They become landmark-relative only when
-a profile is built.
+# doc: docs/prs/gui-calibration.md#calibration-steps
 """
 
 from __future__ import annotations
 
-from moonlight.setup.calibrate import (
-    REGIONS,
-    CalibrationProfile,
-    Point,
-    Rect,
-    Region,
-    region_to_relative,
-)
+from collections.abc import Mapping
+
+from moonlight.setup.calibrate import REGIONS, CalibrationProfile, Point, Rect, Region
 
 
+# doc: docs/prs/gui-calibration.md#calibration-steps
 class CalibrationSteps:
-    """Walk the areas of :data:`REGIONS` one by one, then a review of all of them."""
+    """State machine for the Calibration tab: area by area, then a review."""
 
     def __init__(
         self,
-        window_size: tuple[int, int],
-        found: dict[str, Rect],
-        old: CalibrationProfile | None = None,
+        screenshot_size: tuple[int, int],
+        found: Mapping[str, Rect],
+        old_profile: CalibrationProfile | None = None,
         landmark: Point = (0, 0),
-        ui_scale: float = 1.0,
     ) -> None:
-        self.window_size = window_size
-        self.boxes: dict[str, Rect] = {n: found[n] for n in REGIONS if n in found}
-        self.confirmed: set[str] = set()
-        self.old = old
+        self.screenshot_size = screenshot_size
         self.landmark = landmark
-        self.ui_scale = ui_scale
-        self.index = 0  # len(REGIONS) = the review
-        self._back_to_review = False
+        self.ui_scale = 1.0
+        self.old_profile = old_profile
+        #: Box per area: found at first, replaced by redraws.
+        self.boxes: dict[str, Rect] = {k: v for k, v in found.items() if k in REGIONS}
+        #: Areas the user kept or redrew this run.
+        self.confirmed: set[str] = set()
+        self._index = 0
+        self._review = False
+        self._from_review = False
 
     @property
     def in_review(self) -> bool:
-        return self.index == len(REGIONS)
+        return self._review
 
     @property
     def area(self) -> str | None:
-        return None if self.in_review else REGIONS[self.index]
+        """Current area name; None while in the review."""
+        return None if self._review else REGIONS[self._index]
 
     @property
     def box(self) -> Rect | None:
-        return None if self.area is None else self.boxes.get(self.area)
+        """Box of the current area, or None."""
+        return None if self._review else self.boxes.get(REGIONS[self._index])
 
-    def redraw(self, box: Rect) -> None:
-        """Replace the current area's box (it still needs :meth:`keep`)."""
-        if self.area is not None and box[2] > 0 and box[3] > 0:
-            self.boxes[self.area] = box
+    @property
+    def can_save(self) -> bool:
+        return self._review and all(n in self.boxes for n in REGIONS)
 
-    def keep(self) -> bool:
-        """Confirm the current box and move on. False when there is no box yet."""
-        if self.area is None or self.box is None:
-            return False
-        self.confirmed.add(self.area)
-        if self._back_to_review:
-            self._back_to_review = False
-            self.index = len(REGIONS)
-        else:
-            self.index += 1
-        return True
+    def keep(self) -> None:
+        """Confirm the current box. Does nothing when there is no box."""
+        if not self._review and self.box is not None:
+            self.confirmed.add(REGIONS[self._index])
+            self._advance()
+
+    def redraw(self, rect: Rect) -> None:
+        """Replace the current box with a drawn one and confirm it."""
+        if not self._review:
+            name = REGIONS[self._index]
+            self.boxes[name] = rect
+            self.confirmed.add(name)
+            self._advance()
 
     def back(self) -> None:
-        """Go to the previous area (from the review: the last area)."""
-        self._back_to_review = False
-        self.index = max(0, self.index - 1)
+        """Previous area; from a review jump, back to the review. First area: nothing."""
+        if self._review:
+            self._review, self._index = False, len(REGIONS) - 1
+        elif self._from_review:
+            self._review = True
+        elif self._index > 0:
+            self._index -= 1
 
     def pick(self, name: str) -> None:
-        """From the review, fix one area and come back to the review after."""
-        if self.in_review and name in REGIONS:
-            self.index = REGIONS.index(name)
-            self._back_to_review = True
+        """From the review, jump to one area; keep or redraw returns here."""
+        if self._review and name in REGIONS:
+            self._index = REGIONS.index(name)
+            self._review = False
+            self._from_review = True
 
-    def profile(self) -> CalibrationProfile:
-        """The finished calibration: every area's box, the new size and scale."""
-        if not self.in_review:
-            raise ValueError("not every area is done yet")
+    def save(self) -> CalibrationProfile:
+        """Full save, only from the review with all areas present."""
+        if not self.can_save:
+            raise ValueError("full save needs the review with all areas set")
         return self._build(self.boxes)
 
-    def partial_profile(self) -> CalibrationProfile:
+    def save_partial(self) -> CalibrationProfile:
         """Confirmed boxes, plus the old profile's boxes for the rest."""
-        boxes = {n: self.boxes[n] for n in self.confirmed}
-        if self.old is not None:
-            for name, region in self.old.regions.items():
-                boxes.setdefault(name, region.absolute(self.old.landmark))
-        return self._build(boxes)
+        regions = {n: self.boxes[n] for n in REGIONS if n in self.confirmed}
+        return self._build(regions)
 
-    def _build(self, boxes: dict[str, Rect]) -> CalibrationProfile:
-        return CalibrationProfile(
-            landmark=self.landmark,
-            regions={
-                n: Region.from_tuple(region_to_relative(b, self.landmark))
-                for n, b in boxes.items()
-            },
-            window_size=self.window_size,
-            ui_scale=self.ui_scale,
-        )
+    def _advance(self) -> None:
+        if self._from_review or self._index == len(REGIONS) - 1:
+            self._review, self._from_review = True, False
+        else:
+            self._index += 1
+
+    def _build(self, boxes: Mapping[str, Rect]) -> CalibrationProfile:
+        old = self.old_profile.regions if self.old_profile else {}
+        regions = {
+            n: Region.from_tuple(boxes[n]) if n in boxes else old[n]
+            for n in REGIONS
+            if n in boxes or n in old
+        }
+        return CalibrationProfile(self.landmark, regions, self.screenshot_size, self.ui_scale)

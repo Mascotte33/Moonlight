@@ -1,80 +1,83 @@
-"""Tests for moonlight.setup.calibration_steps."""
-
-from __future__ import annotations
+"""Calibration steps: keep, redraw, back, review jump, saves."""
 
 from moonlight.setup.calibrate import REGIONS, CalibrationProfile, Region
 from moonlight.setup.calibration_steps import CalibrationSteps
 
-ALL = {name: (i * 10, i * 10, 5, 5) for i, name in enumerate(REGIONS)}
+FOUND = {n: (i, i, 10, 10) for i, n in enumerate(REGIONS)}
 
 
-def _keep_all(steps: CalibrationSteps) -> None:
-    while not steps.in_review:
-        assert steps.keep()
+def review(steps: CalibrationSteps) -> None:
+    for _ in REGIONS:
+        steps.keep()
 
 
-def test_keep_every_found_box_saves_them_with_size_and_scale() -> None:
-    steps = CalibrationSteps((800, 600), ALL, ui_scale=1.5)
-    _keep_all(steps)
-    p = steps.profile()
-    assert {n: r.to_tuple for n, r in p.regions.items()} == ALL
-    assert (p.window_size, p.ui_scale, p.landmark) == ((800, 600), 1.5, (0, 0))
+def test_keep_walks_to_review() -> None:
+    s = CalibrationSteps((100, 50), FOUND)
+    assert s.area == REGIONS[0] and s.box == FOUND[REGIONS[0]]
+    s.keep()
+    assert s.area == REGIONS[1]
+    for _ in REGIONS[1:]:
+        s.keep()
+    assert s.in_review and s.area is None and s.can_save
 
 
-def test_missing_area_must_be_drawn_before_keep() -> None:
-    found = {n: b for n, b in ALL.items() if n != "hp_bar"}
-    steps = CalibrationSteps((800, 600), found)
-    assert steps.area == "hp_bar" and steps.box is None
-    assert not steps.keep()
-    steps.redraw((1, 2, 3, 4))
-    assert steps.keep() and steps.area == "mp_bar"
+def test_redraw_replaces_box() -> None:
+    s = CalibrationSteps((100, 50), FOUND)
+    s.redraw((5, 6, 7, 8))
+    assert s.boxes[REGIONS[0]] == (5, 6, 7, 8) and s.area == REGIONS[1]
 
 
-def test_redraw_replaces_the_box_and_back_goes_to_the_previous_area() -> None:
-    steps = CalibrationSteps((800, 600), ALL)
-    steps.keep()
-    steps.back()
-    assert steps.area == "hp_bar"
-    steps.redraw((7, 7, 7, 7))
-    steps.keep()
-    _keep_all(steps)
-    assert steps.profile()["hp_bar"] == Region(7, 7, 7, 7)
+def test_back_and_first_area_noop() -> None:
+    s = CalibrationSteps((100, 50), FOUND)
+    s.back()
+    assert s.area == REGIONS[0]
+    s.keep()
+    s.back()
+    assert s.area == REGIONS[0]
 
 
-def test_review_pick_fixes_one_area_then_returns_to_review() -> None:
-    steps = CalibrationSteps((800, 600), ALL)
-    _keep_all(steps)
-    steps.pick("minimap")
-    assert steps.area == "minimap"
-    steps.redraw((1, 1, 9, 9))
-    steps.keep()
-    assert steps.in_review
-    assert steps.profile()["minimap"] == Region(1, 1, 9, 9)
+def test_review_jump_returns_to_review() -> None:
+    s = CalibrationSteps((100, 50), FOUND)
+    review(s)
+    s.pick(REGIONS[3])
+    assert s.area == REGIONS[3]
+    s.redraw((1, 1, 2, 2))
+    assert s.in_review and s.boxes[REGIONS[3]] == (1, 1, 2, 2)
+    s.pick(REGIONS[2])
+    s.keep()
+    assert s.in_review
+    s.pick(REGIONS[2])
+    s.back()
+    assert s.in_review
 
 
-def test_back_from_review_goes_to_the_last_area() -> None:
-    steps = CalibrationSteps((800, 600), ALL)
-    _keep_all(steps)
-    steps.back()
-    assert steps.area == REGIONS[-1]
+def test_full_save() -> None:
+    s = CalibrationSteps((100, 50), FOUND, landmark=(3, 4))
+    s.ui_scale = 1.5
+    review(s)
+    p = s.save()
+    assert p.window_size == (100, 50) and p.ui_scale == 1.5 and p.landmark == (3, 4)
+    assert p.regions[REGIONS[1]] == Region(1, 1, 10, 10) and len(p.regions) == 7
 
 
-def test_partial_save_keeps_old_boxes_for_unconfirmed_areas() -> None:
-    old = CalibrationProfile(
-        landmark=(0, 0),
-        regions={"hp_bar": Region(1, 1, 1, 1), "minimap": Region(2, 2, 2, 2)},
-        window_size=(640, 480),
-    )
-    steps = CalibrationSteps((800, 600), ALL, old=old)
-    steps.keep()  # hp_bar confirmed with the found box
-    p = steps.partial_profile()
-    assert p["hp_bar"].to_tuple == ALL["hp_bar"]
-    assert p["minimap"] == Region(2, 2, 2, 2)
-    assert "mp_bar" not in p
-    assert p.window_size == (800, 600)
+def test_full_save_blocked_before_review_or_missing_box() -> None:
+    s = CalibrationSteps((100, 50), {})
+    try:
+        s.save()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError")
+    s.keep()  # no box: stays put
+    assert s.area == REGIONS[0]
 
 
-def test_boxes_are_saved_relative_to_the_landmark() -> None:
-    steps = CalibrationSteps((800, 600), ALL, landmark=(5, 5))
-    _keep_all(steps)
-    assert steps.profile()["mp_bar"] == Region(5, 5, 5, 5)
+def test_partial_save_uses_confirmed_plus_old() -> None:
+    old_regions = {REGIONS[1]: Region(9, 9, 9, 9), REGIONS[0]: Region(8, 8, 8, 8)}
+    old = CalibrationProfile((0, 0), old_regions)
+    s = CalibrationSteps((100, 50), FOUND, old)
+    s.keep()  # hp_bar confirmed; the found-but-unconfirmed boxes are ignored
+    p = s.save_partial()
+    assert p.window_size == (100, 50)
+    assert p.regions == {REGIONS[0]: Region(0, 0, 10, 10), REGIONS[1]: Region(9, 9, 9, 9)}
+    assert CalibrationSteps((1, 1), FOUND).save_partial().regions == {}
