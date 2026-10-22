@@ -30,3 +30,6 @@ tools/arduino-cli/
 PROGRESS.md
 claude_brief_*.md
 instructions.md
+
+# Reference images for the calibration finders (cropped locally, C2.F1.K1)
+data/templates/anchors/

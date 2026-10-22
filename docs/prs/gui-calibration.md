@@ -72,7 +72,7 @@ flowchart LR
   classDef doing fill:#f9a825,color:#000
   classDef later fill:#9e9e9e,color:#fff
   t0["C1.F1.K1"]:::done
-  t1["C2.F1.K1"]
+  t1["C2.F1.K1"]:::done
   t2["C2.F2.K1"]:::done
   t3["C2.F2.K2"]:::done
   t4["C2.F2.K3"]
@@ -105,11 +105,11 @@ flowchart LR
   f11["moonlight/perception/loot.py"]
   f12["moonlight/perception/minimap.py"]
   f13["moonlight/perception/sprites.py"]
-  f14["moonlight/profiles/moonlight_user.json"]
-  f15["moonlight/setup/autofind.py"]
-  f16["moonlight/setup/calibrate.py"]
-  f17["moonlight/setup/calibration_steps.py"]
-  f18["moonlight/setup/profile.py"]
+  f14["moonlight/setup/autofind.py"]
+  f15["moonlight/setup/calibrate.py"]
+  f16["moonlight/setup/calibration_steps.py"]
+  f17["moonlight/setup/profile.py"]
+  f18["tests/golden_profile/moonlight_user.json"]
   f19["tests/unit/test_autofind.py"]
   f20["tests/unit/test_battle.py"]
   f21["tests/unit/test_calibrate.py"]
@@ -131,33 +131,33 @@ flowchart LR
   t0 -.-> f23
   t1 -.-> f0
   t1 -.-> f3
-  t1 -.-> f14
-  t2 -.-> f15
+  t1 -.-> f18
+  t2 -.-> f14
   t2 -.-> f19
   t2 --> t3
-  t3 -.-> f15
+  t3 -.-> f14
   t3 -.-> f30
   t3 -.-> f19
   t1 --> t4
   t2 --> t4
-  t4 -.-> f15
+  t4 -.-> f14
   t4 -.-> f19
   t1 --> t5
   t2 --> t5
-  t5 -.-> f15
+  t5 -.-> f14
   t5 -.-> f19
   t1 --> t6
   t2 --> t6
-  t6 -.-> f15
+  t6 -.-> f14
   t6 -.-> f19
   t1 --> t7
   t2 --> t7
-  t7 -.-> f15
+  t7 -.-> f14
   t7 -.-> f19
-  t8 -.-> f16
+  t8 -.-> f15
   t8 -.-> f21
   t8 --> t9
-  t9 -.-> f17
+  t9 -.-> f16
   t9 -.-> f22
   t9 --> t10
   t2 --> t10
@@ -165,24 +165,24 @@ flowchart LR
   t10 -.-> f5
   t10 -.-> f25
   t10 --> t11
-  t11 -.-> f16
+  t11 -.-> f15
   t11 -.-> f21
   t11 -.-> f1
   t11 -.-> f2
   t10 --> t12
   t12 -.-> f7
-  t12 -.-> f17
+  t12 -.-> f16
   t12 -.-> f25
   t12 -.-> f22
   t12 --> t13
   t13 -.-> f7
-  t13 -.-> f18
+  t13 -.-> f17
   t13 -.-> f25
   t13 -.-> f4
   t1 --> t14
   t2 --> t14
   t10 --> t14
-  t14 -.-> f15
+  t14 -.-> f14
   t14 -.-> f7
   t14 -.-> f19
   t14 --> t15
@@ -201,15 +201,15 @@ flowchart LR
   t8 --> t18
   t14 --> t18
   t18 -.-> f6
-  t18 -.-> f15
+  t18 -.-> f14
   t18 -.-> f26
   t18 --> t19
   f7 --- c1
   f9 --- c3
-  f15 --- c0
-  f15 --- c2
-  f16 --- c4
-  f17 --- c1
+  f14 --- c0
+  f14 --- c2
+  f15 --- c4
+  f16 --- c1
   f30 --- c0
 ```
 <!-- graph:end -->
