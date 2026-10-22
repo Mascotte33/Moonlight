@@ -1,20 +1,19 @@
-# tests/replay/ — perception replay on real frames (T28)
+# tests/replay/ - perception replay on real frames (T28)
 
-Replays the 200 human-labeled golden frames (see `tests/golden/`) through every
-perception module and checks the results against the labels.
+Runs every perception reader over the labelled golden frames in
+`tests/golden/` and checks the results against `tests/golden/labels.json`.
 
-## Contents
-- `test_replay_perception.py` — covers all 8 perception modules
-  (vitals, battle, minimap, floor, cursor, sprites, logocr, loot):
-  a fast 10-frame subset + the full 200-frame replay.
+## Files
 
-## Baseline (2026-10-19)
-- Vitals: 199/199 frames within ±2 pp of labels (HP mean abs err 0.00, MP 0.06).
-- Battle: 80/200 frames have entries, 67 have a selected target.
-- Minimap: player marker detected on 173/200 frames.
-- LogOCR: fail-closed when the Tesseract binary is missing.
+| File | What it checks | Tests |
+|------|----------------|-------|
+| `test_replay_perception.py` | All 8 readers (vitals, battle, minimap, floor, cursor, sprites, logocr, loot): label coverage, a fast 10-frame subset, and the full replay | 3 |
+
+The frames are local-only (R7), so the tests skip on other machines. The log
+reader fails closed when the Tesseract binary is missing.
 
 ## Run
+
 ```bash
 python -m pytest tests/replay -q
 ```
