@@ -273,7 +273,7 @@ class ScreenCapture:
         user32.GetForegroundWindow.restype = ctypes.c_void_p
         if not user32.IsWindowVisible(hwnd):
             return False
-        return int(hwnd) == int(user32.GetForegroundWindow())
+        return int(hwnd) == int(user32.GetForegroundWindow() or 0)
 
     # -- capture ------------------------------------------------------------
 

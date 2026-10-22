@@ -14,6 +14,7 @@ import pytest
 from moonlight.bot.state import WorldState
 from moonlight.decision.healing import (
     EMERGENCY_COOLDOWN_KEY,
+    HEAL_GAP_MS,
     NORMAL_COOLDOWN_KEY,
     HealingAction,
     HealingConfig,
@@ -266,6 +267,7 @@ class TestCooldowns:
         # Emergency heal sent; now paralyze appears -> cure still allowed
         # (different cooldown key).
         healer.decide_and_send(make_state(hp=10.0), backend)
+        clk.advance(HEAL_GAP_MS / 1000.0)
         action = healer.decide(make_state(hp=10.0, buffs={"paralyze": 5.0}))
         assert action is not None
         assert action.cooldown_key == cure_cooldown_key("paralyze")
@@ -449,11 +451,14 @@ class TestPotions:
         )
 
     def test_hp_potion_follows_the_emergency_spell(self) -> None:
-        healer, _ = make_healer(POTIONS, spell_combos={"exura gran": "F1", "health potion": "F5"})
+        healer, clk = make_healer(POTIONS, spell_combos={"exura gran": "F1", "health potion": "F5"})
         snap = make_state(hp=20.0)
         first = healer.decide(snap)
         assert first is not None and first.type == HealType.EMERGENCY
         healer.send(first, FakeInput())
+        # The game drops a second heal key pressed right after the first.
+        assert healer.decide(snap) is None
+        clk.advance(HEAL_GAP_MS / 1000.0)
         second = healer.decide(snap)
         assert second is not None and second.spell == "health potion"
 

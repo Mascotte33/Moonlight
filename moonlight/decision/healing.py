@@ -53,6 +53,7 @@ from moonlight.hardware.input import InputBackend
 __all__ = [
     "CURES",
     "EMERGENCY_COOLDOWN_KEY",
+    "HEAL_GAP_MS",
     "NORMAL_COOLDOWN_KEY",
     "HealType",
     "HealingAction",
@@ -67,6 +68,9 @@ logger = logging.getLogger("moonlight.decision.healing")
 #: the loop, the UI and the tests).
 EMERGENCY_COOLDOWN_KEY = "heal_emergency"
 NORMAL_COOLDOWN_KEY = "heal_normal"
+# ponytail: guessed. The game seems to drop a spell key sent 20 ms after a potion
+# key; raise it if heals still go missing.
+HEAL_GAP_MS = 300.0
 
 
 class HealType(StrEnum):
@@ -271,6 +275,9 @@ class HealingDecision:
             if "mp" in potions:
                 candidates.append(potions["mp"])
 
+        last = max(self._last_sent.values(), default=None)
+        if candidates and last is not None and (self._clock() - last) * 1000.0 < HEAL_GAP_MS:
+            return None
         for action in candidates:
             if not self.on_cooldown(action.cooldown_key):
                 return action
