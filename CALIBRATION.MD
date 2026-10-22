@@ -128,6 +128,7 @@ C2.F2.K3 to K6, C3), then the Start check (C4).
 - Done when: `pytest tests/unit/test_calibrate.py` passes; a profile round-trips both fields; an old profile loads with `None` and `1.0`.
 
 ### C2.F4.K1 — Calibration steps (no screen yet)
+- ✅ Done in commit 0f279a4.
 - What: a plain class that walks the 7 areas of `REGIONS` and knows nothing about drawing. It starts from a screenshot size, the found boxes and the old profile. Steps:
   - each area in turn, with its found box (or none);
   - keep the box, redraw it, or go back to the previous area;
