@@ -1,4 +1,4 @@
-"""Calibration tab zoom maths and file helpers (C2.F4.K2). No window opens (R8)."""
+"""Calibration tab zoom maths and file helpers (C2.F4.K2, K5). No window opens (R8)."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from moonlight.gui.tabs.calibration import (
     view_rect,
 )
 from moonlight.setup.calibrate import REGIONS, CalibrationProfile, Region
+from moonlight.setup.profile import ProfileManager
 
 SIZE = (2560, 1369)
 
@@ -110,3 +111,20 @@ def test_load_old_profile(tmp_path: Path) -> None:
 def test_every_area_has_help() -> None:
     assert set(AREA_HELP) == set(REGIONS)
     assert all(t.endswith(".") for t in AREA_HELP.values())
+
+
+@pytest.mark.parametrize("name", ["main", "Knight_2", "a-b", "x" * 40])
+def test_valid_profile_names(name: str) -> None:
+    assert ProfileManager.valid_name(name)
+
+
+@pytest.mark.parametrize("name", ["", "x" * 41, "a.b", "../x", "a/b", "a\b", "a b", "zażółć"])
+def test_invalid_profile_names(name: str) -> None:
+    assert not ProfileManager.valid_name(name)
+
+
+def test_list_profiles(tmp_path: Path) -> None:
+    assert ProfileManager(tmp_path / "missing").list_profiles() == []
+    for name in ("b.json", "a.json", "notes.txt"):
+        (tmp_path / name).write_text("{}", encoding="utf-8")
+    assert ProfileManager(tmp_path).list_profiles() == ["a", "b"]

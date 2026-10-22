@@ -49,9 +49,10 @@ fixes every box, and Start refuses to run if the layout no longer matches.
 
 These add to [RULESET.md](../../RULESET.md), which wins on conflict.
 
-- **P1. One calibration.** Saving replaces the profile. No per-server or
-  per-resolution profiles, no resolution dropdown. The only partial save is
-  "Save what you have?" on Esc (C2.F4.K2).
+- **P1. Named calibrations, one in use.** Save replaces the picked
+  calibration. Save as writes a new name (C2.F4.K5). The bot uses the one
+  picked in the Calibration tab. No resolution dropdown. The only partial
+  save is "Save what you have?" on Esc (C2.F4.K2).
 - **P2. One finder per area.** See [Finder registry](#finder-registry).
 - **P3. Scale 1.0 changes nothing.** Every reader multiplies its sizes by
   `ui_scale`. At 1.0 each reader behaves exactly as today, so existing tests
@@ -83,7 +84,7 @@ flowchart LR
   t10["C2.F4.K2"]:::done
   t11["C2.F4.K3"]:::done
   t12["C2.F4.K4"]:::done
-  t13["C2.F4.K5"]
+  t13["C2.F4.K5"]:::done
   t14["C3.F1.K1"]
   t15["C3.F2.K1"]
   t16["C3.F3.K1"]
@@ -94,120 +95,122 @@ flowchart LR
   f1["GUI_REMAKE.MD"]
   f2["README.md"]
   f3["data/templates/anchors/*.png"]
-  f4["moonlight/gui/app.py"]
-  f5["moonlight/gui/loop_factory.py"]
-  f6["moonlight/gui/tabs/calibration.py"]
-  f7["moonlight/perception/battle.py"]
-  f8["moonlight/perception/capture.py"]
-  f9["moonlight/perception/floor.py"]
-  f10["moonlight/perception/loot.py"]
-  f11["moonlight/perception/minimap.py"]
-  f12["moonlight/perception/sprites.py"]
-  f13["moonlight/profiles/moonlight_user.json"]
-  f14["moonlight/setup/autofind.py"]
-  f15["moonlight/setup/calibrate.py"]
-  f16["moonlight/setup/calibration_steps.py"]
-  f17["moonlight/setup/profile.py"]
-  f18["tests/unit/test_autofind.py"]
-  f19["tests/unit/test_battle.py"]
-  f20["tests/unit/test_calibrate.py"]
-  f21["tests/unit/test_calibration_steps.py"]
-  f22["tests/unit/test_capture.py"]
-  f23["tests/unit/test_floor.py"]
-  f24["tests/unit/test_gui_calibration.py"]
-  f25["tests/unit/test_loop_factory.py"]
-  f26["tests/unit/test_looting.py"]
-  f27["tests/unit/test_minimap.py"]
-  f28["tests/unit/test_sprites.py"]
-  f29["tools/calibrate_auto.py"]
+  f4["docs/prs/gui-calibration.md"]
+  f5["moonlight/gui/app.py"]
+  f6["moonlight/gui/loop_factory.py"]
+  f7["moonlight/gui/tabs/calibration.py"]
+  f8["moonlight/perception/battle.py"]
+  f9["moonlight/perception/capture.py"]
+  f10["moonlight/perception/floor.py"]
+  f11["moonlight/perception/loot.py"]
+  f12["moonlight/perception/minimap.py"]
+  f13["moonlight/perception/sprites.py"]
+  f14["moonlight/profiles/moonlight_user.json"]
+  f15["moonlight/setup/autofind.py"]
+  f16["moonlight/setup/calibrate.py"]
+  f17["moonlight/setup/calibration_steps.py"]
+  f18["moonlight/setup/profile.py"]
+  f19["tests/unit/test_autofind.py"]
+  f20["tests/unit/test_battle.py"]
+  f21["tests/unit/test_calibrate.py"]
+  f22["tests/unit/test_calibration_steps.py"]
+  f23["tests/unit/test_capture.py"]
+  f24["tests/unit/test_floor.py"]
+  f25["tests/unit/test_gui_calibration.py"]
+  f26["tests/unit/test_loop_factory.py"]
+  f27["tests/unit/test_looting.py"]
+  f28["tests/unit/test_minimap.py"]
+  f29["tests/unit/test_sprites.py"]
+  f30["tools/calibrate_auto.py"]
   c0(["Bar finders"])
   c1(["Calibration steps"])
   c2(["Finder registry"])
   c3(["Game area coordinates"])
   c4(["Profile fields"])
-  t0 -.-> f8
-  t0 -.-> f22
+  t0 -.-> f9
+  t0 -.-> f23
   t1 -.-> f0
   t1 -.-> f3
-  t1 -.-> f13
-  t2 -.-> f14
-  t2 -.-> f18
+  t1 -.-> f14
+  t2 -.-> f15
+  t2 -.-> f19
   t2 --> t3
-  t3 -.-> f14
-  t3 -.-> f29
-  t3 -.-> f18
+  t3 -.-> f15
+  t3 -.-> f30
+  t3 -.-> f19
   t1 --> t4
   t2 --> t4
-  t4 -.-> f14
-  t4 -.-> f18
+  t4 -.-> f15
+  t4 -.-> f19
   t1 --> t5
   t2 --> t5
-  t5 -.-> f14
-  t5 -.-> f18
+  t5 -.-> f15
+  t5 -.-> f19
   t1 --> t6
   t2 --> t6
-  t6 -.-> f14
-  t6 -.-> f18
+  t6 -.-> f15
+  t6 -.-> f19
   t1 --> t7
   t2 --> t7
-  t7 -.-> f14
-  t7 -.-> f18
-  t8 -.-> f15
-  t8 -.-> f20
+  t7 -.-> f15
+  t7 -.-> f19
+  t8 -.-> f16
+  t8 -.-> f21
   t8 --> t9
-  t9 -.-> f16
-  t9 -.-> f21
+  t9 -.-> f17
+  t9 -.-> f22
   t9 --> t10
   t2 --> t10
-  t10 -.-> f6
-  t10 -.-> f4
-  t10 -.-> f24
+  t10 -.-> f7
+  t10 -.-> f5
+  t10 -.-> f25
   t10 --> t11
-  t11 -.-> f15
-  t11 -.-> f20
+  t11 -.-> f16
+  t11 -.-> f21
   t11 -.-> f1
   t11 -.-> f2
   t10 --> t12
-  t12 -.-> f6
-  t12 -.-> f16
-  t12 -.-> f24
-  t12 -.-> f21
+  t12 -.-> f7
+  t12 -.-> f17
+  t12 -.-> f25
+  t12 -.-> f22
   t12 --> t13
-  t13 -.-> f6
-  t13 -.-> f17
-  t13 -.-> f24
+  t13 -.-> f7
+  t13 -.-> f18
+  t13 -.-> f25
+  t13 -.-> f4
   t1 --> t14
   t2 --> t14
   t10 --> t14
-  t14 -.-> f14
-  t14 -.-> f6
-  t14 -.-> f18
+  t14 -.-> f15
+  t14 -.-> f7
+  t14 -.-> f19
   t14 --> t15
-  t15 -.-> f7
-  t15 -.-> f19
+  t15 -.-> f8
+  t15 -.-> f20
   t14 --> t16
-  t16 -.-> f11
-  t16 -.-> f27
+  t16 -.-> f12
+  t16 -.-> f28
   t14 --> t17
-  t17 -.-> f9
-  t17 -.-> f12
   t17 -.-> f10
-  t17 -.-> f23
-  t17 -.-> f28
-  t17 -.-> f26
+  t17 -.-> f13
+  t17 -.-> f11
+  t17 -.-> f24
+  t17 -.-> f29
+  t17 -.-> f27
   t8 --> t18
   t14 --> t18
-  t18 -.-> f5
-  t18 -.-> f14
-  t18 -.-> f25
+  t18 -.-> f6
+  t18 -.-> f15
+  t18 -.-> f26
   t18 --> t19
-  f6 --- c1
-  f8 --- c3
-  f14 --- c0
-  f14 --- c2
-  f15 --- c4
-  f16 --- c1
-  f29 --- c0
+  f7 --- c1
+  f9 --- c3
+  f15 --- c0
+  f15 --- c2
+  f16 --- c4
+  f17 --- c1
+  f30 --- c0
 ```
 <!-- graph:end -->
 

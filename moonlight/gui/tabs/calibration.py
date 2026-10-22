@@ -10,6 +10,7 @@ functions below so it is tested without a window (R8).
 from __future__ import annotations
 
 import base64
+import dataclasses
 import tkinter as tk
 from collections.abc import Mapping
 from pathlib import Path
@@ -21,7 +22,7 @@ import cv2
 import numpy as np
 
 from moonlight.gui import theme
-from moonlight.gui.loop_factory import load_real_config
+from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.tabs.base import Tab
 from moonlight.perception.capture import CaptureError, ScreenCapture
 from moonlight.setup.autofind import find_regions
@@ -201,6 +202,15 @@ class CalibrationTab(Tab):
         )
         self.btn_start.pack(side="left", padx=(0, theme.GAP))
         ctk.CTkButton(row, text="Load screenshot", command=self.load).pack(side="left")
+        ctk.CTkLabel(row, text="Calibration").pack(side="left", padx=(theme.PAD, theme.UNIT))
+        self.menu_profile = ctk.CTkOptionMenu(
+            row, values=[""], command=self.pick_profile,
+            fg_color=theme.RAISED, button_color=theme.RAISED,
+            button_hover_color=theme.HOVER,
+        )
+        self.menu_profile.pack(side="left")
+        self.refill_profiles()
+        self.ctx.config_listeners.append(self.refill_profiles)
         self.lbl_status = ctk.CTkLabel(self.idle, text="", anchor="w")
         self.lbl_status.pack(fill="x", padx=theme.PAD)
         anchors = load_real_config().templates_dir / "anchors"
@@ -236,6 +246,8 @@ class CalibrationTab(Tab):
             fg_color=theme.LIFE, hover_color=theme.LIFE_HOVER, text_color=theme.NIGHT,
         )
         self.btn_save.pack(side="left")
+        self.btn_save_as = ctk.CTkButton(self.review_bar, text="Save as", command=self.save_as)
+        self.btn_save_as.pack(side="left", padx=(theme.GAP, 0))
         self.canvas = tk.Canvas(self.work, bg=theme.NIGHT, highlightthickness=0, takefocus=1)
         self.canvas.pack(fill="both", expand=True, padx=theme.PAD, pady=theme.PAD)
         for event, handler in (
@@ -258,6 +270,24 @@ class CalibrationTab(Tab):
             state="normal" if on else "disabled",
             **theme.button_colors(on, theme.MANA, theme.MANA_HOVER),
         )
+
+    # -- which calibration the bot uses -------------------------------------
+
+    def refill_profiles(self) -> None:
+        """Fill the dropdown with the saved calibrations; show the picked one."""
+        cfg = load_real_config()
+        names = ProfileManager(cfg.profiles_dir).list_profiles()
+        if cfg.profile not in names:  # picked but not saved yet: show it anyway
+            names = sorted([*names, cfg.profile])
+        self.menu_profile.configure(values=names)
+        self.menu_profile.set(cfg.profile)
+
+    def pick_profile(self, name: str) -> None:
+        """Make the bot use calibration *name* from its next start."""
+        path = picked_config()
+        cfg = load_real_config(path)
+        dataclasses.replace(cfg, profile=name).save(path)
+        self.ctx.log.info(f"calibration: bot uses {name} (from next start)")
 
     # -- getting a screenshot ------------------------------------------------
 
@@ -456,21 +486,59 @@ class CalibrationTab(Tab):
 
     # -- saving ------------------------------------------------------------
 
-    def save(self) -> None:
+    def _finished(self) -> CalibrationProfile | None:
+        """The full profile with the typed UI scale, or None (logged) if not ready."""
         steps = self.steps
         if steps is None or not steps.can_save:
-            return
+            return None
         scale = parse_ui_scale(self.ent_scale.get())
         if scale is None:
             low, high = UI_SCALE_RANGE
             self.ctx.log.error(f"calibration: UI scale must be a number from {low} to {high}")
-            return
+            return None
         steps.ui_scale = scale
-        ok = self._write(steps.save())
+        return steps.save()
+
+    def save(self) -> None:
+        """Write the picked calibration."""
+        profile = self._finished()
+        if profile is None:
+            return
+        ok = self._write(profile)
+        self.close()
+        self._show_saved(ok)
+
+    def save_as(self) -> None:
+        """Ask for a name, save under it and make the bot use it."""
+        profile = self._finished()
+        if profile is None:
+            return
+        name = ctk.CTkInputDialog(text="Name for this calibration:", title="Save as").get_input()
+        if name is None:  # cancelled
+            self.canvas.focus_set()
+            return
+        name = name.strip()
+        if not ProfileManager.valid_name(name):
+            self.ctx.log.error(
+                f"calibration: bad name {name!r}: use 1 to 40 letters, digits, _ and -"
+            )
+            return
+        manager = ProfileManager(load_real_config().profiles_dir)
+        path = manager.path(name)
+        if path.exists() and not messagebox.askyesno(
+            "Save as", f"A calibration named {name} exists. Overwrite it?"
+        ):
+            self.canvas.focus_set()
+            return
+        self.path = path
+        ok = self._write(profile)
+        if ok:
+            self.pick_profile(name)
         self.close()
         self._show_saved(ok)
 
     def _show_saved(self, ok: bool) -> None:
+        self.refill_profiles()
         if ok:
             self.lbl_status.configure(text=f"Saved to {self.path}")
 

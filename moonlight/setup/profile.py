@@ -7,11 +7,14 @@ Thin, single source of truth for ``profiles/<name>.json`` on top of
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from moonlight.setup.calibrate import CalibrationProfile, default_profiles_dir
 
 __all__ = ["ProfileManager"]
+
+_NAME = re.compile(r"[A-Za-z0-9_-]{1,40}")
 
 
 class ProfileManager:
@@ -19,6 +22,11 @@ class ProfileManager:
 
     def __init__(self, directory: str | Path | None = None) -> None:
         self.directory = Path(directory) if directory is not None else default_profiles_dir()
+
+    @staticmethod
+    def valid_name(name: str) -> bool:
+        """True for 1 to 40 letters, digits, ``_`` or ``-`` (no paths, no dots)."""
+        return _NAME.fullmatch(name) is not None
 
     def path(self, name: str) -> Path:
         """File path of profile *name*."""
