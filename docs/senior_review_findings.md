@@ -43,7 +43,7 @@ Recommendation: **NO-SHIP as wired; conditional SHIP** of a supervised, healing 
 | F-24 | minor | Architecture | Duplicated HP thresholds (loop 30/60 vs healing 30/70) and duplicated HP-drop logic |
 | F-25 | minor | Architecture | Cavebot `start()` always resets to waypoint 0 (after refill too) |
 | F-26 | minor | Safety | F12 monitor reads `GetAsyncKeyState & 0x0001` (unreliable "pressed since last call" bit) |
-| F-27 | minor | Architecture | Repo hygiene: `customtkinter` missing from deps, `.venv` missing, stale perf/instructions docs, stray root `__pycache__`/package dirs |
+| F-27 | minor | Architecture | Repo hygiene: `customtkinter` missing from deps, `.venv` missing, stale perf/README docs, stray root `__pycache__`/package dirs |
 
 **Totals: 27 findings — 3 critical / 17 major / 7 minor.**
 
@@ -135,7 +135,7 @@ Recommendation: **NO-SHIP as wired; conditional SHIP** of a supervised, healing 
 - **T32 scope:** M–L (resolver) / XS (interim: targeting disabled when no resolver, enforced in `BotConfig.validate`/`build_loop`).
 
 ### F-02 — Inputs not released on stop (critical)
-- **Files:** `moonlight/loop.py:681-685` (kill release goes through `_send` → dropped when unfocused/`!screen_ok`), `:488-492` (`!screen_ok` stop without release), `:438-465` + `:780-791` (`_shutdown` has no `release_all`), `moonlight/ui.py:337-340` (`BotController.stop`), `moonlight/gui/app.py:169-…,201-208`; `moonlight/cli.py:248-249` is the **only** release; `moonlight/input.py:699-719` (heartbeat), `firmware/moonlight/moonlight.ino:414,463` (any line, incl. heartbeat `P`, refreshes the 10 s watchdog — `firmware/instructions.md:25`).
+- **Files:** `moonlight/loop.py:681-685` (kill release goes through `_send` → dropped when unfocused/`!screen_ok`), `:488-492` (`!screen_ok` stop without release), `:438-465` + `:780-791` (`_shutdown` has no `release_all`), `moonlight/ui.py:337-340` (`BotController.stop`), `moonlight/gui/app.py:169-…,201-208`; `moonlight/cli.py:248-249` is the **only** release; `moonlight/input.py:699-719` (heartbeat), `firmware/moonlight/moonlight.ino:414,463` (any line, incl. heartbeat `P`, refreshes the 10 s watchdog — `firmware/README.md`).
 - **Description:** Pressing F12 while the Tibia window is not focused (the most likely moment to hit F12) sends **nothing** — `_act_kill` counts it as "dropped unfocused". Normal stop, screen loss and GUI stop rely on the caller. Because the heartbeat thread keeps pinging, the firmware watchdog never fires while the Python process lives.
 - **Risk:** A held key/mouse button (e.g. mid-`press_combo` modifier, drag in a clicker move) stays held after "stop"; kill switch appears to fail.
 - **Fix:** `_act_kill` and `_shutdown` call `self.input.release_all()` directly (ungated, exceptions swallowed+logged); stop the heartbeat when the loop stops; `close()` the backend in the CLI `finally`.

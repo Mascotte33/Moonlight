@@ -1,29 +1,32 @@
-# tests/ - test suite
+# tests/
 
-Fast, offline test suite. Every module ships with unit tests that run on
-synthetic frames, `FakeInput`, and mocked serial — no live client, no real
-Arduino, no GPU.
+Fast, offline test suite. No live client, no real Arduino, no GPU. Use `FakeInput`, synthetic numpy frames and mocked serial.
 
 ## Layout
 
-| Dir | Purpose | Status |
-|-----|---------|--------|
-| `unit/` | Per-module unit tests (synthetic frames, FakeInput) | ✅ 525 tests |
-| `perf/` | Golden-frame accuracy + per-read performance tests | ✅ 12 tests (skip until T08 data) |
-| `replay/` | Video-replay tests for every module (T28) | ⬜ planned |
-| `hil/` | HIL suite (T18): click latency / accuracy / serial-loss release, all offline via `mock_serial.py`; `python tools/hil_harness.py [--real]` runs them on hardware | ✅ 9 tests |
+| Dir | What | Details |
+|-----|------|---------|
+| `unit/` | One `test_<module>.py` per module | [unit/README.md](unit/README.md) |
+| `perf/` | Golden-frame accuracy and per-read timing. Skips until golden data exists | [perf/README.md](perf/README.md) |
+| `replay/` | Replays the labeled golden frames through every perception module | [replay/README.md](replay/README.md) |
+| `hil/` | Hardware-in-the-loop: click latency, accuracy, serial-loss release. Offline via `mock_serial.py`. Real device: `python tools/hil_harness.py` | [hil/README.md](hil/README.md) |
+| `safety/` | Safety invariants (kill switch, fail-closed, rate limit, release-all) | [safety/README.md](safety/README.md) |
+| `golden/` | Golden screenshots (`*.png`, git-ignored) and `labels.json`. Labels come from `tools/label_golden.py`. Keep the schema stable. `golden_labels.py` loads them | |
 
-Baseline (2026-10-15): **524 passed, 13 skipped**. All 13 skips are expected:
-12 golden-frame tests wait for the T08 screenshot dataset, 1 is a dxcam test
-gated on a Windows-only capture path.
+Without `tests/golden/*.png` the golden tests skip. That is expected.
 
 ## Run
 
 ```bash
-cd <repo-root>
-python -m pytest tests/ -q             # whole suite
-python -m pytest tests/unit/test_x.py  # single file
-python -m pytest -k kill               # filter by keyword
+python -m pytest tests/ -q              # whole suite
+python -m pytest tests/unit/test_x.py   # single file
+python -m pytest -k kill                # filter by keyword
 ```
 
-See `unit/README.md` and `perf/README.md` for per-file details.
+Use a Python that has `customtkinter` installed (the GUI tests need it).
+
+## Do not
+
+- A module is not done without its unit tests in `unit/`.
+- Tests must run offline. Never open a real window, port or display.
+- Do not weaken assertions to hide bugs.
