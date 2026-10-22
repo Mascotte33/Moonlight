@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 
 from moonlight.perception.battle import TOP_PADDING
+from moonlight.perception.vitals import hp_fill_mask
 from moonlight.setup.calibrate import Point, Rect
 
 # doc: docs/prs/gui-calibration.md#finder-registry
@@ -29,13 +30,6 @@ def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
     d = np.diff(np.concatenate(([0], mask.astype(np.int8), [0])))
     starts, ends = np.flatnonzero(d == 1), np.flatnonzero(d == -1) - 1
     return list(zip(starts.tolist(), ends.tolist(), strict=True))
-
-
-def hp_fill_mask(rgb: np.ndarray) -> np.ndarray:
-    """Saturated, non-blue pixels: every HP stage (green..red)."""
-    sat = rgb.max(axis=2) - rgb.min(axis=2)
-    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
-    return np.asarray((sat > 40) & ((r > b + 40) | (g > b + 40)))
 
 
 def mp_fill_mask(rgb: np.ndarray) -> np.ndarray:

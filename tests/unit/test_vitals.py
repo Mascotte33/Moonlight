@@ -189,6 +189,12 @@ class TestVitalsReader:
         frame = make_bar_frame(66.0)
         assert reader.read_hp(frame, FULL_REGION) == pytest.approx(66.0, abs=0.5)
 
+    @pytest.mark.parametrize("rgb", [(181, 45, 45), (90, 0, 0), (0, 181, 0), (190, 145, 8)])
+    def test_every_hp_stage_is_read(self, rgb: tuple[int, int, int]) -> None:
+        # (181, 45, 45) is the red stage the old colour list missed.
+        reader = VitalsReader(hp_region=FULL_REGION)
+        assert reader.read_hp(make_bar_frame(20.0, fill_rgb=rgb)) == pytest.approx(20.0, abs=0.5)
+
     def test_mp_reader_uses_mp_colour(self) -> None:
         reader = VitalsReader(mp_region=FULL_REGION)
         frame = make_bar_frame(73.0, fill_rgb=MP_FILL_RGB)

@@ -55,6 +55,7 @@ __all__ = [
     "DEFAULT_TOLERANCE",
     "VitalsReader",
     "bar_percent",
+    "hp_fill_mask",
 ]
 
 #: A rectangle as ``(x, y, width, height)`` (matches ``calibrate.Rect``).
@@ -153,6 +154,18 @@ def bar_percent(
     return max(0.0, min(100.0, percent))
 
 
+def hp_fill_mask(rgb: np.ndarray) -> np.ndarray:
+    """Saturated, non-blue pixels: every HP stage (green..red).
+
+    A rule, not a colour list: the list missed the red stage (181, 45, 45),
+    so low HP read as 0 % (unknown) and the bot never healed.
+    """
+    rgb = rgb.astype(np.int16)
+    sat = rgb.max(axis=2) - rgb.min(axis=2)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    return np.asarray((sat > 40) & ((r > b + 40) | (g > b + 40)))
+
+
 class VitalsReader:
     """Read HP% and MP% from captured frames using calibrated regions.
 
@@ -223,9 +236,11 @@ class VitalsReader:
             region: HP region to use; defaults to the constructor region.
         """
         region = region if region is not None else self._hp_region
-        if region is None:
+        clipped = _clip_region(frame, region) if region is not None else None
+        if clipped is None:
             return 0.0
-        return bar_percent(frame, region, HP_FILL_COLOURS, self.tolerance)
+        crop, width = clipped
+        return 100.0 * float(hp_fill_mask(crop).any(axis=0).sum()) / width
 
     def read_mp(
         self,
