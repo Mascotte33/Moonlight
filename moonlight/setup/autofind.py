@@ -212,6 +212,21 @@ def find_ui_scale(screenshot: np.ndarray) -> tuple[float, Point]:
     return scale, at
 
 
+# doc: docs/prs/gui-calibration.md#layout-check
+def find_stop_button(screenshot: np.ndarray, scale: float) -> Point | None:
+    """The Stop button's top-left at UI *scale*; None if no anchor or no match."""
+    anchor = _anchor("stop_button")
+    if anchor is None:
+        return None
+    h, w = anchor.shape
+    anchor = cv2.resize(anchor, (round(w * scale), round(h * scale)))
+    grey = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+    if anchor.shape[0] > grey.shape[0] or anchor.shape[1] > grey.shape[1]:
+        return None
+    _, score, _, loc = cv2.minMaxLoc(cv2.matchTemplate(grey, anchor, cv2.TM_CCOEFF_NORMED))
+    return (int(loc[0]), int(loc[1])) if score >= MATCH_MIN else None
+
+
 Finder = Callable[[np.ndarray], Rect | None]
 
 FINDERS: list[tuple[str, Finder]] = [

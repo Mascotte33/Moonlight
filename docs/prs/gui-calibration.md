@@ -89,7 +89,7 @@ flowchart LR
   t15["C3.F2.K1"]:::done
   t16["C3.F3.K1"]:::done
   t17["C3.F4.K1"]:::done
-  t18["C4.F1.K1"]
+  t18["C4.F1.K1"]:::done
   t19["C4.F2.K1"]:::later
   f0[".gitignore"]
   f1["GUI_REMAKE.MD"]
@@ -126,9 +126,10 @@ flowchart LR
   c1(["Calibration steps"])
   c2(["Finder registry"])
   c3(["Game area coordinates"])
-  c4(["Profile fields"])
-  c5(["Reference images"])
-  c6(["UI scale"])
+  c4(["Layout check"])
+  c5(["Profile fields"])
+  c6(["Reference images"])
+  c7(["UI scale"])
   t0 -.-> f9
   t0 -.-> f23
   t1 -.-> f0
@@ -209,16 +210,18 @@ flowchart LR
   t18 -.-> f14
   t18 -.-> f26
   t18 --> t19
+  f6 --- c4
   f7 --- c1
-  f8 --- c6
+  f8 --- c7
   f9 --- c3
-  f10 --- c6
-  f12 --- c6
+  f10 --- c7
+  f12 --- c7
   f14 --- c0
   f14 --- c2
-  f14 --- c5
+  f14 --- c4
   f14 --- c6
-  f15 --- c4
+  f14 --- c7
+  f15 --- c5
   f16 --- c1
   f30 --- c0
 ```
