@@ -1,6 +1,6 @@
 """F-13: the GUI "Start bot" builds the REAL loop through ``wiring.build_loop``.
 
-Covers the four F-13 guarantees (see ``docs/senior_review_findings.md``):
+Covers the four F-13 guarantees from the senior review (commit c8aa239):
 
 * :func:`make_backend` returns a :class:`FakeInput` **only** when the explicit
   ``simulation`` toggle is on — there is no silent fallback.

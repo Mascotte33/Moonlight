@@ -28,7 +28,7 @@ manage hardware. Excluded from the strict `ruff`/`mypy` package lint (see
 
 | File | Purpose |
 |------|---------|
-| `bench_pipeline.py` | Times each stage of the 20 Hz loop. Budget notes: [../docs/perf_profile.md](../docs/perf_profile.md), [../docs/hw_budget.md](../docs/hw_budget.md) |
+| `bench_pipeline.py` | Times each stage of the 20 Hz loop. Budget notes: [../docs/hw_budget.md](../docs/hw_budget.md) |
 | `calibrate_auto.py` | Auto-labels HP%/MP% on golden frames and derives the `hp_bar`/`mp_bar` profile. Options: `--dir`, `--profile` |
 | `hil_harness.py` | Runs the HIL checks (click latency, accuracy, serial-loss release) on a real board. Use `--real` for hardware. Offline tests are in [../tests/hil/](../tests/hil/README.md) |
 

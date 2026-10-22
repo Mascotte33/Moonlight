@@ -475,7 +475,7 @@ Tab tasks are in build order. Each one converts its part of the tab to the T0.F3
 - Don't touch: moonlight/setup/config.py.
 - Done when: pytest stays green and `grep -rn "config_bridge\|gui.routes\|config_store" moonlight tests` finds nothing. Owner checks: every tab opens.
 
-#### Phase 3 corrections (owner feedback on PR #5, see PHASE3_CORRECTIONS.MD)
+#### Phase 3 corrections (owner feedback on PR #5)
 
 ### T2.F4.K2 — One switch per module
 - ✅ Done in commit eca8d60.
