@@ -65,7 +65,7 @@ def test_battle_list_height_on_a_tall_window() -> None:
     full = cv2.imread(str(GOLDEN / "battle" / "full.png"))
     if full is None:
         pytest.skip("battle list screenshot not present")
-    assert dict(FINDERS)["battle_list"](full) == (2212, 33, 156, 473)
+    assert dict(FINDERS)["battle_list"](full) == (2212, 22, 156, 484)
 
 
 @pytest.mark.skipif(

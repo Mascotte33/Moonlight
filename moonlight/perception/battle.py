@@ -46,6 +46,7 @@ Frames are RGB ``(H, W, 3)`` ``uint8`` arrays as produced by
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
@@ -206,9 +207,22 @@ class BattleReader:
         Raises:
             ValueError: If a region is not a 4-element tuple.
         """
-        self._slot_height = int(slot_height)
-        self._top_padding = int(top_padding)
-        self._content_width = int(content_width)
+        # doc: docs/prs/gui-calibration.md#ui-scale
+        scale = float(getattr(profile, "ui_scale", 1.0))
+
+        def px(v: int) -> int:
+            return round(v * scale)
+
+        self._slot_height = px(slot_height)
+        self._top_padding = px(top_padding)
+        self._content_width = px(content_width)
+        self._name_x, self._name_w = px(NAME_START_X), px(NAME_WIDTH)
+        self._bar_rows = (px(HP_BAR_ROWS[0]), px(HP_BAR_ROWS[1]))
+        self._bar_min_run = px(HP_BAR_MIN_RUN)
+        self._icon = px(20)
+        self._edge_min = px(SELECTED_MIN_EDGE_PIXELS)
+        # A 1 px line spreads over this many rows/cols once enlarged.
+        self._line = max(1, math.ceil(scale))
         self._text_threshold = int(text_threshold)
         self._highlight_tolerance = int(highlight_tolerance)
         self._min_text_pixels = int(min_text_pixels)
@@ -284,22 +298,22 @@ class BattleReader:
     def _has_text(self, slot: np.ndarray) -> bool:
         """Return True when the slot's name area holds enough text pixels."""
         width = slot.shape[1]
-        x0 = min(NAME_START_X, width)
-        x1 = min(width, NAME_START_X + NAME_WIDTH)
+        x0 = min(self._name_x, width)
+        x1 = min(width, self._name_x + self._name_w)
         if x1 <= x0:
             return False
         text = slot[:, x0:x1]
         pixels = int(np.count_nonzero(text > self._text_threshold))
         return pixels >= self._min_text_pixels
 
-    @staticmethod
-    def _hp_bar(slot: np.ndarray) -> tuple[int, int, int] | None:
+    def _hp_bar(self, slot: np.ndarray) -> tuple[int, int, int] | None:
         """The HP-bar outline under the name as ``(row, x0, x1)``, or None.
 
         *row* is the outline's top edge and ``x0:x1`` its longest dark run
         (slot coordinates); None means no bar, so not a creature row.
         """
-        bar = slot[HP_BAR_ROWS[0] : HP_BAR_ROWS[1], NAME_START_X:] < HP_BAR_DARK
+        (r0, r1), nx = self._bar_rows, self._name_x
+        bar = slot[r0:r1, nx:] < HP_BAR_DARK
         for i, row in enumerate(bar):
             # Runs of True: [start, stop) pairs from the 0/1 edges.
             edges = np.flatnonzero(np.diff(np.concatenate(([0], row.view(np.int8), [0]))))
@@ -307,21 +321,21 @@ class BattleReader:
                 continue
             k = int(np.argmax(edges[1::2] - edges[::2]))
             x0, x1 = int(edges[2 * k]), int(edges[2 * k + 1])
-            if x1 - x0 >= HP_BAR_MIN_RUN:
-                return HP_BAR_ROWS[0] + i, NAME_START_X + x0, NAME_START_X + x1
+            if x1 - x0 >= self._bar_min_run:
+                return r0 + i, nx + x0, nx + x1
         return None
 
-    @staticmethod
-    def _hp_percent(slot_rgb: np.ndarray, bar: tuple[int, int, int]) -> float | None:
+    def _hp_percent(self, slot_rgb: np.ndarray, bar: tuple[int, int, int]) -> float | None:
         """HP percent from the fill row inside the outline (F-16).
 
         None when no fill pixel is HP-coloured: a listed creature has HP
         left, so an empty fill row means a misread, never "0 % HP".
         """
         row, x0, x1 = bar
-        if row + 1 >= slot_rgb.shape[0] or x1 - x0 < 3:
+        k = self._line
+        if row + k >= slot_rgb.shape[0] or x1 - x0 < 2 * k + 1:
             return None
-        fill = slot_rgb[row + 1, x0 + 1 : x1 - 1, :3].astype(np.int16)
+        fill = slot_rgb[row + k, x0 + k : x1 - k, :3].astype(np.int16)
         left = int(np.count_nonzero(fill.max(axis=1) - fill.min(axis=1) > HP_FILL_MIN_SPREAD))
         return 100.0 * left / len(fill) if left else None
 
@@ -332,14 +346,15 @@ class BattleReader:
         at least :data:`SELECTED_MIN_EDGE_PIXELS` outline-red pixels; the
         red HP bar (rows ~16-18, right of x=23) and red icons do not.
         """
-        if slot_rgb.shape[0] < 20:
+        n = self._icon
+        if slot_rgb.shape[0] < n:
             return False
-        icon = slot_rgb[:20, :NAME_START_X, :3].astype(np.int16)
+        icon = slot_rgb[:n, : self._name_x, :3].astype(np.int16)
         ref = np.array(SELECTED_RGB, dtype=np.int16)
         red = (np.abs(icon - ref) <= self._highlight_tolerance).all(axis=2)
         return bool(
-            red[0].sum() >= SELECTED_MIN_EDGE_PIXELS
-            and red[19].sum() >= SELECTED_MIN_EDGE_PIXELS
+            red[: self._line].sum(axis=1).max() >= self._edge_min
+            and red[n - self._line :].sum(axis=1).max() >= self._edge_min
         )
 
     def _resolve_name(self, row: int, slot: np.ndarray) -> str:

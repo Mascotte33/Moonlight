@@ -13,6 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from moonlight.perception.battle import TOP_PADDING
 from moonlight.setup.calibrate import Point, Rect
 
 # doc: docs/prs/gui-calibration.md#finder-registry
@@ -123,7 +124,9 @@ def find_battle_list(screenshot: np.ndarray) -> Rect | None:
     bright = (rows.min(axis=(1, 2)) >= 100) & (np.ptp(rows, axis=(1, 2)) <= 30)
     if not bright.any():
         return None
-    return (x, y + BATTLE_TOP, BATTLE_W, int(bright.argmax()))
+    # The reader's box starts TOP_PADDING above the first creature row.
+    top = y + BATTLE_TOP - TOP_PADDING
+    return (x, top, BATTLE_W, int(bright.argmax()) + TOP_PADDING)
 
 
 # The reference image is the zoom-button strip right of the map, since the map
