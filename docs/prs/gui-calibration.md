@@ -49,10 +49,11 @@ fixes every box, and Start refuses to run if the layout no longer matches.
 
 These add to [RULESET.md](../../RULESET.md), which wins on conflict.
 
-- **P1. Named calibrations, one in use.** Save replaces the picked
-  calibration. Save as writes a new name (C2.F4.K5). The bot uses the one
-  picked in the Calibration tab. No resolution dropdown. The only partial
-  save is "Save what you have?" on Esc (C2.F4.K2).
+- **P1. Named calibrations, one in use.** The Calibration tab creates
+  (New), deletes and picks calibrations. Save writes the picked one, with its
+  screenshot for the summary (C2.F4.K6). The bot uses the picked one. No
+  resolution dropdown. The only partial save is "Save what you have?" on Esc
+  (C2.F4.K2).
 - **P2. One finder per area.** See [Finder registry](#finder-registry).
 - **P3. Scale 1.0 changes nothing.** Every reader multiplies its sizes by
   `ui_scale`. At 1.0 each reader behaves exactly as today, so existing tests
@@ -79,18 +80,20 @@ flowchart LR
   t5["C2.F2.K4"]:::done
   t6["C2.F2.K5"]:::done
   t7["C2.F2.K6"]:::done
-  t8["C2.F3.K1"]:::done
-  t9["C2.F4.K1"]:::done
-  t10["C2.F4.K2"]:::done
-  t11["C2.F4.K3"]:::done
-  t12["C2.F4.K4"]:::done
-  t13["C2.F4.K5"]:::done
-  t14["C3.F1.K1"]:::done
-  t15["C3.F2.K1"]:::done
-  t16["C3.F3.K1"]:::done
-  t17["C3.F4.K1"]:::done
-  t18["C4.F1.K1"]:::done
-  t19["C4.F2.K1"]:::later
+  t8["C2.F2.K7"]
+  t9["C2.F3.K1"]:::done
+  t10["C2.F4.K1"]:::done
+  t11["C2.F4.K2"]:::done
+  t12["C2.F4.K3"]:::done
+  t13["C2.F4.K4"]:::done
+  t14["C2.F4.K5"]:::done
+  t15["C2.F4.K6"]:::done
+  t16["C3.F1.K1"]:::done
+  t17["C3.F2.K1"]:::done
+  t18["C3.F3.K1"]:::done
+  t19["C3.F4.K1"]:::done
+  t20["C4.F1.K1"]:::done
+  t21["C4.F2.K1"]:::later
   f0[".gitignore"]
   f1["GUI_REMAKE.MD"]
   f2["README.md"]
@@ -105,23 +108,24 @@ flowchart LR
   f11["moonlight/perception/loot.py"]
   f12["moonlight/perception/minimap.py"]
   f13["moonlight/perception/sprites.py"]
-  f14["moonlight/setup/autofind.py"]
-  f15["moonlight/setup/calibrate.py"]
-  f16["moonlight/setup/calibration_steps.py"]
-  f17["moonlight/setup/profile.py"]
-  f18["tests/golden_profile/moonlight_user.json"]
-  f19["tests/unit/test_autofind.py"]
-  f20["tests/unit/test_battle.py"]
-  f21["tests/unit/test_calibrate.py"]
-  f22["tests/unit/test_calibration_steps.py"]
-  f23["tests/unit/test_capture.py"]
-  f24["tests/unit/test_floor.py"]
-  f25["tests/unit/test_gui_calibration.py"]
-  f26["tests/unit/test_loop_factory.py"]
-  f27["tests/unit/test_looting.py"]
-  f28["tests/unit/test_minimap.py"]
-  f29["tests/unit/test_sprites.py"]
-  f30["tools/calibrate_auto.py"]
+  f14["moonlight/profiles/README.md"]
+  f15["moonlight/setup/autofind.py"]
+  f16["moonlight/setup/calibrate.py"]
+  f17["moonlight/setup/calibration_steps.py"]
+  f18["moonlight/setup/profile.py"]
+  f19["tests/golden_profile/moonlight_user.json"]
+  f20["tests/unit/test_autofind.py"]
+  f21["tests/unit/test_battle.py"]
+  f22["tests/unit/test_calibrate.py"]
+  f23["tests/unit/test_calibration_steps.py"]
+  f24["tests/unit/test_capture.py"]
+  f25["tests/unit/test_floor.py"]
+  f26["tests/unit/test_gui_calibration.py"]
+  f27["tests/unit/test_loop_factory.py"]
+  f28["tests/unit/test_looting.py"]
+  f29["tests/unit/test_minimap.py"]
+  f30["tests/unit/test_sprites.py"]
+  f31["tools/calibrate_auto.py"]
   c0(["Bar finders"])
   c1(["Calibration steps"])
   c2(["Finder registry"])
@@ -131,99 +135,109 @@ flowchart LR
   c6(["Reference images"])
   c7(["UI scale"])
   t0 -.-> f9
-  t0 -.-> f23
+  t0 -.-> f24
   t1 -.-> f0
   t1 -.-> f3
-  t1 -.-> f18
-  t2 -.-> f14
-  t2 -.-> f19
+  t1 -.-> f19
+  t2 -.-> f15
+  t2 -.-> f20
   t2 --> t3
-  t3 -.-> f14
-  t3 -.-> f30
-  t3 -.-> f19
+  t3 -.-> f15
+  t3 -.-> f31
+  t3 -.-> f20
   t1 --> t4
   t2 --> t4
-  t4 -.-> f14
-  t4 -.-> f19
+  t4 -.-> f15
+  t4 -.-> f20
   t1 --> t5
   t2 --> t5
-  t5 -.-> f14
-  t5 -.-> f19
+  t5 -.-> f15
+  t5 -.-> f20
   t1 --> t6
   t2 --> t6
-  t6 -.-> f14
-  t6 -.-> f19
+  t6 -.-> f15
+  t6 -.-> f20
   t1 --> t7
   t2 --> t7
-  t7 -.-> f14
-  t7 -.-> f19
+  t7 -.-> f15
+  t7 -.-> f20
+  t7 --> t8
   t8 -.-> f15
-  t8 -.-> f21
-  t8 --> t9
+  t8 -.-> f20
   t9 -.-> f16
   t9 -.-> f22
   t9 --> t10
-  t2 --> t10
-  t10 -.-> f7
-  t10 -.-> f5
-  t10 -.-> f25
+  t10 -.-> f17
+  t10 -.-> f23
   t10 --> t11
-  t11 -.-> f15
-  t11 -.-> f21
-  t11 -.-> f1
-  t11 -.-> f2
-  t10 --> t12
-  t12 -.-> f7
+  t2 --> t11
+  t11 -.-> f7
+  t11 -.-> f5
+  t11 -.-> f26
+  t11 --> t12
   t12 -.-> f16
-  t12 -.-> f25
   t12 -.-> f22
-  t12 --> t13
+  t12 -.-> f1
+  t12 -.-> f2
+  t11 --> t13
   t13 -.-> f7
   t13 -.-> f17
-  t13 -.-> f25
-  t13 -.-> f4
-  t1 --> t14
-  t2 --> t14
-  t10 --> t14
-  t14 -.-> f14
+  t13 -.-> f26
+  t13 -.-> f23
+  t13 --> t14
   t14 -.-> f7
-  t14 -.-> f19
+  t14 -.-> f18
+  t14 -.-> f26
+  t14 -.-> f4
   t14 --> t15
-  t15 -.-> f8
-  t15 -.-> f20
-  t15 -.-> f14
-  t15 -.-> f19
+  t15 -.-> f7
   t15 -.-> f18
-  t14 --> t16
-  t16 -.-> f12
-  t16 -.-> f28
-  t14 --> t17
-  t17 -.-> f10
-  t17 -.-> f13
-  t17 -.-> f11
-  t17 -.-> f24
-  t17 -.-> f29
-  t17 -.-> f27
-  t8 --> t18
-  t14 --> t18
-  t18 -.-> f6
-  t18 -.-> f14
-  t18 -.-> f26
-  t18 --> t19
+  t15 -.-> f26
+  t15 -.-> f14
+  t15 -.-> f0
+  t15 -.-> f4
+  t1 --> t16
+  t2 --> t16
+  t11 --> t16
+  t16 -.-> f15
+  t16 -.-> f7
+  t16 -.-> f20
+  t16 --> t17
+  t17 -.-> f8
+  t17 -.-> f21
+  t17 -.-> f15
+  t17 -.-> f20
+  t17 -.-> f19
+  t16 --> t18
+  t18 -.-> f12
+  t18 -.-> f29
+  t16 --> t19
+  t19 -.-> f10
+  t19 -.-> f13
+  t19 -.-> f11
+  t19 -.-> f25
+  t19 -.-> f30
+  t19 -.-> f28
+  t9 --> t20
+  t16 --> t20
+  t20 -.-> f6
+  t20 -.-> f15
+  t20 -.-> f27
+  t20 --> t21
   f6 --- c4
   f7 --- c1
   f8 --- c7
   f9 --- c3
   f10 --- c7
   f12 --- c7
-  f14 --- c0
-  f14 --- c2
-  f14 --- c4
-  f14 --- c6
-  f14 --- c7
-  f15 --- c5
-  f16 --- c1
-  f30 --- c0
+  f15 --- c0
+  f15 --- c2
+  f15 --- c4
+  f15 --- c6
+  f15 --- c7
+  f16 --- c5
+  f17 --- c1
+  f31 --- c0
 ```
 <!-- graph:end -->
 
@@ -315,6 +329,8 @@ Build order. Status lives in each task file's front matter and shows in the grap
 18. [C3.F4.K1](../tasks/gui-calibration/C3.F4.K1.md) Templates use the scale
 19. [C4.F1.K1](../tasks/gui-calibration/C4.F1.K1.md) Check the layout at Start
 20. [C4.F2.K1](../tasks/gui-calibration/C4.F2.K1.md) Repeat the check while running (later)
+21. [C2.F4.K6](../tasks/gui-calibration/C2.F4.K6.md) Calibration summary, New and Delete
+22. [C2.F2.K7](../tasks/gui-calibration/C2.F2.K7.md) Game grid in windowed mode
 
 ## Owner checks
 
@@ -323,5 +339,6 @@ Collected for the PR. Ticked by the owner.
 - [ ] C1.F1.K1: recalibrate once, since the old profile is off by the title bar height.
 - [ ] C2.F4.K2: calibrate on the live client and from a golden screenshot, fix one box from the review, Esc and save what you have.
 - [ ] C2.F4.K4: Esc then Cancel, arrows between areas, area sentences, readable instructions.
-- [ ] C2.F4.K5: save as a new name, switch calibrations, the bot uses the picked one.
+- [ ] C2.F4.K5: switch calibrations, the bot uses the picked one.
+- [ ] C2.F4.K6: New, calibrate, Save and see the summary; switch and see each summary; Delete one.
 - [ ] C2.F1.K1: approve the anchor crops and the `game_grid` / `status_icons` boxes.

@@ -1,9 +1,10 @@
-"""Calibration tab zoom maths and file helpers (C2.F4.K2, K5). No window opens (R8)."""
+"""Calibration tab zoom maths and file helpers (C2.F4.K2, K5, K6). No window opens (R8)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from moonlight.gui.tabs.calibration import (
@@ -16,6 +17,7 @@ from moonlight.gui.tabs.calibration import (
     load_old_profile,
     margin_for,
     parse_ui_scale,
+    summary_image,
     to_canvas,
     to_screenshot,
     view_rect,
@@ -128,3 +130,21 @@ def test_list_profiles(tmp_path: Path) -> None:
     for name in ("b.json", "a.json", "notes.txt"):
         (tmp_path / name).write_text("{}", encoding="utf-8")
     assert ProfileManager(tmp_path).list_profiles() == ["a", "b"]
+
+
+def test_delete_removes_profile_and_screenshot(tmp_path: Path) -> None:
+    manager = ProfileManager(tmp_path)
+    for path in (manager.path("a"), manager.shot_path("a"), manager.path("b")):
+        path.write_text("{}", encoding="utf-8")
+    manager.delete("a")
+    manager.delete("missing")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["b.json"]
+
+
+def test_summary_draws_boxes_on_a_copy() -> None:
+    shot = np.zeros((100, 200, 3), np.uint8)
+    profile = CalibrationProfile((0, 0), {"hp_bar": Region(20, 30, 50, 10)})
+    out = summary_image(shot, profile)
+    assert out[30, 40].any()  # top edge drawn
+    assert not out[35, 45].any()  # inside left as is
+    assert not shot.any()

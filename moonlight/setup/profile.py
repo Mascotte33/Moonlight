@@ -32,6 +32,15 @@ class ProfileManager:
         """File path of profile *name*."""
         return self.directory / f"{name}.json"
 
+    def shot_path(self, name: str) -> Path:
+        """Screenshot profile *name* was calibrated on, for the tab's summary."""
+        return self.directory / f"{name}.png"
+
+    def delete(self, name: str) -> None:
+        """Remove profile *name* and its screenshot; missing files are fine."""
+        self.path(name).unlink(missing_ok=True)
+        self.shot_path(name).unlink(missing_ok=True)
+
     def list_profiles(self) -> list[str]:
         """Profile names (file stems), sorted; empty when the directory is missing."""
         if not self.directory.is_dir():

@@ -50,6 +50,7 @@ __all__ = [
     "load_old_profile",
     "margin_for",
     "parse_ui_scale",
+    "summary_image",
     "to_canvas",
     "to_screenshot",
     "view_rect",
@@ -168,6 +169,26 @@ def load_old_profile(path: Path) -> CalibrationProfile | None:
         return None
 
 
+def summary_image(shot: np.ndarray, profile: CalibrationProfile) -> np.ndarray:
+    """*shot* (BGR) with the profile's boxes and names drawn on a copy."""
+    out = shot.copy()
+    color = tuple(int(theme.LIFE[i : i + 2], 16) for i in (5, 3, 1))  # hex -> BGR
+    for name, region in profile.regions.items():
+        x, y, w, h = region.to_tuple
+        cv2.rectangle(out, (x, y), (x + w - 1, y + h - 1), color, 2)
+        cv2.putText(out, name, (x, max(y - 4, 12)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+    return out
+
+
+def _photo(image: np.ndarray, scale: float) -> tk.PhotoImage:
+    """*image* (BGR) resized by *scale* as a Tk image."""
+    h, w = image.shape[:2]
+    out = (max(round(w * scale), 1), max(round(h * scale), 1))
+    interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_NEAREST
+    png = cv2.imencode(".png", cv2.resize(image, out, interpolation=interp))[1].tobytes()
+    return tk.PhotoImage(data=base64.b64encode(png).decode("ascii"))
+
+
 # -- the tab -----------------------------------------------------------------
 
 
@@ -186,6 +207,8 @@ class CalibrationTab(Tab):
         self.view: Rect = (0, 0, 1, 1)
         self.scale = 1.0
         self._photo: tk.PhotoImage | None = None
+        self._summary: np.ndarray | None = None
+        self._summary_photo: tk.PhotoImage | None = None
         self._drag: tuple[float, float] | None = None
         self._drag_item: int | None = None
         self._waiting = False
@@ -209,8 +232,13 @@ class CalibrationTab(Tab):
             button_hover_color=theme.HOVER,
         )
         self.menu_profile.pack(side="left")
-        self.refill_profiles()
-        self.ctx.config_listeners.append(self.refill_profiles)
+        ctk.CTkButton(row, text="New", width=64, command=self.new_profile).pack(
+            side="left", padx=(theme.GAP, 0)
+        )
+        ctk.CTkButton(
+            row, text="Delete", width=64, command=self.delete_profile,
+            fg_color=theme.BLOOD, hover_color=theme.BLOOD_HOVER, text_color=theme.NIGHT,
+        ).pack(side="left", padx=(theme.UNIT, 0))
         self.lbl_status = ctk.CTkLabel(self.idle, text="", anchor="w")
         self.lbl_status.pack(fill="x", padx=theme.PAD)
         anchors = load_real_config().templates_dir / "anchors"
@@ -218,6 +246,16 @@ class CalibrationTab(Tab):
             ctk.CTkLabel(
                 self.idle, text=NO_REFERENCES, anchor="w", text_color=theme.AMBER
             ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self.lbl_summary = ctk.CTkLabel(
+            self.idle, text="", anchor="w", text_color=theme.TEXT_DIM,
+            font=ctk.CTkFont(size=theme.SIZE_BODY),
+        )
+        self.lbl_summary.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self.summary = tk.Canvas(self.idle, bg=theme.NIGHT, highlightthickness=0)
+        self.summary.pack(fill="both", expand=True, padx=theme.PAD, pady=theme.PAD)
+        self.summary.bind("<Configure>", lambda _e: self.render_summary())
+        self.refill_profiles()
+        self.ctx.config_listeners.append(self.refill_profiles)
 
         self.work = ctk.CTkFrame(parent, fg_color="transparent")
         self.work.grid(row=0, column=0, sticky="nsew")
@@ -246,8 +284,6 @@ class CalibrationTab(Tab):
             fg_color=theme.LIFE, hover_color=theme.LIFE_HOVER, text_color=theme.NIGHT,
         )
         self.btn_save.pack(side="left")
-        self.btn_save_as = ctk.CTkButton(self.review_bar, text="Save as", command=self.save_as)
-        self.btn_save_as.pack(side="left", padx=(theme.GAP, 0))
         self.canvas = tk.Canvas(self.work, bg=theme.NIGHT, highlightthickness=0, takefocus=1)
         self.canvas.pack(fill="both", expand=True, padx=theme.PAD, pady=theme.PAD)
         for event, handler in (
@@ -281,6 +317,7 @@ class CalibrationTab(Tab):
             names = sorted([*names, cfg.profile])
         self.menu_profile.configure(values=names)
         self.menu_profile.set(cfg.profile)
+        self.load_summary(ProfileManager(cfg.profiles_dir), cfg.profile)
 
     def pick_profile(self, name: str) -> None:
         """Make the bot use calibration *name* from its next start."""
@@ -288,6 +325,68 @@ class CalibrationTab(Tab):
         cfg = load_real_config(path)
         dataclasses.replace(cfg, profile=name).save(path)
         self.ctx.log.info(f"calibration: bot uses {name} (from next start)")
+        self.refill_profiles()
+
+    def new_profile(self) -> None:
+        """Ask for a name and pick it; Start calibration then fills it."""
+        name = ctk.CTkInputDialog(text="Name for the new calibration:", title="New").get_input()
+        if name is None:  # cancelled
+            return
+        name = name.strip()
+        if not ProfileManager.valid_name(name):
+            self.ctx.log.error(
+                f"calibration: bad name {name!r}: use 1 to 40 letters, digits, _ and -"
+            )
+            return
+        if ProfileManager(load_real_config().profiles_dir).path(name).exists():
+            self.ctx.log.error(f"calibration: {name} already exists, pick it from the list")
+            return
+        self.pick_profile(name)
+
+    def delete_profile(self) -> None:
+        """Delete the picked calibration after asking, then pick another saved one."""
+        cfg = load_real_config()
+        if not messagebox.askyesno("Delete", f"Delete calibration {cfg.profile}?"):
+            return
+        manager = ProfileManager(cfg.profiles_dir)
+        manager.delete(cfg.profile)
+        self.ctx.log.info(f"calibration: deleted {cfg.profile}")
+        rest = manager.list_profiles()
+        if rest:
+            self.pick_profile(rest[0])
+        else:  # nothing left: keep the name, the next calibration saves to it
+            self.refill_profiles()
+
+    # -- summary of the picked calibration ----------------------------------
+
+    def load_summary(self, manager: ProfileManager, name: str) -> None:
+        """Draw *name*'s boxes on the screenshot it was calibrated on."""
+        profile = load_old_profile(manager.path(name))
+        shot_file = manager.shot_path(name)
+        shot = cv2.imread(str(shot_file)) if shot_file.exists() else None
+        if profile is None or shot is None:
+            self._summary = None
+            self.lbl_summary.configure(
+                text=f"{name}: no calibration screenshot yet. Start calibration to make one."
+            )
+        else:
+            self._summary = summary_image(shot, profile)
+            self.lbl_summary.configure(
+                text=f"{name}: {len(profile.regions)} of {len(REGIONS)} areas, "
+                f"UI scale {profile.ui_scale:g}"
+            )
+        self.render_summary()
+
+    def render_summary(self) -> None:
+        self.summary.delete("all")
+        self._summary_photo = None
+        image = self._summary
+        cw, ch = self.summary.winfo_width(), self.summary.winfo_height()
+        if image is None or cw < 2 or ch < 2:
+            return
+        h, w = image.shape[:2]
+        self._summary_photo = _photo(image, fit_scale((0, 0, w, h), (cw, ch)))
+        self.summary.create_image(0, 0, image=self._summary_photo, anchor="nw")
 
     # -- getting a screenshot ------------------------------------------------
 
@@ -368,11 +467,7 @@ class CalibrationTab(Tab):
         self.view = view_rect(base, size, margin_for(base) if base else 0)
         self.scale = fit_scale(self.view, (cw, ch))
         x, y, w, h = self.view
-        out = (max(round(w * self.scale), 1), max(round(h * self.scale), 1))
-        interp = cv2.INTER_AREA if self.scale < 1 else cv2.INTER_NEAREST
-        crop = cv2.resize(shot[y : y + h, x : x + w], out, interpolation=interp)
-        png = cv2.imencode(".png", crop)[1].tobytes()
-        self._photo = tk.PhotoImage(data=base64.b64encode(png).decode("ascii"))
+        self._photo = _photo(shot[y : y + h, x : x + w], self.scale)
         self.canvas.delete("all")
         self.canvas.create_image(0, 0, image=self._photo, anchor="nw")
         if steps.in_review:
@@ -512,35 +607,6 @@ class CalibrationTab(Tab):
         self.close()
         self._show_saved(ok)
 
-    def save_as(self) -> None:
-        """Ask for a name, save under it and make the bot use it."""
-        profile = self._finished()
-        if profile is None:
-            return
-        name = ctk.CTkInputDialog(text="Name for this calibration:", title="Save as").get_input()
-        if name is None:  # cancelled
-            self.canvas.focus_set()
-            return
-        name = name.strip()
-        if not ProfileManager.valid_name(name):
-            self.ctx.log.error(
-                f"calibration: bad name {name!r}: use 1 to 40 letters, digits, _ and -"
-            )
-            return
-        manager = ProfileManager(load_real_config().profiles_dir)
-        path = manager.path(name)
-        if path.exists() and not messagebox.askyesno(
-            "Save as", f"A calibration named {name} exists. Overwrite it?"
-        ):
-            self.canvas.focus_set()
-            return
-        self.path = path
-        ok = self._write(profile)
-        if ok:
-            self.pick_profile(name)
-        self.close()
-        self._show_saved(ok)
-
     def _show_saved(self, ok: bool) -> None:
         self.refill_profiles()
         if ok:
@@ -551,6 +617,8 @@ class CalibrationTab(Tab):
             return False
         try:
             profile.save(self.path)
+            if self.shot is not None:  # the summary is drawn on it
+                cv2.imwrite(str(self.path.with_suffix(".png")), self.shot)
         except OSError as exc:
             self.ctx.log.error(f"calibration: could not save {self.path}: {exc}")
             return False

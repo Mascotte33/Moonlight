@@ -33,3 +33,6 @@ instructions.md
 
 # Reference images for the calibration finders (cropped locally, C2.F1.K1)
 data/templates/anchors/
+
+# Calibration screenshots shown as the tab summary (owner-local)
+moonlight/profiles/*.png

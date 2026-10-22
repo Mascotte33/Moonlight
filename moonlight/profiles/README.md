@@ -7,6 +7,7 @@ Written by [../setup/calibrate.py](../setup/calibrate.py). Loaded by `../setup/p
 | File | What |
 |------|------|
 | `moonlight_user.json` | The default profile (`hp_bar`, `mp_bar`, `battle_list`, `minimap`, `floor_indicator`) |
+| `<name>.png` | Screenshot the profile was calibrated on, shown as the Calibration tab's summary. Gitignored |
 
 ## JSON schema
 
