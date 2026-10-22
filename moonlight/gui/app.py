@@ -28,6 +28,7 @@ from moonlight.gui.state_bridge import (
 )
 from moonlight.gui.sysinfo import cpu_percent, cpu_times, memory_text
 from moonlight.gui.tabs.base import Tab, dot_color, health
+from moonlight.gui.tabs.calibration import CalibrationTab
 from moonlight.gui.tabs.cavebot import CavebotTab
 from moonlight.gui.tabs.dashboard import DashboardTab
 from moonlight.gui.tabs.diagnostics import DiagnosticsTab
@@ -53,6 +54,7 @@ STATE_COLORS = {
 TAB_ORDER = (
     DashboardTab,
     SettingsTab,
+    CalibrationTab,
     CavebotTab,
     HealingTab,
     TargetingTab,

@@ -80,7 +80,7 @@ flowchart LR
   t7["C2.F2.K6"]
   t8["C2.F3.K1"]:::done
   t9["C2.F4.K1"]:::done
-  t10["C2.F4.K2"]
+  t10["C2.F4.K2"]:::done
   t11["C2.F4.K3"]
   t12["C3.F1.K1"]
   t13["C3.F2.K1"]
@@ -187,6 +187,7 @@ flowchart LR
   t16 -.-> f13
   t16 -.-> f23
   t16 --> t17
+  f5 --- c1
   f7 --- c3
   f13 --- c0
   f13 --- c2
