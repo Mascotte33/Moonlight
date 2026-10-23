@@ -63,7 +63,7 @@ class Sim:
         self._pos: Position | None = start
         self.state.position = start
 
-        self.route = Route("test", "", waypoints)
+        self.route = Route("test", "", waypoints, loop=False)
         self.bot = Cavebot(
             self.route,
             MINIMAP,
@@ -196,6 +196,16 @@ def test_walk_clicks_minimap_toward_waypoint_then_completes() -> None:
     assert not sim.bot.is_active() and sim.bot.alarm is None
 
 
+def test_looping_route_starts_over_after_the_last_waypoint() -> None:
+    sim = Sim([walk(110, 100), walk(110, 110)], Position(110, 100, 7))
+    sim.route.loop = True
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(110, 110, 7)
+    sim.step()
+    assert sim.reached == [0, 1] and sim.route.current == 0 and sim.bot.is_active()
+
+
 def test_far_waypoint_click_is_clamped_to_radar() -> None:
     sim = Sim([walk(1000, 100)], Position(100, 100, 7))
     sim.bot.start()
@@ -298,7 +308,7 @@ def test_action_retried_when_floor_does_not_change() -> None:
 def test_stuck_same_position_raises_alarm_and_stops() -> None:
     sim = Sim([walk(120, 100)], Position(100, 100, 7))
     sim.bot.start()
-    for _ in range(90):  # 4.5 s standing still
+    for _ in range(1190):  # 59.5 s standing still
         sim.step()
     assert sim.bot.is_active()
     for _ in range(20):
@@ -309,11 +319,47 @@ def test_stuck_same_position_raises_alarm_and_stops() -> None:
     assert len(sim.clicker.clicks) == clicks
 
 
+def run_until(sim: Sim, seconds: float) -> None:
+    while sim.now < seconds - 1e-9:
+        sim.step()
+
+
+def test_blocked_sidesteps_left_then_skips_walk_waypoint() -> None:
+    sim = Sim([walk(120, 100), walk(140, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    run_until(sim, 3.2)
+    assert sim.clicker.clicks[-1] == ((70, 69), ClickSide.LEFT)  # north of an east walk
+    sim.pos = Position(100, 99, 7)
+    sim.step()
+    assert sim.route.current == 1
+
+
+def test_blocked_tries_right_side_second_then_still_goes_stuck() -> None:
+    sim = Sim([walk(120, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    run_until(sim, 6.2)
+    targets = [t for t, _ in sim.clicker.clicks]
+    assert (70, 69) in targets and targets[-1] == (70, 71)
+    run_until(sim, 61.0)
+    assert sim.bot.alarm == "stuck"
+    targets = [t for t, _ in sim.clicker.clicks]
+    assert targets.count((70, 69)) == 1 and targets.count((70, 71)) == 1
+
+
+def test_blocked_non_walk_waypoint_is_retried_not_skipped() -> None:
+    sim = Sim([Waypoint(120, 100, 7, "node"), walk(140, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    run_until(sim, 3.2)
+    sim.pos = Position(100, 99, 7)
+    sim.step()
+    assert sim.route.current == 0
+
+
 def test_unreadable_position_sends_nothing_and_still_times_out() -> None:
     sim = Sim([walk(120, 100)], Position(100, 100, 7))
     sim.pos = None
     sim.bot.start()
-    for _ in range(110):
+    for _ in range(1220):
         sim.step()
     assert sim.clicker.clicks == [] and sim.bot.alarm == "stuck"
 
@@ -395,7 +441,7 @@ def test_resume_resets_stuck_timer_on_move_reentry() -> None:
 
     # Simulate a >stuck_timeout fight/IDLE: the loop leaves MOVE, so the
     # cavebot's step() is not called and only the clock advances.
-    sim.now += 6.0  # 6 s > stuck_timeout (5 s)
+    sim.now += 61.0  # 61 s > stuck_timeout (60 s)
 
     # The loop calls resume() when the state transitions back to MOVE.
     sim.bot.resume()
@@ -417,7 +463,7 @@ def test_stuck_still_halts_without_resume_after_long_idle() -> None:
     sim.step()  # clock=0.05; _last_move set
 
     # Long fight/IDLE with NO resume() (the bug: timer not reset).
-    sim.now += 6.0
+    sim.now += 61.0
     sim.step()
     assert sim.bot.alarm == "stuck"
     assert not sim.bot.is_active()

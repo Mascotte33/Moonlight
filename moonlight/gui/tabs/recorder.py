@@ -25,7 +25,7 @@ __all__ = [
     "route_path",
     "save_route",
     "should_add",
-    "status_line",
+    "position_line",
     "vk_code",
 ]
 
@@ -126,12 +126,12 @@ def should_add(waypoints: list[Waypoint], pos: Position, min_tiles: int) -> bool
     return max(abs(pos.x - last.x), abs(pos.y - last.y)) >= min_tiles
 
 
-def status_line(recording: bool, pos: Position) -> str:
-    """ "Recording" or "Not recording", plus *pos* when known."""
-    state = "Recording" if recording else "Not recording"
+def position_line(pos: Position, status: str = "") -> str:
+    """The character's coordinates and *status*, or "unknown" before the bot reads them."""
     if (pos.x, pos.y, pos.z) == (0, 0, 0):
-        return f"{state} · position unknown"
-    return f"{state} · {pos.x}, {pos.y}, {pos.z}"
+        return "Position unknown"
+    tail = f" ({status})" if status else ""
+    return f"Position {pos.x}, {pos.y}, {pos.z}{tail}"
 
 
 def route_path(routes_dir: Path, name: str) -> Path:

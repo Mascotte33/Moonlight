@@ -8,7 +8,10 @@
  *   D <combo>     hold combo down                -> OK
  *   U <combo>     release combo                  -> OK
  *   M <dx> <dy>   relative mouse move            -> OK
- *                 (each axis must be -127..127)  -> ERR otherwise
+ *                 (each axis must be -4000..4000) -> ERR otherwise
+ *   A <x> <y>     absolute mouse move            -> OK
+ *                 (each axis 0..32767, maps to the screen the OS
+ *                 assigns to absolute pointers)  -> ERR otherwise
  *   C L | C R     mouse click (left/right)       -> OK
  *   P             ping                           -> PONG
  *   X             release all inputs             -> OK
@@ -30,6 +33,7 @@
 
 #include <Keyboard.h>
 #include <Mouse.h>
+#include <HID.h>
 #include <string.h>
 
 // ------------------------------------------------------------ config -------
@@ -40,7 +44,10 @@
 #define STATUS_LED_PIN        13    // on-board LED
 
 #define WATCHDOG_TIMEOUT_MS   10000UL  // release all after 10 s silence
-#define MAX_MOUSE_DELTA       127      // per-axis bound for M commands
+#define MAX_MOUSE_DELTA       4000     // per-axis bound for M commands
+#define HID_MOUSE_STEP        127      // per-axis bound for one HID report
+#define ABS_MOUSE_MAX         32767    // per-axis bound for A commands
+#define ABS_MOUSE_REPORT_ID   7        // Mouse.h uses 1, Keyboard.h uses 2
 
 #define LINE_BUF_SIZE         96       // max characters per wire line
 #define MAX_ARGS              8        // max tokens per command
@@ -80,6 +87,40 @@
 #define CMD_BLINK_DURATION_MS 120UL    // LED pulse per valid command
 #define ERR_BLINK_DURATION_MS 600UL    // LED fast-blink window on ERR
 #define ERR_BLINK_PERIOD_MS   70UL     // half-period of the error blink
+
+// ----------------------------------------------------- absolute mouse -----
+// A second HID pointer with absolute X/Y (a "digitizer-like" mouse). The OS
+// warps the cursor straight to the reported spot, no acceleration. Buttons
+// stay on the stock relative Mouse, which clicks wherever the cursor is.
+
+static const uint8_t absMouseDescriptor[] PROGMEM = {
+  0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x85, ABS_MOUSE_REPORT_ID,
+  0x09, 0x01, 0xA1, 0x00,
+  0x05, 0x09, 0x19, 0x01, 0x29, 0x03, 0x15, 0x00, 0x25, 0x01,
+  0x95, 0x03, 0x75, 0x01, 0x81, 0x02,                 // 3 buttons (unused)
+  0x95, 0x01, 0x75, 0x05, 0x81, 0x03,                 // padding
+  0x05, 0x01, 0x09, 0x30, 0x09, 0x31,
+  0x16, 0x00, 0x00, 0x26, 0xFF, 0x7F,                 // 0..32767
+  0x75, 0x10, 0x95, 0x02, 0x81, 0x02,                 // X, Y absolute
+  0xC0, 0xC0
+};
+
+// Registered from a static constructor, like Mouse_, so the descriptor is
+// in place before USB enumeration.
+struct AbsMouseRegistrar {
+  AbsMouseRegistrar() {
+    static HIDSubDescriptor node(absMouseDescriptor, sizeof(absMouseDescriptor));
+    HID().AppendDescriptor(&node);
+  }
+};
+static AbsMouseRegistrar absMouseRegistrar;
+
+static void absMouseMove(int x, int y) {
+  uint8_t report[5] = {
+    0, (uint8_t)(x & 0xFF), (uint8_t)(x >> 8), (uint8_t)(y & 0xFF), (uint8_t)(y >> 8)
+  };
+  HID().SendReport(ABS_MOUSE_REPORT_ID, report, sizeof(report));
+}
 
 // ------------------------------------------------------------ state --------
 
@@ -364,14 +405,32 @@ static void processLine(char* line) {
         }
         break;
 
-      case 'M': { // relative mouse move
+      case 'M': { // relative mouse move, split into HID-sized reports
         if (n == 3) {
           int dx = 0, dy = 0;
           if (parseIntStrict(tokens[1], dx) &&
               parseIntStrict(tokens[2], dy) &&
               dx >= -MAX_MOUSE_DELTA && dx <= MAX_MOUSE_DELTA &&
               dy >= -MAX_MOUSE_DELTA && dy <= MAX_MOUSE_DELTA) {
-            Mouse.move(dx, dy, 0);
+            while (dx != 0 || dy != 0) {
+              int sx = constrain(dx, -HID_MOUSE_STEP, HID_MOUSE_STEP);
+              int sy = constrain(dy, -HID_MOUSE_STEP, HID_MOUSE_STEP);
+              Mouse.move(sx, sy, 0);
+              dx -= sx;
+              dy -= sy;
+            }
+            ok = true;
+          }
+        }
+        break;
+      }
+
+      case 'A': { // absolute mouse move
+        if (n == 3) {
+          int x = 0, y = 0;
+          if (parseIntStrict(tokens[1], x) && parseIntStrict(tokens[2], y) &&
+              x >= 0 && x <= ABS_MOUSE_MAX && y >= 0 && y <= ABS_MOUSE_MAX) {
+            absMouseMove(x, y);
             ok = true;
           }
         }

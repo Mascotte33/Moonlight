@@ -30,9 +30,12 @@ How the position is obtained
   :meth:`MinimapReader.reset` re-anchors it -- never a silent zero shift.
   An untrusted shift *with* a floor change is the radar redrawing for
   stairs/ropes: x, y are kept (the step is at most a tile).
-* **(x, y) — absolute**: a pluggable :class:`MapMatcher` converts the radar
-  image to world coordinates (map matching against a known map). When
-  configured it is authoritative: a ``None`` result yields ``None`` here.
+* **(x, y) — absolute**: a pluggable :class:`MapMatcher` (the bot uses
+  :class:`moonlight.perception.worldmap.WorldMap`) finds the radar on the
+  map, near the last position first. With no match the position is moved
+  by the terrain shift and is :attr:`MinimapReader.estimated`; after
+  ``estimate_for`` seconds without a match the reader is :attr:`lost`
+  until the next match.
 * **(x, y) — relative tracking** (default, no map matcher): the terrain
   displacement between successive radar frames is estimated with phase
   correlation (:func:`cv2.phaseCorrelate`); player displacement is the
@@ -50,7 +53,8 @@ a 106x109 radar) is well under the 10 ms budget (T30).
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from typing import Protocol
 
 import cv2
@@ -107,14 +111,16 @@ DEFAULT_SHIFT_RESPONSE_MIN = 0.6
 
 
 class MapMatcher(Protocol):
-    """Converts a grayscale radar image into absolute world coordinates.
+    """Finds an RGB radar crop on the world map of floor *z*.
 
-    Implementations perform map matching against a known world map.
+    With *near*, only the area around that ``(x, y)`` is searched.
     Return ``None`` when the map cannot be located.
     """
 
-    def match(self, radar_gray: np.ndarray) -> tuple[int, int] | None:  # pragma: no cover
-        """Return world ``(x, y)`` or ``None`` when unlocatable."""
+    def match(
+        self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+    ) -> tuple[int, int] | None:  # pragma: no cover
+        """Return world ``(x, y)`` of the radar center or ``None``."""
 
 
 class FloorSource(Protocol):
@@ -154,6 +160,9 @@ class MinimapReader:
         player_marker_rgb: RGB = PLAYER_MARKER_RGB,
         marker_tolerance: int = DEFAULT_MARKER_TOLERANCE,
         shift_response_min: float = DEFAULT_SHIFT_RESPONSE_MIN,
+        px_per_sqm: float | None = None,
+        estimate_for: float = 10.0,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         """Create a reader.
 
@@ -165,15 +174,20 @@ class MinimapReader:
             floor_region: Region for the floor reader; defaults to the
                 region stored inside a :class:`FloorReader`.
             map_matcher: Absolute map matcher (see :class:`MapMatcher`).
-                When given, it is the sole source of (x, y).
-            initial_position: Anchor for relative tracking (used when no
-                *map_matcher* is configured): first read reports this.
-                Defaults to ``Position(0, 0, 0)`` when ``None``.
+                When given, matches are the source of (x, y) and the
+                terrain shift only bridges reads without a match.
+            initial_position: Anchor for relative tracking; with a
+                *map_matcher*, the last known position to search near.
+                Defaults to ``Position(0, 0, 0)`` (unknown with a matcher).
             player_marker_rgb: Color of the player marker at the radar
                 center.
             marker_tolerance: Per-channel tolerance for the marker color.
             shift_response_min: Minimum phase-correlation response for a
                 trusted terrain shift.
+            px_per_sqm: Radar pixels per tile; defaults to the ui_scale.
+            estimate_for: Seconds a *map_matcher* reader keeps estimating
+                from the terrain shift before it is :attr:`lost`.
+            clock: Monotonic clock for *estimate_for*.
 
         Raises:
             ValueError: If a region is not a 4-element tuple.
@@ -192,6 +206,10 @@ class MinimapReader:
         # doc: docs/prs/gui-calibration.md#ui-scale
         # One world tile is ui_scale px; the radar size and center follow the crop.
         self._scale = float(getattr(profile, "ui_scale", 1.0))
+        self._px = float(px_per_sqm) if px_per_sqm is not None else self._scale
+        self._estimate_for = float(estimate_for)
+        self._clock = clock
+        self._estimated_since: float | None = None
         self._floor_reader = floor_reader
         self._floor_region = floor_region
         self._map_matcher = map_matcher
@@ -205,7 +223,7 @@ class MinimapReader:
         self._position = initial_position
         self._prev_gray: np.ndarray | None = None
         self._prev_z = initial_position.z
-        self._lost = False
+        self._lost = map_matcher is not None and initial_position == Position(0, 0, 0)
 
     # -- public API ---------------------------------------------------------
 
@@ -216,8 +234,13 @@ class MinimapReader:
 
     @property
     def lost(self) -> bool:
-        """True after an untrackable jump, until :meth:`reset` (F-17)."""
+        """True after an untrackable jump, until :meth:`reset` or a map match (F-17)."""
         return self._lost
+
+    @property
+    def estimated(self) -> bool:
+        """True while the position comes from the terrain shift, not a map match."""
+        return self._estimated_since is not None and not self._lost
 
     def read_position(
         self,
@@ -237,20 +260,38 @@ class MinimapReader:
             marker and no trusted shift), or tracking is :attr:`lost`.
         """
         region = region if region is not None else self._minimap_region
-        if region is None or self._lost:
+        if region is None or (self._lost and self._map_matcher is None):
             return None
         crop = self._crop(frame, region)
         if crop is None or crop.size == 0:
             return None
-        marker = self._marker_at_center(crop)
         h, w = crop.shape[:2]
         gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
 
         if self._map_matcher is not None:
-            xy = self._map_matcher.match(gray) if marker else None
-            if xy is None:
+            z = self._read_z(frame)
+            near = None if self._lost else (self._position.x, self._position.y)
+            xy = self._map_matcher.match(crop, z, near)
+            if xy is None and near is not None:
+                xy = self._map_matcher.match(crop, z, None)
+            if xy is not None:
+                self._position = Position(int(xy[0]), int(xy[1]), z)
+                self._px = float(getattr(self._map_matcher, "zoom", self._px))
+                self._lost = False
+                self._estimated_since = None
+                self._prev_gray, self._prev_z = gray, z
+                return self._position
+            if self._lost:
                 return None
-            return Position(int(xy[0]), int(xy[1]), self._read_z(frame))
+            now = self._clock()
+            if self._estimated_since is None:
+                self._estimated_since = now
+            elif now - self._estimated_since > self._estimate_for:
+                self._lose(f"no map match for {self._estimate_for:.0f} s")
+                return None
+            marker = True  # the map match, not the cross, validates this radar
+        else:
+            marker = self._marker_at_center(crop)
 
         # Relative tracking: player displacement = negated terrain shift.
         shift = None if self._prev_gray is None else self._terrain_shift(self._prev_gray, gray)
@@ -263,8 +304,8 @@ class MinimapReader:
                 # Phase correlation aliases beyond half the radar.
                 self._lose(f"shift {shift} beyond half the radar")
                 return None
-            dx = -int(round(shift[0] / self._scale))
-            dy = -int(round(shift[1] / self._scale))
+            dx = -int(round(shift[0] / self._px))
+            dy = -int(round(shift[1] / self._px))
         elif self._prev_gray is not None and z == self._prev_z:
             # Radar changed with no floor change: teleport or a big jump.
             self._lose("radar changed with no trusted shift")
@@ -285,6 +326,7 @@ class MinimapReader:
         self._prev_gray = None
         self._prev_z = self._position.z
         self._lost = False
+        self._estimated_since = None
 
     # -- helpers ------------------------------------------------------------
 

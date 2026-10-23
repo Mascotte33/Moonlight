@@ -13,6 +13,7 @@ from tkinter import messagebox
 
 import customtkinter as ctk
 
+from moonlight.bot.state import WorldState
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import (
     config_names,
@@ -128,6 +129,9 @@ class SettingsTab(Tab):
                     reason = ctk.CTkLabel(row, text="", anchor="w", text_color=theme.BLOOD)
                     reason.pack(side="left", padx=theme.UNIT)
                     self._reasons[option.field] = reason
+
+    def on_poll(self, snap: WorldState) -> None:
+        self.show_paused(["targeting.enabled"], self.ctx.paused)
 
     def _refresh_windows(self) -> None:
         self.menu_window.configure(values=window_titles() or ["No windows found"])

@@ -181,49 +181,28 @@ def test_targeting_without_resolver_warns(
 
 
 
-# -- F-03: absolute minimap seed wiring ----------------------------------------
+# -- map matching wiring --------------------------------------------------------
 
 
-def test_minimap_start_seeds_minimap_reader(monkeypatch: pytest.MonkeyPatch) -> None:
-    """F-03 wiring: minimap_start flows from config into MinimapReader.
-
-    Verifies the config's absolute-start seed (F-03) reaches the perception
-    layer: make_perceive passes minimap_start through to MinimapReader as
-    initial_position, so reported positions are absolute world coordinates.
-    """
+def test_start_seeds_minimap_reader(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """make_perceive passes the last known position to MinimapReader."""
     from moonlight.bot.state import Position
 
     captured: dict[str, object] = {}
 
     class _FakeMinimap:
-        def __init__(
-            self,
-            profile: CalibrationProfile,
-            floor_reader: object | None = None,
-            initial_position: object | None = None,
-        ) -> None:
-            captured["initial_position"] = initial_position
+        def __init__(self, profile: CalibrationProfile, **kwargs: object) -> None:
+            captured.update(kwargs)
 
         def read_position(self, frame: np.ndarray) -> object:
             return None
 
     monkeypatch.setattr("moonlight.perception.minimap.MinimapReader", _FakeMinimap)
-    state = WorldState()
     frame = np.zeros((600, 800, 3), dtype=np.uint8)
-
-    def frame_provider() -> np.ndarray:
-        return frame
-
-    # With a seed: MinimapReader must receive it as initial_position.
     wiring.make_perceive(
-        state, make_profile(), frame_provider, minimap_start=(100, 200, 7)
+        WorldState(), make_profile(), lambda: frame, start=Position(100, 200, 7), map_dir=tmp_path
     )
     assert captured["initial_position"] == Position(100, 200, 7)
-
-    # Without a seed it starts away from (0, 0, 0), which means "unknown".
-    captured.clear()
-    wiring.make_perceive(state, make_profile(), frame_provider, minimap_start=None)
-    assert captured["initial_position"] == Position(1000, 1000, 7)
 
 
 def test_lost_minimap_clears_state_position(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -323,16 +302,6 @@ def test_start_index_past_the_end_is_refused() -> None:
     cfg = replace(BotConfig.default(), cavebot=CavebotConfig(route, start_index=1))
     with pytest.raises(ConfigError, match="outside 1..1"):
         cfg.validate()
-
-
-def test_start_position_is_the_first_waypoint_unless_set() -> None:
-    from moonlight.decision.cavebot import Route, Waypoint
-
-    route = Route("r", waypoints=[Waypoint(100, 200, 7), Waypoint(101, 200, 7)])
-    cfg = replace(BotConfig.default(), cavebot=CavebotConfig(route))
-    assert wiring.start_position(cfg) == (100, 200, 7)
-    assert wiring.start_position(replace(cfg, minimap_start=(1, 2, 3))) == (1, 2, 3)
-    assert wiring.start_position(BotConfig.default()) is None
 
 
 # -- live apply ----------------------------------------------------------------

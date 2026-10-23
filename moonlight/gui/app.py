@@ -12,13 +12,16 @@ thin presentation layer and never reimplements bot logic.
 from __future__ import annotations
 
 import argparse
+import ctypes
+import sys
+import threading
 import time
 
 import customtkinter as ctk
 
 from moonlight.bot.state import WorldState
 from moonlight.gui import theme
-from moonlight.gui.loop_factory import build_gui_loop, load_real_config
+from moonlight.gui.loop_factory import build_gui_loop, build_position_reader, load_real_config
 from moonlight.gui.state_bridge import (
     BotController,
     GuiContext,
@@ -41,6 +44,21 @@ from moonlight.gui.tabs.targeting import TargetingTab
 #: Poller period in ms (10 Hz — light enough for a low-spec laptop).
 POLL_MS = 100
 RETRY_S = 5.0  # seconds between tries to start a bot that is down
+WATCH_S = 0.2  # seconds between position reads while the bot is stopped
+_VK_F12 = 0x7B
+
+
+def f12_pressed() -> bool:
+    """True once per F12 press, in any window.
+
+    Windows won't hand F12 to ``RegisterHotKey`` (it is reserved for
+    debuggers), so the poller reads the key state instead. Bit 0 means
+    "pressed since the last call", which catches taps shorter than a poll.
+    """
+    if sys.platform != "win32":
+        return False
+    return bool(ctypes.windll.user32.GetAsyncKeyState(_VK_F12) & 1)
+
 
 SIDEBAR_WIDTH = 200
 
@@ -48,6 +66,7 @@ SIDEBAR_WIDTH = 200
 STATE_COLORS = {
     "Running": theme.LIFE,
     "Paused": theme.AMBER,
+    "Waiting for game": theme.AMBER,
     "Stopped": theme.TEXT_MUTED,
 }
 
@@ -146,12 +165,16 @@ class GuiApp:
             self._nav[title].pack(fill="x", padx=theme.UNIT * 2, pady=1)
         self.select_tab(next(iter(self.tabs)))
 
-        #: Stop, Pause or the kill switch hold the bot down until Start.
+        #: Stop or the kill switch hold the bot down until Start.
         self._held = not start_bot
+        #: Pause: the bot runs without cavebot and targeting until Start.
         self._retry_at = 0.0
         self._start_error = ""
+        f12_pressed()  # drop a press from before the app opened
         if start_bot:
             self.start_bot()
+        self._closing = threading.Event()
+        threading.Thread(target=self._watch_position, name="position", daemon=True).start()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.after(POLL_MS, self._poll)
 
@@ -194,7 +217,7 @@ class GuiApp:
         buttons = (
             ("■ Stop", self.stop_bot, theme.BLOOD, theme.BLOOD_HOVER),
             ("⏸ Pause", self.pause_bot, theme.AMBER, theme.AMBER_HOVER),
-            ("▶ Start", self.start_bot, theme.LIFE, theme.LIFE_HOVER),
+            ("▶ Start", self.resume_bot, theme.LIFE, theme.LIFE_HOVER),
         )
         made: list[ctk.CTkButton] = []
         self._btn_colors: dict[ctk.CTkButton, tuple[str, str]] = {}
@@ -252,12 +275,22 @@ class GuiApp:
             self._res_t, self._cpu = now, cpu
 
     def pause_bot(self) -> None:
-        """Pause = the controller's stop(), same as Settings' pause."""
-        self._held = True
+        """Pause: cavebot and targeting stop; refill, healing, spells and alarms go on."""
+        self.ctx.paused = True
         ctrl = self.ctx.controller
         if ctrl is not None:
-            ctrl.stop()
+            ctrl.loop.paused = True
         self._update_topbar()
+
+    def resume_bot(self) -> None:
+        """Start button and F12: undo the last Pause or Stop."""
+        self._held = self.ctx.paused = False
+        ctrl = self.ctx.controller
+        if ctrl is not None and self.ctx.bot_running():
+            ctrl.loop.paused = False
+            self._update_topbar()
+        else:
+            self.start_bot(resume=ctrl is not None)
 
     def apply_config(self, restart: bool = False) -> None:
         """Hand the picked config to the running bot (live apply).
@@ -305,13 +338,15 @@ class GuiApp:
         self._start_error = ""
         if resume and loop.modules.cavebot is not None:
             loop.modules.cavebot.start(nearest=True)
+        loop.paused = self.ctx.paused  # a restart keeps a Pause
         self.ctx.controller = BotController(loop, log=self.log)
         self.ctx.controller.start()
         self._update_topbar()
 
     def stop_bot(self) -> None:
-        """Stop the bot loop thread (idempotent)."""
+        """Stop: the whole loop (healing, spells, alarms too) until Start."""
         self._held = True
+        self.ctx.paused = False
         ctrl = self.ctx.controller
         if ctrl is not None:
             ctrl.stop()
@@ -322,7 +357,7 @@ class GuiApp:
         running = self.ctx.bot_running()
         snap = self.ctx.state.snapshot()
         hp, mp, state = topbar_text(
-            snap, running, ctrl.state if ctrl is not None else None
+            snap, running, ctrl.state if ctrl is not None else None, self.ctx.paused
         )
         self.bar_hp.set(min(max(snap.hp_percent / 100, 0.0), 1.0))
         self.bar_mp.set(min(max(snap.mp_percent / 100, 0.0), 1.0))
@@ -331,8 +366,8 @@ class GuiApp:
         self.lbl_state.configure(text=state)
         self.lbl_dot.configure(text_color=STATE_COLORS[state])
         enabled = {
-            self.btn_start: not running,
-            self.btn_pause: running,
+            self.btn_start: not running or self.ctx.paused,
+            self.btn_pause: running and not self.ctx.paused,
             self.btn_stop: running,
         }
         for btn, on in enabled.items():
@@ -346,6 +381,8 @@ class GuiApp:
     def _poll(self) -> None:
         """One poller pass: snapshot the state and refresh every tab."""
         try:
+            if f12_pressed():
+                self.resume_bot() if self._held or self.ctx.paused else self.pause_bot()
             self._keep_running()
             snap = self.ctx.state.snapshot()
             for tab in self.tabs.values():
@@ -369,8 +406,27 @@ class GuiApp:
             return
         self.start_bot(resume=ctrl is not None)
 
+    def _watch_position(self) -> None:
+        """Keep reading the position while the bot is stopped (screen only)."""
+        perceive = None
+        retry_at = 0.0
+        while not self._closing.wait(WATCH_S):
+            if self.ctx.bot_running():
+                perceive = None  # the next stop starts from the bot's last position
+                continue
+            if perceive is None:
+                if time.monotonic() < retry_at:
+                    continue
+                try:
+                    perceive = build_position_reader(self.state)
+                except Exception:  # noqa: BLE001 - no profile or window yet; try again
+                    retry_at = time.monotonic() + RETRY_S
+                    continue
+            perceive()
+
     def on_close(self) -> None:
         """Window close: stop the bot and close hardware."""
+        self._closing.set()
         try:
             self.stop_bot()
             self.hardware.disconnect()

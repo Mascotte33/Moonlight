@@ -217,6 +217,6 @@ def _split(route: Route) -> tuple[Route, Route]:
             if wp.action == "goto" and wp.label not in names:
                 raise RouteError(f"goto {wp.label!r} crosses the storage label")
     return (
-        Route(name=f"{route.name}:to_storage", waypoints=list(legs[0])),
-        Route(name=f"{route.name}:back", waypoints=list(legs[1])),
+        Route(name=f"{route.name}:to_storage", waypoints=list(legs[0]), loop=False),
+        Route(name=f"{route.name}:back", waypoints=list(legs[1]), loop=False),
     )

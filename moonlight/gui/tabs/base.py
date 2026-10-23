@@ -20,6 +20,7 @@ import time
 import types
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -237,6 +238,9 @@ class Tab:
         self.ctx = ctx
         self._readers: dict[str, Callable[[], object]] = {}
         self._writers: dict[str, Callable[[object], None]] = {}
+        self._switches: dict[str, ctk.CTkSwitch] = {}
+        #: Switches ``show_paused`` holds off: field -> (widget reader, saved value).
+        self._held: dict[str, tuple[Callable[[], object], object]] = {}
 
     def build(self, parent: ctk.CTkFrame) -> None:
         """Create this tab's widgets inside *parent* (called once)."""
@@ -265,13 +269,31 @@ class Tab:
             put(read_option(cfg, option.field))
             self._readers[option.field] = get
             self._writers[option.field] = put
+            if option.control == "switch":
+                self._switches[option.field] = row.winfo_children()[-1]
 
     def reload_options(self) -> None:
         """Refill every control from the picked config."""
         cfg = load_real_config()
         for option in self.options:
-            if option.field in self._writers:
+            if option.field in self._held:
+                get = self._held[option.field][0]
+                self._held[option.field] = (get, read_option(cfg, option.field))
+            elif option.field in self._writers:
                 self._writers[option.field](read_option(cfg, option.field))
+
+    def show_paused(self, fields: Sequence[str], paused: bool) -> None:
+        """Pause: show these switches off and grayed; saves keep the real value."""
+        for field in fields:
+            if paused and field not in self._held:
+                self._held[field] = (self._readers[field], self._readers[field]())
+                self._readers[field] = partial(lambda f: self._held[f][1], field)
+                self._writers[field](False)
+                self._switches[field].configure(state="disabled")
+            elif not paused and field in self._held:
+                self._readers[field], value = self._held.pop(field)
+                self._writers[field](value)
+                self._switches[field].configure(state="normal")
 
     def submit(self) -> None:
         """Save this tab and apply it live; a refused value goes to the log.

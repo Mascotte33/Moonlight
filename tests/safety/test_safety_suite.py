@@ -152,7 +152,7 @@ def test_4_stuck_detection_sets_alarm_not_exception() -> None:
     bot, _ = make_cavebot(clock, [Waypoint(150, 150, 7)], (100, 100), 7)
     bot.step()
     assert bot.alarm is None
-    clock.now = 5.1  # no movement for > 5 s
+    clock.now = 60.1  # no movement for > 60 s
     bot.step()  # must not raise
     assert bot.alarm == "stuck"
     assert not bot.is_active()

@@ -11,10 +11,10 @@ from moonlight.decision.cavebot import RouteError, RouteFileLoader, Waypoint
 from moonlight.gui.tabs.recorder import (
     HOTKEYS,
     make_waypoint,
+    position_line,
     route_path,
     save_route,
     should_add,
-    status_line,
     vk_code,
 )
 
@@ -68,9 +68,10 @@ def test_long_step_or_floor_change_adds() -> None:
     assert should_add([], Position(1, 1, 7), 5)
 
 
-def test_status_line() -> None:
-    assert status_line(False, Position(0, 0, 0)) == "Not recording · position unknown"
-    assert status_line(True, Position(1, 2, 7)) == "Recording · 1, 2, 7"
+def test_position_line() -> None:
+    assert position_line(Position(0, 0, 0)) == "Position unknown"
+    assert position_line(Position(1, 2, 7)) == "Position 1, 2, 7"
+    assert position_line(Position(1, 2, 7), "lost") == "Position 1, 2, 7 (lost)"
 
 
 def test_each_hotkey_maps_to_its_action() -> None:

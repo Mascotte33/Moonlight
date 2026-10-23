@@ -20,4 +20,5 @@ def test_state_text() -> None:
     assert topbar_text(snap, False, None)[2] == "Stopped"
     assert topbar_text(snap, False, BotState.PAUSED)[2] == "Stopped"
     assert topbar_text(snap, True, BotState.IDLE)[2] == "Running"
-    assert topbar_text(snap, True, BotState.PAUSED)[2] == "Paused"
+    assert topbar_text(snap, True, BotState.PAUSED)[2] == "Waiting for game"
+    assert topbar_text(snap, True, BotState.PAUSED, paused=True)[2] == "Paused"

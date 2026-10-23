@@ -17,11 +17,10 @@ Implementation notes
 
 * Detection is **template matching** via :class:`cv2.matchTemplate`
   (``TM_CCOEFF_NORMED``) of each level's grayscale template over the
-  calibrated indicator region. No OCR, no heuristics.
+  calibrated indicator region. No OCR.
 * Templates are loaded lazily from ``data/templates/floorLevels`` by default
-  (overridable). Until the user provides real screenshots (T08), the
-  directory does not exist and :meth:`FloorReader.read_floor` returns
-  ``None`` (fail closed) — we never fabricate a floor.
+  (overridable). Without them the floor comes from the slider handle beside
+  the floor rows (:meth:`FloorReader._read_slider`), or ``None``.
 * A :class:`TemplateSet` can be injected directly (used by the synthetic
   unit tests); this keeps the matching path fully testable offline.
 * Frames are RGB ``(H, W, 3)`` ``uint8`` arrays as produced by
@@ -267,7 +266,7 @@ class FloorReader:
         gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
         templates = self._templates_lazy()
         if templates is None:
-            return None
+            return self._read_slider(gray)
         match = templates.match(gray, self._match_threshold)
         if match is None:
             return None
@@ -275,6 +274,24 @@ class FloorReader:
         return level
 
     # -- helpers ------------------------------------------------------------
+
+    @staticmethod
+    def _read_slider(gray: np.ndarray) -> int | None:
+        """Floor from the slider handle beside the 16 floor rows, or ``None``.
+
+        In the 22x72 indicator (ui_scale 1) floor *f* is the 4 px row at
+        ``y = 5 + 4f`` and the handle is a 6 px gray block in columns 18-19
+        (gray >= 95; the track there is ~70) centred on that row.
+        """
+        h, w = gray.shape
+        cols = gray[:, w * 18 // 22 : w * 20 // 22]
+        if cols.size == 0:
+            return None
+        rows = np.nonzero((cols >= 95).all(axis=1))[0]
+        if not h * 3 / 72 <= len(rows) <= h * 9 / 72 or np.ptp(rows) >= len(rows):
+            return None
+        level = round((rows.mean() - h * 4.5 / 72) / (h / 18))
+        return level if MIN_FLOOR <= level <= MAX_FLOOR else None
 
     def _templates_lazy(self) -> TemplateSet | None:
         """Load templates from *template_dir* once, then cache the result."""

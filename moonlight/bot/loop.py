@@ -91,7 +91,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -273,7 +273,9 @@ class GameLoop:
         self._clock = clock if clock is not None else time.monotonic
         self._sleep_fn = sleep_fn if sleep_fn is not None else time.sleep
         self._pm_open_check = pm_open_check
-        self.modules = modules if modules is not None else DecisionModules()
+        self.all_modules = modules if modules is not None else DecisionModules()
+        #: GUI Pause: cavebot, targeting and refill sit out, the rest keeps running.
+        self.paused = False
         self._perceive = perceive
         self._alert_sink = alert
         #: Takes a new BotConfig while running; False when it needs a rebuild
@@ -322,6 +324,17 @@ class GameLoop:
 
         # (monotonic_time, hp) samples for the fast-HP-drop alarm.
         self._hp_history: deque[tuple[float, float]] = deque()
+
+    @property
+    def modules(self) -> DecisionModules:
+        """The modules that run this tick (``all_modules`` minus the paused ones)."""
+        if not self.paused:
+            return self.all_modules
+        return replace(self.all_modules, cavebot=None, targeting=None)
+
+    @modules.setter
+    def modules(self, value: DecisionModules) -> None:
+        self.all_modules = value
 
     def _cavebot_active(self, _snap: WorldState) -> bool:
         return self.modules.cavebot is not None and self.modules.cavebot.is_active()

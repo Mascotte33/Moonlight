@@ -153,6 +153,10 @@ class RateLimitedInput(InputBackend):
         if self._pay("mouse_move"):
             self.backend.mouse_move(dx, dy)
 
+    def mouse_to(self, x: int, y: int) -> None:
+        if self._pay("mouse_to"):
+            self.backend.mouse_to(x, y)
+
     def click(self, side: ClickSide) -> None:
         if self._pay("click"):
             self.backend.click(side)

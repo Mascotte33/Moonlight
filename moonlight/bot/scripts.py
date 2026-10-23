@@ -114,6 +114,10 @@ class _GuardedInput(InputBackend):
         if self._open:
             self._inner.mouse_move(dx, dy)
 
+    def mouse_to(self, x: int, y: int) -> None:
+        if self._open:
+            self._inner.mouse_to(x, y)
+
     def click(self, side: ClickSide) -> None:
         if self._open:
             self._inner.click(side)

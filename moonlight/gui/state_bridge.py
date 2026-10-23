@@ -52,16 +52,20 @@ __all__ = [
 
 
 def topbar_text(
-    snap: WorldState, running: bool, bot_state: Any = None
+    snap: WorldState, running: bool, bot_state: Any = None, paused: bool = False
 ) -> tuple[str, str, str]:
-    """Top-bar texts: ``(hp "73%", mp "40%", state "Running"/"Paused"/"Stopped")``.
+    """Top-bar texts: ``(hp "73%", mp "40%", state)``: Running, Paused, Waiting for game, Stopped.
 
     *bot_state* is the loop's ``BotState`` (a ``StrEnum``; compared by value).
+    Its own PAUSED means the game window is unfocused or unreadable, which is
+    "Waiting for game"; "Paused" is only the Pause button (*paused*).
     """
     if not running:
         state = "Stopped"
-    elif bot_state == "paused":
+    elif paused:
         state = "Paused"
+    elif bot_state == "paused":
+        state = "Waiting for game"
     else:
         state = "Running"
     return f"{snap.hp_percent:.0f}%", f"{snap.mp_percent:.0f}%", state
@@ -429,6 +433,8 @@ class GuiContext:
     config_listeners: list[Callable[[], None]] = field(default_factory=list)
     #: Called after any option is saved (the app applies it to the bot).
     on_config_change: Callable[[bool], None] | None = None
+    #: GUI Pause: the Targeting and Cavebot switches show off until Start.
+    paused: bool = False
 
     def pick_config(self, name: str) -> Path:
         """Pick named config *name* and tell every listener."""

@@ -20,7 +20,6 @@ JSON format (``moonlight_config.json``)::
       "profiles_dir": null,                # null = moonlight/profiles
       "templates_dir": "data/templates",   # cursor/*.png, loot/*.png
       "routes_dir": "data/waypoints",
-      "minimap_start": [x, y, z],          # optional absolute seed (F-03)
       "loop": {"tick_rate": 20.0},         # any LoopConfig field
       "clicker": {"open_loop": false},     # any ClickerConfig field (F-14)
       "hotkeys": {"exura gran": "F1", "exura": "F2"},   # spell -> combo
@@ -107,7 +106,6 @@ _TOP_KEYS = {
     "profiles_dir",
     "templates_dir",
     "routes_dir",
-    "minimap_start",
     "monster_name_source",
     "capacity_source",
     "buff_icon_source",
@@ -162,11 +160,6 @@ class BotConfig:
     cavebot: CavebotConfig | None = None
     looting: LootingConfig | None = None
     refill: RefillConfig | None = None
-    #: Absolute ``(x, y, z)`` seed for minimap position tracking (F-03).
-    #: When set, the minimap reader reports *absolute* world positions
-    #: (seed + accumulated relative offset) instead of positions relative to
-    #: wherever the bot started. ``None`` keeps the legacy relative behavior.
-    minimap_start: tuple[int, int, int] | None = None
     #: Perception sources that are actually wired up (F-09 / F-10). The
     #: capacity reader and the monster-name resolver are deferred (T34), so
     #: the corresponding modules would run against *unpopulated* state. Set
@@ -217,7 +210,8 @@ class BotConfig:
         Raises:
             ConfigError: On any missing, unknown or malformed field.
         """
-        data = _require_dict(raw, "config")
+        data = dict(_require_dict(raw, "config"))
+        data.pop("minimap_start", None)  # old files: the map gives the position now
         _reject_unknown(data, _TOP_KEYS, "config")
         hints = get_type_hints(cls)
         kwargs: dict[str, Any] = {}
@@ -233,7 +227,6 @@ class BotConfig:
             "profiles_dir",
             "templates_dir",
             "routes_dir",
-            "minimap_start",
             "monster_name_source",
             "capacity_source",
             "buff_icon_source",
@@ -322,15 +315,6 @@ class BotConfig:
             for cfg in (self.healing, self.targeting, self.attack_spells, self.buffs, self.alarms):
                 if cfg is not None:
                     cfg.validate()
-            if self.minimap_start is not None:
-                start = self.minimap_start
-                if len(start) != 3:
-                    raise ValueError(f"minimap_start must be (x, y, z), got {start!r}")
-                for i, value in enumerate(start):
-                    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                        raise ValueError(
-                            f"minimap_start[{i}] must be a non-negative int, got {value!r}"
-                        )
             for spell, combo in self.spell_combos.items():
                 if not combo or any(ch.isspace() for ch in combo):
                     raise ValueError(f"hotkey for {spell!r} must be a combo without spaces")

@@ -25,6 +25,12 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   exact tile and is done when the floor changes, up or down.
 * **label / goto**: positionless. ``label`` is a jump target; ``goto``
   jumps to the waypoint after the named label (route loops).
+* **End of route**: a hunting route starts over at waypoint 0; a route
+  with ``loop`` off (the refill legs) completes and the cavebot stops.
+* **Blocked** (an NPC in the way): after ``sidestep_after`` seconds without
+  moving, the bot clicks the tile left of its walking direction, then
+  ``sidestep_after`` later the tile right of it. Once it moves again after a
+  sidestep, a ``walk`` waypoint is skipped; any other waypoint is retried.
 * **Stuck**: position unchanged for ``stuck_timeout`` seconds -> the route
   stops and :attr:`Cavebot.alarm` is set to ``"stuck"``. The loop calls
   :meth:`Cavebot.resume` whenever MOVE is (re)entered, so time spent in a
@@ -107,6 +113,8 @@ class Route:
     name: str
     description: str = ""
     waypoints: list[Waypoint] = field(default_factory=list)
+    #: Start over at waypoint 0 after the last one (off: the route completes).
+    loop: bool = True
     #: Where the bot is on the route, not part of the route itself.
     current: int = field(default=0, compare=False)
 
@@ -195,8 +203,9 @@ class Cavebot:
         input_backend: InputBackend | None = None,
         rope_hotkey: str = "F9",
         shovel_hotkey: str = "F10",
-        stuck_timeout: float = 5.0,
+        stuck_timeout: float = 60.0,
         reclick_interval: float = 1.0,
+        sidestep_after: float = 3.0,
         clock: Callable[[], float] | None = None,
         on_waypoint_reached: Callable[[int], None] | None = None,
     ) -> None:
@@ -216,6 +225,8 @@ class Cavebot:
             stuck_timeout: Seconds without movement before alarm "stuck".
             reclick_interval: Seconds standing still before a walk click or
                 tile action is retried.
+            sidestep_after: Seconds without moving before each of the two
+                sidestep clicks around a blocker.
             clock: Monotonic-clock override (tests).
             on_waypoint_reached: Called with the index of each reached
                 positional waypoint.
@@ -238,6 +249,7 @@ class Cavebot:
         self._hotkeys = {"rope": rope_hotkey, "shovel": shovel_hotkey}
         self._stuck_timeout = float(stuck_timeout)
         self._reclick_interval = float(reclick_interval)
+        self._sidestep_after = float(sidestep_after)
         self._clock = clock if clock is not None else time.monotonic
         self._callback = on_waypoint_reached
 
@@ -249,6 +261,8 @@ class Cavebot:
         self._last_move = 0.0
         self._last_cmd = 0.0
         self._expected_z: int | None = None
+        #: Sidestep clicks sent since the player last moved (0-2).
+        self._sidesteps = 0
         self._reset_tracking()
 
     # -- public API ---------------------------------------------------------
@@ -270,6 +284,7 @@ class Cavebot:
         """MOVE (re)entered: restart the stuck timer and re-click at once."""
         self._last_move = self._clock()
         self._last_cmd = float("-inf")
+        self._sidesteps = 0
         self._clicker.cancel()  # a click queued before leaving MOVE is stale
 
     def stop(self) -> None:
@@ -302,7 +317,10 @@ class Cavebot:
             return
         now = self._clock()
         pos = self._read_position()
+        moved_aside = False
         if pos is not None and pos != self._last_pos:
+            moved_aside = self._sidesteps > 0
+            self._sidesteps = 0
             self._last_pos = pos
             self._last_move = now
         elif now - self._last_move > self._stuck_timeout:
@@ -312,6 +330,10 @@ class Cavebot:
             return
 
         wp = self.route.waypoints[self.route.current]
+        if moved_aside and wp.action == "walk":
+            logger.info("cavebot: got past a blocker, skipping waypoint %d", self.route.current)
+            self._advance()
+            return
         if self._expected_z is not None and pos.z == self._expected_z:
             self._advance()  # the rope/shovel/ladder action worked
             return
@@ -328,6 +350,12 @@ class Cavebot:
                 self._expected_z = wp.z + _FLOOR_DELTA[wp.action]
                 self._retry_if_idle(now, lambda: self._tile_action(wp, pos))
             return
+        if self._sidesteps < 2 and now - self._last_move >= self._sidestep_after * (
+            self._sidesteps + 1
+        ):
+            self._sidestep(wp, pos)
+            self._last_cmd = now
+            return
         self._retry_if_idle(now, lambda: self._walk_toward(wp, pos))
 
     # -- internals ----------------------------------------------------------
@@ -337,6 +365,7 @@ class Cavebot:
         self._last_move = self._clock()
         self._last_cmd = float("-inf")
         self._expected_z = None
+        self._sidesteps = 0
 
     def _halt(self, alarm: str) -> None:
         logger.warning("cavebot: route %r stopped: %s", self.route.name, alarm)
@@ -365,6 +394,9 @@ class Cavebot:
         wps = self.route.waypoints
         for _ in range(len(wps) + 1):
             if self.route.current >= len(wps):
+                if self.route.loop:
+                    self.route.current = 0
+                    continue
                 logger.info("cavebot: route %r complete", self.route.name)
                 self._active = False
                 return False
@@ -419,6 +451,17 @@ class Cavebot:
         dx = max(-(mw // 2 - 2), min(mw // 2 - 2, wp.x - pos.x))
         dy = max(-(mh // 2 - 2), min(mh // 2 - 2, wp.y - pos.y))
         self._clicker.request((mx + mw // 2 + dx, my + mh // 2 + dy))
+
+    def _sidestep(self, wp: Waypoint, pos: Position) -> None:
+        """Click the tile beside the walking direction: left first, then right."""
+        sx = (wp.x > pos.x) - (wp.x < pos.x)
+        sy = (wp.y > pos.y) - (wp.y < pos.y)
+        side = (sy, -sx) if self._sidesteps == 0 else (-sy, sx)  # y grows downward
+        self._sidesteps += 1
+        logger.info("cavebot: blocked, sidestep %d to %+d,%+d", self._sidesteps, *side)
+        mx, my, mw, mh = self._minimap_region
+        self._clicker.cancel()
+        self._clicker.request((mx + mw // 2 + side[0], my + mh // 2 + side[1]))
 
     def _tile_action(self, wp: Waypoint, pos: Position) -> None:
         gx, gy, gw, gh = self._game_region
