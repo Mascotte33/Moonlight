@@ -225,8 +225,6 @@ class CavebotTab(Tab):
             button = _button(self.menu_route.master, text, command)
             button.configure(width=60)
             button.pack(side="right", padx=(theme.UNIT, 0))
-        self.ent_name = _entry(self.menu_route.master, "route name", 140)
-        self.ent_name.pack_configure(side="right")
         self.lbl_hint = ctk.CTkLabel(box, text="", anchor="w", text_color=theme.TEXT_DIM)
         self.lbl_hint.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
@@ -297,10 +295,12 @@ class CavebotTab(Tab):
         self._reload()
 
     def _refresh_names(self) -> list[str]:
+        """Fill the route dropdowns from disk; a new route with no waypoints is listed too."""
         names = route_names(self._routes_dir)
-        self.menu_route.configure(values=names or [NO_ROUTES])
+        listed = names if not self._name or self._name in names else [*names, self._name]
+        self.menu_route.configure(values=listed or [NO_ROUTES])
         self.menu_refill_route.configure(values=names or [NO_ROUTES])
-        hint = "No routes yet. Type a name, press New, then add waypoints below."
+        hint = "No routes yet. Press New, then add waypoints below."
         self.lbl_hint.configure(text="" if names else hint)
         return names
 
@@ -342,8 +342,6 @@ class CavebotTab(Tab):
                 self._waypoints = list(route.waypoints)
             except RouteError as exc:
                 self._error = str(exc)
-            self.ent_name.delete(0, "end")
-            self.ent_name.insert(0, name)
         self._draw()
 
     def _draw(self) -> None:
@@ -372,12 +370,18 @@ class CavebotTab(Tab):
         """Save the editor to its route, then redraw."""
         self._error = ""
         if not self._name:
-            self.lbl_msg.configure(text="Not saved: type a route name and press New")
+            self.lbl_msg.configure(text="Not saved: press New to name the route")
         elif self._waypoints:
+            first = self._name not in route_names(self._routes_dir)
             try:
                 save_route(self._routes_dir, self._name, self._waypoints)
             except (OSError, RouteError) as exc:
                 self.lbl_msg.configure(text=f"Not saved: {exc}")
+            else:
+                if first:  # the file exists now: make it the cavebot's route
+                    self._refresh_names()
+                    self.menu_route.set(self._name)
+                    self.submit()
         self._draw()
 
     def _add_action(self, action: str, manual: bool = True) -> None:
@@ -415,8 +419,10 @@ class CavebotTab(Tab):
         self._draw()
 
     def _new(self) -> None:
-        """Start a route named in the box; unsaved editor waypoints go into it."""
-        name = self.ent_name.get().strip()
+        """Ask for a name and start that route; unsaved editor waypoints go into it."""
+        name = (ctk.CTkInputDialog(text="Route name", title="New route").get_input() or "").strip()
+        if not name:
+            return
         try:
             exists = route_path(self._routes_dir, name).exists()
         except RouteError as exc:
@@ -428,23 +434,22 @@ class CavebotTab(Tab):
         if self._name:
             self._waypoints = []
         self._name = name
-        self._changed()
         self._refresh_names()
+        self.menu_route.set(name)
+        self._changed()
         self.lbl_msg.configure(text=f"New route {name}. Each waypoint you add is saved.")
 
     def _load(self) -> None:
-        """Load the route named in the box and make it the cavebot's route."""
-        name = self.ent_name.get().strip()
-        if name not in self._refresh_names():
-            self.lbl_msg.configure(text=f"No route named {name!r}")
-            return
-        self.menu_route.set(name)
-        self._pick_route(name)
-        self.lbl_msg.configure(text=f"Loaded {name}")
+        """Re-read the route list and the picked route from disk."""
+        self._reload()
+        self.lbl_msg.configure(text="Routes reloaded")
 
     def _delete(self) -> None:
-        """Delete the route named in the box, after asking."""
-        name = self.ent_name.get().strip()
+        """Ask for a route name and delete that route, after confirming."""
+        asked = ctk.CTkInputDialog(text="Route name to delete", title="Delete route").get_input()
+        name = (asked or "").strip()
+        if not name:
+            return
         if name not in route_names(self._routes_dir):
             self.lbl_msg.configure(text=f"No route named {name!r}")
             return

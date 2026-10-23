@@ -440,12 +440,18 @@ def build_modules(
     walkers = config.cavebot is not None or config.looting is not None
     if walkers and m.cavebot is None and m.looting is None:
         from moonlight.hardware.clicker import ClickController
-        from moonlight.perception.cursor import CursorReader
+        from moonlight.perception.cursor import CursorReader, OsCursorReader
 
         cursor = list(_templates(config.templates_dir / "cursor").values())
+        # Captures leave the cursor out: without templates ask Windows where it is.
+        cursor_reader = (
+            OsCursorReader(window_origin)
+            if not cursor and window_origin is not None
+            else CursorReader(profile, cursor_templates=cursor or None)
+        )
         clicker = ClickController(
             backend,
-            CursorReader(profile, cursor_templates=cursor or None),
+            cursor_reader,
             frames,
             config=config.clicker,
             roi_provider=roi_provider,
