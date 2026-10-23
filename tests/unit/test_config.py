@@ -27,6 +27,15 @@ def raw(**modules: dict[str, Any]) -> dict[str, Any]:
     return {"profile": "p", "hotkeys": {"exura gran": "F1", "exura": "F2"}, "modules": sections}
 
 
+
+def test_old_walk_keys_in_cavebot_still_loads(tmp_path: Path) -> None:
+    route_file(tmp_path / "routes")
+    data = raw(cavebot={"enabled": True, "route": "hunt", "walk_keys": True})
+    data["routes_dir"] = str(tmp_path / "routes")
+    path = tmp_path / "moonlight_config.json"
+    path.write_text(json.dumps(data))
+    assert BotConfig.load(path).walk_keys is True
+
 def test_default_is_valid() -> None:
     cfg = BotConfig.default()
     assert cfg.healing is not None and cfg.targeting is not None and cfg.alarms is not None
@@ -45,6 +54,7 @@ def test_load_roundtrip(tmp_path: Path) -> None:
     data["routes_dir"] = str(tmp_path / "routes")
     data["loop"] = {"tick_rate": 10.0, "enable_f12_monitor": False}
     data["serial_port"] = "COM7"
+    data["walk_keys"] = True
     # F-09: looting / refill need their perception sources wired (T34).
     data["monster_name_source"] = True
     data["capacity_source"] = True
@@ -53,7 +63,7 @@ def test_load_roundtrip(tmp_path: Path) -> None:
     cfg = BotConfig.load(path)
     assert cfg.healing == HealingConfig(normal_hp_percent=65.0)
     assert cfg.cavebot is not None and cfg.cavebot.route.name == "hunt"
-    assert cfg.cavebot.rope_hotkey == "F5"
+    assert cfg.cavebot.rope_hotkey == "F5" and cfg.walk_keys is True
     assert cfg.refill is not None and cfg.refill.trigger_cap == 80.0
     assert cfg.loop.tick_rate == 10.0 and cfg.serial_port == "COM7"
     assert cfg.targeting is None

@@ -439,6 +439,28 @@ class TestAttackKey:
         gl.tick()
         assert inp.sent_lines == ["K r", "K r"]
 
+    def test_frozen_hp_switches_target_and_skips_it(self) -> None:
+        ws = make_state(hp=100.0, target=True)
+        inp = FakeInput()
+        gl, clock = make_loop(ws, inp)
+        for _ in range(199):  # 9.95 s on a target whose HP never moves
+            gl.tick()
+            clock.advance(PERIOD)
+        assert inp.sent_lines == ["K r"]
+        clock.advance(PERIOD)
+        gl.tick()  # 10 s: press again, the client moves to the next target
+        assert inp.sent_lines == ["K r", "K r"]
+        with ws.lock():
+            ws.selected_target = Monster(name="Rat")  # a different monster
+        clock.advance(1.0)
+        gl.tick()
+        assert inp.sent_lines == ["K r", "K r", "K r"]
+        with ws.lock():  # the attack key came back to the frozen one
+            ws.selected_target = make_state(hp=100.0, target=True).selected_target
+        clock.advance(1.0)
+        gl.tick()
+        assert inp.sent_lines[-1] == "K r" and len(inp.sent_lines) == 4
+
 
 class TestGameLoopRun:
     def test_run_pauses_then_stops_when_screen_not_ok(self) -> None:

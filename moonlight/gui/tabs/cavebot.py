@@ -10,6 +10,7 @@ and reach the route file only on Save.
 from __future__ import annotations
 
 import queue
+import tkinter as tk
 from collections.abc import Callable
 from dataclasses import replace
 from functools import partial
@@ -44,6 +45,7 @@ __all__ = [
     "CavebotTab",
     "apply_cavebot",
     "picked_route",
+    "picked_waypoint",
     "drop_route",
     "route_names",
     "waypoint_line",
@@ -119,6 +121,11 @@ def drop_route(cfg: BotConfig, name: str) -> BotConfig:
         modules["cavebot"] = {"enabled": False}
         modules["refill"]["enabled"] = False
     return BotConfig.from_dict(data)
+
+
+def picked_waypoint(line: int, count: int) -> int | None:
+    """The waypoint (0-based) on *line* of :func:`waypoint_table`; line 1 is the header."""
+    return line - 2 if 2 <= line < count + 2 else None
 
 
 def waypoint_table(route: Route | None, current: int | None = None) -> str:
@@ -244,10 +251,11 @@ class CavebotTab(Tab):
         )
         self.lbl_hint.pack(fill="x", padx=theme.PAD)
         self.wp_list = ctk.CTkTextbox(
-            box, height=160, wrap="none", font=ctk.CTkFont(family=theme.MONO)
+            box, height=440, wrap="none", font=ctk.CTkFont(family=theme.MONO)
         )
         self.wp_list.pack(fill="both", expand=True, padx=theme.PAD, pady=(theme.UNIT, 0))
         self.wp_list.tag_config("current", foreground=theme.LIFE)
+        self.wp_list.bind("<Double-Button-1>", self._pick_waypoint)
         self.lbl_current = ctk.CTkLabel(box, text="Not running", anchor="w")
         self.lbl_current.pack(fill="x", padx=theme.PAD)
         self.lbl_msg = ctk.CTkLabel(box, text="", anchor="w", text_color=theme.AMBER)
@@ -460,6 +468,26 @@ class CavebotTab(Tab):
             self.wp_list.tag_add("current", f"{current + 2}.0", f"{current + 2}.end")
             self.wp_list.see(f"{current + 2}.0")
         self.wp_list.configure(state="disabled")
+
+    def _pick_waypoint(self, event: tk.Event) -> str:
+        """Double-click: the running bot walks to that waypoint next, else starts there."""
+        line = int(str(self.wp_list.index(f"@{event.x},{event.y}")).split(".")[0])
+        i = None if self._error else picked_waypoint(line, len(self._waypoints))
+        if i is None:
+            return "break"
+        self._writers[START.field](i + 1)
+        cavebot = self.ctx.live_cavebot()
+        if cavebot is not None and cavebot.route.name == self._name:
+            cavebot.go_to(i)
+            self._text = ""  # redraw the highlight
+            self._draw()
+            self.lbl_msg.configure(text=f"Walking to waypoint {i + 1}")
+        elif not self.ctx.bot_running():
+            self.submit()
+            self.lbl_msg.configure(text=f"The bot starts at waypoint {i + 1}")
+        else:
+            self.lbl_msg.configure(text="The bot runs another route; stop it to start this one")
+        return "break"
 
     def _changed(self) -> None:
         """Mark the editor unsaved and redraw; Save writes the route file."""

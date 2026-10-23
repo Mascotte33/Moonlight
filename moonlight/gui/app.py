@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import logging
 import sys
 import threading
 import time
@@ -454,6 +455,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    logging.basicConfig(format="%(message)s")  # warnings, as before
+    logging.getLogger("moonlight.decision.cavebot").setLevel(logging.INFO)  # why it walks/attacks
     app = GuiApp(start_bot=not args.no_bot)
     app.root.mainloop()
     return 0

@@ -96,7 +96,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from moonlight.bot.safety import F12Monitor, RateLimitedInput
-from moonlight.bot.state import WorldState
+from moonlight.bot.state import Monster, WorldState
 from moonlight.decision.healing import HealingConfig
 from moonlight.hardware.input import InputBackend
 
@@ -118,6 +118,10 @@ __all__ = [
 ]
 
 logger = logging.getLogger("moonlight.bot.loop")
+
+# doc: docs/prs/keys-walking.md#frozen-hp
+_FROZEN_HP = 10.0  # seconds a target's HP may stay the same before switching
+_FROZEN_SKIP = 30.0  # seconds a frozen target is not attacked again
 
 
 @dataclass(frozen=True)
@@ -294,6 +298,11 @@ class GameLoop:
         # Attack-key bookkeeping: when and for which selection it was pressed.
         self._attack_pressed_at: float | None = None
         self._attack_pressed_for: str | None = None
+        # Frozen-HP bookkeeping: the selection's (name, HP), since when, and
+        # the (name, HP) of skipped targets with their expiry.
+        self._hp_seen: tuple[str, float] | None = None
+        self._hp_since = 0.0
+        self._hp_skip: dict[tuple[str, float], float] = {}
         # Pause bookkeeping (reset by every healthy, exception-free tick).
         self._paused_since: float | None = None
         self._consecutive_errors = 0
@@ -761,9 +770,11 @@ class GameLoop:
         if selected is None and self._target is None:
             return  # decided from a stale snapshot; skip this tick
         key = selected.name if selected is not None else None
-        if selected is not None and key == self._attack_pressed_for:
-            return  # already attacking this target
         now = self._clock()
+        if selected is not None and self._frozen(selected, now):
+            key = None  # press again: the attack key moves on to the next target
+        elif selected is not None and key == self._attack_pressed_for:
+            return  # already attacking this target
         last = self._attack_pressed_at
         if last is not None and now - last < self.config.attack_repress_cooldown:
             return
@@ -772,6 +783,24 @@ class GameLoop:
             self._attack_pressed_at = now
             self._attack_pressed_for = key
             logger.debug("attack combo=%s", combo)
+
+    def _frozen(self, target: Monster, now: float) -> bool:
+        """True when *target* is skipped: its HP stood still for ``_FROZEN_HP``.
+
+        A monster that cannot be reached never loses HP. It is skipped for
+        ``_FROZEN_SKIP`` seconds, known by its name and HP (the battle list
+        gives no ids).
+        """
+        # ponytail: (name, HP) can't tell two untouched monsters of one kind
+        # apart; read battle-list rows if that skips the wrong one.
+        self._hp_skip = {k: end for k, end in self._hp_skip.items() if end > now}
+        seen = (target.name, target.hp_percent)
+        if seen != self._hp_seen:
+            self._hp_seen, self._hp_since = seen, now
+        elif now - self._hp_since >= _FROZEN_HP and seen not in self._hp_skip:
+            logger.info("target %r HP frozen for %.0f s, switching", target.name, _FROZEN_HP)
+            self._hp_skip[seen] = now + _FROZEN_SKIP
+        return seen in self._hp_skip
 
     def _act_loot(self, snap: WorldState) -> None:
         """LOOT: one looting step per tick (rate-limited: it presses keys)."""

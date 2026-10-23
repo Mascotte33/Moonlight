@@ -74,13 +74,15 @@ def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect
     """The window regions a tick reads, for ``ScreenCapture.get_frame`` (P2).
 
     ``None`` (grab the full window) when any of them is not calibrated.
-    ``game_grid`` is left out: it is only click geometry, and the clicker
-    grabs its own small cursor ROI.
+    ``game_grid`` is left out unless the cavebot walks with keys and scans
+    it for creatures; for clicks it is only geometry, and the clicker grabs
+    its own small cursor ROI.
     """
     names = set(_PERCEIVE_REGIONS)
     for module in _enabled_modules(config):
         names.update(MODULE_REGIONS.get(module, ()))
-    names.discard("game_grid")
+    if not config.walk_keys:
+        names.discard("game_grid")
     if any(name not in profile.regions for name in names):
         return None
     return [profile.get_region(name).to_tuple for name in sorted(names)]
@@ -491,6 +493,7 @@ def build_modules(
             on_clicker(clicker)
         if config.cavebot is not None:
             from moonlight.decision.cavebot import Cavebot
+            from moonlight.decision.pathing import CostMap
 
             cb = config.cavebot
             m.cavebot = Cavebot(
@@ -502,6 +505,10 @@ def build_modules(
                 input_backend=backend,
                 rope_hotkey=cb.rope_hotkey,
                 shovel_hotkey=cb.shovel_hotkey,
+                walk_keys=config.walk_keys,
+                cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
+                frames=frames,
+                attack_combo=config.loop.attack_combo,
                 clock=clock,
             )
             if prev is None or prev.cavebot is None:

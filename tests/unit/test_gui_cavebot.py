@@ -13,6 +13,7 @@ from moonlight.gui.tabs.cavebot import (
     apply_cavebot,
     drop_route,
     picked_route,
+    picked_waypoint,
     route_names,
     waypoint_line,
     waypoint_table,
@@ -75,17 +76,17 @@ def test_waypoint_line() -> None:
     assert waypoint_line(None, 2) == "Not running"
 
 
-def test_live_route_is_none_without_a_running_bot() -> None:
+def test_live_cavebot_is_none_without_a_running_bot() -> None:
     from types import SimpleNamespace
 
     from moonlight.gui.state_bridge import GuiContext
 
     ctx = SimpleNamespace(controller=None, bot_running=lambda: False)
-    assert GuiContext.live_route(ctx) is None  # type: ignore[arg-type]
+    assert GuiContext.live_cavebot(ctx) is None  # type: ignore[arg-type]
     cavebot = SimpleNamespace(route="r")
     loop = SimpleNamespace(modules=SimpleNamespace(cavebot=cavebot))
     ctx = SimpleNamespace(controller=SimpleNamespace(loop=loop), bot_running=lambda: True)
-    assert GuiContext.live_route(ctx) == "r"  # type: ignore[arg-type]
+    assert GuiContext.live_cavebot(ctx) is cavebot  # type: ignore[arg-type]
 
 
 def test_start_waypoint_is_given_one_based(tmp_path: Path) -> None:
@@ -158,3 +159,11 @@ def test_dropping_the_last_route_turns_the_cavebot_off(tmp_path: Path) -> None:
     cfg = apply_cavebot(cfg, {"cavebot.route": "rotworms", "cavebot.enabled": True})
     off = drop_route(cfg, "rotworms")
     assert off.cavebot is None and picked_route(off) == ""
+
+
+
+def test_picked_waypoint_skips_the_header_and_blank_lines() -> None:
+    assert picked_waypoint(1, 3) is None  # header
+    assert picked_waypoint(2, 3) == 0
+    assert picked_waypoint(4, 3) == 2
+    assert picked_waypoint(5, 3) is None

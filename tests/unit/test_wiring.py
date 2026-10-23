@@ -142,6 +142,9 @@ def test_capture_regions_lists_tick_regions_or_falls_back_to_full() -> None:
     assert wiring.capture_regions(profile, cfg) == [
         profile.get_region(n).to_tuple for n in names
     ]
+    walking = replace(cfg, cavebot=object(), walk_keys=True)  # type: ignore[arg-type]
+    grid = profile.get_region("game_grid").to_tuple
+    assert grid in (wiring.capture_regions(profile, walking) or [])
     del profile.regions["minimap"]
     assert wiring.capture_regions(profile, cfg) is None  # uncalibrated: full grab
 

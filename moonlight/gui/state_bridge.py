@@ -458,9 +458,13 @@ class GuiContext:
         """True while the bot loop thread is alive (False in --no-bot)."""
         return self.controller is not None and self.controller.is_running
 
-    def live_route(self) -> Any:
-        """The running cavebot's route, or None when the bot or cavebot is off."""
+    def live_cavebot(self) -> Any:
+        """The running cavebot, or None when the bot or cavebot is off."""
         if not self.bot_running():
             return None
-        cavebot = getattr(self.controller.loop.modules, "cavebot", None)  # type: ignore[union-attr]
+        return getattr(self.controller.loop.modules, "cavebot", None)  # type: ignore[union-attr]
+
+    def live_route(self) -> Any:
+        """The running cavebot's route, or None when the bot or cavebot is off."""
+        cavebot = self.live_cavebot()
         return cavebot.route if cavebot is not None else None

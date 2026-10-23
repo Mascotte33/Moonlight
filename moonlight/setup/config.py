@@ -102,6 +102,7 @@ _TOP_KEYS = {
     "serial_baudrate",
     "simulation",
     "log_commands",
+    "walk_keys",
     "window_title",
     "profiles_dir",
     "templates_dir",
@@ -142,6 +143,8 @@ class BotConfig:
     #: Arduino with this off is a hard error, never a silent fallback.
     simulation: bool = False
     log_commands: bool = False
+    #: The cavebot walks with arrow keys along a path instead of clicking the minimap.
+    walk_keys: bool = False
     #: Same as ``perception.capture.TIBIA_WINDOW_TITLE``; not imported, that pulls in mss.
     window_title: str = "Tibia"
     profiles_dir: Path | None = None
@@ -223,6 +226,7 @@ class BotConfig:
             "serial_baudrate",
             "simulation",
             "log_commands",
+            "walk_keys",
             "window_title",
             "profiles_dir",
             "templates_dir",
@@ -259,6 +263,9 @@ class BotConfig:
             if name == "healing":
                 _old_cure(section)
             if name == "cavebot":
+                old = section.pop("walk_keys", None)  # lived here before it moved to Settings
+                if isinstance(old, bool):
+                    kwargs.setdefault("walk_keys", old)
                 value = _cavebot(section, routes_dir)
             else:
                 value = _coerce(section, hints[name], f"modules.{name}")
@@ -412,11 +419,9 @@ def _cavebot(section: dict[str, Any], routes_dir: Path) -> CavebotConfig:
         route = RouteFileLoader.load(routes_dir / f"{name}.json")
     except RouteError as exc:
         raise ConfigError(f"modules.cavebot: {exc}") from exc
-    _reject_unknown(section, {"rope_hotkey", "shovel_hotkey", "start_index"}, "modules.cavebot")
-    keys = {
-        k: _coerce(v, int if k == "start_index" else str, f"modules.cavebot.{k}")
-        for k, v in section.items()
-    }
+    kinds = {"start_index": int, "rope_hotkey": str, "shovel_hotkey": str}
+    _reject_unknown(section, set(kinds), "modules.cavebot")
+    keys = {k: _coerce(v, kinds[k], f"modules.cavebot.{k}") for k, v in section.items()}
     return CavebotConfig(route=route, **keys)
 
 
