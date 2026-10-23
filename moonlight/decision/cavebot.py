@@ -105,6 +105,8 @@ _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
 
 #: Arrival distance in tiles; every other positional action uses 1.
 _REACH = {"node": 3, "stand": 0, "stairs": 0}
+# doc: docs/prs/keys-walking.md#arrow-steps
+# doc: docs/prs/keys-walking.md#learned-blocks
 #: Arrow key per one-tile step (y grows downward, up is north).
 _ARROWS = {(0, -1): "up", (0, 1): "down", (-1, 0): "left", (1, 0): "right"}
 #: Seconds without moving before an arrow key is pressed again.

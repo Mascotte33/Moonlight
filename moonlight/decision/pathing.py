@@ -8,6 +8,9 @@ A missing tile counts as blocked.
 :func:`next_step` runs a 4-way breadth-first search in a window around the
 player and the goal and returns the first step and the path length. Arrow keys walk
 only in 4 directions, so diagonals are not searched.
+
+# doc: docs/prs/keys-walking.md#walk-cost-map
+# doc: docs/prs/keys-walking.md#pathfinder
 """
 
 from __future__ import annotations
