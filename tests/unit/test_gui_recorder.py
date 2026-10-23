@@ -11,9 +11,10 @@ from moonlight.decision.cavebot import RouteError, RouteFileLoader, Waypoint
 from moonlight.gui.tabs.recorder import (
     HOTKEYS,
     make_waypoint,
+    position_line,
+    route_path,
     save_route,
     should_add,
-    status_line,
     vk_code,
 )
 
@@ -29,6 +30,11 @@ def test_saved_route_loads_with_the_bot_loader(tmp_path: Path) -> None:
     route = RouteFileLoader.load(path)
     assert route.name == "rotworms"
     assert route.waypoints == wps
+
+
+def test_negative_coordinates_save(tmp_path: Path) -> None:
+    wps = [Waypoint(-5, -12, 7, "stand")]
+    assert RouteFileLoader.load(save_route(tmp_path, "minus", wps)).waypoints == wps
 
 
 def test_bad_routes_are_refused(tmp_path: Path) -> None:
@@ -62,9 +68,10 @@ def test_long_step_or_floor_change_adds() -> None:
     assert should_add([], Position(1, 1, 7), 5)
 
 
-def test_status_line() -> None:
-    assert status_line(False, Position(0, 0, 0)) == "Not recording · position unknown"
-    assert status_line(True, Position(1, 2, 7)) == "Recording · 1, 2, 7"
+def test_position_line() -> None:
+    assert position_line(Position(0, 0, 0)) == "Position unknown"
+    assert position_line(Position(1, 2, 7)) == "Position 1, 2, 7"
+    assert position_line(Position(1, 2, 7), "lost") == "Position 1, 2, 7 (lost)"
 
 
 def test_each_hotkey_maps_to_its_action() -> None:
@@ -84,3 +91,10 @@ def test_each_hotkey_maps_to_its_action() -> None:
         0x77,
         0x78,
     ]
+
+
+def test_route_path_refuses_bad_names(tmp_path: Path) -> None:
+    assert route_path(tmp_path, "rot worms") == tmp_path / "rot worms.json"
+    for bad in ("", "../x", "a/b"):
+        with pytest.raises(RouteError):
+            route_path(tmp_path, bad)

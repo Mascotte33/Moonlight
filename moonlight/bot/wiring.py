@@ -9,6 +9,7 @@ drive the real wiring with ``FakeInput`` and synthetic frames.
 
 from __future__ import annotations
 
+import functools
 import logging
 import time
 from collections.abc import Callable
@@ -20,7 +21,7 @@ import numpy as np
 
 from moonlight.bot.loop import DecisionModules, GameLoop
 from moonlight.bot.safety import RateLimitedInput, beep_alert
-from moonlight.bot.state import WorldState
+from moonlight.bot.state import Position, WorldState
 from moonlight.hardware.input import InputBackend
 from moonlight.setup.calibrate import CalibrationProfile
 from moonlight.setup.config import MODULES, BotConfig
@@ -28,6 +29,7 @@ from moonlight.setup.config import MODULES, BotConfig
 if TYPE_CHECKING:
     from moonlight.hardware.clicker import ClickController
     from moonlight.perception.capture import ScreenCapture
+    from moonlight.perception.worldmap import WorldMap
 
 __all__ = [
     "MODULE_REGIONS",
@@ -72,13 +74,15 @@ def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect
     """The window regions a tick reads, for ``ScreenCapture.get_frame`` (P2).
 
     ``None`` (grab the full window) when any of them is not calibrated.
-    ``game_grid`` is left out: it is only click geometry, and the clicker
-    grabs its own small cursor ROI.
+    ``game_grid`` is left out unless the cavebot walks with keys and scans
+    it for creatures; for clicks it is only geometry, and the clicker grabs
+    its own small cursor ROI.
     """
     names = set(_PERCEIVE_REGIONS)
     for module in _enabled_modules(config):
         names.update(MODULE_REGIONS.get(module, ()))
-    names.discard("game_grid")
+    if not config.walk_keys:
+        names.discard("game_grid")
     if any(name not in profile.regions for name in names):
         return None
     return [profile.get_region(name).to_tuple for name in sorted(names)]
@@ -186,14 +190,19 @@ def check_module_regions(
 # -- integration seam ---------------------------------------------------------
 
 
-def start_position(config: BotConfig) -> tuple[int, int, int] | None:
-    """Where the minimap tracker starts: ``minimap_start``, else the route's first waypoint."""
-    if config.minimap_start is not None:
-        return config.minimap_start
-    if config.cavebot is not None and config.cavebot.route.waypoints:
-        wp = config.cavebot.route.waypoints[0]
-        return (wp.x, wp.y, wp.z)
-    return None
+#: Copies of the client's minimap tiles, ``{x}_{y}_{z}.png`` (gitignored).
+MAP_DIR = Path("data/map")
+
+
+@functools.lru_cache(maxsize=2)
+def _world_map(directory: Path, zooms: tuple[int, ...]) -> WorldMap:
+    """One stitched map per process: floors load once, not on every Start."""
+    from moonlight.perception.worldmap import WorldMap
+
+    world = WorldMap(directory, zooms=zooms)
+    if world.empty:
+        logger.warning("no map tiles in %s: the position stays unknown", directory)
+    return world
 
 
 def make_perceive(
@@ -201,19 +210,17 @@ def make_perceive(
     profile: CalibrationProfile,
     frame_provider: FrameProvider,
     focus_check: Callable[[], bool] | None = None,
-    minimap_start: tuple[int, int, int] | None = None,
+    start: Position | None = None,
+    map_dir: Path = MAP_DIR,
 ) -> Callable[[], None]:
     """Return a callback doing one capture -> perception -> WorldState pass.
 
     Fail closed: an unfocused client or any perception error sets
     ``screen_ok = False``, which gates every input in the loop.
 
-    *minimap_start* (F-03) optionally seeds the minimap tracker with an
-    absolute ``(x, y, z)`` start so reported positions are absolute world
-    coordinates (seed + accumulated relative offset) instead of relative to
-    wherever the bot started.
+    The position comes from matching the radar on the map in *map_dir*;
+    *start* is the last known position, searched first.
     """
-    from moonlight.bot.state import Position
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
@@ -222,12 +229,15 @@ def make_perceive(
     vitals = VitalsReader(profile)
     battle = BattleReader(profile)
     floor = FloorReader(profile)
-    seed = (
-        Position(minimap_start[0], minimap_start[1], minimap_start[2])
-        if minimap_start is not None
-        else None
+    # At 100% the radar draws 1 or 2 px per tile, by the player's minimap zoom.
+    unit = max(1, round(profile.ui_scale))
+    minimap = MinimapReader(
+        profile,
+        floor_reader=floor,
+        map_matcher=_world_map(map_dir, (unit, 2 * unit)),
+        initial_position=start,
+        px_per_sqm=unit,
     )
-    minimap = MinimapReader(profile, floor_reader=floor, initial_position=seed)
 
     def perceive() -> None:
         focused = focus_check() if focus_check is not None else True
@@ -252,9 +262,12 @@ def make_perceive(
             state.monsters = monsters
             state.selected_target = selected
             state.players_on_screen = players
+            state.position_status = (
+                "lost" if minimap.lost else "estimated" if minimap.estimated else ""
+            )
             if minimap.lost:
-                # F-17: unknown until re-anchored; the cavebot reads (0,0,0)
-                # as "no position" and halts "stuck" instead of walking blind.
+                # F-17: unknown until the next map match; the cavebot reads
+                # (0,0,0) as "no position" and halts instead of walking blind.
                 state.position = Position(0, 0, 0)
             else:
                 if position is not None:
@@ -276,6 +289,20 @@ def _templates(directory: Path) -> dict[str, np.ndarray]:
         if image is not None:
             out[path.stem] = image
     return out
+
+
+def _absolute_screen() -> tuple[int, int, int, int]:
+    """The screen rect the HID absolute pointer spans.
+
+    Windows maps it to the primary monitor, X11 to the whole desktop.
+    """
+    import sys
+
+    import mss
+
+    with mss.MSS() as sct:
+        mon = sct.monitors[1 if sys.platform == "win32" else 0]
+    return (mon["left"], mon["top"], mon["width"], mon["height"])
 
 
 def build_loop(
@@ -330,7 +357,8 @@ def build_loop(
             profile,
             frames.refresh,
             focus_check,
-            minimap_start=start_position(config),
+            # Search near where the last loop or the stopped-bot reader was.
+            start=state.position,
         ),
         clock=clock,
         sleep_fn=sleep_fn,
@@ -341,7 +369,7 @@ def build_loop(
         nonlocal current
         if needs_restart(current, new):
             return False
-        loop.modules = modules(new, (current, loop.modules))
+        loop.modules = modules(new, (current, loop.all_modules))
         current = new
         return True
 
@@ -357,14 +385,18 @@ def needs_restart(old: BotConfig, new: BotConfig) -> bool:
     """True when *new* changes something only a fresh bot can take.
 
     That is any field outside :data:`LIVE_FIELDS` (port, window, tick
-    rate...), or a module switched on or off, since the captured regions
-    depend on which modules run.
+    rate...), or a module switched on that reads a screen region the
+    running bot does not capture. Switching a module off never restarts.
     """
     # doc: docs/prs/gui-calibration.md#live-apply
     names = [f.name for f in fields(old) if f.name not in LIVE_FIELDS]
     if any(getattr(old, n) != getattr(new, n) for n in names):
         return True
-    return any((getattr(old, n) is None) != (getattr(new, n) is None) for n in MODULES)
+
+    def regions(cfg: BotConfig) -> set[str]:
+        return {r for m in _enabled_modules(cfg) for r in MODULE_REGIONS[m]}
+
+    return not regions(new) <= regions(old) | set(_PERCEIVE_REGIONS) | {"game_grid"}
 
 
 def build_modules(
@@ -436,21 +468,32 @@ def build_modules(
     walkers = config.cavebot is not None or config.looting is not None
     if walkers and m.cavebot is None and m.looting is None:
         from moonlight.hardware.clicker import ClickController
-        from moonlight.perception.cursor import CursorReader
+        from moonlight.perception.cursor import CursorReader, OsCursorReader
 
         cursor = list(_templates(config.templates_dir / "cursor").values())
+        # Captures leave the cursor out: without templates ask Windows where it is.
+        cursor_reader = (
+            OsCursorReader(window_origin)
+            if not cursor and window_origin is not None
+            else CursorReader(profile, cursor_templates=cursor or None)
+        )
         clicker = ClickController(
             backend,
-            CursorReader(profile, cursor_templates=cursor or None),
+            cursor_reader,
             frames,
             config=config.clicker,
             roi_provider=roi_provider,
             window_origin=window_origin,
+            screen=_absolute_screen() if config.clicker.absolute and window_origin else None,
+            park_region=(
+                profile.regions["minimap"].to_tuple if "minimap" in profile.regions else None
+            ),
         )
         if on_clicker is not None:
             on_clicker(clicker)
         if config.cavebot is not None:
             from moonlight.decision.cavebot import Cavebot
+            from moonlight.decision.pathing import CostMap
 
             cb = config.cavebot
             m.cavebot = Cavebot(
@@ -462,9 +505,13 @@ def build_modules(
                 input_backend=backend,
                 rope_hotkey=cb.rope_hotkey,
                 shovel_hotkey=cb.shovel_hotkey,
+                walk_keys=config.walk_keys,
+                cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
+                frames=frames,
+                attack_combo=config.loop.attack_combo,
                 clock=clock,
             )
-            if prev is None:
+            if prev is None or prev.cavebot is None:
                 m.cavebot.start()
                 m.cavebot.route.current = cb.start_index
             else:

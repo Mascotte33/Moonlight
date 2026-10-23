@@ -96,7 +96,6 @@ class TargetingTab(Tab):
     """Targeting rules and attack spells, saved into the picked config."""
 
     title = "Targeting"
-    scrolls = True
     options = OPTIONS + ATTACK_OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:

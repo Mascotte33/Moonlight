@@ -30,7 +30,7 @@ Convergence contract
   corrections), or is not found at all (``CursorReader.read`` returns
   ``None``), the click fails and **no click** is sent — a missed click
   is safer than a blind click at an unverified position (fail closed).
-* Every wire ``M`` command stays within the protocol's -127..127 range
+* Every wire ``M`` command stays within ``MAX_MOUSE_DELTA`` per axis
   (see :mod:`moonlight.hardware.input`).
 
 Per-tick state machine (P5 / F-14)
@@ -53,12 +53,27 @@ by the wire rate limiter (F-20) are retried on the next step.
 :meth:`click_at` is the blocking convenience (request + step until done)
 for tools and tests.
 
+**Pointer acceleration**: with Windows "Enhance pointer precision" on,
+a HID count moves the cursor more than one pixel, and more for bigger
+moves. Assuming 1:1 overshoots, the correction overshoots back, and the
+click never converges. So the closed loop learns the gain (pixels per
+count) from each move it verifies and divides the next move by it. The
+gain learned on a bigger move overestimates the next, smaller one, so
+corrections undershoot and converge instead of oscillating.
+
 **Open loop** (``ClickerConfig.open_loop``): whether the rendered cursor
 can be captured at all is a T33 hardware-in-the-loop question. If it
 cannot, the controller dead-reckons instead: it first homes the cursor
 into the screen's top-left corner (``home_moves`` full negative moves),
 then tracks the position from the moves it sent, scaled by the
 calibrated ``mouse_scale`` (pixels per count; T33 calibrates it).
+
+**Absolute** (a ``screen`` rect passed to the controller): the firmware's
+absolute HID pointer jumps the cursor straight to the target with one
+``A`` command, then the next step clicks. No cursor reads, no gain, no
+homing, and nothing OS-specific. After a click inside ``park_region``
+(the minimap) the cursor jumps just left of it, so it never hides the
+minimap the next tick reads.
 
 The controller takes a *frame provider* callable (in production it wraps
 ``moonlight.perception.capture``; in tests it renders a synthetic cursor at the
@@ -77,7 +92,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from moonlight.hardware.input import MAX_MOUSE_DELTA, ClickSide, InputBackend
+from moonlight.hardware.input import ABS_MAX, MAX_MOUSE_DELTA, ClickSide, InputBackend
 from moonlight.perception.cursor import CursorReader, Rect
 
 __all__ = [
@@ -109,8 +124,11 @@ class ClickerConfig:
             or click.
         roi_half: Half-size in pixels of the ROI searched around the
             expected cursor position after a move.
-        home_moves: Full ``-127, -127`` moves that home the cursor into
+        home_moves: Full ``-MAX_MOUSE_DELTA`` moves that home the cursor into
             the screen corner before open-loop tracking starts.
+        absolute: Jump the cursor with the firmware's absolute pointer
+            (``A`` command) instead of the closed loop. Needs the
+            reflashed firmware.
     """
 
     open_loop: bool = False
@@ -118,6 +136,7 @@ class ClickerConfig:
     settle_ms: float = 20.0
     roi_half: int = 48
     home_moves: int = 30
+    absolute: bool = True
 
     def validate(self) -> None:
         if not self.mouse_scale > 0:
@@ -136,6 +155,9 @@ class _Job:
     max_iters: int
     budget: int | None = None  # moves left; set on the first read
     expected: tuple[int, int] | None = None  # where the cursor should be now
+    moved_from: tuple[int, int] | None = None  # verified position before the last move
+    sent: tuple[int, int] = (0, 0)  # counts of the last move
+    jumped: bool = False  # absolute mode: the cursor is on the target
 
 
 class ClickController:
@@ -156,6 +178,8 @@ class ClickController:
         config: ClickerConfig | None = None,
         roi_provider: Callable[[Rect], np.ndarray] | None = None,
         window_origin: Callable[[], tuple[int, int]] | None = None,
+        screen: Rect | None = None,
+        park_region: Rect | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep_fn: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -173,6 +197,11 @@ class ClickController:
                 ROI grab instead of a full frame).
             window_origin: Screen ``(left, top)`` of the client window;
                 open loop needs it to place the homed cursor.
+            screen: ``(left, top, width, height)`` of the screen the
+                firmware's absolute pointer spans. Set, it switches to
+                absolute moves (no cursor reads).
+            park_region: Absolute mode: after a click inside this frame
+                rect (the minimap) the cursor parks just left of it.
             clock: Monotonic clock (settle timing).
             sleep_fn: Sleep used for the settle delay.
         """
@@ -183,6 +212,10 @@ class ClickController:
         self._config.validate()
         self._roi_provider = roi_provider
         self._window_origin = window_origin
+        self._screen = screen
+        self._park_region = park_region
+        #: Absolute mode: wire point the cursor parks on once the queue empties.
+        self._park: tuple[int, int] | None = None
         self._clock = clock
         self._sleep = sleep_fn
         self._jobs: deque[_Job] = deque()
@@ -193,13 +226,15 @@ class ClickController:
         #: Open loop: dead-reckoned cursor position (None until homed).
         self._estimate: tuple[float, float] | None = None
         self._homed = 0
+        #: Closed loop: learned pixels per count (pointer acceleration).
+        self._gain = 1.0
 
     # -- public API ---------------------------------------------------------
 
     @property
     def busy(self) -> bool:
-        """True while a requested click is still in progress."""
-        return bool(self._jobs)
+        """True while a requested click (or the park after it) is in progress."""
+        return bool(self._jobs) or self._park is not None
 
     def request(
         self,
@@ -229,6 +264,7 @@ class ClickController:
             raise ValueError(f"tolerance must be >= 0, got {tolerance}")
         if max_iters < 1:
             raise ValueError(f"max_iters must be >= 1, got {max_iters}")
+        self._park = None  # the new click moves the cursor anyway
         self._jobs.append(_Job((tx, ty), side, tolerance, max_iters, expected=self._seen))
 
     def next_read(self) -> tuple[Rect, float] | None:
@@ -237,7 +273,7 @@ class ClickController:
         None when nothing is queued or in open loop (no read). Lets the
         capture fold the cursor ROI into the tick's single grab (P5).
         """
-        if not self._jobs or self._config.open_loop:
+        if not self._jobs or self._config.open_loop or self._screen is not None:
             return None
         region = self._read_region(self._jobs[0])
         return None if region is None else (region, self._last_move)
@@ -245,6 +281,7 @@ class ClickController:
     def cancel(self) -> None:
         """Drop every pending click (nothing more is sent for them)."""
         self._jobs.clear()
+        self._park = None
 
     def step(self) -> bool | None:
         """Advance the head click by one capture + one move (or the click).
@@ -254,6 +291,8 @@ class ClickController:
             when the click was sent this step, False when it failed (the
             whole queue is dropped -- fail closed, no blind click).
         """
+        if self._screen is not None:
+            return self._step_absolute()
         if not self._jobs:
             return None
         job = self._jobs[0]
@@ -269,6 +308,7 @@ class ClickController:
                 return None
             return self._fail(job, "cursor not found")
         self._seen = pos
+        self._learn_gain(job, pos)
         tx, ty = job.target
         dx, dy = tx - pos[0], ty - pos[1]
         dist = max(abs(dx), abs(dy))
@@ -281,11 +321,12 @@ class ClickController:
             return True
         if job.budget <= 0:
             return self._fail(job, f"cursor not within +{job.tolerance} px")
-        scale = self._config.mouse_scale if self._config.open_loop else 1.0
+        scale = self._config.mouse_scale if self._config.open_loop else self._gain
         sx = max(-MAX_MOUSE_DELTA, min(MAX_MOUSE_DELTA, round(dx / scale)))
         sy = max(-MAX_MOUSE_DELTA, min(MAX_MOUSE_DELTA, round(dy / scale)))
         if self._sent(lambda: self._input.mouse_move(sx, sy)):
             job.budget -= 1
+            job.moved_from, job.sent = pos, (sx, sy)
             self._last_move = self._clock()
             job.expected = (pos[0] + round(sx * scale), pos[1] + round(sy * scale))
             if self._estimate is not None:
@@ -318,6 +359,44 @@ class ClickController:
 
     # -- helpers ------------------------------------------------------------
 
+    def _step_absolute(self) -> bool | None:
+        """Jump to the head target, click on the next step, then park."""
+        if not self._jobs:
+            park = self._park
+            if park is not None and self._sent(lambda: self._input.mouse_to(*park)):
+                self._park = None
+            return None
+        job = self._jobs[0]
+        if not job.jumped:
+            point = self._to_wire(job.target)
+            if self._sent(lambda: self._input.mouse_to(*point)):
+                job.jumped = True
+                self._last_move = self._clock()
+            return None
+        wait = self._config.settle_ms / 1000.0 - (self._clock() - self._last_move)
+        if wait > 0:
+            self._sleep(wait)
+        if not self._sent(lambda: self._input.click(job.side)):
+            return None  # rate limited: click on the next step
+        self._jobs.popleft()
+        if self._park_region is not None:
+            mx, my, mw, mh = self._park_region
+            if mx <= job.target[0] < mx + mw and my <= job.target[1] < my + mh:
+                # ponytail: 16 px left of the minimap is the game view's right
+                # edge in the default layout; make it a config knob if a
+                # layout puts something hover-sensitive there.
+                self._park = self._to_wire((mx - 16, my + mh // 2))
+        return True
+
+    def _to_wire(self, point: tuple[int, int]) -> tuple[int, int]:
+        """Frame point -> firmware absolute units (0..ABS_MAX per axis)."""
+        assert self._screen is not None
+        ox, oy = self._window_origin() if self._window_origin else (0, 0)
+        left, top, w, h = self._screen
+        ax = round((ox + point[0] - left + 0.5) * (ABS_MAX + 1) / w)
+        ay = round((oy + point[1] - top + 0.5) * (ABS_MAX + 1) / h)
+        return (max(0, min(ABS_MAX, ax)), max(0, min(ABS_MAX, ay)))
+
     def _locate(self, job: _Job) -> tuple[int, int] | None:
         """Where the cursor is now: rendered (closed loop) or estimated."""
         if self._config.open_loop:
@@ -330,6 +409,17 @@ class ClickController:
             return None
         frame = self._roi_provider(region) if self._roi_provider else self._frame_provider()
         return self._reader.read(frame, region)
+
+    def _learn_gain(self, job: _Job, pos: tuple[int, int]) -> None:
+        """Update the gain from how far the last move really went."""
+        if self._config.open_loop or job.moved_from is None:
+            return
+        axis = 0 if abs(job.sent[0]) >= abs(job.sent[1]) else 1
+        sent = job.sent[axis]
+        moved = pos[axis] - job.moved_from[axis]
+        job.moved_from = None
+        if abs(sent) >= 4 and moved * sent > 0:  # small moves are too noisy to learn from
+            self._gain = min(8.0, max(0.25, moved / sent))
 
     def _read_region(self, job: _Job) -> Rect | None:
         if job.expected is None:
@@ -354,7 +444,7 @@ class ClickController:
         return bool(getattr(self._input, "dropped", 0) == before)
 
     def _fail(self, job: _Job, why: str) -> bool:
-        logger.debug("click at %s failed: %s", job.target, why)
+        logger.warning("click at %s failed: %s", job.target, why)
         self._jobs.clear()
         return False
 

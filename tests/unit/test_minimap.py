@@ -191,7 +191,7 @@ class TestRelativeTracking:
         unknown), and a known relative marker offset maps to the correct
         absolute coordinate (seed + displacement). This is the perception
         side of F-03: one absolute-tracked position that perception owns,
-        seeded from the config's ``minimap_start``.
+        seeded from the last known position.
         """
         seed = Position(100, 200, 0)
         reader = make_reader(initial_position=seed)
@@ -364,7 +364,9 @@ class TestMapMatcher:
 
     def test_matcher_provides_position(self) -> None:
         class _Matcher:
-            def match(self, radar_gray: np.ndarray) -> tuple[int, int] | None:
+            def match(
+                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+            ) -> tuple[int, int] | None:
                 return (111, 222)
 
         reader = make_reader(map_matcher=_Matcher())
@@ -374,7 +376,9 @@ class TestMapMatcher:
 
     def test_matcher_none_returns_none(self) -> None:
         class _Matcher:
-            def match(self, radar_gray: np.ndarray) -> tuple[int, int] | None:
+            def match(
+                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+            ) -> tuple[int, int] | None:
                 return None
 
         reader = make_reader(map_matcher=_Matcher())
@@ -384,7 +388,9 @@ class TestMapMatcher:
     def test_matcher_used_even_on_first_read(self) -> None:
         # Absolute matching does not depend on the tracking anchor.
         class _Matcher:
-            def match(self, radar_gray: np.ndarray) -> tuple[int, int] | None:
+            def match(
+                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+            ) -> tuple[int, int] | None:
                 return (1, 2)
 
         reader = make_reader(
@@ -393,6 +399,32 @@ class TestMapMatcher:
         frame, region = make_frame(6)
         pos = reader.read_position(frame, region)
         assert pos == Position(1, 2, 0)
+
+    def test_no_match_estimates_then_goes_lost(self) -> None:
+        answers: list[tuple[int, int] | None] = [(100, 100)]
+        now = [0.0]
+
+        class _Matcher:
+            def match(
+                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+            ) -> tuple[int, int] | None:
+                return answers.pop() if answers else None
+
+        reader = make_reader(
+            map_matcher=_Matcher(), px_per_sqm=1.0, clock=lambda: now[0]
+        )
+        frame, region = make_frame(1)
+        assert reader.read_position(frame, region) == Position(100, 100, 0)
+        # No match: the terrain shift moves the estimate 3 tiles right.
+        frame2, _ = make_frame(1)
+        frame2[REGION_Y : REGION_Y + RADAR_HEIGHT, REGION_X : REGION_X + RADAR_WIDTH] = (
+            np.roll(make_terrain(1), -3, axis=1)[:, :, None]
+        )
+        assert reader.read_position(frame2, region) == Position(103, 100, 0)
+        assert reader.estimated and not reader.lost
+        now[0] = 11.0
+        assert reader.read_position(frame2, region) is None
+        assert reader.lost
 
 
 class TestFloorIntegration:

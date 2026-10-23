@@ -86,7 +86,6 @@ class HealingTab(Tab):
     """Healing thresholds and spells, saved into the picked config."""
 
     title = "Healing"
-    scrolls = True
     options = OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:

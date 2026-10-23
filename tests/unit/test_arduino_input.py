@@ -166,7 +166,7 @@ class FakeSerialDevice:
 
     @staticmethod
     def _valid_mouse_args(args: list[str]) -> bool:
-        """True if args are two integers each within -127..127."""
+        """True if args are two integers each within -4000..4000."""
         if len(args) != 2:
             return False
         try:
@@ -174,7 +174,7 @@ class FakeSerialDevice:
             dy = int(args[1])
         except ValueError:
             return False
-        return -127 <= dx <= 127 and -127 <= dy <= 127
+        return -4000 <= dx <= 4000 and -4000 <= dy <= 4000
 
 
 def install_fake_serial(monkeypatch: pytest.MonkeyPatch) -> types.SimpleNamespace:
@@ -406,7 +406,7 @@ class TestWireProtocol:
         dev = fake_serial.devices[COM]
         with make_backend(heartbeat_interval=60.0) as ard:
             with pytest.raises(ValueError):
-                ard.mouse_move(-128, 0)
+                ard.mouse_move(-4001, 0)
             assert command_lines(dev) == []
 
     def test_device_err_reply_raises(self, fake_serial: types.SimpleNamespace) -> None:

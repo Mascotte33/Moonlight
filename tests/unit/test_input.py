@@ -2,7 +2,7 @@
 
 Covers:
 * ProtocolEncoder: wire encoding for each command (K/D/U/M/C/P/X) and
-  M-axis range validation (-127..127 per axis).
+  M-axis range validation (-4000..4000 per axis).
 * FakeInput: wire lines recorded for every logical call, and the simulated
   device replies (OK / PONG / ERR).
 
@@ -57,14 +57,14 @@ class TestProtocolEncoderCommands:
 
 
 class TestProtocolEncoderMouseRange:
-    """M <dx> <dy>: each axis must stay within -127..127 per command."""
+    """M <dx> <dy>: each axis must stay within -4000..4000 per command."""
 
     def setup_method(self) -> None:
         self.enc = ProtocolEncoder()
 
     @pytest.mark.parametrize(
         ("dx", "dy"),
-        [(0, 0), (-127, -127), (127, 127), (-127, 127), (127, -127), (-1, 99)],
+        [(0, 0), (-4000, -4000), (4000, 4000), (-127, 127), (4000, -4000), (-1, 99)],
     )
     def test_valid_axes_pass(self, dx: int, dy: int) -> None:
         assert self.enc.mouse_move(dx, dy) == f"M {dx} {dy}"
@@ -72,14 +72,14 @@ class TestProtocolEncoderMouseRange:
     @pytest.mark.parametrize(
         ("dx", "dy"),
         [
-            (-128, 0),
-            (128, 0),
-            (0, -128),
-            (0, 128),
-            (-128, -128),
-            (128, 128),
-            (-500, 3),
-            (3, 500),
+            (-4001, 0),
+            (4001, 0),
+            (0, -4001),
+            (0, 4001),
+            (-4001, -4001),
+            (4001, 4001),
+            (-9000, 3),
+            (3, 9000),
         ],
     )
     def test_out_of_range_axis_raises(self, dx: int, dy: int) -> None:
@@ -141,7 +141,7 @@ class TestFakeInputWireLines:
 
     def test_out_of_range_move_raises_and_sends_nothing(self) -> None:
         with pytest.raises(ValueError):
-            self.fake.mouse_move(-128, 0)
+            self.fake.mouse_move(-4001, 0)
         assert self.fake.sent_lines == []
         assert self.fake.replies == []
 
@@ -182,8 +182,8 @@ class TestFakeInputDeviceReplies:
             "K",  # missing combo
             "M 5",  # missing dy
             "M five 5",  # non-integer axis
-            "M -128 0",  # dx below range
-            "M 0 128",  # dy above range
+            "M -4001 0",  # dx below range
+            "M 0 4001",  # dy above range
             "C",  # missing side
             "C M",  # unknown side
             "P extra",  # junk after P
@@ -201,3 +201,17 @@ class TestFakeInputDeviceReplies:
 
     def test_last_reply_initially_none(self) -> None:
         assert FakeInput().last_reply is None
+
+
+def test_mouse_to_is_A_and_checks_range() -> None:
+    from moonlight.hardware.input import ABS_MAX, ProtocolEncoder
+
+    enc = ProtocolEncoder()
+    assert enc.mouse_to(0, ABS_MAX) == f"A 0 {ABS_MAX}"
+    for bad in ((-1, 0), (0, ABS_MAX + 1)):
+        with pytest.raises(ValueError):
+            enc.mouse_to(*bad)
+    fake = FakeInput()
+    fake.mouse_to(5, 6)
+    assert fake.sent_lines == ["A 5 6"]
+    assert fake.write("A 1") == "ERR" and fake.write("A -1 2") == "ERR"

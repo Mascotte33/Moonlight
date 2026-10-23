@@ -142,6 +142,9 @@ def test_capture_regions_lists_tick_regions_or_falls_back_to_full() -> None:
     assert wiring.capture_regions(profile, cfg) == [
         profile.get_region(n).to_tuple for n in names
     ]
+    walking = replace(cfg, cavebot=object(), walk_keys=True)  # type: ignore[arg-type]
+    grid = profile.get_region("game_grid").to_tuple
+    assert grid in (wiring.capture_regions(profile, walking) or [])
     del profile.regions["minimap"]
     assert wiring.capture_regions(profile, cfg) is None  # uncalibrated: full grab
 
@@ -181,49 +184,28 @@ def test_targeting_without_resolver_warns(
 
 
 
-# -- F-03: absolute minimap seed wiring ----------------------------------------
+# -- map matching wiring --------------------------------------------------------
 
 
-def test_minimap_start_seeds_minimap_reader(monkeypatch: pytest.MonkeyPatch) -> None:
-    """F-03 wiring: minimap_start flows from config into MinimapReader.
-
-    Verifies the config's absolute-start seed (F-03) reaches the perception
-    layer: make_perceive passes minimap_start through to MinimapReader as
-    initial_position, so reported positions are absolute world coordinates.
-    """
+def test_start_seeds_minimap_reader(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """make_perceive passes the last known position to MinimapReader."""
     from moonlight.bot.state import Position
 
     captured: dict[str, object] = {}
 
     class _FakeMinimap:
-        def __init__(
-            self,
-            profile: CalibrationProfile,
-            floor_reader: object | None = None,
-            initial_position: object | None = None,
-        ) -> None:
-            captured["initial_position"] = initial_position
+        def __init__(self, profile: CalibrationProfile, **kwargs: object) -> None:
+            captured.update(kwargs)
 
         def read_position(self, frame: np.ndarray) -> object:
             return None
 
     monkeypatch.setattr("moonlight.perception.minimap.MinimapReader", _FakeMinimap)
-    state = WorldState()
     frame = np.zeros((600, 800, 3), dtype=np.uint8)
-
-    def frame_provider() -> np.ndarray:
-        return frame
-
-    # With a seed: MinimapReader must receive it as initial_position.
     wiring.make_perceive(
-        state, make_profile(), frame_provider, minimap_start=(100, 200, 7)
+        WorldState(), make_profile(), lambda: frame, start=Position(100, 200, 7), map_dir=tmp_path
     )
     assert captured["initial_position"] == Position(100, 200, 7)
-
-    # Without a seed: initial_position is None (legacy relative behavior).
-    captured.clear()
-    wiring.make_perceive(state, make_profile(), frame_provider, minimap_start=None)
-    assert captured["initial_position"] is None
 
 
 def test_lost_minimap_clears_state_position(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -325,16 +307,6 @@ def test_start_index_past_the_end_is_refused() -> None:
         cfg.validate()
 
 
-def test_start_position_is_the_first_waypoint_unless_set() -> None:
-    from moonlight.decision.cavebot import Route, Waypoint
-
-    route = Route("r", waypoints=[Waypoint(100, 200, 7), Waypoint(101, 200, 7)])
-    cfg = replace(BotConfig.default(), cavebot=CavebotConfig(route))
-    assert wiring.start_position(cfg) == (100, 200, 7)
-    assert wiring.start_position(replace(cfg, minimap_start=(1, 2, 3))) == (1, 2, 3)
-    assert wiring.start_position(BotConfig.default()) is None
-
-
 # -- live apply ----------------------------------------------------------------
 
 
@@ -363,7 +335,7 @@ def test_reconfigure_refuses_what_needs_a_restart() -> None:
     old = loop.modules
     assert loop.reconfigure is not None
     assert not loop.reconfigure(replace(cfg, loop=LoopConfig(tick_rate=5)))
-    assert not loop.reconfigure(replace(cfg, alarms=None))  # a module switched off
+    assert not loop.reconfigure(replace(cfg, looting=LootingConfig()))  # reads a new region
     assert not loop.reconfigure(replace(cfg, serial_port="COM9"))
     assert loop.modules is old
 
@@ -385,3 +357,12 @@ def test_new_route_starts_at_its_nearest_waypoint() -> None:
     assert loop.modules.cavebot is not None
     assert loop.modules.cavebot.route.name == "b"
     assert loop.modules.cavebot.route.current == 1
+
+
+def test_cavebot_on_or_off_keeps_the_bot_running() -> None:
+    off = replace(BotConfig.default(), cavebot=None)
+    on = replace(off, cavebot=CavebotConfig(Route("hunt", waypoints=[Waypoint(1, 1, 7)])))
+    assert not wiring.needs_restart(off, on)
+    assert not wiring.needs_restart(on, off)
+    assert wiring.needs_restart(off, replace(off, looting=LootingConfig()))
+    assert not wiring.needs_restart(replace(off, looting=LootingConfig()), off)

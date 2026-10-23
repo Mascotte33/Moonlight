@@ -194,10 +194,19 @@ class TestFloorReader:
         assert reader.read_floor(frame, region) is None
 
     def test_missing_templates_returns_none(self) -> None:
-        # Default template dir does not exist: fail closed.
+        # No templates and no slider handle: fail closed.
         reader = FloorReader(template_dir="no-such-dir-xyz")
         frame, region = make_frame(7)
         assert reader.read_floor(frame, region) is None
+
+    @pytest.mark.parametrize("level", [0, 7, 9, 15])
+    def test_without_templates_the_slider_handle_gives_the_floor(self, level: int) -> None:
+        # 22x72 indicator: track ~70 gray, a 6 px handle centred on row 5 + 4 * level.
+        frame = np.full((100, 60, 3), 70, np.uint8)
+        top = 10 + 5 + 4 * level - 2
+        frame[top : top + 6, 10 + 16 : 10 + 20] = 120
+        reader = FloorReader(template_dir="no-such-dir-xyz")
+        assert reader.read_floor(frame, (10, 10, 22, 72)) == level
 
     def test_no_region_returns_none(self) -> None:
         frame, _ = make_frame(7)

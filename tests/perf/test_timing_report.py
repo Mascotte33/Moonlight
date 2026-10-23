@@ -243,7 +243,9 @@ def test_timing_report(tmp_path: Path) -> None:
     assert tick_mean > 0.0
 
 
-def test_production_tick_within_budget(tmp_path: Path) -> None:
+def test_production_tick_within_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """F-15/P7: the real tick -- ``build_loop`` + ``make_perceive`` + a real
     ``ScreenCapture.get_frame`` of the calibrated regions at native resolution
     + a cavebot step whose clicker converges and clicks -- has p95 < 50 ms,
@@ -276,6 +278,11 @@ def test_production_tick_within_budget(tmp_path: Path) -> None:
     if cap.get_window_rect() is None:
         cap.get_window_rect = lambda: (0, 0, width, height)  # type: ignore[method-assign]
 
+    class _Here:  # a still frame matches one map spot
+        def match(self, *_: object) -> tuple[int, int]:
+            return (1000, 1000)
+
+    monkeypatch.setattr("moonlight.bot.wiring._world_map", lambda *_: _Here())
     profile = CalibrationProfile.load(PROFILE)
     profile.regions.setdefault("game_grid", Region(*GAME_GRID))
     # Worst case first read: search the whole window (walk clicks hit the minimap).
@@ -305,7 +312,6 @@ def test_production_tick_within_budget(tmp_path: Path) -> None:
             "hotkeys": {"exura gran": "F1", "exura": "F2"},
             "routes_dir": str(routes),
             "templates_dir": str(tmp_path / "templates"),
-            "minimap_start": [1000, 1000, 7],  # absolute: a still frame is a real position
             "loop": {"enable_f12_monitor": False},
             "modules": {
                 "healing": {"enabled": True},

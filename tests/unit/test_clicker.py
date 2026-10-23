@@ -10,10 +10,9 @@ Focus (all offline, deterministic):
       grid land exactly, off-grid targets land within tolerance);
     - Cursor not found (frame without the template): click_at returns
       False and no 'C ' wire line is sent (fail-closed);
-    - Non-convergence (move_scale=0.5, small max_iters): returns False,
+    - Non-convergence (move_scale=0.01, small max_iters): returns False,
       no click sent;
-    - Chunked moves: deltas larger than 127 on an axis are split across
-      multiple M commands, each axis value within -127..127;
+    - Wire moves: a far target is one M command (the firmware splits it);
     - Validation: bad target shapes, tolerance<0, max_iters<1 -> ValueError;
     - ClickSide.RIGHT sends 'C R'.
 
@@ -32,7 +31,7 @@ import numpy as np
 import pytest
 
 from moonlight.hardware.clicker import ClickController
-from moonlight.hardware.input import ClickSide, FakeInput
+from moonlight.hardware.input import MAX_MOUSE_DELTA, ClickSide, FakeInput
 from moonlight.perception import CursorReader
 
 # ---------------------------------------------------------------------------
@@ -187,14 +186,32 @@ class TestConvergence:
         assert fake.sent_lines == []
 
     def test_non_convergence_returns_false_no_click(self) -> None:
-        # A backend that only applies half of each move can stall; with
-        # max_iters=2 it must give up without clicking.
-        fake, clicker = build_harness(cursor=(10, 10), move_scale=0.5)
-        ok = clicker.click_at((210, 110), max_iters=2)
+        # A backend that barely moves falls short; with max_iters=1 the
+        # budget runs out before the learned gain catches up.
+        fake, clicker = build_harness(cursor=(10, 10), move_scale=0.01)
+        ok = clicker.click_at((210, 110), max_iters=1)
         assert ok is False
         assert click_lines(fake.sent_lines) == 0
         # It did try: several moves were issued.
         assert len(m_lines(fake.sent_lines)) >= 2
+
+
+class AccelInput(FakeInput):
+    """Windows pointer acceleration (MouseSpeed=1): moves over 6 counts double."""
+
+    def mouse_move(self, dx: int, dy: int) -> None:
+        super().mouse_move(dx, dy)
+        x, y = self.cursor_position
+        self.cursor_position = (x + (dx if abs(dx) > 6 else 0), y + (dy if abs(dy) > 6 else 0))
+
+
+def test_pointer_acceleration_converges_instead_of_oscillating() -> None:
+    fake = AccelInput(cursor=(80, 80))
+    reader = CursorReader(cursor_region=REGION, cursor_templates=[TEMPLATE])
+    clicker = ClickController(fake, reader, lambda: make_frame(center=fake.cursor_position))
+    assert clicker.click_at((150, 90)) is True
+    assert abs(fake.cursor_position[0] - 150) <= 2
+    assert abs(fake.cursor_position[1] - 90) <= 2
 
 
 # ---------------------------------------------------------------------------
@@ -202,34 +219,14 @@ class TestConvergence:
 # ---------------------------------------------------------------------------
 
 
-class TestChunking:
-    def test_far_target_chunks_each_axis_within_wire_limits(self) -> None:
-        # dx=270, dy=180: both exceed the 127 wire limit.
+class TestWireMoves:
+    def test_far_target_is_one_move(self) -> None:
+        # dx=270, dy=180: within MAX_MOUSE_DELTA, so one exact M command.
         fake, clicker = build_harness(cursor=(10, 10), move_scale=1.0)
-        ok = clicker.click_at((280, 190))
-        assert ok is True
-        moves = m_lines(fake.sent_lines)
-        assert len(moves) >= 2
-        for dx, dy in moves:
-            assert -127 <= dx <= 127
-            assert -127 <= dy <= 127
-        # The moves sum to the full delta (no corrections: exact backend).
-        assert sum(m[0] for m in moves) == 270
-        assert sum(m[1] for m in moves) == 180
+        assert clicker.click_at((280, 190)) is True
+        assert m_lines(fake.sent_lines) == [(270, 180)]
         assert click_lines(fake.sent_lines) == 1
         assert fake.cursor_position == (280, 190)
-
-    def test_single_axis_chunked(self) -> None:
-        # Only x exceeds 127 (dx=200, dy=50).
-        fake, clicker = build_harness(cursor=(10, 10), move_scale=1.0)
-        ok = clicker.click_at((210, 60))
-        assert ok is True
-        moves = m_lines(fake.sent_lines)
-        assert len(moves) == 2  # 127 + 73 on x; y fits in the first chunk
-        for dx, dy in moves:
-            assert -127 <= dx <= 127
-            assert -127 <= dy <= 127
-        assert fake.cursor_position == (210, 60)
 
 
 # ---------------------------------------------------------------------------
@@ -371,9 +368,78 @@ class TestStateMachine:
         )
         assert clicker.click_at((60, 30)) is True
         moves = m_lines(fake.sent_lines)
-        assert moves[:3] == [(-127, -127)] * 3
+        assert moves[:3] == [(-MAX_MOUSE_DELTA, -MAX_MOUSE_DELTA)] * 3
         # From the screen corner (-100, -50) to (60, 30) is (160, 80) px at
         # 2 px per count: 80 + 40 counts in total.
         assert sum(m[0] for m in moves[3:]) == 80
         assert sum(m[1] for m in moves[3:]) == 40
         assert fake.sent_lines[-1] == "C L"
+
+
+# ---------------------------------------------------------------------------
+# Absolute mode (firmware ``A`` command)
+# ---------------------------------------------------------------------------
+
+
+def _absolute(**kwargs: object) -> tuple[FakeInput, ClickController]:
+    fake = FakeInput()
+    reader = CursorReader(cursor_region=REGION, cursor_templates=[TEMPLATE])
+    clicker = ClickController(
+        fake,
+        reader,
+        lambda: make_frame(center=None),
+        screen=(0, 0, 1000, 500),
+        window_origin=lambda: (100, 50),
+        sleep_fn=lambda _s: None,
+        **kwargs,  # type: ignore[arg-type]
+    )
+    return fake, clicker
+
+
+def test_absolute_jumps_then_clicks_without_reading_the_cursor() -> None:
+    fake, clicker = _absolute()
+    clicker.request((400, 200))
+    assert clicker.next_read() is None
+    assert clicker.step() is None
+    assert clicker.step() is True
+    # screen point (500, 250) on a 1000x500 screen -> the middle of 0..32767
+    assert fake.sent_lines == ["A 16400 16417", "C L"]
+    assert not clicker.busy
+
+
+def test_absolute_parks_off_the_minimap_after_a_minimap_click() -> None:
+    fake, clicker = _absolute(park_region=(800, 0, 100, 100))
+    clicker.request((850, 50))
+    clicker.step()
+    clicker.step()
+    assert clicker.busy  # the park is still pending
+    clicker.step()
+    assert fake.sent_lines[-1] == "A 28983 6586"  # screen (884, 100)
+    assert not clicker.busy
+
+    fake.sent_lines.clear()
+    clicker.request((10, 10))  # outside the minimap: no park
+    clicker.step()
+    clicker.step()
+    assert fake.sent_lines == ["A 3621 3965", "C L"] and not clicker.busy
+
+
+def test_absolute_retries_a_rate_limited_jump() -> None:
+    from moonlight.bot.safety import RateLimitedInput, RateLimiter
+
+    now = [0.0]
+    limiter = RateLimiter(rate=10, capacity=2.0, clock=lambda: now[0])
+    limited = RateLimitedInput(FakeInput(), limiter)
+    reader = CursorReader(cursor_region=REGION, cursor_templates=[TEMPLATE])
+    clicker = ClickController(
+        limited, reader, lambda: make_frame(center=None), screen=(0, 0, 1000, 500)
+    )
+    limited.limiter.try_acquire(1.0)  # bucket below the reserve
+    clicker.request((0, 0))
+    assert clicker.step() is None and limited.dropped == 1
+    now[0] += 0.2
+    clicker.step()
+    now[0] += 0.2
+    assert clicker.step() is True
+    assert isinstance(limited.backend, FakeInput)
+    assert limited.backend.sent_lines == ["A 16 33", "C L"]

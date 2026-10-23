@@ -23,11 +23,12 @@ import shutil
 import sys
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from moonlight.bot.state import WorldState
-from moonlight.bot.wiring import build_loop, capture_providers
+from moonlight.bot.wiring import build_loop, capture_providers, make_perceive
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
 from moonlight.setup import autofind
 from moonlight.setup.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
@@ -42,6 +43,7 @@ __all__ = [
     "CONFIGS_DIR",
     "LoggedInput",
     "build_gui_loop",
+    "build_position_reader",
     "check_layout",
     "watch_layout",
     "config_names",
@@ -209,6 +211,10 @@ class LoggedInput(InputBackend):
         self._log(f"input: mouse {dx} {dy}")
         self.inner.mouse_move(dx, dy)
 
+    def mouse_to(self, x: int, y: int) -> None:
+        self._log(f"input: mouse to {x} {y}")
+        self.inner.mouse_to(x, y)
+
     def click(self, side: ClickSide) -> None:
         self._log(f"input: click {side.name.lower()}")
         self.inner.click(side)
@@ -343,6 +349,8 @@ def build_gui_loop(
             module (raised by :func:`moonlight.bot.wiring.build_loop`).
     """
     real_config = load_real_config(config_path)
+    # F12 is the GUI's Start/Pause key, so the loop's F12 kill switch stays off.
+    real_config = replace(real_config, loop=replace(real_config.loop, enable_f12_monitor=False))
     profile = load_profile(real_config.profile, profiles_dir or real_config.profiles_dir)
     # Real screen capture: frame provider + focus check (F-13). Imported at
     # call time so importing this module never pulls in mss.
@@ -355,3 +363,21 @@ def build_gui_loop(
     providers = capture_providers(capture, profile, real_config)
     providers["focus_check"] = watch_layout(profile, capture.get_frame, log)
     return build_loop(real_config, profile, backend, state=state, **providers)
+
+
+def build_position_reader(
+    state: WorldState,
+    config_path: str | Path | None = None,
+    profiles_dir: str | Path | None = None,
+) -> Callable[[], None]:
+    """One screen read into *state* for while the bot is stopped.
+
+    It only captures the client, so the position stays current; it never
+    opens the Arduino or sends input. The next Start searches near it.
+    """
+    from moonlight.perception.capture import ScreenCapture
+
+    cfg = load_real_config(config_path)
+    profile = load_profile(cfg.profile, profiles_dir or cfg.profiles_dir)
+    capture = ScreenCapture(window_title=cfg.window_title)
+    return make_perceive(state, profile, capture.get_frame, start=state.position)
