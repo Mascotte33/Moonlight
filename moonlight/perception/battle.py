@@ -27,7 +27,10 @@ PyTibia production bots):
 * the selected target's creature icon is framed by a pure-red 20x20 px
   outline at slot x 1..20, y 0..19 (:data:`SELECTED_RGB`; measured on the
   T08 golden frames in T28 -- the older grey-corner rule (76/166) matched
-  the client's stone panel background and flagged every row).
+  the client's stone panel background and flagged every row). Its top edge
+  sits :data:`SELECTED_BAR_OFFSET` px above the HP bar's outline, so it is
+  found from the bar, not from the slot top: a region a few px off still
+  reads the bar and must still read the selection.
 
 A row counts as a creature entry when its name area contains at least
 ``min_text_pixels`` text pixels and an HP-bar outline. Everything is vectorised with NumPy, so a
@@ -114,6 +117,10 @@ HP_FILL_MIN_SPREAD = 60
 
 #: Attack-target outline color around the selected row's icon (T28).
 SELECTED_RGB: tuple[int, int, int] = (255, 0, 0)
+
+#: Rows from the target outline's top edge down to the HP bar's outline
+#: (67 of 67 selected golden entries; the synthetic test frames use 16).
+SELECTED_BAR_OFFSET = 15
 
 #: Red pixels each horizontal edge of the 20 px outline must carry (of 20).
 SELECTED_MIN_EDGE_PIXELS = 15
@@ -221,6 +228,7 @@ class BattleReader:
         self._bar_min_run = px(HP_BAR_MIN_RUN)
         self._icon = px(20)
         self._edge_min = px(SELECTED_MIN_EDGE_PIXELS)
+        self._bar_offset = px(SELECTED_BAR_OFFSET)
         # A 1 px line spreads over this many rows/cols once enlarged.
         self._line = max(1, math.ceil(scale))
         self._text_threshold = int(text_threshold)
@@ -282,12 +290,13 @@ class BattleReader:
                 continue
             name = self._resolve_name(row, slot)
             slot_rgb = crop[top:bottom, :cols]
+            outline_top = top + bar[0] - self._bar_offset
             entries.append(
                 BattleEntry(
                     name=name,
                     index=row,
                     is_player=self._is_player(name),
-                    is_selected=self._is_selected(slot_rgb),
+                    is_selected=self._is_selected(crop[:, :cols], outline_top),
                     hp_percent=self._hp_percent(slot_rgb, bar),
                 )
             )
@@ -339,23 +348,25 @@ class BattleReader:
         left = int(np.count_nonzero(fill.max(axis=1) - fill.min(axis=1) > HP_FILL_MIN_SPREAD))
         return 100.0 * left / len(fill) if left else None
 
-    def _is_selected(self, slot_rgb: np.ndarray) -> bool:
+    def _is_selected(self, crop: np.ndarray, outline_top: int) -> bool:
         """Detect the red target outline around the slot's creature icon.
 
-        Both horizontal edges (rows 0 and 19, left of the name) must carry
-        at least :data:`SELECTED_MIN_EDGE_PIXELS` outline-red pixels; the
-        red HP bar (rows ~16-18, right of x=23) and red icons do not.
+        *outline_top* is the crop row where the outline's top edge should
+        be, from the HP bar. Both horizontal edges (that row and the one
+        19 px below, each with ``_line`` rows of slack, left of the name)
+        must carry at least :data:`SELECTED_MIN_EDGE_PIXELS` outline-red
+        pixels; the red HP bar (right of x=23) and red icons do not.
         """
-        n = self._icon
-        if slot_rgb.shape[0] < n:
+        # doc: docs/prs/keys-walking.md#target-outline
+        k, n = self._line, self._icon
+        y0, y1 = outline_top - k, outline_top + n - 1 + k + 1
+        if y0 < 0 or y1 > crop.shape[0]:
             return False
-        icon = slot_rgb[:n, : self._name_x, :3].astype(np.int16)
+        icon = crop[y0:y1, : self._name_x, :3].astype(np.int16)
         ref = np.array(SELECTED_RGB, dtype=np.int16)
         red = (np.abs(icon - ref) <= self._highlight_tolerance).all(axis=2)
-        return bool(
-            red[: self._line].sum(axis=1).max() >= self._edge_min
-            and red[n - self._line :].sum(axis=1).max() >= self._edge_min
-        )
+        edge = red.sum(axis=1) >= self._edge_min
+        return bool(edge[: 2 * k + 1].any() and edge[-(2 * k + 1) :].any())
 
     def _resolve_name(self, row: int, slot: np.ndarray) -> str:
         """Resolve the slot's creature name via the configured resolver."""

@@ -262,6 +262,16 @@ class TestSelectedTarget:
         entries = read_default(frame, region)
         assert entries[0].is_selected is True
 
+    @pytest.mark.parametrize("shift", [-5, -3, -1, 2])
+    def test_selected_when_region_is_a_few_px_off(self, shift: int) -> None:
+        # Live regression (W1.F5.K1): the panel moves a few px when the
+        # backpack above it resizes. The bar (slot rows 14..21) still reads,
+        # so the selection must too, or the cavebot re-presses attack.
+        rows: list[RowSpec] = [{"text": True}, {"text": True, "highlight": True}, {"text": True}]
+        frame, (x, y, w, h) = make_frame(rows, offset=(0, 5))
+        entries = read_default(frame, (x, y + shift, w, h))
+        assert [e.is_selected for e in entries] == [False, True, False]
+
     def test_highlight_outside_tolerance(self) -> None:
         # A green (follow) outline is not the attack target.
         spec: RowSpec = {"text": True, "highlight": True, "highlight_rgb": (0, 255, 0)}
