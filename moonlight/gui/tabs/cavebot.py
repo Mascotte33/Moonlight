@@ -44,6 +44,7 @@ __all__ = [
     "CavebotTab",
     "apply_cavebot",
     "picked_route",
+    "drop_route",
     "route_names",
     "waypoint_line",
     "waypoint_table",
@@ -95,6 +96,25 @@ def picked_route(cfg: BotConfig) -> str:
     """The name of *cfg*'s cavebot route, or "" when it has none."""
     route = read_option(cfg, ROUTE.field)
     return route.name if isinstance(route, Route) else ""
+
+
+def drop_route(cfg: BotConfig, name: str) -> BotConfig:
+    """*cfg* without route *name*, so the route file can be deleted.
+
+    A cavebot on *name* moves to the first other route on disk, from its
+    first waypoint, or turns off (refill with it) when none is left.
+    """
+    if picked_route(cfg) != name:
+        return cfg
+    data = cfg.to_dict()
+    modules = data["modules"]
+    left = [n for n in route_names(cfg.routes_dir) if n != name]
+    if left:
+        modules["cavebot"].update(route=left[0], start_index=0)
+    else:
+        modules["cavebot"] = {"enabled": False}
+        modules["refill"]["enabled"] = False
+    return BotConfig.from_dict(data)
 
 
 def waypoint_table(route: Route | None, current: int | None = None) -> str:
@@ -445,26 +465,23 @@ class CavebotTab(Tab):
         self.lbl_msg.configure(text="Routes reloaded")
 
     def _delete(self) -> None:
-        """Ask for a route name and delete that route, after confirming."""
-        asked = ctk.CTkInputDialog(text="Route name to delete", title="Delete route").get_input()
-        name = (asked or "").strip()
-        if not name:
-            return
+        """Delete the dropdown's route, after confirming; the cavebot moves off it first."""
+        name = self.menu_route.get()
         if name not in route_names(self._routes_dir):
-            self.lbl_msg.configure(text=f"No route named {name!r}")
-            return
-        if name == picked_route(load_real_config()):
-            self.lbl_msg.configure(text=f"The cavebot uses {name}. Pick another route first.")
+            self.lbl_msg.configure(text="Pick a route to delete")
             return
         if not messagebox.askyesno("Delete route", f"Delete route {name}?"):
             return
+        path = picked_config()
+        try:
+            drop_route(load_real_config(path), name).save(path)
+        except ConfigError as exc:
+            self.lbl_msg.configure(text=f"Not deleted: {plain_reason(str(exc))}")
+            return
         route_path(self._routes_dir, name).unlink()
-        names = self._refresh_names()
-        if self._name == name:
-            self._name, self._waypoints = "", []
-            self.menu_route.set(PICK if names else NO_ROUTES)
+        self.ctx.config_changed()
+        self._reload()
         self.lbl_msg.configure(text=f"Deleted {name}")
-        self._draw()
 
     def _toggle(self) -> None:
         self._recording = not self._recording

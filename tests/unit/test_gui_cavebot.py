@@ -11,6 +11,7 @@ import pytest
 from moonlight.decision.cavebot import RouteFileLoader
 from moonlight.gui.tabs.cavebot import (
     apply_cavebot,
+    drop_route,
     picked_route,
     route_names,
     waypoint_line,
@@ -139,3 +140,21 @@ def test_direction_pad_is_every_neighbour_and_the_middle() -> None:
     offsets = [(dx, dy) for _, dx, dy in DIRECTIONS]
     assert offsets == [(dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
     assert dict((a, (dx, dy)) for a, dx, dy in DIRECTIONS)["↑"] == (0, -1)
+
+
+def test_dropping_the_picked_route_moves_the_cavebot(tmp_path: Path) -> None:
+    routes = _routes(tmp_path)
+    orcs = (routes / "rotworms.json").read_text(encoding="utf-8").replace("rotworms", "orcs")
+    (routes / "orcs.json").write_text(orcs, encoding="utf-8")
+    cfg = replace(BotConfig.default(), routes_dir=routes)
+    cfg = apply_cavebot(cfg, {"cavebot.route": "rotworms", "cavebot.enabled": True})
+    assert drop_route(cfg, "orcs") == cfg
+    moved = drop_route(cfg, "rotworms")
+    assert moved.cavebot is not None and picked_route(moved) == "orcs"
+
+
+def test_dropping_the_last_route_turns_the_cavebot_off(tmp_path: Path) -> None:
+    cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
+    cfg = apply_cavebot(cfg, {"cavebot.route": "rotworms", "cavebot.enabled": True})
+    off = drop_route(cfg, "rotworms")
+    assert off.cavebot is None and picked_route(off) == ""
