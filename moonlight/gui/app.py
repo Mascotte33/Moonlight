@@ -17,6 +17,7 @@ import logging
 import sys
 import threading
 import time
+from pathlib import Path
 
 import customtkinter as ctk
 
@@ -456,7 +457,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     logging.basicConfig(format="%(message)s")  # warnings, as before
-    logging.getLogger("moonlight.decision.cavebot").setLevel(logging.INFO)  # why it walks/attacks
+    logging.getLogger().handlers[0].setLevel(logging.INFO)  # debug goes to the file only
+    # Keys sent or dropped and why the cavebot attacks, for diagnosing in game.
+    Path("logs").mkdir(exist_ok=True)
+    file = logging.FileHandler("logs/bot.log", mode="w", encoding="utf-8")
+    file.setFormatter(logging.Formatter("%(asctime)s %(name)s %(message)s"))
+    logging.getLogger("moonlight").addHandler(file)
+    logging.getLogger("moonlight.bot.safety").setLevel(logging.DEBUG)
+    logging.getLogger("moonlight.decision.cavebot").setLevel(logging.DEBUG)
     app = GuiApp(start_bot=not args.no_bot)
     app.root.mainloop()
     return 0

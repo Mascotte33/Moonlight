@@ -74,10 +74,10 @@
 #define HID_PGDN      0xD6
 #define HID_HOME      0xD2
 #define HID_END       0xD5
-#define HID_SPACE     0x2C
-#define HID_A         0x04   // HID_A .. HID_Z (0x04..0x1D)
-#define HID_1         0x26   // HID_1 .. HID_9 (0x26..0x2E)
-#define HID_0         0x27
+#define HID_SPACE     ' '    // Keyboard.h takes ASCII below 0x80, not HID usage codes
+#define HID_A         'a'    // 'a' .. 'z'
+#define HID_1         '1'    // '1' .. '9'
+#define HID_0         '0'
 #define HID_F1        0xC2   // HID_F1 .. HID_F12 (0xC2..0xCD)
 #define HID_F13       0xF0   // HID_F13 .. HID_F24 (0xF0..0xFB)
 

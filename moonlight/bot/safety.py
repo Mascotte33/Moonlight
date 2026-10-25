@@ -139,7 +139,8 @@ class RateLimitedInput(InputBackend):
         return False
 
     def press_combo(self, combo: str) -> None:
-        if self._pay("press_combo"):
+        if self._pay(f"press_combo {combo}"):
+            logger.debug("key %s", combo)
             self.backend.press_combo(combo)
 
     def hold_combo(self, combo: str) -> None:

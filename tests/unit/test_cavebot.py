@@ -782,3 +782,17 @@ def test_walk_keys_scan_only_inside_the_window(monkeypatch: pytest.MonkeyPatch) 
     sim.state.monsters = [Monster("Rat", 100.0)]
     sim.step(5.0)  # window over: creatures forgotten, only the bumped tile stays
     assert sim.fake.sent_lines[-1] == "K left"
+
+
+def test_walk_keys_stand_still_while_a_target_is_selected(monkeypatch: pytest.MonkeyPatch) -> None:
+    sim = _creature_sim(monkeypatch, [(6, 5)])  # the way around on the right is open
+    sim.state.monsters = [Monster("Rat", 100.0)]
+    sim.state.selected_target = sim.state.monsters[0]
+    n = len(sim.fake.sent_lines)
+    for hp in range(90, 0, -10):  # 9 s fight: no arrow, no stuck alarm
+        sim.state.selected_target = Monster("Rat", float(hp))
+        sim.step(1.0)
+    assert sim.fake.sent_lines[n:] == []
+    sim.state.selected_target = None  # it died: walk on
+    sim.step(1.0)
+    assert sim.fake.sent_lines[n:] == ["K down"]

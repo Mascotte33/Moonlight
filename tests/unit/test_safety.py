@@ -5,13 +5,15 @@ F12 uses an injectable key-state probe (tiny real sleeps for the thread).
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Callable
 
 import pytest
 
-from moonlight.bot.safety import VK_F12, F12Monitor, RateLimiter
+from moonlight.bot.safety import VK_F12, F12Monitor, RateLimitedInput, RateLimiter
+from moonlight.hardware.input import FakeInput
 
 
 class FakeClock:
@@ -131,3 +133,14 @@ class TestF12Monitor:
     def test_invalid_poll_interval(self) -> None:
         with pytest.raises(ValueError):
             F12Monitor(on_press=lambda: None, poll_interval=0.0)
+
+
+def test_keys_sent_and_dropped_are_logged(caplog: pytest.LogCaptureFixture) -> None:
+    limited = RateLimitedInput(FakeInput(), RateLimiter(rate=1.0, capacity=2.0, clock=lambda: 0.0))
+    with caplog.at_level(logging.DEBUG, logger="moonlight.bot.safety"):
+        limited.press_combo("up")
+        limited.press_combo("r")
+    assert [r.getMessage() for r in caplog.records] == [
+        "key up",
+        "wire rate limit: dropped press_combo r",
+    ]

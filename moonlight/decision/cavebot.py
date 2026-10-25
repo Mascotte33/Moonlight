@@ -29,8 +29,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   one predicted tile per moving creature are avoided too. When they leave
   no way through, or the way around is over ``_DETOUR`` steps longer, the
   bot presses ``attack_combo`` (if the battle list has
-  monsters and nothing is selected) instead of an arrow, and walks on as
-  soon as a path opens.
+  monsters and nothing is selected) instead of an arrow. While a target is
+  selected it stands still, whatever selected it, and walks on once
+  nothing is.
 * **Arrival**: within 1 tile (Chebyshev distance) of the waypoint on the
   same floor; ``node`` within 3 tiles, ``stand`` only on the exact tile.
   ``walk``/``node``/``stand``/``lure`` are then done (``lure`` walks with
@@ -427,6 +428,10 @@ class Cavebot:
             return
         if not self._walk_keys:
             self._retry_if_idle(now, lambda: self._walk_toward(wp, pos))
+        elif self._state.selected_target is not None and not self.luring():
+            self._target = None  # stand still while a target is selected
+            self._scan_until = now + _SCAN_WINDOW  # see the creatures when it walks on
+            self._attack(now)
         elif self._last_move > self._last_cmd or now - self._last_cmd >= _KEY_RETRY:
             if self._last_move <= self._last_cmd and self._target is not None:
                 logger.info("cavebot: tile %s,%s,%s blocked, walking around", *self._target)
@@ -584,11 +589,17 @@ class Cavebot:
         progress for the stuck timeout. HP standing still ``_FIGHT_STALL``
         seconds (out of reach) presses the key again for the next target.
         """
+        sel = self._state.selected_target
+        logger.debug(
+            "cavebot: attack? monsters=%d selected=%s since_press=%.1fs",
+            len(self._state.monsters),
+            None if sel is None else f"{sel.hp_percent:.0f}%",
+            now - self._attack_at,
+        )
         if self._attack_combo is None or not self._state.monsters:
             return  # nothing to fight: wait, the stuck timeout decides
         if now - self._attack_at < _ATTACK_WAIT:
             return  # give the last press time to show a selection
-        sel = self._state.selected_target
         if sel is not None:
             seen = (sel.name, sel.hp_percent)
             if seen != self._fight:
