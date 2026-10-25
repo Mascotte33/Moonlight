@@ -43,6 +43,8 @@ from collections.abc import Callable, Sequence
 import cv2
 import numpy as np
 
+from moonlight import x11
+
 __all__ = [
     "Rect",
     "DEFAULT_MATCH_THRESHOLD",
@@ -234,7 +236,9 @@ class CursorReader:
 
 
 def _screen_cursor() -> tuple[int, int] | None:
-    """The mouse cursor's screen position from Windows, or None elsewhere."""
+    """The mouse cursor's screen position from Windows or X11, or None elsewhere."""
+    if sys.platform == "linux":
+        return x11.cursor()
     if sys.platform != "win32":
         return None
     point = (ctypes.c_long * 2)()

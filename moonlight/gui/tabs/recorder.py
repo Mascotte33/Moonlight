@@ -15,6 +15,7 @@ import threading
 from ctypes import wintypes
 from pathlib import Path
 
+from moonlight import x11
 from moonlight.bot.state import Position
 from moonlight.decision.cavebot import RouteError, RouteFileLoader, Waypoint
 
@@ -46,17 +47,27 @@ class Hotkeys:
     """:data:`HOTKEYS` as global hotkeys, pressed actions put on *out*.
 
     ``RegisterHotKey`` ties keys to the thread that registers them, so they
-    live on their own thread with a message loop. Windows only.
+    live on their own thread with a message loop. Linux has no such call, so
+    a thread polls the X11 key map instead. There the key also reaches the
+    game, so keep F4 to F9 free of client hotkeys while recording.
     """
 
     def __init__(self, out: queue.Queue[str]) -> None:
         self._out = out
         self._thread: threading.Thread | None = None
         self._thread_id = 0
+        self._stop = threading.Event()
         self.failed: list[str] = []
 
     def start(self) -> None:
-        if sys.platform != "win32" or self._thread is not None:
+        if self._thread is not None:
+            return
+        if sys.platform == "linux":
+            self._stop = threading.Event()
+            self._thread = threading.Thread(target=self._poll, daemon=True, name="recorder-keys")
+            self._thread.start()
+            return
+        if sys.platform != "win32":
             return
         ready = threading.Event()
         self._thread = threading.Thread(
@@ -66,11 +77,27 @@ class Hotkeys:
         ready.wait(1.0)
 
     def stop(self) -> None:
-        if sys.platform != "win32" or self._thread is None:
+        if self._thread is None:
+            return
+        if sys.platform == "linux":
+            self._stop.set()
+            self._thread.join(1.0)
+            self._thread = None
+            return
+        if sys.platform != "win32":
             return
         ctypes.windll.user32.PostThreadMessageW(self._thread_id, _WM_QUIT, 0, 0)
         self._thread.join(1.0)
         self._thread = None
+
+    def _poll(self) -> None:
+        held = {k: False for k in HOTKEYS}
+        while not self._stop.wait(0.03):
+            for k, was in held.items():
+                down = x11.vk_down(vk_code(k))
+                if down and not was:
+                    self._out.put(HOTKEYS[k])
+                held[k] = down
 
     def _run(self, ready: threading.Event) -> None:
         if sys.platform != "win32":

@@ -27,6 +27,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from moonlight import x11
 from moonlight.bot.state import WorldState
 from moonlight.bot.wiring import build_loop, capture_providers, make_perceive
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
@@ -66,7 +67,9 @@ _NAME = re.compile(r"[A-Za-z0-9_-]+")
 
 
 def window_titles() -> list[str]:
-    """Titles of the visible top-level windows, sorted; empty off Windows."""
+    """Titles of the visible top-level windows, sorted; empty off Windows and X11."""
+    if sys.platform == "linux":
+        return x11.window_titles()
     if sys.platform != "win32":
         return []
     user32 = ctypes.windll.user32

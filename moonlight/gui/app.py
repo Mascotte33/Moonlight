@@ -21,6 +21,7 @@ from pathlib import Path
 
 import customtkinter as ctk
 
+from moonlight import x11
 from moonlight.bot.state import WorldState
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import build_gui_loop, build_position_reader, load_real_config
@@ -48,6 +49,7 @@ POLL_MS = 100
 RETRY_S = 5.0  # seconds between tries to start a bot that is down
 WATCH_S = 0.2  # seconds between position reads while the bot is stopped
 _VK_F12 = 0x7B
+_f12_was_down = False
 
 
 def f12_pressed() -> bool:
@@ -56,7 +58,13 @@ def f12_pressed() -> bool:
     Windows won't hand F12 to ``RegisterHotKey`` (it is reserved for
     debuggers), so the poller reads the key state instead. Bit 0 means
     "pressed since the last call", which catches taps shorter than a poll.
+    X11 has no such bit, so Linux catches the rising edge between polls.
     """
+    global _f12_was_down
+    if sys.platform == "linux":
+        down = x11.vk_down(_VK_F12)
+        pressed, _f12_was_down = down and not _f12_was_down, down
+        return pressed
     if sys.platform != "win32":
         return False
     return bool(ctypes.windll.user32.GetAsyncKeyState(_VK_F12) & 1)

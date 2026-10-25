@@ -33,6 +33,8 @@ from typing import Any
 import mss
 import numpy as np
 
+from moonlight import x11
+
 __all__ = [
     "TIBIA_WINDOW_TITLE",
     "ScreenCapture",
@@ -92,8 +94,10 @@ def _find_window_hwnd(title: str) -> int | None:
     Tries an exact match (``FindWindowW``) first, then enumerates visible
     top-level windows and returns the first whose title equals *title* or
     starts with it (to cover "Tibia - <ServerName>"). Returns ``None`` if no
-    match, or off Windows.
+    match. On Linux the window is found through X11.
     """
+    if sys.platform == "linux":
+        return x11.find_window(title)
     if sys.platform != "win32":
         return None
     user32 = ctypes.windll.user32
@@ -137,6 +141,8 @@ class _POINT(ctypes.Structure):
 def _window_rect(hwnd: int) -> tuple[int, int, int, int] | None:
     """Return the game area (client area, no title bar or borders) of *hwnd*
     as screen ``(left, top, width, height)``, or ``None``."""
+    if sys.platform == "linux":
+        return x11.window_rect(hwnd)
     if sys.platform != "win32":
         return None
     user32 = ctypes.windll.user32
@@ -262,8 +268,14 @@ class ScreenCapture:
         """Return ``True`` if the client window is focused *and* visible.
 
         A window is "focused" here when it is the current foreground window.
-        Off Windows (or if the window is not found) this returns ``False``.
+        On Linux the focused window's title is matched instead. Elsewhere (or
+        if the window is not found) this returns ``False``.
         """
+        if sys.platform == "linux":
+            active = x11.active_title()
+            return active is not None and (
+                active == self.window_title or active.startswith(self.window_title)
+            )
         if sys.platform != "win32":
             return False
         hwnd = _find_window_hwnd(self.window_title)

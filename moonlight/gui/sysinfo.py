@@ -1,7 +1,8 @@
 """Whole-PC and own-process readings for the bottom bar and Status (T9.F1.K1).
 
-Windows only, through ``ctypes``; every reader gives ``None`` or ``"—"``
-elsewhere or on failure, so a status label never crashes the poller.
+Windows through ``ctypes``, Linux through ``/proc``; every reader gives
+``None`` or ``"—"`` elsewhere or on failure, so a status label never crashes
+the poller.
 """
 
 from __future__ import annotations
@@ -9,12 +10,45 @@ from __future__ import annotations
 import ctypes
 import sys
 from ctypes import wintypes
+from pathlib import Path
 
-__all__ = ["cpu_percent", "cpu_times", "memory_mb", "memory_text", "ram_percent"]
+__all__ = [
+    "cpu_percent",
+    "cpu_times",
+    "memory_mb",
+    "memory_text",
+    "parse_kb",
+    "parse_proc_stat",
+    "ram_percent",
+]
+
+
+def _proc(name: str) -> str | None:
+    try:
+        return Path("/proc", name).read_text()
+    except OSError:
+        return None
+
+
+def parse_proc_stat(text: str) -> tuple[int, int]:
+    """``(idle, total)`` from the ``cpu`` line of ``/proc/stat``; idle counts iowait."""
+    ticks = [int(v) for v in text.splitlines()[0].split()[1:9]]
+    return ticks[3] + ticks[4], sum(ticks)
+
+
+def parse_kb(text: str, key: str) -> int | None:
+    """The ``key:  1234 kB`` value from ``/proc/meminfo`` or ``/proc/self/status``."""
+    for line in text.splitlines():
+        if line.startswith(key + ":"):
+            return int(line.split()[1])
+    return None
 
 
 def cpu_times() -> tuple[int, int] | None:
-    """Whole-PC ``(idle, total)`` CPU time in 100 ns ticks; None off Windows."""
+    """Whole-PC ``(idle, total)`` CPU time in ticks (100 ns on Windows, jiffies on Linux)."""
+    if sys.platform == "linux":
+        text = _proc("stat")
+        return None if text is None else parse_proc_stat(text)
     if sys.platform != "win32":
         return None
     idle, kernel, user = (wintypes.FILETIME() for _ in range(3))
@@ -36,7 +70,11 @@ def cpu_percent(prev: tuple[int, int], now: tuple[int, int]) -> float:
 
 
 def memory_mb() -> int | None:
-    """Working set of this process in MB; None off Windows or on failure."""
+    """Working set (resident memory) of this process in MB; None when unknown."""
+    if sys.platform == "linux":
+        text = _proc("self/status")
+        kb = None if text is None else parse_kb(text, "VmRSS")
+        return None if kb is None else kb // 1024
     if sys.platform != "win32":
         return None
     try:
@@ -78,7 +116,14 @@ def memory_text() -> str:
 
 
 def ram_percent() -> float | None:
-    """Share of the whole PC's RAM in use, 0..100; None off Windows."""
+    """Share of the whole PC's RAM in use, 0..100; None when unknown."""
+    if sys.platform == "linux":
+        text = _proc("meminfo")
+        total = None if text is None else parse_kb(text, "MemTotal")
+        free = None if text is None else parse_kb(text, "MemAvailable")
+        if not total or free is None:
+            return None
+        return 100.0 * (1 - free / total)
     if sys.platform != "win32":
         return None
 
