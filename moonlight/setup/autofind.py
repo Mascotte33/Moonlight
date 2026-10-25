@@ -104,8 +104,10 @@ def _match(screenshot: np.ndarray, name: str) -> tuple[int, int] | None:
 
 
 # The list starts 13 px below the header's top and is 156 px wide. It ends at
-# the window's bottom border, a flat light-grey row.
+# the window's bottom border, a flat light-grey row. Shown filter buttons end
+# in the same kind of row 60 px below the header; the list then starts under it.
 BATTLE_TOP, BATTLE_W = 13, 156
+FILTER_LINE = 60
 GRIP_W = 12  # the resize grip in the bottom-left corner breaks the grey row
 
 
@@ -116,11 +118,15 @@ def find_battle_list(screenshot: np.ndarray) -> Rect | None:
     x, y = hit
     rows = screenshot[y + BATTLE_TOP :, x + GRIP_W : x + BATTLE_W].astype(np.int16)
     bright = (rows.min(axis=(1, 2)) >= 100) & (np.ptp(rows, axis=(1, 2)) <= 30)
-    if not bright.any():
+    lines = np.flatnonzero(bright) + BATTLE_TOP  # grey rows, from the header's top
+    start = BATTLE_TOP
+    if lines.size and abs(int(lines[0]) - FILTER_LINE) <= 1:
+        start = int(lines[0]) + 1
+        lines = lines[lines > start]
+    if not lines.size:
         return None
     # The reader's box starts TOP_PADDING above the first creature row.
-    top = y + BATTLE_TOP - TOP_PADDING
-    return (x, top, BATTLE_W, int(bright.argmax()) + TOP_PADDING)
+    return (x, y + start - TOP_PADDING, BATTLE_W, int(lines[0]) - start + TOP_PADDING)
 
 
 # The reference image is the zoom-button strip right of the map, since the map

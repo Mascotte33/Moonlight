@@ -9,7 +9,9 @@ import cv2
 import numpy as np
 import pytest
 
+from moonlight.perception.battle import BattleReader
 from moonlight.setup.autofind import FINDERS, find_game_grid, find_regions, find_ui_scale
+from moonlight.setup.calibrate import CalibrationProfile, Region
 
 
 def _broken(_shot: np.ndarray) -> None:
@@ -66,6 +68,17 @@ def test_battle_list_height_on_a_tall_window() -> None:
     if full is None:
         pytest.skip("battle list screenshot not present")
     assert dict(FINDERS)["battle_list"](full) == (2212, 22, 156, 484)
+
+
+@pytest.mark.skipif(not ANCHORS.is_dir(), reason="reference images not present")
+def test_battle_list_below_shown_filter_buttons() -> None:
+    shot = cv2.imread(str(GOLDEN / "battle" / "filters.png"))
+    if shot is None:
+        pytest.skip("battle list screenshot not present")
+    box = dict(FINDERS)["battle_list"](shot)
+    assert box == (2212, 52, 156, 611)
+    reader = BattleReader(CalibrationProfile(regions={"battle_list": Region(*box)}))
+    assert len(reader.read_battle_list(np.ascontiguousarray(shot[..., ::-1]))) == 4
 
 
 @pytest.mark.skipif(
