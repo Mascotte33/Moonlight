@@ -291,6 +291,7 @@ class GameLoop:
         self._select_click: tuple[int, float | None] | None = None
         # The movement whose chase button was last clicked; None clicks the next one for sure.
         self._chase_movement_set: str | None = None
+        self._chase_set_for_target: tuple[str, int] | None = None
         # The movement whose chase button click is in flight.
         self._chase_click: str | None = None
         # Pause bookkeeping (reset by every healthy, exception-free tick).
@@ -323,13 +324,14 @@ class GameLoop:
 
         # (monotonic_time, hp) samples for the fast-HP-drop alarm.
         self._hp_history: deque[tuple[float, float]] = deque()
+        self._reported_module_alarm: str | None = None
 
     @property
     def modules(self) -> DecisionModules:
         """The modules that run this tick (``all_modules`` minus the paused ones)."""
         if not self.paused:
             return self.all_modules
-        return replace(self.all_modules, cavebot=None, targeting=None)
+        return replace(self.all_modules, cavebot=None, targeting=None, attack_hotkeys=None)
 
     @modules.setter
     def modules(self, value: DecisionModules) -> None:
@@ -497,6 +499,9 @@ class GameLoop:
         alarm = m.alarms.decide(snap) if m.alarms is not None else None
         # Only critical alarms stop the bot; warnings are advisory.
         self._alarm = alarm if alarm is not None and alarm.severity == "critical" else None
+        self._report_module_alarm()
+        if snap.selected_target is None:
+            self._chase_set_for_target = None  # the next target is a new attack
         self._target = None
         if m.targeting is not None:
             self._target = m.targeting.decide(snap, self._clock())
@@ -550,11 +555,19 @@ class GameLoop:
                 return f"{name} alarm: {alarm}"
         return None
 
+    def _report_module_alarm(self) -> None:
+        """Alert once when the cavebot or refill stops itself (stuck, lost).
+
+        The stopped module only stops walking; healing and targeting go on.
+        """
+        alarm = self._module_alarm()
+        if alarm is not None and alarm != self._reported_module_alarm:
+            self._alert(alarm)
+        self._reported_module_alarm = alarm
+
     def _is_alarm(self, snap: WorldState) -> bool:
-        """ALARM: player on screen, PM open, fast HP drop or a critical/module alarm."""
+        """ALARM: player on screen, PM open, fast HP drop or a critical alarm."""
         if snap.players_on_screen > 0 or self._alarm is not None:
-            return True
-        if self._module_alarm() is not None:
             return True
         if self._pm_open_check is not None and self._pm_open_check(snap):
             return True
@@ -568,9 +581,6 @@ class GameLoop:
                     return f"alarm {self._alarm.type.value}: {self._alarm.message}"
                 if snap.players_on_screen > 0:
                     return f"players on screen: {snap.players_on_screen}"
-                module_alarm = self._module_alarm()
-                if module_alarm is not None:
-                    return module_alarm
                 if self._pm_open_check is not None and self._pm_open_check(snap):
                     return "PM window open"
                 return "fast HP drop"
@@ -765,6 +775,11 @@ class GameLoop:
         row = targeting.row_for(selected)
         if row.ignore or targeting.is_unreachable(selected):
             return
+        # The owner may have changed the mode by hand: set it again for every new target.
+        attacked = (selected.name, selected.battle_list_row)
+        if attacked != self._chase_set_for_target:
+            self._chase_movement_set = None
+            self._chase_set_for_target = attacked
         if row.movement != self._chase_movement_set:
             self._click_chase_button(snap, targeting, clicker, row.movement, now)
             return

@@ -471,8 +471,13 @@ def main(argv: list[str] | None = None) -> int:
     file = logging.FileHandler("logs/bot.log", mode="w", encoding="utf-8")
     file.setFormatter(logging.Formatter("%(asctime)s %(name)s %(message)s"))
     logging.getLogger("moonlight").addHandler(file)
+    logging.getLogger("moonlight").setLevel(logging.INFO)  # state changes, restarts
     logging.getLogger("moonlight.core.safety").setLevel(logging.DEBUG)
     logging.getLogger("moonlight.cavebot.cavebot").setLevel(logging.DEBUG)
+    # The bot thread shares the GIL with the GUI. At the default 5 ms switch
+    # interval a busy GUI (a row redraw) made a numpy/cv2 tick 6.6x slower;
+    # at 0.5 ms 1.2x (measured).
+    sys.setswitchinterval(0.0005)
     app = GuiApp(start_bot=not args.no_bot)
     app.root.mainloop()
     return 0

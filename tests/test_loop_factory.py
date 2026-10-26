@@ -194,7 +194,9 @@ def test_start_passes_window_title_to_capture(
     seen: list[str] = []
 
     class SpyCapture(capture.ScreenCapture):
-        def __init__(self, window_title: str = capture.TIBIA_WINDOW_TITLE) -> None:
+        def __init__(
+            self, backend: str = "mss", window_title: str = capture.TIBIA_WINDOW_TITLE
+        ) -> None:
             seen.append(window_title)
             super().__init__(window_title=window_title)
 

@@ -51,6 +51,19 @@ TIBIA_WINDOW_TITLE = "Tibia"
 _BACKENDS = ("mss", "dxcam")
 
 
+def default_backend() -> str:
+    """``"dxcam"`` on Windows when it is installed, else ``"mss"``.
+
+    Measured live at 2560x1369: dxcam 2.75 ms per frame, mss 33 ms. The mss
+    grab was most of the bot's tick.
+    """
+    if sys.platform != "win32":
+        return "mss"
+    import importlib.util
+
+    return "dxcam" if importlib.util.find_spec("dxcam") is not None else "mss"
+
+
 class CaptureError(RuntimeError):
     """A capture operation failed."""
 
@@ -195,6 +208,7 @@ class ScreenCapture:
 
         self.backend = backend
         self.window_title = window_title
+        self._hwnd: int | None = None
         self._device_idx = device_idx
         self._output_idx = output_idx
 
@@ -259,10 +273,22 @@ class ScreenCapture:
         currently found (the last known rect is still available via
         :attr:`_last_rect`).
         """
-        hwnd = _find_window_hwnd(self.window_title)
+        hwnd = self._window_handle()
         if hwnd is None:
             return None
         return _window_rect(hwnd)
+
+    def _window_handle(self) -> int | None:
+        """The client's window handle, found once and reused while it lives.
+
+        Finding it enumerates every top-level window (about 0.5 ms), so it is
+        not done every tick.
+        """
+        if sys.platform == "win32" and self._hwnd is not None:
+            if ctypes.windll.user32.IsWindow(ctypes.c_void_p(self._hwnd)):
+                return self._hwnd
+        self._hwnd = _find_window_hwnd(self.window_title)
+        return self._hwnd
 
     def is_focused(self) -> bool:
         """Return ``True`` if the client window is focused *and* visible.
@@ -278,7 +304,7 @@ class ScreenCapture:
             )
         if sys.platform != "win32":
             return False
-        hwnd = _find_window_hwnd(self.window_title)
+        hwnd = self._window_handle()
         if hwnd is None:
             return False
         user32 = ctypes.windll.user32

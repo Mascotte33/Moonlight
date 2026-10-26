@@ -601,6 +601,23 @@ class TestAttackHotkeys:
         assert inp.sent_lines == []
 
 
+    def test_stuck_cavebot_alerts_once_and_attack_goes_on(self) -> None:
+        cavebot = SimpleNamespace(
+            is_active=lambda: False,
+            luring=lambda: False,
+            route=SimpleNamespace(current=0),
+            alarm="stuck",
+        )
+        alerts: list[str] = []
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self._wolf_selected(), inp, F6_ROWS, cavebot=cavebot)
+        gl._alert_sink = alerts.append
+        ticks(gl, clock, 40)
+        assert gl.current_state is BotState.ATTACK
+        assert "K F6" in inp.sent_lines
+        assert alerts == ["cavebot alarm: stuck"]
+
+
 class TestChaseMode:
     @staticmethod
     def _chase_clicks(inp: FakeInput) -> list[str]:
@@ -630,6 +647,28 @@ class TestChaseMode:
         self._selected(ws, Monster("Rat", 50.0))
         ticks(gl, clock, 5)
         assert self._chase_clicks(inp) == ["A 310 130", "A 310 110"]
+
+    def test_each_new_target_clicks_the_mode_again(self) -> None:
+        ws = make_state()
+        self._selected(ws, Monster("Wolf", 50.0))
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp)
+        ticks(gl, clock, 5)
+        with ws.lock():
+            ws.selected_target = None  # the wolf died
+        ticks(gl, clock, 2)
+        self._selected(ws, Monster("Wolf", 50.0))
+        ticks(gl, clock, 5)
+        assert self._chase_clicks(inp) == ["A 310 130", "A 310 130"]
+
+    def test_pause_sends_no_attack_key(self) -> None:
+        ws = make_state()
+        self._selected(ws, Monster("Wolf", 50.0))
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp)
+        gl.paused = True
+        ticks(gl, clock, 60)
+        assert inp.sent_lines == []
 
     def test_pause_clicks_the_mode_again(self) -> None:
         ws = make_state()

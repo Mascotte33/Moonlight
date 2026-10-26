@@ -357,9 +357,10 @@ def build_gui_loop(
     profile = load_profile(real_config.profile, profiles_dir or real_config.profiles_dir)
     # Real screen capture: frame provider + focus check (F-13). Imported at
     # call time so importing this module never pulls in mss.
-    from moonlight.perception.capture import ScreenCapture
+    from moonlight.perception.capture import ScreenCapture, default_backend
 
-    capture = ScreenCapture(window_title=real_config.window_title)
+    # dxcam's camera is one per screen and shared, so only the bot uses it.
+    capture = ScreenCapture(backend=default_backend(), window_title=real_config.window_title)
     log = hardware.log.info if hardware.log is not None else logger.info
     check_layout(profile, capture.get_frame, log)  # before the Arduino opens
     backend = make_backend(real_config, hardware)
