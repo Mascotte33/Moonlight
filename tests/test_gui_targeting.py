@@ -16,7 +16,7 @@ from moonlight.targeting.tab import (
 DEFAULT_ROW = MonsterRowFields("", "1", False, "", "", "follow")
 NAMELESS_ROW = DEFAULT_ROW
 NAMED_ROW = MonsterRowFields("a", "1", False, "", "", "follow")
-SETTINGS = TargetingSettings("1500", "6", "shift+F9", "shift+F10")
+SETTINGS = TargetingSettings("1500", "6")
 
 
 def test_rows_become_default_monster_named_rows_and_area_rules() -> None:
@@ -61,9 +61,8 @@ def test_a_turned_off_targeting_module_stays_off() -> None:
         ([MonsterRowFields("", "x", False, "", "", "follow")], [], SETTINGS, "not a number"),
         ([DEFAULT_ROW], [AreaRuleFields("", "1", "")], SETTINGS, "area rule"),
         ([DEFAULT_ROW], [AreaRuleFields("F7", "0", "")], SETTINGS, "minimum_adjacent_monsters"),
-        ([DEFAULT_ROW], [], TargetingSettings("-1", "6", "shift+F9", "shift+F10"), "cooldown"),
-        ([DEFAULT_ROW], [], TargetingSettings("1500", "0", "shift+F9", "shift+F10"), "unreachable"),
-        ([DEFAULT_ROW], [], TargetingSettings("1500", "6", "F9", "F9"), "must differ"),
+        ([DEFAULT_ROW], [], TargetingSettings("-1", "6"), "cooldown"),
+        ([DEFAULT_ROW], [], TargetingSettings("1500", "0"), "unreachable"),
     ],
 )
 def test_a_refused_value_raises_a_config_error(

@@ -31,7 +31,7 @@ def test_found_and_missing_areas_are_split() -> None:
 GOLDEN = Path(__file__).resolve().parents[0] / "golden"
 PROFILE = Path(__file__).resolve().parents[0] / "golden_profile" / "moonlight_user.json"
 ANCHORS = Path("data/templates/anchors")
-IMAGE_FINDERS = {"battle_list", "minimap", "floor_indicator", "status_icons"}
+IMAGE_FINDERS = {"battle_list", "minimap", "floor_indicator", "status_icons", "chase_buttons"}
 
 
 @pytest.mark.skipif(not any(GOLDEN.glob("*.png")), reason="golden screenshots not present")

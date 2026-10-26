@@ -219,11 +219,13 @@ def test_no_creature_slot_means_no_step() -> None:
         assert targeting.decide(s, 8.0) is None
 
 
-def test_chase_hotkeys_must_differ() -> None:
-    with pytest.raises(ValueError, match="must differ"):
-        TargetingConfig(chase_on_hotkey="shift+F9", chase_off_hotkey="Shift+F9").validate()
+def test_chase_button_center_is_the_lower_half_for_follow_else_the_upper() -> None:
+    targeting = TargetingDecision(None, chase_buttons_region=(2510, 119, 20, 43))
+    assert targeting.chase_button_center("follow") == (2520, 151)
+    assert targeting.chase_button_center("none") == (2520, 129)
+    assert targeting.chase_button_center("keep_distance") == (2520, 129)
 
 
-def test_chase_hotkey_is_required() -> None:
-    with pytest.raises(ValueError):
-        TargetingConfig(chase_on_hotkey="").validate()
+def test_chase_button_center_without_a_region_raises() -> None:
+    with pytest.raises(ValueError, match="chase_buttons"):
+        TargetingDecision().chase_button_center("follow")

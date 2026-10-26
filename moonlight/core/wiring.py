@@ -485,7 +485,10 @@ def build_modules(
         m.healing = HealingDecision(config.healing, clock=clock)
     if config.targeting is not None and m.targeting is None:
         m.targeting = TargetingDecision(
-            config.targeting, profile.get_region("battle_list").to_tuple, profile.ui_scale
+            config.targeting,
+            profile.get_region("battle_list").to_tuple,
+            profile.ui_scale,
+            profile.get_region("chase_buttons").to_tuple,
         )
     if config.targeting is not None and m.attack_hotkeys is None:
         m.attack_hotkeys = AttackHotkeys(config.targeting)

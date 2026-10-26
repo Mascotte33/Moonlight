@@ -460,13 +460,18 @@ def make_targeting_loop(
     targeting_config: TargetingConfig | None = None,
     cavebot: object | None = None,
 ) -> tuple[GameLoop, FakeClock]:
-    """A loop with real targeting over battle list region (100, 200, 170, 300)."""
+    """A loop with real targeting over battle list region (100, 200, 170, 300).
+
+    The chase buttons are at (300, 100, 20, 40): stand clicks (310, 110), chase (310, 130).
+    """
     clock = FakeClock()
     clicker = FakeClicker()
     config = targeting_config if targeting_config is not None else TargetingConfig()
     modules = DecisionModules(
         healing=HealingDecision(clock=clock),
-        targeting=TargetingDecision(config, (100, 200, 170, 300)),
+        targeting=TargetingDecision(
+            config, (100, 200, 170, 300), chase_buttons_region=(300, 100, 20, 40)
+        ),
         attack_hotkeys=AttackHotkeys(config),
         cavebot=cast(Cavebot, cavebot),
         clicker=cast(ClickController, clicker),
@@ -480,6 +485,10 @@ def ticks(gl: GameLoop, clock: FakeClock, n: int) -> None:
     for _ in range(n):
         gl.tick()
         clock.advance(PERIOD)
+
+
+#: The click on Chase Opponent that a follow row sends before its first attack key.
+CHASE = ["A 310 130", "C L"]
 
 
 class TestSelectClick:
@@ -517,7 +526,7 @@ class TestSelectClick:
         with ws.lock():
             ws.selected_target = wolf  # the outline shows
         ticks(gl, clock, 40)
-        assert inp.sent_lines == ["A 180 222", "C L"] * 2 + ["K shift+F9"]  # chase mode only
+        assert inp.sent_lines == ["A 180 222", "C L"] * 2 + CHASE  # chase mode only
         assert gl.current_state is BotState.ATTACK
 
     def test_stuck_target_gets_one_arrow_step_then_the_next_target_is_clicked(self) -> None:
@@ -530,9 +539,9 @@ class TestSelectClick:
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp)
         ticks(gl, clock, 8 * 20 + 3)  # 8 s on a target whose HP never moves
-        assert inp.sent_lines == ["K shift+F9", "K up"]
+        assert inp.sent_lines == [*CHASE, "K up"]
         ticks(gl, clock, 8 * 20 + 6)  # 8 s more, then the click on the next row
-        assert inp.sent_lines == ["K shift+F9", "K up", "A 180 244", "C L"]
+        assert inp.sent_lines == [*CHASE, "K up", "A 180 244", "C L"]
 
 
 F6_ROWS = TargetingConfig(
@@ -555,9 +564,9 @@ class TestAttackHotkeys:
         inp = FakeInput()
         gl, clock = make_targeting_loop(self._wolf_selected(), inp, F6_ROWS)
         ticks(gl, clock, 20)  # 1 s < the 2 s cooldown
-        assert inp.sent_lines == ["K shift+F9", "K F6"]
-        ticks(gl, clock, 23)  # the chase key held the first F6 back 2 ticks
-        assert inp.sent_lines == ["K shift+F9", "K F6", "K F6"]
+        assert inp.sent_lines == [*CHASE, "K F6"]
+        ticks(gl, clock, 25)  # the chase click held the first F6 back 4 ticks
+        assert inp.sent_lines == [*CHASE, "K F6", "K F6"]
 
     def test_area_rule_before_the_row_hotkey(self) -> None:
         ws = self._wolf_selected()
@@ -565,8 +574,8 @@ class TestAttackHotkeys:
             ws.creature_slots = ((6, 5), (8, 6))
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp, F6_ROWS)
-        ticks(gl, clock, 3)  # the chase key, then the area key once the limiter refills
-        assert inp.sent_lines == ["K shift+F9", "K F5"]
+        ticks(gl, clock, 5)  # the chase click, then the area key once the limiter refills
+        assert inp.sent_lines == [*CHASE, "K F5"]
 
     def test_no_key_without_a_selection(self) -> None:
         ws = self._wolf_selected()
@@ -594,8 +603,8 @@ class TestAttackHotkeys:
 
 class TestChaseMode:
     @staticmethod
-    def _chase_keys(inp: FakeInput) -> list[str]:
-        return [line for line in inp.sent_lines if line in ("K shift+F9", "K shift+F10")]
+    def _chase_clicks(inp: FakeInput) -> list[str]:
+        return [line for line in inp.sent_lines if line in ("A 310 130", "A 310 110")]
 
     @staticmethod
     def _selected(ws: WorldState, monster: Monster) -> None:
@@ -603,15 +612,15 @@ class TestChaseMode:
             ws.monsters = [monster]
             ws.selected_target = monster
 
-    def test_follow_row_sends_chase_on_once(self) -> None:
+    def test_follow_row_clicks_chase_once(self) -> None:
         ws = make_state()
         self._selected(ws, Monster("Wolf", 50.0))
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp)
         ticks(gl, clock, 40)
-        assert self._chase_keys(inp) == ["K shift+F9"]
+        assert self._chase_clicks(inp) == ["A 310 130"]
 
-    def test_switch_to_a_none_row_sends_chase_off(self) -> None:
+    def test_switch_to_a_none_row_clicks_stand(self) -> None:
         ws = make_state()
         self._selected(ws, Monster("Wolf", 50.0))
         config = TargetingConfig(monsters=(MonsterRow(name="Rat", movement="none"),))
@@ -620,9 +629,9 @@ class TestChaseMode:
         ticks(gl, clock, 5)
         self._selected(ws, Monster("Rat", 50.0))
         ticks(gl, clock, 5)
-        assert self._chase_keys(inp) == ["K shift+F9", "K shift+F10"]
+        assert self._chase_clicks(inp) == ["A 310 130", "A 310 110"]
 
-    def test_pause_sends_the_mode_again(self) -> None:
+    def test_pause_clicks_the_mode_again(self) -> None:
         ws = make_state()
         self._selected(ws, Monster("Wolf", 50.0))
         inp = FakeInput()
@@ -632,16 +641,16 @@ class TestChaseMode:
         ticks(gl, clock, 5)
         gl.paused = False
         ticks(gl, clock, 5)
-        assert self._chase_keys(inp) == ["K shift+F9", "K shift+F9"]
+        assert self._chase_clicks(inp) == ["A 310 130", "A 310 130"]
 
-    def test_restart_sends_the_mode_again(self) -> None:
+    def test_restart_clicks_the_mode_again(self) -> None:
         ws = make_state()
         self._selected(ws, Monster("Wolf", 50.0))
         inp = FakeInput()
         for _ in range(2):
             gl, clock = make_targeting_loop(ws, inp)
             ticks(gl, clock, 5)
-        assert self._chase_keys(inp) == ["K shift+F9", "K shift+F9"]
+        assert self._chase_clicks(inp) == ["A 310 130", "A 310 130"]
 
 
 class TestGameLoopRun:

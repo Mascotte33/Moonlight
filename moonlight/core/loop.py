@@ -114,7 +114,7 @@ if TYPE_CHECKING:
     from moonlight.refill.refill import Refill
     from moonlight.targeting.attack_hotkeys import AttackHotkeys
     from moonlight.targeting.seen_monsters import SeenMonsters
-    from moonlight.targeting.targeting import MonsterRow, TargetingAction, TargetingDecision
+    from moonlight.targeting.targeting import TargetingAction, TargetingDecision
 
 __all__ = [
     "BotState",
@@ -289,8 +289,10 @@ class GameLoop:
         self._last_target: str | None = None
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
-        # The chase-mode hotkey last sent; None sends the next one for sure.
-        self._chase_hotkey_sent: str | None = None
+        # The movement whose chase button was last clicked; None clicks the next one for sure.
+        self._chase_movement_set: str | None = None
+        # The movement whose chase button click is in flight.
+        self._chase_click: str | None = None
         # Pause bookkeeping (reset by every healthy, exception-free tick).
         self._paused_since: float | None = None
         self._consecutive_errors = 0
@@ -499,8 +501,8 @@ class GameLoop:
         if m.targeting is not None:
             self._target = m.targeting.decide(snap, self._clock())
         else:
-            # Paused or off: resend the chase mode when targeting is back.
-            self._chase_hotkey_sent = None
+            # Paused or off: set the chase mode again when targeting is back.
+            self._chase_movement_set = None
         if m.looting is not None:
             # ponytail: "selected target vanished from the battle list" = kill
             # (a target lost out of range counts too); use the server-log OCR
@@ -728,8 +730,9 @@ class GameLoop:
             return
         now = self._clock()
         if clicker.busy:
-            self._send(snap, lambda: self._step_select_click(clicker, now))
+            self._send(snap, lambda: self._step_click(clicker, now))
             return
+        self._chase_click = None  # nothing in flight: a cancelled chase click is gone
         if self._select_click is not None:
             row, sent_at = self._select_click
             selected = snap.selected_target
@@ -738,7 +741,7 @@ class GameLoop:
                 return
             self._select_click = None
         if self._target is None:
-            self._press_attack_hotkey(snap, targeting, now)
+            self._press_attack_hotkey(snap, targeting, clicker, now)
             return
         row = self._target.battle_list_row
         point = targeting.row_center(row)
@@ -746,15 +749,15 @@ class GameLoop:
         def click() -> bool | None:
             clicker.request(point)
             self._select_click = (row, None)
-            return self._step_select_click(clicker, now)
+            return self._step_click(clicker, now)
 
         if self._send(snap, click):
             logger.debug("select click row %d at %s", row, point)
 
     def _press_attack_hotkey(
-        self, snap: WorldState, targeting: TargetingDecision, now: float
+        self, snap: WorldState, targeting: TargetingDecision, clicker: ClickController, now: float
     ) -> None:
-        """Press the attack hotkey for the selected target, if one is due."""
+        """Press the attack hotkey for the selected target, once its chase mode is set."""
         attack_hotkeys = self.modules.attack_hotkeys
         selected = snap.selected_target
         if attack_hotkeys is None or selected is None or selected.is_player:
@@ -762,28 +765,42 @@ class GameLoop:
         row = targeting.row_for(selected)
         if row.ignore or targeting.is_unreachable(selected):
             return
-        self._set_chase_mode(snap, targeting, row)
+        if row.movement != self._chase_movement_set:
+            self._click_chase_button(snap, targeting, clicker, row.movement, now)
+            return
         hotkey = attack_hotkeys.decide(snap, row, now)
         if hotkey is not None:
             self._send(snap, lambda: attack_hotkeys.send(hotkey, self.input, now))
 
     # doc: docs/prs/targeting.md#chase-mode
-    def _set_chase_mode(
-        self, snap: WorldState, targeting: TargetingDecision, row: MonsterRow
+    def _click_chase_button(
+        self,
+        snap: WorldState,
+        targeting: TargetingDecision,
+        clicker: ClickController,
+        movement: str,
+        now: float,
     ) -> None:
-        """Press the chase key for *row*'s movement when it differs from the last one."""
-        config = targeting.config
-        hotkey = config.chase_on_hotkey if row.movement == "follow" else config.chase_off_hotkey
-        if hotkey != self._chase_hotkey_sent and self._send(
-            snap, lambda: self.input.press_combo(hotkey)
-        ):
-            self._chase_hotkey_sent = hotkey
+        """Start the click on the side-panel button that sets *movement*'s chase mode."""
+        point = targeting.chase_button_center(movement)
 
-    def _step_select_click(self, clicker: ClickController, now: float) -> bool | None:
-        """One clicker step; on the click, remember when it was sent."""
+        def click() -> bool | None:
+            clicker.request(point)
+            self._chase_click = movement
+            return self._step_click(clicker, now)
+
+        self._send(snap, click)
+
+    def _step_click(self, clicker: ClickController, now: float) -> bool | None:
+        """One clicker step; on the click, record what it did."""
         result = clicker.step()
-        if result is True and self._select_click is not None:
-            self._select_click = (self._select_click[0], now)
+        if result is True:
+            if self._chase_click is not None:
+                self._chase_movement_set = self._chase_click
+            elif self._select_click is not None:
+                self._select_click = (self._select_click[0], now)
+        if result is not None:
+            self._chase_click = None
         return result
 
     def _act_loot(self, snap: WorldState) -> None:

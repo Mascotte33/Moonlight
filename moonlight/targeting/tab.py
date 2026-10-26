@@ -72,8 +72,6 @@ class TargetingSettings(NamedTuple):
 
     attack_cooldown_ms: str
     unreachable_after_seconds: str
-    chase_on_hotkey: str
-    chase_off_hotkey: str
 
 
 def _number(text: str, cast: Callable[[str], float], where: str) -> float:
@@ -134,8 +132,6 @@ def apply_targeting(
         unreachable_after_seconds=_number(
             settings.unreachable_after_seconds, float, "unreachable time"
         ),
-        chase_on_hotkey=settings.chase_on_hotkey.strip(),
-        chase_off_hotkey=settings.chase_off_hotkey.strip(),
     )
     return BotConfig.from_dict(data)
 
@@ -202,14 +198,6 @@ class TargetingTab(Tab):
         self._cooldown_entry = row_entry(line, "", 64, self._save)
         _label(line, "Unreachable after (s)")
         self._unreachable_entry = row_entry(line, "", 48, self._save)
-        chase_line = ctk.CTkFrame(settings_box, fg_color="transparent")
-        chase_line.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
-        _label(chase_line, "Chase on")
-        self._chase_on = HotkeyBox(chase_line, self._save)
-        self._chase_on.pack(side="left", padx=(theme.UNIT, 0))
-        _label(chase_line, "Chase off")
-        self._chase_off = HotkeyBox(chase_line, self._save)
-        self._chase_off.pack(side="left", padx=(theme.UNIT, 0))
 
         self.lbl_msg = ctk.CTkLabel(parent, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=10)
@@ -263,8 +251,6 @@ class TargetingTab(Tab):
         ):
             entry.delete(0, "end")
             entry.insert(0, value)
-        self._chase_on.set(targeting.chase_on_hotkey)
-        self._chase_off.set(targeting.chase_off_hotkey)
 
     def _monster_rows(self) -> list[MonsterRowFields]:
         return [
@@ -289,8 +275,6 @@ class TargetingTab(Tab):
         return TargetingSettings(
             self._cooldown_entry.get(),
             self._unreachable_entry.get(),
-            self._chase_on.get(),
-            self._chase_off.get(),
         )
 
     def _draw_monsters(self, rows: Sequence[MonsterRowFields]) -> None:
