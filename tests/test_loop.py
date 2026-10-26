@@ -511,16 +511,19 @@ class TestSelectClick:
         assert len(inp.sent_lines) == 4
         assert gl.current_state is BotState.ATTACK
 
-    def test_frozen_hp_target_is_skipped(self) -> None:
+    def test_stuck_target_gets_one_arrow_step_then_the_next_target_is_clicked(self) -> None:
         ws = make_state()
-        wolf, rat = Monster("Wolf"), Monster("Rat", battle_list_row=1)
+        wolf, rat = Monster("Wolf", name_hash="w"), Monster("Rat", name_hash="r", battle_list_row=1)
         with ws.lock():
             ws.monsters = [wolf, rat]
             ws.selected_target = wolf
+            ws.creature_slots = ((7, 2),)  # three tiles north
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp)
-        ticks(gl, clock, 203)  # 10 s on a target whose HP never moves, then a click
-        assert inp.sent_lines == ["A 180 244", "C L"]  # row 1
+        ticks(gl, clock, 8 * 20 + 3)  # 8 s on a target whose HP never moves
+        assert inp.sent_lines == ["K up"]
+        ticks(gl, clock, 8 * 20 + 6)  # 8 s more, then the click on the next row
+        assert inp.sent_lines == ["K up", "A 180 244", "C L"]
 
 
 class TestGameLoopRun:

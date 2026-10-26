@@ -45,7 +45,7 @@ def test_check_module_regions_reports_missing() -> None:
     report = wiring.check_module_regions(profile, cfg)
     assert report["cavebot"] == ["game_grid"]
     assert report["healing"] == []
-    assert report["targeting"] == []
+    assert report["targeting"] == ["game_grid"]  # targeting scans it for creatures
     assert report["alarms"] == []
     # Only enabled modules appear in the report.
     assert set(report) == {"healing", "targeting", "cavebot", "alarms"}
@@ -136,7 +136,15 @@ def test_frame_cache_captures_once_per_refresh() -> None:
 def test_capture_regions_lists_tick_regions_or_falls_back_to_full() -> None:
     profile = make_profile()
     cfg = BotConfig.default()
-    names = ("battle_list", "floor_indicator", "hp_bar", "minimap", "mp_bar", "status_icons")
+    names = (
+        "battle_list",
+        "floor_indicator",
+        "game_grid",  # targeting scans it for creatures
+        "hp_bar",
+        "minimap",
+        "mp_bar",
+        "status_icons",
+    )
     assert wiring.capture_regions(profile, cfg) == [
         profile.get_region(n).to_tuple for n in names
     ]
@@ -380,3 +388,23 @@ def test_perceive_fills_names_from_the_seen_monsters_store(tmp_path: Path) -> No
     store.rename(entry.name_hash, "wolf")
     wiring.make_perceive(state, profile, lambda: full, seen_monsters=store)()
     assert [m.name for m in state.snapshot().monsters] == ["wolf"]
+
+
+def test_targeting_keeps_game_grid_in_the_capture_regions() -> None:
+    """Targeting scans the game grid for creatures even without walk_keys."""
+    profile = make_profile()
+    grid = profile.get_region("game_grid").to_tuple
+    on = BotConfig.default()
+    assert on.targeting is not None
+    assert grid in (wiring.capture_regions(profile, on) or [])
+    off = replace(on, targeting=None)
+    assert grid not in (wiring.capture_regions(profile, off) or [])
+
+
+def test_perceive_writes_the_creature_slots() -> None:
+    """With a creature grid, perceive scans the health bars into creature_slots."""
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    state = WorldState()
+    wiring.make_perceive(state, make_profile(), lambda: frame, creature_grid=(0, 0, 150, 110))()
+    assert state.screen_ok
+    assert state.creature_slots == ()  # no health bar in a black frame

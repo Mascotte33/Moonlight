@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 #: report as MISSING until those are calibrated.
 MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "healing": ("hp_bar", "mp_bar", "status_icons"),
-    "targeting": ("battle_list",),
+    "targeting": ("battle_list", "game_grid"),
     "attack_spells": ("battle_list", "mp_bar"),
     "cavebot": ("minimap", "floor_indicator", "game_grid"),
     "looting": ("loot_window",),
@@ -83,14 +83,14 @@ def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect
     """The window regions a tick reads, for ``ScreenCapture.get_frame`` (P2).
 
     ``None`` (grab the full window) when any of them is not calibrated.
-    ``game_grid`` is left out unless the cavebot walks with keys and scans
-    it for creatures; for clicks it is only geometry, and the clicker grabs
-    its own small cursor ROI.
+    ``game_grid`` is left out unless targeting or the cavebot (walking with
+    keys) scans it for creatures; for clicks it is only geometry, and the
+    clicker grabs its own small cursor ROI.
     """
     names = set(_PERCEIVE_REGIONS)
     for module in _enabled_modules(config):
         names.update(MODULE_REGIONS.get(module, ()))
-    if not config.walk_keys:
+    if not config.walk_keys and config.targeting is None:
         names.discard("game_grid")
     if any(name not in profile.regions for name in names):
         return None
@@ -223,6 +223,7 @@ def make_perceive(
     map_dir: Path = MAP_DIR,
     conditions_dir: Path = CONDITION_TEMPLATES_DIR,
     seen_monsters: SeenMonsters | None = None,
+    creature_grid: Rect | None = None,
 ) -> Callable[[], None]:
     """Return a callback doing one capture -> perception -> WorldState pass.
 
@@ -231,9 +232,12 @@ def make_perceive(
 
     The position comes from matching the radar on the map in *map_dir*;
     *start* is the last known position, searched first. *seen_monsters*
-    fills the battle entries' names from their name hashes.
+    fills the battle entries' names from their name hashes. With
+    *creature_grid* (the ``game_grid`` region) the creature slots are scanned
+    into ``creature_slots``.
     """
     from moonlight.perception.battle import BattleReader, entries_to_state
+    from moonlight.perception.creatures import find_creatures
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
     from moonlight.perception.status_icons import StatusIconReader
@@ -265,6 +269,7 @@ def make_perceive(
             frame = frame_provider()
             hp, mp = vitals.read_vitals(frame)
             monsters, selected, players = entries_to_state(battle.read_battle_list(frame))
+            slots = tuple(find_creatures(frame, creature_grid)) if creature_grid else ()
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
             conditions = (
@@ -283,6 +288,7 @@ def make_perceive(
             state.monsters = monsters
             state.selected_target = selected
             state.players_on_screen = players
+            state.creature_slots = slots
             state.active_status_icons = conditions
             state.position_status = (
                 "lost" if minimap.lost else "estimated" if minimap.estimated else ""
@@ -387,6 +393,9 @@ def build_loop(
             # Search near where the last loop or the stopped-bot reader was.
             start=state.position,
             seen_monsters=seen_monsters,
+            creature_grid=(
+                profile.get_region("game_grid").to_tuple if config.targeting is not None else None
+            ),
         ),
         clock=clock,
         sleep_fn=sleep_fn,

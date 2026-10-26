@@ -76,7 +76,7 @@ from moonlight.cavebot.pathing import CostMap, next_step
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, InputBackend
-from moonlight.perception.creatures import find_creatures, predict
+from moonlight.perception.creatures import PLAYER_SLOT, find_creatures, predict
 from moonlight.perception.floor import MAX_FLOOR, MIN_FLOOR
 from moonlight.perception.minimap import Rect
 
@@ -109,7 +109,7 @@ _REACH = {"node": 3, "stand": 0, "stairs": 0}
 # doc: docs/prs/keys-walking.md#arrow-steps
 # doc: docs/prs/keys-walking.md#learned-blocks
 #: Arrow key per one-tile step (y grows downward, up is north).
-_ARROWS = {(0, -1): "up", (0, 1): "down", (-1, 0): "left", (1, 0): "right"}
+ARROW_KEYS = {(0, -1): "up", (0, 1): "down", (-1, 0): "left", (1, 0): "right"}
 #: Seconds without moving before an arrow key is pressed again.
 _KEY_RETRY = 0.7
 _BLOCK_TTL = 10.0
@@ -121,7 +121,6 @@ _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight throu
 #: Game grid layout (docs/ui_layout.md #10): 15x11 tiles, player at (7, 5).
 GAME_GRID_COLS = 15
 GAME_GRID_ROWS = 11
-_PLAYER_SLOT = (7, 5)
 
 
 class RouteError(ValueError):
@@ -577,7 +576,7 @@ class Cavebot:
         if frame is None:
             self._seen, self._creatures = [], set()
             return
-        px, py = pos.x - _PLAYER_SLOT[0], pos.y - _PLAYER_SLOT[1]
+        px, py = pos.x - PLAYER_SLOT[0], pos.y - PLAYER_SLOT[1]
         seen = [(px + c, py + r) for c, r in find_creatures(frame, self._game_region)]
         self._creatures = set(seen) | predict(seen, self._seen)
         self._seen = seen
@@ -618,7 +617,7 @@ class Cavebot:
 
     def _press_arrow(self, step: tuple[int, int]) -> None:
         assert self._input is not None  # checked in __init__
-        self._input.press_combo(_ARROWS[step])
+        self._input.press_combo(ARROW_KEYS[step])
 
     def _sidestep(self, wp: Waypoint, pos: Position) -> None:
         """Step to the tile beside the walking direction: left first, then right."""
@@ -634,8 +633,8 @@ class Cavebot:
     def _tile_action(self, wp: Waypoint, pos: Position) -> None:
         gx, gy, gw, gh = self._game_region
         tw, th = gw // GAME_GRID_COLS, gh // GAME_GRID_ROWS
-        col = _PLAYER_SLOT[0] + wp.x - pos.x
-        row = _PLAYER_SLOT[1] + wp.y - pos.y
+        col = PLAYER_SLOT[0] + wp.x - pos.x
+        row = PLAYER_SLOT[1] + wp.y - pos.y
         tile = (gx + col * tw + tw // 2, gy + row * th + th // 2)
         if wp.action == "ladder":
             self._clicker.request(tile, side=ClickSide.RIGHT)  # "use" the ladder

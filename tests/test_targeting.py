@@ -8,6 +8,7 @@ from moonlight.core.config import BotConfig, ConfigError
 from moonlight.core.state import Monster, WorldState
 from moonlight.targeting.targeting import (
     MonsterRow,
+    TargetingAction,
     TargetingConfig,
     TargetingDecision,
 )
@@ -152,3 +153,67 @@ def test_rows_load_from_json() -> None:
     assert cfg.targeting is not None
     assert cfg.targeting.monsters[0] == MonsterRow("cyclops", 3, False, "F6", 10.0, "follow")
     assert cfg.targeting.monsters[1].ignore
+
+
+# -- unreachable drop ----------------------------------------------------------
+
+
+def stuck_state(slots: tuple[tuple[int, int], ...] = ((7, 2),), hp: float = 100.0) -> WorldState:
+    wolf = Monster("Wolf", hp, name_hash="w", battle_list_row=0)
+    rat = Monster("Rat", 100.0, name_hash="r", battle_list_row=1)
+    s = state([wolf, rat], wolf)
+    s.creature_slots = slots
+    return s
+
+
+def test_stuck_hp_steps_toward_the_nearest_far_creature() -> None:
+    targeting = rows()
+    s = stuck_state(((7, 4), (11, 5), (7, 2)))  # (7, 4) is adjacent; (7, 2) is nearest
+    assert targeting.decide(s, 0.0) is None
+    assert targeting.decide(s, 7.9) is None
+    assert targeting.decide(s, 8.0) == TargetingAction(
+        "step_closer", 0, (0, -1), "Wolf hp stuck at 100, step closer"
+    )
+
+
+def test_still_stuck_after_the_step_ignores_the_target_and_picks_the_next() -> None:
+    targeting = rows()
+    s = stuck_state()
+    targeting.decide(s, 0.0)
+    targeting.decide(s, 8.0)
+    assert targeting.decide(s, 15.9) is None
+    assert picked_at(targeting, s, 16.0) == 1
+    assert targeting.is_unreachable(s.monsters[0])
+
+
+def picked_at(targeting: TargetingDecision, s: WorldState, now: float) -> int | None:
+    action = targeting.decide(s, now)
+    return None if action is None else action.battle_list_row
+
+
+def test_an_hp_change_resets_the_watch() -> None:
+    targeting = rows()
+    targeting.decide(stuck_state(), 0.0)
+    targeting.decide(stuck_state(hp=90.0), 7.0)  # HP moved: watch restarts
+    assert targeting.decide(stuck_state(hp=90.0), 8.0) is None
+    action = targeting.decide(stuck_state(hp=90.0), 15.0)
+    assert action is not None and action.kind == "step_closer"
+
+
+def test_ignored_target_can_be_chosen_again_after_30_seconds() -> None:
+    targeting = rows()
+    s = stuck_state()
+    s.selected_target = None  # the outline is gone: only the rat is chosen meanwhile
+    targeting.decide(stuck_state(), 0.0)
+    targeting.decide(stuck_state(), 8.0)
+    targeting.decide(stuck_state(), 16.0)  # ignored until 46.0
+    assert picked_at(targeting, s, 45.9) == 1
+    assert picked_at(targeting, s, 46.0) == 0
+
+
+def test_no_creature_slot_means_no_step() -> None:
+    targeting = rows()
+    for slots in ((), ((7, 4), (8, 5))):  # none, or only adjacent ones
+        s = stuck_state(slots)
+        targeting.decide(s, 0.0)
+        assert targeting.decide(s, 8.0) is None

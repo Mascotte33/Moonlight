@@ -18,23 +18,26 @@ further in the direction it last moved.
 
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
-__all__ = ["BAR_W", "find_creatures", "predict"]
+__all__ = ["BAR_W", "PLAYER_SLOT", "find_creatures", "predict"]
 
 BAR_W = 31
 _BAR_H = 4
 _BLACK = 25
 _FILL = 80
 _COLS, _ROWS = 15, 11
-_PLAYER = (7, 5)
+#: The player's own game-grid slot (col, row).
+PLAYER_SLOT = (7, 5)
+_RUN_KERNEL = np.ones((1, BAR_W), np.uint8)
 
 
 def _runs(mask: np.ndarray) -> np.ndarray:
     """True at ``[y, x]`` when ``mask[y, x:x+BAR_W]`` is all True."""
-    cs = np.zeros((mask.shape[0], mask.shape[1] + 1), np.int32)
-    np.cumsum(mask, axis=1, out=cs[:, 1:])
-    out: np.ndarray = (cs[:, BAR_W:] - cs[:, :-BAR_W]) == BAR_W
+    # An erosion with a 1xBAR_W kernel anchored left is "all True from x on".
+    eroded = cv2.erode(mask.view(np.uint8), _RUN_KERNEL, anchor=(0, 0), borderValue=0)
+    out: np.ndarray = eroded[:, : mask.shape[1] - BAR_W + 1].view(bool)
     return out
 
 
@@ -47,7 +50,8 @@ def find_creatures(frame: np.ndarray, grid: tuple[int, int, int, int]) -> list[t
     crop = frame[gy : gy + gh, gx : gx + gw]
     if crop.shape[0] < _BAR_H or crop.shape[1] < BAR_W:
         return []
-    bright = crop.max(axis=2)
+    # cv2.max is ~10x faster than crop.max(axis=2) on a full game grid.
+    bright = cv2.max(cv2.max(crop[:, :, 0], crop[:, :, 1]), crop[:, :, 2])
     black = bright < _BLACK
     run = _runs(black)
     sides = black[1:-2] & black[2:-1]
@@ -67,7 +71,7 @@ def find_creatures(frame: np.ndarray, grid: tuple[int, int, int, int]) -> list[t
         row = int((y + th / 2) // th)
         if 0 <= col < _COLS and 0 <= row < _ROWS:
             slots.add((col, row))
-    slots.discard(_PLAYER)
+    slots.discard(PLAYER_SLOT)
     return sorted(slots)
 
 

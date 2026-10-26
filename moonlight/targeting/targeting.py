@@ -12,6 +12,10 @@ The loop clicks the row's name through the ``ClickController``
 never used. Players are never candidates; the alarms keep their own
 ``players_on_screen`` path.
 
+A selected target whose HP stands still for ``unreachable_after_seconds`` gets
+one ``step_closer`` action (a unit step toward the nearest creature slot that
+is not adjacent); after the same time again it is ignored for 30 s.
+
 ``client_focused`` / ``screen_ok`` gating is the loop's job. The module only
 reads a snapshot and returns a decision; one decision thread drives it.
 """
@@ -23,6 +27,7 @@ from dataclasses import dataclass
 from moonlight.core.state import Monster, WorldState
 from moonlight.healing.healing import check_hotkey
 from moonlight.perception.battle import NAME_START_X, NAME_WIDTH, SLOT_HEIGHT, TOP_PADDING
+from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
     "MOVEMENTS",
@@ -35,6 +40,9 @@ __all__ = [
 MOVEMENTS = ("follow", "keep_distance", "none")
 
 Rect = tuple[int, int, int, int]
+
+#: Seconds an unreachable target is left alone.
+_IGNORE_SECONDS = 30.0
 
 
 # doc: docs/prs/targeting.md#monster-rows
@@ -87,7 +95,10 @@ class TargetingConfig:
 
 @dataclass(frozen=True)
 class TargetingAction:
-    """Click battle-list row ``battle_list_row`` (``kind`` ``"select"``)."""
+    """``"select"``: click battle-list row ``battle_list_row``.
+
+    ``"step_closer"``: press one arrow key for the unit step ``step``.
+    """
 
     kind: str
     battle_list_row: int
@@ -95,7 +106,20 @@ class TargetingAction:
     reason: str = ""
 
 
+def _step_toward_creature(slots: tuple[tuple[int, int], ...]) -> tuple[int, int] | None:
+    """Unit arrow step toward the nearest slot not adjacent to the player, or None."""
+    px, py = PLAYER_SLOT
+    far = [(x - px, y - py) for x, y in slots if max(abs(x - px), abs(y - py)) > 1]
+    if not far:
+        return None
+    dx, dy = min(far, key=lambda d: (max(abs(d[0]), abs(d[1])), abs(d[0]) + abs(d[1])))
+    if abs(dx) >= abs(dy):
+        return (1 if dx > 0 else -1, 0)
+    return (0, 1 if dy > 0 else -1)
+
+
 # doc: docs/prs/targeting.md#target-choice
+# doc: docs/prs/targeting.md#unreachable-drop
 class TargetingDecision:
     """Pick the battle-list row to attack; see the module docstring."""
 
@@ -110,15 +134,61 @@ class TargetingDecision:
         self._rows = {row.name.lower(): row for row in self.config.monsters}
         self._battle_list_region = battle_list_region
         self._ui_scale = ui_scale
+        # HP watch on the selected target: its key, since when, and whether
+        # the step closer was already taken.
+        self._watched: tuple[str, float] | None = None
+        self._watched_since = 0.0
+        self._stepped = False
+        self._ignored_until: dict[tuple[str, float], float] = {}
 
     def row_for(self, monster: Monster) -> MonsterRow:
         """The row for *monster*: its name's row, else ``default_monster``."""
         return self._rows.get(monster.name.lower(), self.config.default_monster)
 
+    def is_unreachable(self, monster: Monster) -> bool:
+        """True while *monster* is on the 30 s ignore list."""
+        return self._key(monster) in self._ignored_until
+
+    @staticmethod
+    def _key(monster: Monster) -> tuple[str, float]:
+        # ponytail: two same-kind monsters at the same HP count as one; the
+        # battle list gives no ids.
+        return (monster.name_hash, monster.hp_percent)
+
+    def _watch_hp(self, state: WorldState, now: float) -> TargetingAction | None:
+        """Step closer once when the selected target's HP stands still, then ignore it."""
+        selected = state.selected_target
+        if selected is None or self.is_unreachable(selected):
+            self._watched = None
+            return None
+        key = self._key(selected)
+        if key != self._watched:
+            self._watched, self._watched_since, self._stepped = key, now, False
+            return None
+        if now - self._watched_since < self.config.unreachable_after_seconds:
+            return None
+        self._watched_since = now
+        if not self._stepped:
+            self._stepped = True
+            step = _step_toward_creature(state.creature_slots)
+            if step is None:
+                return None
+            reason = f"{selected.name or '?'} hp stuck at {selected.hp_percent:.0f}, step closer"
+            return TargetingAction("step_closer", selected.battle_list_row, step, reason)
+        self._ignored_until[key] = now + _IGNORE_SECONDS
+        self._watched = None
+        return None
+
     def decide(self, state: WorldState, now: float) -> TargetingAction | None:
-        """The row to select, or None when the selection is already right."""
+        """The action to take, or None when the selection is already right."""
+        self._ignored_until = {k: end for k, end in self._ignored_until.items() if end > now}
+        step_closer = self._watch_hp(state, now)
+        if step_closer is not None:
+            return step_closer
         candidates = [
-            m for m in state.monsters if not m.is_player and not self.row_for(m).ignore
+            m
+            for m in state.monsters
+            if not m.is_player and not self.row_for(m).ignore and not self.is_unreachable(m)
         ]
         if not candidates:
             return None
