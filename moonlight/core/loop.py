@@ -12,18 +12,15 @@ state the bot is in, using a strict priority order (highest wins):
 3. ALARM           Player on screen, PM open, fast HP drop, a critical
                    alarm, or a cavebot/refill alarm: stop attack/loot/walk;
                    healing continues. Entering ALARM alerts the operator.
-4. EMERGENCY_HEAL  HP at or below the critical threshold.
-5. NORMAL_HEAL     HP at or below the normal threshold.
-6. ATTACK          A target is selected (or, with targeting wired, the
+4. ATTACK          A target is selected (or, with targeting wired, the
                    targeting module chose one).
-7. LOOT            A kill is waiting to be looted (looting wired).
-8. REFILL          Cap is full or a refill trip is running (refill wired).
-9. MOVE            A waypoint route is active (cavebot / move_provider).
-10. IDLE           Nothing to do.
+5. LOOT            A kill is waiting to be looted (looting wired).
+6. REFILL          Cap is full or a refill trip is running (refill wired).
+7. MOVE            A waypoint route is active (cavebot / move_provider).
+8. IDLE            Nothing to do.
 
-Heal thresholds come from the healing module when it is wired (single
-source of truth); ``LoopConfig.critical_hp``/``normal_hp`` (defaulting to
-the healing defaults) only drive the built-in heal combos.
+Healing is not a state: the healing module runs first in every non-KILL
+tick (see below). When healing is off, nothing heals.
 
 Decision modules (T40): an optional :class:`DecisionModules` bundle wires
 the feature packages engines into the tick. Each one is optional;
@@ -34,9 +31,10 @@ without it the loop keeps its built-in behaviour.
   ``pm_open_check`` stays injectable for when it does.
 * **targeting** -- ``TargetingDecision.decide`` every tick; attack/switch
   -> ATTACK, flee (players on screen) -> ALARM (disengage).
-* **healing** -- ``HealingDecision.decide`` + ``send`` first in every
-  non-KILL state (healing continues through ALARM); replaces the
-  built-in heal combos.
+* **healing** -- ``HealingDecision.decide`` + ``send`` of each action
+  first in every non-KILL state (healing continues through ALARM); a heal
+  sent this tick skips the rest of the dispatch.
+  # doc: docs/prs/healing.md#healing-rules
 * **buffs** -- ``BuffManager.track`` + ``send`` of the top cast in the
   ATTACK/LOOT/REFILL/MOVE/IDLE states.
 * **looting** -- a selected target that vanishes from the battle list is
@@ -93,12 +91,12 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import Monster, WorldState
 from moonlight.hardware.input import InputBackend
-from moonlight.healing.healing import HealingConfig
 
 if TYPE_CHECKING:
     from moonlight.alarms.alarms import AlarmAction, AlarmDecision
@@ -134,12 +132,6 @@ class LoopConfig:
     max_actions_per_second: float = 10.0
     """Hard cap on input actions per second."""
 
-    critical_hp: float = HealingConfig.emergency_hp_percent
-    """HP % at or below which EMERGENCY_HEAL triggers (without healing module)."""
-
-    normal_hp: float = HealingConfig.normal_hp_percent
-    """HP % at or below which NORMAL_HEAL triggers (without healing module)."""
-
     hp_drop_alarm_delta: float = 30.0
     """HP % drop within the window that raises ALARM."""
 
@@ -148,12 +140,6 @@ class LoopConfig:
 
     attack_combo: str = "r"
     """Tibia's default attack hotkey."""
-
-    emergency_heal_combo: str = "1"
-    """Hotkey for emergency healing (first potion slot)."""
-
-    normal_heal_combo: str = "2"
-    """Hotkey for routine healing (second potion slot)."""
 
     f12_poll_interval: float = 0.01
     """Seconds between F12 keyboard polls."""
@@ -179,8 +165,6 @@ class BotState(StrEnum):
     KILL = "kill"
     PAUSED = "paused"
     ALARM = "alarm"
-    EMERGENCY_HEAL = "emergency_heal"
-    NORMAL_HEAL = "normal_heal"
     ATTACK = "attack"
     LOOT = "loot"
     REFILL = "refill"
@@ -195,8 +179,6 @@ class BotState(StrEnum):
 
 # What get_stats()["current_task"] says for each state; MOVE names the waypoint.
 _TASKS = {
-    BotState.EMERGENCY_HEAL: "Healing",
-    BotState.NORMAL_HEAL: "Healing",
     BotState.ATTACK: "Attacking",
     BotState.LOOT: "Looting",
 }
@@ -526,12 +508,6 @@ class GameLoop:
         """
         if self._is_alarm(snap):
             return BotState.ALARM
-        hp = snap.hp_percent
-        critical, normal = self._heal_thresholds()
-        if 0.0 < hp <= critical:
-            return BotState.EMERGENCY_HEAL
-        if 0.0 < hp <= normal:
-            return BotState.NORMAL_HEAL
         m = self.modules
         if m.cavebot is not None and m.cavebot.luring():
             pass  # a lure waypoint walks past monsters
@@ -549,13 +525,6 @@ class GameLoop:
         if self._move_provider is not None and self._move_provider(snap):
             return BotState.MOVE
         return BotState.IDLE
-
-    def _heal_thresholds(self) -> tuple[float, float]:
-        """(critical, normal) HP %: the healing module's when wired."""
-        healing = self.modules.healing
-        if healing is not None:
-            return healing.config.emergency_hp_percent, healing.config.normal_hp_percent
-        return self.config.critical_hp, self.config.normal_hp
 
     def _module_alarm(self) -> str | None:
         """A cavebot/refill alarm (``"stuck"``, ``"lost"``, ...), or None."""
@@ -594,10 +563,6 @@ class GameLoop:
                 if self._pm_open_check is not None and self._pm_open_check(snap):
                     return "PM window open"
                 return "fast HP drop"
-            case BotState.EMERGENCY_HEAL:
-                return f"hp {snap.hp_percent:.0f}% <= critical {self._heal_thresholds()[0]:.0f}%"
-            case BotState.NORMAL_HEAL:
-                return f"hp {snap.hp_percent:.0f}% <= normal {self._heal_thresholds()[1]:.0f}%"
             case BotState.ATTACK:
                 if self._target is not None:
                     return f"target: {self._target.target_name} ({self._target.reason})"
@@ -661,16 +626,11 @@ class GameLoop:
         if self.modules.healing is not None and self._heal(snap):
             self._task = "Healing"
             return
-        busy = (BotState.ALARM, BotState.EMERGENCY_HEAL, BotState.NORMAL_HEAL)
-        if self.modules.buffs is not None and self._state not in busy and self._buff(snap):
+        if self._state is BotState.ALARM:
+            return  # no attack/move/loot/buffs; healing already ran (alert sent on entry)
+        if self.modules.buffs is not None and self._buff(snap):
             return
         match self._state:
-            case BotState.ALARM:
-                self._act_alarm(snap)
-            case BotState.EMERGENCY_HEAL:
-                self._act_heal(snap, self.config.emergency_heal_combo, "emergency")
-            case BotState.NORMAL_HEAL:
-                self._act_heal(snap, self.config.normal_heal_combo, "normal")
             case BotState.ATTACK:
                 self._act_attack(snap)
             case BotState.LOOT:
@@ -721,23 +681,15 @@ class GameLoop:
         self._release("kill switch")
         self._stop_event.set()
 
-    def _act_alarm(self, snap: WorldState) -> None:
-        """ALARM: no attack/move/loot; healing continues (alert sent on entry)."""
-        hp = snap.hp_percent
-        critical, normal = self._heal_thresholds()
-        if 0.0 < hp <= critical:
-            self._act_heal(snap, self.config.emergency_heal_combo, "emergency (alarm)")
-        elif 0.0 < hp <= normal:
-            self._act_heal(snap, self.config.normal_heal_combo, "normal (alarm)")
-
     def _heal(self, snap: WorldState) -> bool:
-        """Healing module: decide + send; True when a heal was sent."""
+        """Healing module: send each decided key; True when any was sent."""
         healing = self.modules.healing
         assert healing is not None
-        action = healing.decide(snap)
-        return action is not None and self._send(
-            snap, lambda: healing.send(action, self.input), heal=True
-        )
+        sent = False
+        for action in healing.decide(snap):
+            if self._send(snap, partial(healing.send, action, self.input), heal=True):
+                sent = True
+        return sent
 
     def _buff(self, snap: WorldState) -> bool:
         """Buff module: send the top-priority due cast; True when sent."""
@@ -745,12 +697,6 @@ class GameLoop:
         assert buffs is not None
         actions = buffs.track(snap)
         return bool(actions) and self._send(snap, lambda: buffs.send(actions[0], self.input))
-
-    def _act_heal(self, snap: WorldState, combo: str, label: str) -> None:
-        if self.modules.healing is not None:
-            return  # the healing module already ran in _dispatch
-        if self._send(snap, lambda: self.input.press_combo(combo), heal=True):
-            logger.debug("heal [%s] combo=%s", label, combo)
 
     def _act_attack(self, snap: WorldState) -> None:
         """ATTACK: tap the attack key when nothing (or a new target) is selected.
@@ -876,11 +822,6 @@ class GameLoop:
             raise ValueError("tick_rate must be > 0")
         if cfg.max_actions_per_second <= 0:
             raise ValueError("max_actions_per_second must be > 0")
-        if not 0.0 < cfg.critical_hp < cfg.normal_hp <= 100.0:
-            raise ValueError(
-                f"expected 0 < critical_hp < normal_hp <= 100, "
-                f"got critical={cfg.critical_hp}, normal={cfg.normal_hp}"
-            )
         if cfg.hp_drop_alarm_delta <= 0.0 or cfg.hp_drop_alarm_window <= 0.0:
             raise ValueError("hp_drop_alarm_delta and hp_drop_alarm_window must be > 0")
         if cfg.pause_timeout <= 0.0 or cfg.max_consecutive_errors < 1:

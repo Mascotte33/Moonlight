@@ -454,7 +454,7 @@ def build_modules(
 
     if prev is not None:
         for name, keys in (
-            ("healing", ("healing", "hotkeys")),
+            ("healing", ("healing",)),
             ("targeting", ("targeting",)),
             ("attack_spells", ("attack_spells", "hotkeys")),
             ("buffs", ("buffs", "hotkeys")),
@@ -465,7 +465,7 @@ def build_modules(
         if same("cavebot", "looting", "refill", "clicker", "templates_dir", "routes_dir"):
             m.cavebot, m.looting, m.refill = prev.cavebot, prev.looting, prev.refill
     if config.healing is not None and m.healing is None:
-        m.healing = HealingDecision(config.healing, spell_combos=combos, clock=clock)
+        m.healing = HealingDecision(config.healing, clock=clock)
     if config.targeting is not None and m.targeting is None:
         m.targeting = TargetingDecision(config.targeting)
         # F-01 (interim): no name resolver is wired yet (T34), so every

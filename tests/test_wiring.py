@@ -76,8 +76,7 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
     cfg = replace(
         BotConfig.default(),
         loop=LoopConfig(enable_f12_monitor=False),
-        hotkeys={"exura gran": "F1", "exura": "F2"}
-        | {b.spell: f"F{3 + i}" for i, b in enumerate(BuffManagerConfig().buffs)},
+        hotkeys={b.spell: f"F{5 + i}" for i, b in enumerate(BuffManagerConfig().buffs)},
         buffs=BuffManagerConfig(),
         cavebot=CavebotConfig(Route("hunt", waypoints=[Waypoint(100, 100, 7)])),
         looting=LootingConfig(),
@@ -322,7 +321,7 @@ def test_reconfigure_swaps_only_changed_modules() -> None:
     loop = _live_loop(cfg)
     old = loop.modules
     assert cfg.healing is not None and loop.reconfigure is not None
-    new = replace(cfg, healing=replace(cfg.healing, normal_hp_percent=55))
+    new = replace(cfg, healing=replace(cfg.healing, spell_cooldown_ms=800))
     assert loop.reconfigure(new)
     assert loop.modules.healing is not old.healing
     assert loop.modules.targeting is old.targeting

@@ -1,207 +1,156 @@
-"""Healing decisions (T14).
+"""Healing rules and cures: which action-bar hotkeys to press this tick.
 
-Decides when and how to heal based on :class:`moonlight.core.state.WorldState`:
+# doc: docs/prs/healing.md#healing-rules
 
-* **EMERGENCY** (loop priority 3): HP at or below the emergency threshold
-  -> cast the emergency spell immediately.
-* **CURE**: a condition in :data:`CURES` is active and has a spell ->
-  cast that condition's own cure spell.
-* **NORMAL** (loop priority 4): HP at or below the normal threshold ->
-  cast the normal spell when convenient.
-* **POTION**: HP or MP at or below its potion % -> press the potion's
-  hotkey (T4.F2.K1). Potions skip the mana gate: an MP potion is for low MP.
+:class:`HealingDecision` checks the owner's ordered :class:`HealingRule` list
+and the :class:`CureRule` per condition, and returns at most two
+:class:`HealingAction` per tick: one for the spell slot, one for the potion
+slot. It never names a spell or a potion, only hotkeys.
 
-Priority within this module (highest wins): emergency > HP potion > cure >
-normal > MP potion. Each has its own cooldown key, so while the emergency
-spell cools down the HP potion goes next.
-KILL/ALARM handling stays in :class:`moonlight.core.loop.GameLoop` (healing
-continues in ALARM mode there).
-
-:class:`HealingDecision` is a decision engine plus cooldown bookkeeping;
-it never talks to the game itself. The optional input-backend
-integration lives in :meth:`HealingDecision.send` and
-:meth:`HealingDecision.decide_and_send`: a spell is mapped to a key
-combo through the configurable *spell_combos* mapping and pressed
-through an :class:`moonlight.hardware.input.InputBackend`.
-
-Conventions inherited from the rest of the pipeline:
-
-* ``hp_percent`` / ``mp_percent`` of 0.0 mean "unknown" (never updated).
-  Unknown HP -> no heal; unknown MP -> casting is still allowed (the MP
-  gate only blocks on a *known* low MP value).
-* ``client_focused`` / ``screen_ok`` gating is the loop's job (it refuses
-  to send input without both), so this module does not check them.
-* Conditions are read from ``WorldState.buffs`` (name -> seconds
-  remaining); perception is the writer and must use lowercase names.
-  Matching is case-insensitive anyway.
-
-Everything timing-related is injectable, so the module is fully
-unit-testable without hardware or a running client.
+``hp_percent`` / ``mp_percent`` of 0.0 mean "unknown": an unknown bar never
+triggers a rule, and an unknown MP reading passes the mana floor. The
+focus and rate gates are the loop's job. The clock is injectable, so the
+module is unit-testable without hardware.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
-from enum import StrEnum
 
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
 
 __all__ = [
-    "CURES",
-    "EMERGENCY_COOLDOWN_KEY",
-    "HEAL_GAP_MS",
-    "NORMAL_COOLDOWN_KEY",
-    "HealType",
+    "CONDITIONS",
+    "CureRule",
     "HealingAction",
     "HealingConfig",
     "HealingDecision",
-    "cure_cooldown_key",
+    "HealingRule",
 ]
 
 logger = logging.getLogger("moonlight.healing.healing")
 
-#: Cooldown keys for the two heal tiers (stable identifiers; shared with
-#: the loop, the UI and the tests).
-EMERGENCY_COOLDOWN_KEY = "heal_emergency"
-NORMAL_COOLDOWN_KEY = "heal_normal"
-# ponytail: guessed. The game seems to drop a spell key sent 20 ms after a potion
-# key; raise it if heals still go missing.
-HEAL_GAP_MS = 300.0
+# doc: docs/prs/healing.md#cures
+#: Curable conditions (``WorldState.active_status_icons`` names), cure priority order.
+CONDITIONS = ("poison", "burn", "electrify", "bleeding", "paralyse")
+
+_SLOTS = ("spell", "potion")
 
 
-class HealType(StrEnum):
-    """Kind of a healing action (values are the ``HealingAction.type`` tokens)."""
+@dataclass(frozen=True)
+class HealingRule:
+    """One healing rule: press *hotkey* when HP or MP is at or below its trigger.
 
-    EMERGENCY = "emergency"
-    NORMAL = "normal"
-    CURE = "cure"
-    POTION = "potion"
+    A trigger of 0 is unused; ``minimum_mana_percent`` of 0 is no floor.
+    """
+
+    kind: str
+    """``"spell"`` or ``"potion"``: the slot (and cooldown) the key uses."""
+    hotkey: str
+    hp_below_percent: float = 0.0
+    mp_below_percent: float = 0.0
+    minimum_mana_percent: float = 0.0
 
 
-def cure_cooldown_key(condition: str) -> str:
-    """Cooldown key for curing *condition* (one independent key per condition)."""
-    return f"cure:{condition}"
+@dataclass(frozen=True)
+class CureRule:
+    """Press *hotkey* (spell slot) while *condition*'s status icon shows."""
+
+    condition: str
+    enabled: bool = False
+    hotkey: str = ""
 
 
-#: Curable conditions (``WorldState.buffs`` names), highest priority first.
-CURES = ("paralyze", "poison", "burn", "energy", "curse", "bleed")
+_DEFAULT_RULES = (
+    HealingRule("spell", "F2", hp_below_percent=50.0),
+    HealingRule("spell", "F1", hp_below_percent=85.0),
+    HealingRule("potion", "F3", hp_below_percent=40.0),
+    HealingRule("potion", "F4", mp_below_percent=30.0),
+)
+_DEFAULT_CURES = tuple(
+    CureRule(condition, False, f"shift+F{number}")
+    for number, condition in enumerate(CONDITIONS, start=1)
+)
+
+
+def _check_hotkey(hotkey: str, where: str) -> None:
+    if not hotkey or any(ch.isspace() for ch in hotkey):
+        raise ValueError(f"{where}: hotkey must be a combo without spaces, got {hotkey!r}")
 
 
 @dataclass(frozen=True)
 class HealingConfig:
-    """Tunable healing parameters (defaults are the T14 spec values)."""
+    """Healing rules (checked top to bottom), cures and the two slot cooldowns."""
 
-    emergency_hp_percent: float = 30.0
-    """HP % at or below which an EMERGENCY heal triggers."""
-
-    normal_hp_percent: float = 70.0
-    """HP % at or below which a NORMAL heal triggers (must be > emergency)."""
-
-    emergency_spell: str = "exura gran"
-    """Spell spoken for emergency heals; blank = no emergency heal."""
-
-    normal_spell: str = "exura"
-    """Spell spoken for normal heals; blank = no normal heal."""
-
-    cure_paralyze: str = ""
-    cure_poison: str = ""
-    cure_burn: str = ""
-    cure_energy: str = ""
-    cure_curse: str = ""
-    cure_bleed: str = ""
-    """Each condition's cure spell (``cure_<condition>``); blank = not cured."""
-
-    heal_cooldown_ms: int = 500
-    """Minimum interval in ms between two actions sharing one cooldown key."""
-
-    mana_threshold: float = 20.0
-    """No spell is cast while MP is below this % (0.0 = unknown MP passes)."""
-
-    hp_potion: str = ""
-    hp_potion_percent: float = 0.0
-    mp_potion: str = ""
-    mp_potion_percent: float = 0.0
-    """Potion name (keyed in ``hotkeys``) and the % to use it at; blank or 0 = off."""
+    rules: tuple[HealingRule, ...] = _DEFAULT_RULES
+    cures: tuple[CureRule, ...] = _DEFAULT_CURES
+    spell_cooldown_ms: int = 1000
+    potion_cooldown_ms: int = 1000
 
     def validate(self) -> HealingConfig:
-        """Check invariants and return self (fail fast, loop-style validation).
+        """Check every rule, cure and cooldown; return self.
 
         Raises:
-            ValueError: If thresholds, cooldown, spells or conditions are invalid.
+            ValueError: On the first invalid rule, cure or cooldown.
         """
-        if not 0.0 < self.emergency_hp_percent < self.normal_hp_percent <= 100.0:
-            raise ValueError(
-                "expected 0 < emergency_hp_percent < normal_hp_percent <= 100, "
-                f"got emergency={self.emergency_hp_percent}, "
-                f"normal={self.normal_hp_percent}"
-            )
-        if not 0.0 <= self.mana_threshold <= 100.0:
-            raise ValueError(
-                f"expected 0 <= mana_threshold <= 100, got {self.mana_threshold}"
-            )
-        for name in ("hp_potion_percent", "mp_potion_percent"):
-            if not 0.0 <= getattr(self, name) <= 100.0:
-                raise ValueError(f"expected 0 <= {name} <= 100, got {getattr(self, name)}")
-        if self.heal_cooldown_ms <= 0:
-            raise ValueError("heal_cooldown_ms must be > 0")
+        for number, rule in enumerate(self.rules, start=1):
+            where = f"healing rule {number}"
+            if rule.kind not in _SLOTS:
+                raise ValueError(f"{where}: kind must be 'spell' or 'potion', got {rule.kind!r}")
+            _check_hotkey(rule.hotkey, where)
+            for name in ("hp_below_percent", "mp_below_percent", "minimum_mana_percent"):
+                percent = getattr(rule, name)
+                if not 0.0 <= percent <= 100.0:
+                    raise ValueError(f"{where}: {name} must be 0..100, got {percent}")
+            if rule.hp_below_percent == 0.0 and rule.mp_below_percent == 0.0:
+                raise ValueError(f"{where}: needs hp_below_percent or mp_below_percent")
+        seen: set[str] = set()
+        for cure in self.cures:
+            if cure.condition not in CONDITIONS:
+                raise ValueError(f"cure: unknown condition {cure.condition!r}")
+            if cure.condition in seen:
+                raise ValueError(f"cure: condition {cure.condition!r} is listed twice")
+            seen.add(cure.condition)
+            _check_hotkey(cure.hotkey, f"cure {cure.condition}")
+        if self.spell_cooldown_ms <= 0 or self.potion_cooldown_ms <= 0:
+            raise ValueError("spell_cooldown_ms and potion_cooldown_ms must be > 0")
         return self
-
-    def cure_spells(self) -> dict[str, str]:
-        """Condition -> cure spell, for conditions that have one, in :data:`CURES` order."""
-        spells = {c: getattr(self, f"cure_{c}").strip() for c in CURES}
-        return {c: s for c, s in spells.items() if s}
-
-    def potions(self) -> dict[str, tuple[str, float]]:
-        """``"hp"``/``"mp"`` -> (potion, use at %), for the potions that are on."""
-        pots = {
-            "hp": (self.hp_potion.strip(), self.hp_potion_percent),
-            "mp": (self.mp_potion.strip(), self.mp_potion_percent),
-        }
-        return {k: v for k, v in pots.items() if v[0] and v[1] > 0}
 
 
 @dataclass(frozen=True)
 class HealingAction:
-    """One healing decision: what to cast and why.
+    """One key to press: its slot (``"spell"`` / ``"potion"``), hotkey and why."""
 
-    Attributes:
-        type: Action kind (``emergency`` / ``normal`` / ``cure``).
-        spell: Spell to cast, e.g. ``"exura gran"``.
-        reason: Human-readable justification (logging / UI).
-        cooldown_key: Key used for cooldown tracking (see
-            :data:`EMERGENCY_COOLDOWN_KEY`, :data:`NORMAL_COOLDOWN_KEY`,
-            :func:`cure_cooldown_key`).
-    """
-
-    type: HealType
-    spell: str
+    slot: str
+    hotkey: str
     reason: str
-    cooldown_key: str
+
+
+def _rule_reason(rule: HealingRule, hp: float, mp: float) -> str | None:
+    """Why *rule* is due at *hp* / *mp*, or None when it is not."""
+    floor = rule.minimum_mana_percent
+    if 0.0 < mp < floor:
+        return None
+    if 0.0 < hp <= rule.hp_below_percent:
+        return f"hp {hp:.0f}% <= {rule.hp_below_percent:.0f}%"
+    if 0.0 < mp <= rule.mp_below_percent:
+        return f"mp {mp:.0f}% <= {rule.mp_below_percent:.0f}%"
+    return None
 
 
 class HealingDecision:
-    """Decides when to heal and tracks heal cooldowns.
+    """Decides the heal keys for a tick and tracks each slot's cooldown.
 
-    Typical usage (wired into the loop or the UI)::
+    Typical usage (the loop)::
 
-        healer = HealingDecision(
-            HealingConfig(),
-            spell_combos={"exura gran": "f1", "exura": "f2"},
-        )
-        action = healer.decide(state.snapshot())   # HealingAction | None
-        if action is not None:
+        for action in healer.decide(state.snapshot()):
             healer.send(action, input_backend)
 
-    ``decide()`` is pure with respect to the game: it only reads the
-    (snapshot of) :class:`WorldState` and returns a decision. Cooldowns are
-    recorded when an action is actually sent via :meth:`send`.
-
-    Thread-safety contract: a single decision thread (the 20 Hz loop)
-    drives this class; there is no internal locking (same as GameLoop).
+    One decision thread (the loop) drives it; there is no locking.
     """
 
     def __init__(
@@ -209,225 +158,67 @@ class HealingDecision:
         config: HealingConfig | None = None,
         *,
         clock: Callable[[], float] | None = None,
-        spell_combos: Mapping[str, str] | None = None,
     ) -> None:
         """Create the healer.
 
-        Args:
-            config: Healing parameters; defaults to :class:`HealingConfig`.
-            clock: Monotonic-clock override (tests).
-            spell_combos: Spell -> key-combo mapping used by :meth:`send`.
-                Combos must be non-empty and contain no whitespace (wire
-                protocol is one command per line). An empty mapping is fine:
-                decisions still work, :meth:`send` just declines to cast.
-
         Raises:
-            ValueError: If the config or a combo mapping is invalid.
+            ValueError: If the config is invalid.
         """
-        cfg = config if config is not None else HealingConfig()
-        cfg.validate()
-        self.config = cfg
+        self.config = (config if config is not None else HealingConfig()).validate()
         self._clock = clock if clock is not None else time.monotonic
-        self._spell_combos = dict(spell_combos) if spell_combos else {}
-        for spell, combo in self._spell_combos.items():
-            if not combo or any(ch.isspace() for ch in combo):
-                raise ValueError(
-                    f"combo for spell {spell!r} must be non-empty and contain no "
-                    f"whitespace (wire protocol is one command per line), got {combo!r}"
-                )
         self._last_sent: dict[str, float] = {}
 
-    # -- decision ------------------------------------------------------------
+    def decide(self, state: WorldState) -> list[HealingAction]:
+        """The keys to press now: 0 to 2 actions, the spell slot first.
 
-    def decide(self, state: WorldState) -> HealingAction | None:
-        """Decide whether to heal, given a (snapshot of) the world state.
-
-        Priority: emergency heal > cure > normal heal. The heal tiers are
-        mutually exclusive: at or below the emergency threshold only the
-        emergency spell is considered (never the weaker normal spell);
-        between the thresholds only the normal spell. Candidates that are
-        still on cooldown are skipped in favour of the next eligible one.
-
-        Returns:
-            A :class:`HealingAction`, or ``None`` when nothing should be
-            cast (HP healthy, HP unknown, MP known to be too low, or every
-            eligible candidate is on cooldown).
+        The first due spell rule, or else the first due cure, takes the spell
+        slot; the first due potion rule takes the potion slot. A slot on
+        cooldown sends nothing, and no later rule takes its place.
         """
-        mp = state.mp_percent
-        hp = state.hp_percent
-        potions = self._potion_candidates(hp, mp)
-        if mp > 0.0 and mp < self.config.mana_threshold:
-            logger.debug(
-                "spells skipped: mp %.1f%% below threshold %.1f%%",
-                mp,
-                self.config.mana_threshold,
-            )
-            candidates = list(potions.values())
-        else:
-            candidates = self._spell_candidates(state)
-            if "hp" in potions:
-                after_emergency = bool(candidates) and candidates[0].type == HealType.EMERGENCY
-                candidates.insert(int(after_emergency), potions["hp"])
-            if "mp" in potions:
-                candidates.append(potions["mp"])
-
-        last = max(self._last_sent.values(), default=None)
-        if candidates and last is not None and (self._clock() - last) * 1000.0 < HEAL_GAP_MS:
-            return None
-        for action in candidates:
-            if not self.on_cooldown(action.cooldown_key):
-                return action
-        if candidates:
-            logger.debug(
-                "heal candidates on cooldown: %s",
-                [action.cooldown_key for action in candidates],
-            )
-        return None
-
-    def _potion_candidates(self, hp: float, mp: float) -> dict[str, HealingAction]:
-        """Potions whose bar is known and at or below its %, by ``"hp"``/``"mp"``."""
-        bars = {"hp": hp, "mp": mp}
-        return {
-            kind: HealingAction(
-                type=HealType.POTION,
-                spell=potion,
-                reason=f"{kind} {bars[kind]:.0f}% <= potion threshold {percent:.0f}%",
-                cooldown_key=f"potion:{kind}",
-            )
-            for kind, (potion, percent) in self.config.potions().items()
-            if 0.0 < bars[kind] <= percent
-        }
-
-    def _spell_candidates(self, state: WorldState) -> list[HealingAction]:
-        """Emergency heal, cures and normal heal that are due, in priority order."""
-        candidates: list[HealingAction] = []
-        hp = state.hp_percent
-        # A blank spell is off; the normal heal then covers the emergency range.
-        emergency_due = (
-            bool(self.config.emergency_spell.strip())
-            and 0.0 < hp <= self.config.emergency_hp_percent
-        )
-        if emergency_due:
-            candidates.append(
-                HealingAction(
-                    type=HealType.EMERGENCY,
-                    spell=self.config.emergency_spell,
-                    reason=(
-                        f"hp {hp:.0f}% <= emergency threshold "
-                        f"{self.config.emergency_hp_percent:.0f}%"
-                    ),
-                    cooldown_key=EMERGENCY_COOLDOWN_KEY,
-                )
-            )
-        candidates.extend(self._cure_candidates(state))
-        if (
-            not emergency_due
-            and self.config.normal_spell.strip()
-            and 0.0 < hp <= self.config.normal_hp_percent
-        ):
-            candidates.append(
-                HealingAction(
-                    type=HealType.NORMAL,
-                    spell=self.config.normal_spell,
-                    reason=(
-                        f"hp {hp:.0f}% <= normal threshold "
-                        f"{self.config.normal_hp_percent:.0f}%"
-                    ),
-                    cooldown_key=NORMAL_COOLDOWN_KEY,
-                )
-            )
-        return candidates
-
-    def _cure_candidates(self, state: WorldState) -> list[HealingAction]:
-        """Cure actions for active conditions, in config priority order."""
-        actions: list[HealingAction] = []
-        for condition, spell in self.config.cure_spells().items():
-            remaining = self._condition_remaining(state, condition)
-            if remaining is None:
+        hp, mp = state.hp_percent, state.mp_percent
+        due = {slot: self._first_due_rule(slot, hp, mp) for slot in _SLOTS}
+        if due["spell"] is None:
+            due["spell"] = self._first_due_cure(state)
+        actions = []
+        for slot in _SLOTS:
+            action = due[slot]
+            if action is None:
                 continue
-            actions.append(
-                HealingAction(
-                    type=HealType.CURE,
-                    spell=spell,
-                    reason=(
-                        f"active condition: {condition} "
-                        f"({remaining:.1f}s remaining)"
-                    ),
-                    cooldown_key=cure_cooldown_key(condition),
-                )
-            )
+            if self.on_cooldown(slot):
+                logger.debug("%s slot on cooldown: %s skipped", slot, action.hotkey)
+                continue
+            actions.append(action)
         return actions
 
-    @staticmethod
-    def _condition_remaining(state: WorldState, condition: str) -> float | None:
-        """Seconds remaining for *condition* in ``state.buffs`` (or None)."""
-        target = condition.lower()
-        for name, seconds in state.buffs.items():
-            if name.lower() == target:
-                return seconds
+    def _first_due_rule(self, slot: str, hp: float, mp: float) -> HealingAction | None:
+        for rule in self.config.rules:
+            if rule.kind != slot:
+                continue
+            reason = _rule_reason(rule, hp, mp)
+            if reason is not None:
+                return HealingAction(slot, rule.hotkey, reason)
         return None
 
-    # -- cooldowns ------------------------------------------------------------
+    def _first_due_cure(self, state: WorldState) -> HealingAction | None:
+        active = state.active_status_icons
+        for condition in CONDITIONS:
+            for cure in self.config.cures:
+                if cure.condition == condition and cure.enabled and condition in active:
+                    return HealingAction("spell", cure.hotkey, f"cure {condition}")
+        return None
 
-    def on_cooldown(self, key: str) -> bool:
-        """True while *key* was sent less than ``heal_cooldown_ms`` ago."""
-        last = self._last_sent.get(key)
+    def on_cooldown(self, slot: str) -> bool:
+        """True while *slot* was sent less than its cooldown ago."""
+        last = self._last_sent.get(slot)
         if last is None:
             return False
-        return (self._clock() - last) * 1000.0 < self.config.heal_cooldown_ms
+        cooldown_ms = (
+            self.config.spell_cooldown_ms if slot == "spell" else self.config.potion_cooldown_ms
+        )
+        return (self._clock() - last) * 1000.0 < cooldown_ms
 
-    def cooldown_remaining_ms(self, key: str) -> float:
-        """Milliseconds until *key* can be sent again (0.0 when ready)."""
-        last = self._last_sent.get(key)
-        if last is None:
-            return 0.0
-        cooldown_s = self.config.heal_cooldown_ms / 1000.0
-        return max(0.0, (last + cooldown_s - self._clock()) * 1000.0)
-
-    def reset_cooldowns(self) -> None:
-        """Clear all cooldown bookkeeping (tests, UI reset button)."""
-        self._last_sent.clear()
-
-    # -- input integration ------------------------------------------------------
-
-    def send(self, action: HealingAction, backend: InputBackend) -> bool:
-        """Send *action* through the input backend (spell -> combo -> press).
-
-        The spell is looked up in the *spell_combos* mapping and pressed
-        with ``backend.press_combo``. On success the action's cooldown key
-        is recorded.
-
-        Args:
-            action: The healing decision to send.
-            backend: The output path to the game.
-
-        Returns:
-            True if the combo was sent; False if the spell has no combo
-            mapping or the cooldown key is still active.
-        """
-        combo = self._spell_combos.get(action.spell)
-        if combo is None:
-            logger.debug("no combo mapped for spell %r; not sent", action.spell)
-            return False
-        if self.on_cooldown(action.cooldown_key):
-            logger.debug("cooldown active for %s; not sent", action.cooldown_key)
-            return False
-        backend.press_combo(combo)
-        self._record_sent(action.cooldown_key)
-        logger.info("heal sent: %s (combo %s) -- %s", action.spell, combo, action.reason)
-        return True
-
-    def decide_and_send(self, state: WorldState, backend: InputBackend) -> HealingAction | None:
-        """:meth:`decide` + :meth:`send` in one step.
-
-        Returns the decision (or ``None``); the backend is only used when a
-        decision exists. The caller (loop) still owns the focus gate and the
-        rate limit.
-        """
-        action = self.decide(state)
-        if action is not None:
-            self.send(action, backend)
-        return action
-
-    def _record_sent(self, key: str) -> None:
-        self._last_sent[key] = self._clock()
+    def send(self, action: HealingAction, backend: InputBackend) -> None:
+        """Press *action*'s hotkey and start its slot's cooldown."""
+        backend.press_combo(action.hotkey)
+        self._last_sent[action.slot] = self._clock()
+        logger.info("heal sent: %s %s -- %s", action.slot, action.hotkey, action.reason)

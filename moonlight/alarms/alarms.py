@@ -2,8 +2,8 @@
 
 Detects dangerous situations and turns them into alarm actions, given
 :class:`moonlight.core.state.WorldState`. In the loop's priority state machine
-ALARM is priority 2 (below KILL, above EMERGENCY_HEAL): an alarm preempts
-attack/loot/walk while healing continues.
+ALARM is priority 2 (below KILL, above ATTACK): an alarm preempts
+attack/loot/walk while healing (which runs first in every tick) continues.
 
 Alarm conditions (checked in :data:`ALARM_PRIORITY` order, first hit wins):
 

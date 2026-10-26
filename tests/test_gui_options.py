@@ -9,13 +9,13 @@ import pytest
 from moonlight.core.config import BotConfig, ConfigError
 from moonlight.gui.tab_base import Option, combo_from_key, read_option, write_option
 
-HP = Option("Heal at HP %", "healing.normal_hp_percent", "slider", min=0, max=100)
+HP = Option("Low HP %", "alarms.low_hp_threshold", "slider", min=0, max=100)
 
 
 def test_dotted_write_sets_the_field() -> None:
     cfg = write_option(BotConfig.default(), HP, 65.0)
-    assert cfg.healing is not None
-    assert cfg.healing.normal_hp_percent == 65.0
+    assert cfg.alarms is not None
+    assert cfg.alarms.low_hp_threshold == 65.0
     assert cfg.targeting == BotConfig.default().targeting
 
 
@@ -27,26 +27,26 @@ def test_top_level_and_nested_fields() -> None:
 
 
 def test_slider_float_fits_an_int_field() -> None:
-    opt = Option("Cooldown", "healing.heal_cooldown_ms", "slider", min=0, max=2000)
+    opt = Option("Cooldown", "healing.spell_cooldown_ms", "slider", min=0, max=2000)
     cfg = write_option(BotConfig.default(), opt, 499.6)
-    assert cfg.healing is not None and cfg.healing.heal_cooldown_ms == 500
+    assert cfg.healing is not None and cfg.healing.spell_cooldown_ms == 500
 
 
 def test_write_into_none_section_creates_it() -> None:
-    off = replace(BotConfig.default(), healing=None)
+    off = replace(BotConfig.default(), alarms=None)
     cfg = write_option(off, HP, 65.0)
     # The value lands in the section; the module stays off until its switch.
-    assert cfg.healing is None
+    assert cfg.alarms is None
     assert read_option(cfg, HP.field) == 65.0
-    on = write_option(cfg, Option("Healing", "healing.enabled", "switch"), True)
-    assert on.healing is not None and on.healing.normal_hp_percent == 65.0
+    on = write_option(cfg, Option("Alarms", "alarms.enabled", "switch"), True)
+    assert on.alarms is not None and on.alarms.low_hp_threshold == 65.0
 
 
 def test_enabled_switch_off_keeps_values() -> None:
     cfg = write_option(BotConfig.default(), HP, 65.0)
-    cfg = write_option(cfg, Option("Healing", "healing.enabled", "switch"), False)
-    assert cfg.healing is None
-    assert read_option(cfg, "healing.enabled") is False
+    cfg = write_option(cfg, Option("Alarms", "alarms.enabled", "switch"), False)
+    assert cfg.alarms is None
+    assert read_option(cfg, "alarms.enabled") is False
     assert read_option(cfg, HP.field) == 65.0
 
 
@@ -138,13 +138,11 @@ def test_no_field_is_shown_by_two_tabs() -> None:
         (BotConfig.default(), "looting", "Looting needs a monster-name reader"),
         (BotConfig.default(), "buffs", "Buffs needs a buff-icon reader"),
         (BotConfig.default(), "refill", "Refill needs Cavebot and Looting on"),
-        (replace(BotConfig.default(), hotkeys={}), "healing", "Set a hotkey for each spell"),
     ],
 )
 def test_refused_switch_has_a_plain_reason(cfg: BotConfig, name: str, reason: str) -> None:
     from moonlight.gui.settings_tab import plain_reason
 
-    cfg = replace(cfg, healing=None) if name == "healing" else cfg
     with pytest.raises(ConfigError) as exc:
         write_option(cfg, _switch(name), True)
     assert plain_reason(str(exc.value)).startswith(reason)
@@ -169,7 +167,7 @@ def test_typed_slider_value_is_a_whole_number(text: str, value: int) -> None:
 
 def test_whole_number_fits_a_float_field() -> None:
     cfg = write_option(BotConfig.default(), HP, 65)
-    assert cfg.healing is not None and cfg.healing.normal_hp_percent == 65
+    assert cfg.alarms is not None and cfg.alarms.low_hp_threshold == 65
 
 
 def test_remove_drops_the_selected_creatures() -> None:

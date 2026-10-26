@@ -208,7 +208,7 @@ def test_timing_report(tmp_path: Path) -> None:
         LoopConfig(enable_f12_monitor=False),
         sleep_fn=lambda _dt: None,
         modules=DecisionModules(
-            healing=HealingDecision(spell_combos={"exura gran": "F1", "exura": "F2"}),
+            healing=HealingDecision(),
             targeting=TargetingDecision(),
             buffs=BuffManager(),
             alarms=AlarmDecision(),
@@ -309,7 +309,6 @@ def test_production_tick_within_budget(
     config = BotConfig.from_dict(
         {
             "profile": "moonlight_user",
-            "hotkeys": {"exura gran": "F1", "exura": "F2"},
             "routes_dir": str(routes),
             "templates_dir": str(tmp_path / "templates"),
             "loop": {"enable_f12_monitor": False},

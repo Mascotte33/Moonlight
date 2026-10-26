@@ -22,12 +22,12 @@ JSON format (``moonlight_config.json``)::
       "routes_dir": "data/waypoints",
       "loop": {"tick_rate": 20.0},         # any LoopConfig field
       "clicker": {"open_loop": false},     # any ClickerConfig field (F-14)
-      "hotkeys": {"exura gran": "F1", "exura": "F2"},   # spell -> combo
+      "hotkeys": {"exori": "F5"},          # attack/buff spell -> combo
       "monster_name_source": false,        # F-09: looting needs this true (T34)
       "capacity_source": false,            # F-09: refill needs this true (T34)
       "buff_icon_source": false,           # F-10: buffs needs this true (T34)
       "modules": {
-        "healing":   {"enabled": true, "normal_hp_percent": 70.0},
+        "healing":   {"enabled": true, "spell_cooldown_ms": 1000},
         "targeting": {"enabled": true},
         "attack_spells": {"enabled": false},   # optional section, missing = off
         "buffs":     {"enabled": false},
@@ -46,8 +46,8 @@ require their perception source (``monster_name_source`` /
 ``capacity_source`` / ``buff_icon_source``) to be true (F-09 / F-10).
 Fields left out of a module section take the dataclass defaults.
 
-A module that is off keeps its values: ``{"enabled": false, "normal_hp_percent":
-65}`` is parsed into :attr:`BotConfig.off` and written back the same way, so
+A module that is off keeps its values: ``{"enabled": false, "spell_cooldown_ms":
+800}`` is parsed into :attr:`BotConfig.off` and written back the same way, so
 turning the module on again restores them. The bot never reads ``off``.
 
 The default profile is ``moonlight_user`` (F-11); the GUI and
@@ -67,7 +67,7 @@ from moonlight.cavebot.cavebot import Route, RouteError, RouteFileLoader
 from moonlight.core.loop import GameLoop, LoopConfig
 from moonlight.extras.buffs import BuffManagerConfig
 from moonlight.hardware.clicker import ClickerConfig
-from moonlight.healing.healing import CURES, HealingConfig
+from moonlight.healing.healing import HealingConfig
 from moonlight.looting.looting import LootingConfig
 from moonlight.refill.refill import RefillConfig
 from moonlight.targeting.attack_spells import AttackSpellsConfig
@@ -176,7 +176,7 @@ class BotConfig:
 
     @property
     def spell_combos(self) -> dict[str, str]:
-        """Spell -> key combo mapping for healing and buffs."""
+        """Spell -> key combo mapping for attack spells and buffs."""
         return dict(self.hotkeys or {})
 
     @classmethod
@@ -184,7 +184,7 @@ class BotConfig:
         """Safe defaults: healing, targeting and alarms on; the rest off."""
         cfg = cls(
             profile="moonlight_user",
-            hotkeys={"exura gran": "F1", "exura": "F2"},
+            hotkeys={},
             healing=HealingConfig(),
             targeting=TargetingConfig(),
             alarms=AlarmConfig(),
@@ -260,8 +260,6 @@ class BotConfig:
                 raise ConfigError(f"modules.{name}.enabled must be true or false")
             if not enabled and not section:
                 continue
-            if name == "healing":
-                _old_cure(section)
             if name == "cavebot":
                 old = section.pop("walk_keys", None)  # lived here before it moved to Settings
                 if isinstance(old, bool):
@@ -329,11 +327,6 @@ class BotConfig:
             raise ConfigError(str(exc)) from exc
         # An unmapped spell would be decided every tick but never cast.
         spells: list[str] = []
-        if self.healing is not None:
-            h = self.healing
-            spells += [s for s in (h.emergency_spell, h.normal_spell) if s.strip()]
-            spells += h.cure_spells().values()
-            spells += [potion for potion, _ in h.potions().values()]
         if self.attack_spells is not None:
             a = self.attack_spells
             spells += [s for s in (a.single_spell, a.aoe_spell) if s]
@@ -401,14 +394,6 @@ def _section(cfg: Any) -> dict[str, Any]:
             "start_index": cfg.start_index,
         }
     return asdict(cfg)
-
-
-def _old_cure(section: dict[str, Any]) -> None:
-    """Turn a pre-T4.F1.K3 ``cure_spell`` + ``cure_conditions`` into ``cure_<condition>``."""
-    spell = section.pop("cure_spell", None)
-    for condition in section.pop("cure_conditions", None) or ():
-        if spell and condition in CURES:
-            section.setdefault(f"cure_{condition}", spell)
 
 
 def _cavebot(section: dict[str, Any], routes_dir: Path) -> CavebotConfig:

@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from moonlight.core.config import MODULES, BotConfig, ConfigError
-from moonlight.healing.healing import HealingConfig
+from moonlight.healing.healing import CureRule, HealingConfig, HealingRule
 
 
 def route_file(d: Path, name: str = "hunt") -> None:
@@ -24,7 +24,7 @@ def raw(**modules: dict[str, Any]) -> dict[str, Any]:
     """Minimal valid config; *modules* override sections."""
     sections: dict[str, Any] = {name: {"enabled": False} for name in MODULES}
     sections.update(modules)
-    return {"profile": "p", "hotkeys": {"exura gran": "F1", "exura": "F2"}, "modules": sections}
+    return {"profile": "p", "hotkeys": {}, "modules": sections}
 
 
 
@@ -40,13 +40,13 @@ def test_default_is_valid() -> None:
     cfg = BotConfig.default()
     assert cfg.healing is not None and cfg.targeting is not None and cfg.alarms is not None
     assert cfg.buffs is None and cfg.cavebot is None and cfg.refill is None
-    assert cfg.spell_combos["exura"] == "F2"
+    assert cfg.spell_combos == {}
 
 
 def test_load_roundtrip(tmp_path: Path) -> None:
     route_file(tmp_path / "routes")
     data = raw(
-        healing={"enabled": True, "normal_hp_percent": 65},
+        healing={"enabled": True, "spell_cooldown_ms": 800},
         cavebot={"enabled": True, "route": "hunt", "rope_hotkey": "F5"},
         looting={"enabled": True},
         refill={"enabled": True, "trigger_cap": 80.0},
@@ -61,7 +61,7 @@ def test_load_roundtrip(tmp_path: Path) -> None:
     path = tmp_path / "moonlight_config.json"
     path.write_text(json.dumps(data))
     cfg = BotConfig.load(path)
-    assert cfg.healing == HealingConfig(normal_hp_percent=65.0)
+    assert cfg.healing == HealingConfig(spell_cooldown_ms=800)
     assert cfg.cavebot is not None and cfg.cavebot.route.name == "hunt"
     assert cfg.cavebot.rope_hotkey == "F5" and cfg.walk_keys is True
     assert cfg.refill is not None and cfg.refill.trigger_cap == 80.0
@@ -116,8 +116,13 @@ def test_buffs_refused_without_icon_source() -> None:
         lambda d: d.update(bogus=1),
         lambda d: d["modules"].update(bogus={"enabled": False}),
         lambda d: d["modules"].update(healing={"enabled": True, "nope": 1}),
-        lambda d: d["modules"].update(healing={"enabled": True, "normal_hp_percent": "70"}),
-        lambda d: d["modules"].update(healing={"enabled": True, "normal_hp_percent": 10.0}),
+        lambda d: d["modules"].update(healing={"enabled": True, "spell_cooldown_ms": "800"}),
+        lambda d: d["modules"].update(healing={"enabled": True, "spell_cooldown_ms": 0}),
+        # P2: an old healing section is refused, not migrated.
+        lambda d: d["modules"].update(healing={"enabled": True, "emergency_spell": "exura gran"}),
+        lambda d: d["modules"].update(
+            healing={"enabled": True, "rules": [{"kind": "spell", "hotkey": "F1"}]}
+        ),
         lambda d: d["modules"].update(targeting={"enabled": True, "max_monsters_to_engage": True}),
         lambda d: d.update(loop={"tick_rate": -1.0}),
         lambda d: d.update(hotkeys={"exura": "F 2"}),
@@ -153,10 +158,23 @@ def test_clicker_open_loop_switch_and_validation() -> None:
 
 
 def test_spell_without_hotkey_rejected() -> None:
-    data = raw(healing={"enabled": True})
-    data["hotkeys"] = {"exura": "F2"}  # exura gran unmapped
-    with pytest.raises(ConfigError, match="exura gran"):
+    data = raw(attack_spells={"enabled": True, "single_spell": "exori"})
+    with pytest.raises(ConfigError, match="exori"):
         BotConfig.from_dict(data)
+
+
+def test_healing_rules_and_cures_load_from_json_lists() -> None:
+    data = raw(
+        healing={
+            "enabled": True,
+            "rules": [{"kind": "potion", "hotkey": "F3", "hp_below_percent": 40}],
+            "cures": [{"condition": "poison", "enabled": True, "hotkey": "shift+F1"}],
+        }
+    )
+    healing = BotConfig.from_dict(data).healing
+    assert healing is not None
+    assert healing.rules == (HealingRule("potion", "F3", hp_below_percent=40.0),)
+    assert healing.cures == (CureRule("poison", True, "shift+F1"),)
 
 
 def test_load_missing_or_bad_json(tmp_path: Path) -> None:
@@ -180,7 +198,11 @@ def test_to_dict_roundtrip_default() -> None:
 def test_save_roundtrip_every_section(tmp_path: Path) -> None:
     route_file(tmp_path / "routes")
     data = raw(
-        healing={"enabled": True, "normal_hp_percent": 65},
+        healing={
+            "enabled": True,
+            "rules": [{"kind": "spell", "hotkey": "F1", "mp_below_percent": 20}],
+            "cures": [{"condition": "burn", "enabled": True, "hotkey": "F9"}],
+        },
         targeting={"enabled": True},
         buffs={
             "enabled": True,
@@ -210,13 +232,13 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
 
 def test_off_module_keeps_its_values(tmp_path: Path) -> None:
     """T0.F1.K4: an off module's values round-trip, and the bot sees it off."""
-    data = raw(healing={"enabled": False, "normal_hp_percent": 65})
+    data = raw(healing={"enabled": False, "spell_cooldown_ms": 800})
     cfg = BotConfig.from_dict(data)
     assert cfg.healing is None
-    assert cfg.off["healing"] == HealingConfig(normal_hp_percent=65.0)
+    assert cfg.off["healing"] == HealingConfig(spell_cooldown_ms=800)
     path = tmp_path / "saved.json"
     cfg.save(path)
-    assert json.loads(path.read_text())["modules"]["healing"]["normal_hp_percent"] == 65.0
+    assert json.loads(path.read_text())["modules"]["healing"]["spell_cooldown_ms"] == 800
     assert BotConfig.load(path) == cfg
 
 
