@@ -1,5 +1,4 @@
 """Unit tests for moonlight.perception.minimap.
-
 All tests are offline and use SYNTHETIC numpy radar frames -- no live
 client and no golden screenshots are required. The golden-image tests
 live in ``tests/perf/test_minimap_golden.py`` and skip until real frames
@@ -11,11 +10,11 @@ that shifts between frames (terrain motion = -player motion). Terrain is
 deterministic per-seed uniform noise so phase correlation has a strong,
 unambiguous response.
 """
-
 from __future__ import annotations
 
 import time
 
+import cv2
 import numpy as np
 import pytest
 
@@ -478,3 +477,28 @@ class TestPerformance:
         elapsed_ms = (time.perf_counter() - start) * 1000.0 / iterations
         assert elapsed_ms < 10.0, f"read_position took {elapsed_ms:.3f} ms (budget 10 ms)"
         assert reader.read_position(frame, region) is not None
+
+
+def test_ui_scale_reads_an_enlarged_minimap() -> None:
+    # Nearest keeps the 1 px marker white; smooth enlarging greys it out of tolerance.
+    def frames(scale: float) -> list[np.ndarray]:
+        out = []
+        for shift in [(0, 0), (-3, 0), (-3, 2)]:  # start, 3 right, then 2 up
+            frame, _ = make_frame(1)
+            radar = frame[REGION_Y : REGION_Y + RADAR_HEIGHT, REGION_X : REGION_X + RADAR_WIDTH]
+            radar[:] = make_terrain(1, shift)[:, :, None]
+            radar[PLAYER_CENTER_Y, PLAYER_CENTER_X] = MARKER_RGB
+            out.append(cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST))
+        return out
+
+    def track(scale: float) -> list[Position | None]:
+        region = tuple(round(v * scale) for v in (REGION_X, REGION_Y, RADAR_WIDTH, RADAR_HEIGHT))
+        reader = MinimapReader(
+            CalibrationProfile(ui_scale=scale),
+            minimap_region=region,  # type: ignore[arg-type]
+            initial_position=Position(10, 10, 0),
+        )
+        return [reader.read_position(f) for f in frames(scale)]
+
+    assert track(1.0) == [Position(10, 10, 0), Position(13, 10, 0), Position(13, 8, 0)]
+    assert track(1.5) == track(1.0)

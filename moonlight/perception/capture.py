@@ -127,21 +127,28 @@ def _find_window_hwnd(title: str) -> int | None:
     return found[0] if found else None
 
 
+class _POINT(ctypes.Structure):
+    """Win32 POINT structure."""
+
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+# doc: docs/prs/gui-calibration.md#game-area-coordinates
 def _window_rect(hwnd: int) -> tuple[int, int, int, int] | None:
-    """Return ``(left, top, width, height)`` for *hwnd*, or ``None``."""
+    """Return the game area (client area, no title bar or borders) of *hwnd*
+    as screen ``(left, top, width, height)``, or ``None``."""
     if sys.platform != "win32":
         return None
     user32 = ctypes.windll.user32
-    user32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(_RECT)]
-    user32.GetWindowRect.restype = ctypes.c_bool
     rect = _RECT()
-    if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+    if not user32.GetClientRect(ctypes.c_void_p(hwnd), ctypes.byref(rect)):
         return None
-    width = rect.right - rect.left
-    height = rect.bottom - rect.top
-    if width <= 0 or height <= 0:
+    origin = _POINT(0, 0)
+    if not user32.ClientToScreen(ctypes.c_void_p(hwnd), ctypes.byref(origin)):
         return None
-    return (rect.left, rect.top, width, height)
+    if rect.right <= 0 or rect.bottom <= 0:
+        return None
+    return (origin.x, origin.y, rect.right, rect.bottom)
 
 
 class ScreenCapture:
@@ -240,7 +247,7 @@ class ScreenCapture:
     # -- window state -------------------------------------------------------
 
     def get_window_rect(self) -> tuple[int, int, int, int] | None:
-        """Return the client window as ``(left, top, width, height)``.
+        """Return the game area as screen ``(left, top, width, height)``.
 
         Coordinates are physical pixels. Returns ``None`` if the window is not
         currently found (the last known rect is still available via
@@ -266,7 +273,7 @@ class ScreenCapture:
         user32.GetForegroundWindow.restype = ctypes.c_void_p
         if not user32.IsWindowVisible(hwnd):
             return False
-        return int(hwnd) == int(user32.GetForegroundWindow())
+        return int(hwnd) == int(user32.GetForegroundWindow() or 0)
 
     # -- capture ------------------------------------------------------------
 

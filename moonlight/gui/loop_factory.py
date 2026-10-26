@@ -17,9 +17,11 @@ imported and unit-tested headlessly.
 from __future__ import annotations
 
 import ctypes
+import logging
 import re
 import shutil
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -27,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 from moonlight.bot.state import WorldState
 from moonlight.bot.wiring import build_loop, capture_providers
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
+from moonlight.setup import autofind
 from moonlight.setup.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
 from moonlight.setup.profile import ProfileManager
 
@@ -39,6 +42,8 @@ __all__ = [
     "CONFIGS_DIR",
     "LoggedInput",
     "build_gui_loop",
+    "check_layout",
+    "watch_layout",
     "config_names",
     "config_path",
     "delete_config",
@@ -50,6 +55,8 @@ __all__ = [
     "save_config_as",
     "window_titles",
 ]
+
+logger = logging.getLogger(__name__)
 
 #: Named configs live here as ``<name>.json``; ``last.txt`` holds the pick.
 CONFIGS_DIR = Path("configs")
@@ -241,6 +248,72 @@ def make_backend(config: BotConfig, hardware: HardwareController) -> InputBacken
     return backend
 
 
+LAYOUT_CHANGED = "Layout changed, recalibrate"
+LANDMARK_SLACK = 2  # px the Stop button may drift before it counts as moved
+
+
+# doc: docs/prs/gui-calibration.md#layout-check
+def check_layout(
+    profile: CalibrationProfile, frame: Callable[[], Any], log: Callable[[str], None]
+) -> None:
+    """Raise ``ValueError(LAYOUT_CHANGED)`` when the client no longer fits *profile*.
+
+    *frame* returns the client as RGB. It is called only when a check runs:
+    profiles without ``window_size`` skip the size check, and a missing
+    ``stop_button.png`` or an unrecorded landmark skips the Stop button check.
+    """
+    has_anchor = (autofind.ANCHORS_DIR / "stop_button.png").exists()
+    if not has_anchor:
+        log("no stop_button.png, Stop button check skipped")
+    stop_check = has_anchor and profile.landmark != (0, 0)
+    if profile.window_size is None and not stop_check:
+        return
+    rgb = frame()
+    h, w = rgb.shape[:2]
+    if profile.window_size is not None and tuple(profile.window_size) != (w, h):
+        raise ValueError(LAYOUT_CHANGED)
+    if stop_check:
+        at = autofind.find_stop_button(rgb[..., ::-1], profile.ui_scale)
+        lx, ly = profile.landmark
+        if at is None or max(abs(at[0] - lx), abs(at[1] - ly)) > LANDMARK_SLACK:
+            raise ValueError(LAYOUT_CHANGED)
+
+
+LAYOUT_EVERY = 5.0  # s between layout checks while the bot runs
+
+
+# doc: docs/prs/gui-calibration.md#layout-check
+def watch_layout(
+    profile: CalibrationProfile,
+    frame: Callable[[], Any],
+    log: Callable[[str], None],
+    clock: Callable[[], float] = time.monotonic,
+) -> Callable[[], bool]:
+    """False while the layout no longer fits *profile*.
+
+    The loop pauses while this is False, so a changed layout pauses the bot
+    and it resumes when the layout fits again. Checks every ``LAYOUT_EVERY`` s.
+    Window focus is not checked: the bot keeps running in the background.
+    """
+    ok, next_at = True, clock() + LAYOUT_EVERY
+
+    def check() -> bool:
+        nonlocal ok, next_at
+        if clock() >= next_at:
+            next_at = clock() + LAYOUT_EVERY
+            try:
+                check_layout(profile, frame, lambda _: None)
+                fits = True
+            except ValueError:
+                fits = False
+            if fits != ok:
+                log("Layout fits again, resuming" if fits else f"{LAYOUT_CHANGED}, bot paused")
+            ok = fits
+        return ok
+
+    return check
+
+
 def build_gui_loop(
     *,
     hardware: HardwareController,
@@ -261,7 +334,8 @@ def build_gui_loop(
         profiles_dir: Directory holding calibration profiles.
 
     Raises:
-        ValueError: When no calibration profile can be loaded.
+        ValueError: When no calibration profile can be loaded, or the
+            layout changed since calibration (:func:`check_layout`).
         NoArduinoFoundError: When no Arduino is found and ``simulation`` is
             not enabled (F-13: no silent ``FakeInput``).
         ConfigError: When the real config fails validation.
@@ -270,16 +344,14 @@ def build_gui_loop(
     """
     real_config = load_real_config(config_path)
     profile = load_profile(real_config.profile, profiles_dir or real_config.profiles_dir)
-    backend = make_backend(real_config, hardware)
     # Real screen capture: frame provider + focus check (F-13). Imported at
     # call time so importing this module never pulls in mss.
     from moonlight.perception.capture import ScreenCapture
 
     capture = ScreenCapture(window_title=real_config.window_title)
-    return build_loop(
-        real_config,
-        profile,
-        backend,
-        state=state,
-        **capture_providers(capture, profile, real_config),
-    )
+    log = hardware.log.info if hardware.log is not None else logger.info
+    check_layout(profile, capture.get_frame, log)  # before the Arduino opens
+    backend = make_backend(real_config, hardware)
+    providers = capture_providers(capture, profile, real_config)
+    providers["focus_check"] = watch_layout(profile, capture.get_frame, log)
+    return build_loop(real_config, profile, backend, state=state, **providers)

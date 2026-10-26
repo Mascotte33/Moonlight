@@ -42,6 +42,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from moonlight.gui.state_bridge import GuiContext
 
 __all__ = [
+    "HotkeyBox",
     "Option",
     "Tab",
     "dot_color",
@@ -49,6 +50,7 @@ __all__ = [
     "read_option", "section",
     "stat_label",
     "stat_num",
+    "combo_from_key",
     "typed_value",
     "write_option",
 ]
@@ -65,7 +67,7 @@ class Option:
 
     label: str
     field: str
-    control: Literal["slider", "switch", "entry", "dropdown"]
+    control: Literal["slider", "switch", "entry", "dropdown", "hotkey"]
     min: float | None = None
     max: float | None = None
     choices: list[str] | None = None
@@ -228,6 +230,8 @@ class Tab:
     title: str = "Tab"
     #: The tab's config options; a tab file sets this to its ``OPTIONS``.
     options: ClassVar[Sequence[Option]] = ()
+    #: Long forms scroll; tabs that fill the page with grid weights don't.
+    scrolls: ClassVar[bool] = False
 
     def __init__(self, ctx: GuiContext) -> None:
         self.ctx = ctx
@@ -244,9 +248,8 @@ class Tab:
 
     def build_options(self, parent: ctk.CTkFrame, options: list[Option] | None = None) -> None:
         """One labelled control per entry in *options* (default ``options``)."""
-        if self.options and self.apply not in self.ctx.config_savers:
+        if self.options and self.reload_options not in self.ctx.config_listeners:
             self.ctx.config_listeners.append(self.reload_options)
-            self.ctx.config_savers.append(self.apply)
         cfg = load_real_config()
         for option in self.options if options is None else options:
             row = ctk.CTkFrame(parent, fg_color="transparent")
@@ -258,7 +261,7 @@ class Tab:
                 font=ctk.CTkFont(size=theme.SIZE_BODY),
                 text_color=theme.TEXT_DIM,
             ).pack(side="left")
-            get, put = _control(row, option)
+            get, put = _control(row, option, self.submit)
             put(read_option(cfg, option.field))
             self._readers[option.field] = get
             self._writers[option.field] = put
@@ -269,6 +272,20 @@ class Tab:
         for option in self.options:
             if option.field in self._writers:
                 self._writers[option.field](read_option(cfg, option.field))
+
+    def submit(self) -> None:
+        """Save this tab and apply it live; a refused value goes to the log.
+
+        Every control calls this when its value changes, so the picked
+        config and the running bot always match the controls.
+        """
+        # doc: docs/prs/gui-calibration.md#live-apply
+        try:
+            self.apply()
+        except ConfigError as exc:
+            self.ctx.log.error(str(exc))
+            return
+        self.ctx.config_changed()
 
     def apply(self) -> BotConfig:
         """Write every option into the picked config and save it (Rule 2).
@@ -294,12 +311,123 @@ def typed_value(text: str, low: int, high: int, fallback: int) -> int:
     return min(max(value, low), high)
 
 
+# Tk key names the device spells differently (firmware/moonlight/moonlight.ino).
+_KEY_TOKENS = {"Return": "enter", "BackSpace": "backspace", "Prior": "pgup", "Next": "pgdn"}
+_PLAIN_KEYS = {"tab", "space", "delete", "insert", "home", "end", "up", "down", "left", "right"}
+# Windows Tk state bits.
+_MODIFIERS = (("ctrl", 0x4), ("alt", 0x20000), ("shift", 0x1))
+
+
+def combo_from_key(keysym: str, keycode: int, state: int) -> str | None:
+    """The device combo for one key press, e.g. ``ctrl+F1``.
+
+    None for a lone modifier or a key the device can't press.
+    """
+    if keysym[:1] == "F" and keysym[1:].isdigit() and 1 <= int(keysym[1:]) <= 24:
+        key = keysym
+    elif len(keysym) == 1 and keysym.isalpha():
+        key = keysym.lower()
+    elif 0x30 <= keycode <= 0x39:  # digit row; shift turns the keysym into "exclam" etc.
+        key = chr(keycode)
+    elif keysym in _KEY_TOKENS:
+        key = _KEY_TOKENS[keysym]
+    elif keysym.lower() in _PLAIN_KEYS:
+        key = keysym.lower()
+    else:
+        return None
+    return "+".join([name for name, bit in _MODIFIERS if state & bit] + [key])
+
+
+class HotkeyBox(ctk.CTkFrame):  # type: ignore[misc]  # customtkinter is untyped
+    """Click it, press a key, click OK: that key is the hotkey.
+
+    Escape cancels. OK runs *on_submit* (the tab's save).
+    """
+
+    _listening: ClassVar[HotkeyBox | None] = None
+
+    def __init__(self, parent: Any, on_submit: Callable[[], object] | None = None) -> None:
+        super().__init__(parent, fg_color="transparent")
+        self._on_submit = on_submit
+        self._combo = ""
+        self._pending = ""
+        self._bind_id: str | None = None
+        self.btn = ctk.CTkButton(
+            self,
+            width=96,
+            command=self._listen,
+            fg_color=theme.NIGHT,
+            hover_color=theme.HOVER,
+            border_width=1,
+            border_color=theme.RAISED,
+            text_color=theme.TEXT,
+            font=ctk.CTkFont(family=theme.MONO, size=theme.SIZE_BODY),
+        )
+        self.btn.pack(side="right")
+        self.ok = ctk.CTkButton(
+            self,
+            text="OK",
+            width=40,
+            command=self._confirm,
+            fg_color=theme.MANA,
+            hover_color=theme.MANA_HOVER,
+            text_color=theme.NIGHT,
+        )
+        self.set("")
+
+    def get(self) -> str:
+        return self._combo
+
+    def set(self, combo: str) -> None:
+        self._stop()
+        self._combo = combo
+        self.btn.configure(text=combo or "set key", border_color=theme.RAISED)
+
+    def _listen(self) -> None:
+        if HotkeyBox._listening is not None:
+            HotkeyBox._listening.set(HotkeyBox._listening.get())
+        HotkeyBox._listening = self
+        self.btn.configure(text="press a key", border_color=theme.MANA)
+        self.focus_set()  # so no text box also gets the key
+        self._bind_id = self.winfo_toplevel().bind("<KeyPress>", self._on_key, add="+")
+
+    def _on_key(self, event: Any) -> str:
+        if event.keysym == "Escape":
+            self.set(self._combo)
+            return "break"
+        combo = combo_from_key(event.keysym, event.keycode, event.state)
+        if combo is not None:
+            self._pending = combo
+            self.btn.configure(text=combo)
+            self.ok.pack(side="right", padx=(theme.UNIT, 0))
+        return "break"
+
+    def _confirm(self) -> None:
+        combo = self._pending
+        self.set(combo)
+        if self._on_submit is not None:
+            self._on_submit()
+
+    def _stop(self) -> None:
+        if self._bind_id is not None:
+            self.winfo_toplevel().unbind("<KeyPress>", self._bind_id)
+            self._bind_id = None
+        if HotkeyBox._listening is self:
+            HotkeyBox._listening = None
+        self._pending = ""
+        self.ok.pack_forget()
+
+
 def _control(
-    row: ctk.CTkFrame, option: Option
+    row: ctk.CTkFrame, option: Option, on_submit: Callable[[], object] | None = None
 ) -> tuple[Callable[[], object], Callable[[object], None]]:
     """Pack *option*'s control into *row*; return functions to read and set it."""
+    if option.control == "hotkey":
+        hotkey = HotkeyBox(row, on_submit)
+        hotkey.pack(side="right")
+        return hotkey.get, lambda v: hotkey.set("" if v is None else str(v))
     if option.control == "switch":
-        switch = ctk.CTkSwitch(row, text="", progress_color=theme.LIFE)
+        switch = ctk.CTkSwitch(row, text="", progress_color=theme.LIFE, command=on_submit)
         switch.pack(side="right")
         return lambda: bool(switch.get()), lambda v: switch.select() if v else switch.deselect()
     if option.control == "dropdown":
@@ -310,6 +438,7 @@ def _control(
             fg_color=theme.RAISED,
             button_color=theme.RAISED,
             button_hover_color=theme.HOVER,
+            command=(lambda _: on_submit()) if on_submit else None,
         )
         menu.pack(side="right")
         fallback = choices[0] if choices else ""
@@ -352,11 +481,16 @@ def _control(
             slider.set(start)
             show(start)
 
-        for event in ("<Return>", "<FocusOut>"):
-            box.bind(event, lambda _e: get_slider())
+        if on_submit is not None:
+            slider.bind("<ButtonRelease-1>", lambda _e: on_submit())
+            for event in ("<Return>", "<FocusOut>"):
+                box.bind(event, lambda _e: on_submit())
         return get_slider, put_slider
     entry = ctk.CTkEntry(row, fg_color=theme.NIGHT, border_color=theme.RAISED)
     entry.pack(side="right")
+    if on_submit is not None:
+        for event in ("<Return>", "<FocusOut>"):
+            entry.bind(event, lambda _e: on_submit())
 
     def put_entry(value: object) -> None:
         entry.delete(0, "end")

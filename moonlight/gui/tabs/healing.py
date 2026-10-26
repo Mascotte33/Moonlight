@@ -1,4 +1,4 @@
-"""Healing tab: HP/MP thresholds, heal spells and their hotkeys (T4.F1.K1).
+"""Healing tab: HP/MP thresholds, heal spells, potions and their hotkeys (T4.F1.K1).
 
 The thresholds and spells are ``OPTIONS``. Each spell also gets a hotkey
 box that writes ``hotkeys[<spell>]``; ``hotkeys`` is a dict, so that part
@@ -13,7 +13,7 @@ import customtkinter as ctk
 
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
-from moonlight.gui.tabs.base import Option, Tab, read_option, section, write_option
+from moonlight.gui.tabs.base import HotkeyBox, Option, Tab, read_option, section, write_option
 from moonlight.setup.config import BotConfig, ConfigError
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -39,6 +39,13 @@ GROUPS = [
         Option("Electrified (exana vis)", "healing.cure_energy", "entry"),
         Option("Cursed (exana mort)", "healing.cure_curse", "entry"),
         Option("Bleeding (exana kor)", "healing.cure_bleed", "entry"),
+    ]),
+    # T4.F2.K1: a potion is used at its % even when mana is too low for spells.
+    ("Potions", [
+        Option("HP potion at HP %", "healing.hp_potion_percent", "slider", min=0, max=100),
+        Option("HP potion", "healing.hp_potion", "entry"),
+        Option("MP potion at MP %", "healing.mp_potion_percent", "slider", min=0, max=100),
+        Option("MP potion", "healing.mp_potion", "entry"),
     ]),
     ("Mana and cooldown", [
         Option("Keep mana above %", "healing.mana_threshold", "slider", min=0, max=100),
@@ -79,10 +86,11 @@ class HealingTab(Tab):
     """Healing thresholds and spells, saved into the picked config."""
 
     title = "Healing"
+    scrolls = True
     options = OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
-        self._hotkeys: dict[str, ctk.CTkEntry] = {}
+        self._hotkeys: dict[str, HotkeyBox] = {}
         for title, group in GROUPS:
             box = section(parent, title)
             box.pack(fill="x", padx=10, pady=(10, 0))
@@ -91,15 +99,9 @@ class HealingTab(Tab):
             for option, row in zip(group, rows, strict=True):
                 if option.field not in SPELLS:
                     continue
-                entry = ctk.CTkEntry(
-                    row,
-                    width=70,
-                    placeholder_text="hotkey",
-                    fg_color=theme.NIGHT,
-                    border_color=theme.RAISED,
-                )
-                entry.pack(side="right", padx=theme.UNIT)
-                self._hotkeys[option.field] = entry
+                hotkey = HotkeyBox(row, self.submit)
+                hotkey.pack(side="right", padx=theme.UNIT)
+                self._hotkeys[option.field] = hotkey
             ctk.CTkFrame(box, height=theme.PAD, fg_color="transparent").pack()
         self.lbl_msg = ctk.CTkLabel(
             parent, text="", anchor="w", text_color=theme.BLOOD
@@ -113,11 +115,8 @@ class HealingTab(Tab):
 
     def _fill_hotkeys(self, cfg: BotConfig) -> None:
         combos = cfg.spell_combos
-        for field, entry in self._hotkeys.items():
-            entry.delete(0, "end")
-            combo = combos.get(str(read_option(cfg, field)), "")
-            if combo:
-                entry.insert(0, combo)
+        for field, hotkey in self._hotkeys.items():
+            hotkey.set(combos.get(str(read_option(cfg, field)), ""))
 
     def reload_options(self) -> None:
         super().reload_options()
@@ -126,7 +125,7 @@ class HealingTab(Tab):
     def apply(self) -> BotConfig:
         path = picked_config()
         values = {field: read() for field, read in self._readers.items()}
-        combos = {field: entry.get() for field, entry in self._hotkeys.items()}
+        combos = {field: hotkey.get() for field, hotkey in self._hotkeys.items()}
         try:
             cfg = apply_healing(load_real_config(path), values, combos)
         except ConfigError as exc:

@@ -259,3 +259,30 @@ class TestLifecycle:
         cap.close()
         with pytest.raises(CaptureError):
             cap.get_frame()
+
+
+class TestGameArea:
+    """The window rect is the game area, not the outer window."""
+
+    def test_origin_skips_title_bar_and_borders(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import ctypes
+        from types import SimpleNamespace
+
+        from moonlight.perception import capture
+
+        # Outer window at (100, 50); 8 px borders, 31 px title bar; game area 800x600.
+        def get_client_rect(_hwnd: object, ref: object) -> bool:
+            rect = ref._obj  # type: ignore[attr-defined]
+            rect.left, rect.top, rect.right, rect.bottom = 0, 0, 800, 600
+            return True
+
+        def client_to_screen(_hwnd: object, ref: object) -> bool:
+            point = ref._obj  # type: ignore[attr-defined]
+            point.x, point.y = point.x + 108, point.y + 81
+            return True
+
+        user32 = SimpleNamespace(GetClientRect=get_client_rect, ClientToScreen=client_to_screen)
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr(ctypes, "windll", SimpleNamespace(user32=user32), raising=False)
+
+        assert capture._window_rect(1) == (108, 81, 800, 600)

@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from moonlight.perception.floor import DEFAULT_MATCH_THRESHOLD, Rect
+from moonlight.perception.floor import DEFAULT_MATCH_THRESHOLD, Rect, scale_image
 
 __all__ = [
     "TITLE_TEMPLATE",
@@ -84,6 +84,8 @@ class LootReader:
         for name, image in templates.items():
             if image.ndim != 2:
                 raise ValueError(f"Template {name!r} must be 2-D grayscale")
+        scale = float(getattr(profile, "ui_scale", 1.0))
+        templates = {k: scale_image(v, scale) for k, v in templates.items()}
         self._title = templates.get(TITLE_TEMPLATE)
         self._items = {k: v for k, v in templates.items() if k != TITLE_TEMPLATE}
         self._region = region
@@ -93,7 +95,7 @@ class LootReader:
                 self._region = loot.to_tuple
         self._columns = columns
         self._rows = rows
-        self._slot = slot_size
+        self._slot = round(slot_size * scale)
         self._threshold = float(match_threshold)
 
     def read_loot_window(self, frame: np.ndarray) -> LootWindow | None:

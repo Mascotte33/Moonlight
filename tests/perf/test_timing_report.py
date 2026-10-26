@@ -42,13 +42,13 @@ from moonlight.perception import (
     VitalsReader,
 )
 from moonlight.perception.loot import TITLE_TEMPLATE, LootReader, LootWindow
-from moonlight.setup.calibrate import CalibrationProfile, default_profiles_dir
+from moonlight.setup.calibrate import CalibrationProfile
 
 pytestmark = pytest.mark.slow
 
 ROOT = Path(__file__).resolve().parents[2]
 FRAME_DIRS = (ROOT / "tests" / "golden",)
-PROFILE = default_profiles_dir() / "moonlight_user.json"
+PROFILE = Path(__file__).resolve().parents[1] / "golden_profile" / "moonlight_user.json"
 N_FRAMES = 10
 RUNS = 100
 BUDGET_MS = 50.0

@@ -39,7 +39,6 @@ from typing import TypedDict, cast
 import pytest
 
 from moonlight.perception.battle import BattleEntry
-from moonlight.setup.calibrate import default_profiles_dir
 from tests.golden_labels import PlaceholderLabelsError, load_golden_labels
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -57,7 +56,7 @@ LABELS_CANDIDATES = (
 )
 
 #: Same directory the app loads profiles from (moonlight/profiles/).
-PROFILE_DIR = default_profiles_dir()
+PROFILE_DIR = Path(__file__).resolve().parents[1] / "golden_profile"
 
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp"}
 

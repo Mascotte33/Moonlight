@@ -49,6 +49,7 @@ __all__ = [
     "DEFAULT_MATCH_THRESHOLD",
     "TemplateSet",
     "FloorReader",
+    "scale_image",
 ]
 
 #: A rectangle as ``(x, y, width, height)`` (matches ``calibrate.Rect``).
@@ -71,6 +72,17 @@ DEFAULT_TEMPLATE_DIR = "data/templates/floorLevels"
 
 #: Minimum normalized match confidence for a floor to be reported.
 DEFAULT_MATCH_THRESHOLD = 0.80
+
+
+# doc: docs/prs/gui-calibration.md#ui-scale
+def scale_image(image: np.ndarray, scale: float) -> np.ndarray:
+    """Resize a template by the profile's ``ui_scale``; 1.0 returns it as is."""
+    if scale == 1.0:
+        return image
+    h, w = image.shape[:2]
+    size = (max(1, round(w * scale)), max(1, round(h * scale)))
+    # ponytail: nearest keeps pixel art crisp; switch to linear if a smooth-scaled client misses
+    return cv2.resize(image, size, interpolation=cv2.INTER_NEAREST)
 
 
 class TemplateSet:
@@ -124,6 +136,12 @@ class TemplateSet:
         if not templates:
             return None
         return cls(templates)
+
+    def scaled(self, scale: float) -> TemplateSet:
+        """Return this set with every template resized by *scale*."""
+        if scale == 1.0:
+            return self
+        return TemplateSet({k: scale_image(v, scale) for k, v in self._templates.items()})
 
     def levels(self) -> tuple[int, ...]:
         """Return the sorted levels that have a template."""
@@ -210,7 +228,8 @@ class FloorReader:
         if floor_region is not None:
             self._floor_region = self._as_rect(floor_region)
 
-        self._templates = template_set
+        self._scale = float(getattr(profile, "ui_scale", 1.0))
+        self._templates = None if template_set is None else template_set.scaled(self._scale)
         self._template_dir = template_dir
         self._templates_tried = template_set is not None
         self._match_threshold = float(match_threshold)
@@ -261,7 +280,8 @@ class FloorReader:
         """Load templates from *template_dir* once, then cache the result."""
         if self._templates_tried:
             return self._templates
-        self._templates = TemplateSet.load(self._template_dir)
+        loaded = TemplateSet.load(self._template_dir)
+        self._templates = None if loaded is None else loaded.scaled(self._scale)
         self._templates_tried = True
         return self._templates
 

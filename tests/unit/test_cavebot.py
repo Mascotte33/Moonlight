@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from moonlight.bot.loop import BotState, DecisionModules, GameLoop, LoopConfig
-from moonlight.bot.state import Position, WorldState
+from moonlight.bot.state import Monster, Position, WorldState
 from moonlight.decision.cavebot import Cavebot, Route, RouteError, RouteFileLoader, Waypoint
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
@@ -121,8 +121,12 @@ def test_load_valid_route(tmp_path: Path) -> None:
     assert route.waypoints[3] == Waypoint(0, 0, 0, "goto", "start")
 
 
+README = Path(__file__).parents[2] / "data" / "waypoints" / "README.md"
+
+
+@pytest.mark.skipif(not README.exists(), reason="READMEs are owner-local")
 def test_readme_example_is_valid() -> None:
-    readme = Path(__file__).parents[2] / "data" / "waypoints" / "README.md"
+    readme = README
     example = readme.read_text(encoding="utf-8").split("```json")[1].split("```")[0]
     assert RouteFileLoader.parse(json.loads(example)).name == "rotworm_loop"
 
@@ -490,3 +494,38 @@ def test_busy_clicker_is_stepped_not_rerequested_and_cancelled_on_advance() -> N
     cancels = slow.cancels
     sim.step()
     assert sim.reached == [0] and slow.cancels > cancels
+
+
+# -- T3.F10.K1: node, stand and lure ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("action", "near", "reached"),
+    [("node", 3, True), ("node", 4, False), ("stand", 1, False), ("stand", 0, True)],
+)
+def test_arrival_distance_per_action(action: str, near: int, reached: bool) -> None:
+    sim = Sim([Waypoint(110, 100, 7, action)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.pos = Position(110 - near, 100, 7)
+    sim.step()
+    assert (sim.reached == [0]) is reached
+
+
+def test_lure_waypoint_holds_attacks_until_reached() -> None:
+    sim = Sim([Waypoint(110, 100, 7, "lure"), walk(120, 100)], Position(100, 100, 7))
+    sim.state.selected_target = Monster(name="Wolf")
+    loop = GameLoop(
+        sim.state,
+        sim.fake,
+        LoopConfig(enable_f12_monitor=False),
+        modules=DecisionModules(cavebot=sim.bot),
+    )
+    sim.bot.start()
+    assert sim.bot.luring()
+    loop.tick()
+    assert loop.current_state is BotState.MOVE
+    sim.pos = Position(110, 100, 7)
+    loop.tick()  # lure reached; the next waypoint is a plain walk
+    assert not sim.bot.luring()
+    loop.tick()
+    assert loop.get_stats()["state"] == BotState.ATTACK.value

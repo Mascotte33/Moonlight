@@ -418,7 +418,7 @@ class GuiContext:
 
     Tabs receive this in their constructor (dependency injection) so they can
     be built and tested without a display: they read ``ctx.state`` snapshots
-    in :meth:`on_poll`; options go through ``config_savers``.
+    in :meth:`on_poll`; a tab that saved an option calls :meth:`config_changed`.
     """
 
     state: WorldState
@@ -427,20 +427,26 @@ class GuiContext:
     controller: BotController | None = None
     #: Called after another named config is picked (tabs refill their options).
     config_listeners: list[Callable[[], None]] = field(default_factory=list)
-    #: Each tab's ``apply()``; Settings' Save runs them all.
-    config_savers: list[Callable[[], object]] = field(default_factory=list)
+    #: Called after any option is saved (the app applies it to the bot).
+    on_config_change: Callable[[bool], None] | None = None
 
     def pick_config(self, name: str) -> Path:
         """Pick named config *name* and tell every listener."""
         path = loop_factory.pick_config(name)
         for listener in self.config_listeners:
             listener()
+        self.config_changed()
         return path
 
-    def save_config(self) -> None:
-        """Write every tab's options into the picked config."""
-        for save in self.config_savers:
-            save()
+    def config_changed(self, restart: bool = False) -> None:
+        """The picked config changed on disk; apply it to the running bot.
+
+        *restart* rebuilds the bot even when the config looks the same (a
+        recalibrated profile changes the layout, not the config).
+        """
+        # doc: docs/prs/gui-calibration.md#live-apply
+        if self.on_config_change is not None:
+            self.on_config_change(restart)
 
     def bot_running(self) -> bool:
         """True while the bot loop thread is alive (False in --no-bot)."""

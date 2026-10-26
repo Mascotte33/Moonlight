@@ -7,13 +7,13 @@ and FakeInput for the input-backend integration. No hardware, no client.
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
-from typing import Any
 
 import pytest
 
 from moonlight.bot.state import WorldState
 from moonlight.decision.healing import (
     EMERGENCY_COOLDOWN_KEY,
+    HEAL_GAP_MS,
     NORMAL_COOLDOWN_KEY,
     HealingAction,
     HealingConfig,
@@ -92,6 +92,13 @@ class TestDecideThresholds:
         # hp 0.0 means "never read" -> must not heal.
         healer, _ = make_healer()
         assert healer.decide(make_state(hp=0.0)) is None
+
+    def test_blank_spell_is_off(self) -> None:
+        healer, _ = make_healer(HealingConfig(emergency_spell=" "))
+        action = healer.decide(make_state(hp=25.0))
+        assert action is not None and action.type is HealType.NORMAL
+        healer, _ = make_healer(HealingConfig(emergency_spell="", normal_spell=""))
+        assert healer.decide(make_state(hp=25.0)) is None
 
     def test_emergency_below_threshold(self) -> None:
         healer, _ = make_healer()
@@ -266,6 +273,7 @@ class TestCooldowns:
         # Emergency heal sent; now paralyze appears -> cure still allowed
         # (different cooldown key).
         healer.decide_and_send(make_state(hp=10.0), backend)
+        clk.advance(HEAL_GAP_MS / 1000.0)
         action = healer.decide(make_state(hp=10.0, buffs={"paralyze": 5.0}))
         assert action is not None
         assert action.cooldown_key == cure_cooldown_key("paralyze")
@@ -385,14 +393,6 @@ class TestConfigValidation:
         with pytest.raises(ValueError):
             HealingDecision(HealingConfig(heal_cooldown_ms=0))
 
-    @pytest.mark.parametrize("field", ["emergency_spell", "normal_spell"])
-    @pytest.mark.parametrize("value", ["", "   "])
-    def test_invalid_spells_rejected(self, field: str, value: str) -> None:
-        # Dynamic field name: unpack through dict[str, Any] (intentionally invalid input).
-        kwargs: dict[str, Any] = {field: value}
-        with pytest.raises(ValueError):
-            HealingDecision(HealingConfig(**kwargs))
-
     def test_invalid_spell_combo_rejected(self) -> None:
         with pytest.raises(ValueError):
             HealingDecision(spell_combos={"exura": "ctrl alt"})
@@ -422,3 +422,53 @@ class TestHealingAction:
     def test_cure_cooldown_key_format(self) -> None:
         assert cure_cooldown_key("paralyze") == "cure:paralyze"
         assert cure_cooldown_key("poison") != cure_cooldown_key("paralyze")
+
+
+POTIONS = HealingConfig(
+    hp_potion="health potion",
+    hp_potion_percent=50.0,
+    mp_potion="mana potion",
+    mp_potion_percent=40.0,
+)
+
+
+class TestPotions:
+    """T4.F2.K1: HP and MP potions at their own %."""
+
+    def test_off_by_default(self) -> None:
+        healer, _ = make_healer(HealingConfig())
+        assert HealingConfig().potions() == {}
+        assert healer.decide(make_state(hp=100.0, mp=5.0)) is None
+
+    def test_mp_potion_ignores_the_mana_gate(self) -> None:
+        healer, _ = make_healer(POTIONS)
+        action = healer.decide(make_state(hp=60.0, mp=10.0))
+        assert action is not None
+        assert (action.type, action.spell, action.cooldown_key) == (
+            HealType.POTION, "mana potion", "potion:mp"
+        )
+
+    def test_hp_potion_follows_the_emergency_spell(self) -> None:
+        healer, clk = make_healer(POTIONS, spell_combos={"exura gran": "F1", "health potion": "F5"})
+        snap = make_state(hp=20.0)
+        first = healer.decide(snap)
+        assert first is not None and first.type == HealType.EMERGENCY
+        healer.send(first, FakeInput())
+        # The game drops a second heal key pressed right after the first.
+        assert healer.decide(snap) is None
+        clk.advance(HEAL_GAP_MS / 1000.0)
+        second = healer.decide(snap)
+        assert second is not None and second.spell == "health potion"
+
+    def test_hp_potion_beats_the_normal_heal(self) -> None:
+        healer, _ = make_healer(POTIONS)
+        action = healer.decide(make_state(hp=45.0))
+        assert action is not None and action.spell == "health potion"
+
+    def test_unknown_bar_uses_no_potion(self) -> None:
+        healer, _ = make_healer(POTIONS)
+        assert healer.decide(make_state(hp=100.0, mp=0.0)) is None
+
+    def test_percent_out_of_range_rejected(self) -> None:
+        with pytest.raises(ValueError, match="hp_potion_percent"):
+            HealingConfig(hp_potion_percent=101.0).validate()

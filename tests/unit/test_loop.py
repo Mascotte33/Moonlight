@@ -524,6 +524,7 @@ class TestCurrentTask:
         cavebot = SimpleNamespace(
             route=SimpleNamespace(current=2),
             is_active=lambda: True,
+            luring=lambda: False,
             step=lambda: None,
             resume=lambda: None,
             alarm=None,

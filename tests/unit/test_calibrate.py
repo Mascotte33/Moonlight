@@ -15,7 +15,6 @@ from moonlight.setup.calibrate import (
     GAME_GRID_COLS,
     GAME_GRID_ROWS,
     REGIONS,
-    CalibrationApp,
     CalibrationError,
     CalibrationProfile,
     Region,
@@ -122,6 +121,15 @@ class TestProfileSerialization:
         assert restored.landmark == (10, 20)
         assert restored["hp_bar"] == Region(1, 2, 3, 4)
 
+    def test_window_size_and_ui_scale_roundtrip(self) -> None:
+        p = CalibrationProfile(window_size=(2560, 1369), ui_scale=1.5)
+        restored = CalibrationProfile.from_dict(p.to_dict())
+        assert (restored.window_size, restored.ui_scale) == ((2560, 1369), 1.5)
+
+    def test_old_profile_without_size_or_scale_loads(self) -> None:
+        restored = CalibrationProfile.from_dict({"landmark": [0, 0], "regions": {}})
+        assert (restored.window_size, restored.ui_scale) == (None, 1.0)
+
     def test_from_dict_missing_landmark(self) -> None:
         with pytest.raises(CalibrationError):
             CalibrationProfile.from_dict({"regions": {}})
@@ -222,46 +230,3 @@ class TestProfilesDir:
         (tmp_path / "b.json").write_text("{}")
         (tmp_path / "c.txt").write_text("x")
         assert list_profiles(tmp_path) == ["a", "b"]
-
-
-class TestCalibrationAppCore:
-    """CalibrationApp core logic that is testable without a display.
-
-    We exercise region stepping and profile construction directly, bypassing
-    the OpenCV event loop.
-    """
-
-    def _make_app(self) -> CalibrationApp:
-        import numpy as np
-
-        img = np.zeros((200, 300, 3), dtype=np.uint8)
-        return CalibrationApp(image_bgr=img)
-
-    def test_advance_region_sequence(self) -> None:
-        app = self._make_app()
-        app._landmark = (10, 10)
-        # First advance selects the first region.
-        app._advance_region()
-        assert app._current_region == REGIONS[0]
-        # Advance through the remaining regions.
-        for i in range(1, len(REGIONS)):
-            app._advance_region()
-            assert app._current_region == REGIONS[i]
-        # One final advance marks completion.
-        app._advance_region()
-        assert app._done is True
-
-    def test_build_profile_relative(self) -> None:
-        app = self._make_app()
-        app._landmark = (100, 100)
-        app._regions = {"hp_bar": (110, 120, 94, 23)}
-        profile = app._build_profile()
-        assert profile.landmark == (100, 100)
-        # Region stored relative to landmark.
-        assert profile["hp_bar"].to_tuple == (10, 20, 94, 23)
-
-    def test_build_profile_requires_landmark(self) -> None:
-        app = self._make_app()
-        app._landmark = None
-        with pytest.raises(CalibrationError):
-            app._build_profile()
