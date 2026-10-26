@@ -91,7 +91,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Minimap position + floor | ✅ | ✅ | 🟡 |
 | Monster sprite detection | ✅ | ✅ | ❌ |
 | Server-log OCR | ✅ | ✅ | ❌ |
-| Healing | ✅ | ✅ | ❌ |
+| Healing + cures | ✅ | ✅ | 🟡 |
 | Targeting | ✅ | ✅ | ❌ |
 | Buffs | ✅ | ✅ | ❌ |
 | Alarms | ✅ | ✅ | ❌ |
@@ -133,6 +133,27 @@ python -m moonlight
 ```
 
 Use `python -m moonlight --no-bot` to open the GUI without starting the bot loop.
+
+## Healing and cures
+
+Healing presses your action-bar hotkeys. It never types spell names. Set it up
+in the GUI's Healing tab, or in the `healing` section of your profile config:
+
+- **Rules** are checked top to bottom. Each has a kind (`spell` or `potion`), a
+  hotkey, an HP trigger (`hp_below_percent`), an MP trigger
+  (`mp_below_percent`) and a mana floor (`minimum_mana_percent`). 0 means unused.
+- Each tick sends the first due spell and the first due potion, so both can
+  land together. Spells and potions have their own cooldowns
+  (`spell_cooldown_ms`, `potion_cooldown_ms`, default 1000).
+- **Cures** read the condition icons next to the HP bar (poison, burn,
+  electrify, bleeding, paralyse). Each has an on/off switch and a hotkey
+  (default `shift+F1` to `shift+F5`, all off). A cure never replaces a needed
+  heal spell.
+- Healing needs the `status_icons` region in the Calibration tab for cures.
+
+Default rules: F2 spell below 50% HP, F1 spell below 85% HP, F3 potion below
+40% HP, F4 potion below 30% MP. Old configs with `emergency_spell` and similar
+keys are refused at load. Rewrite the section to the new shape.
 
 ## Development
 

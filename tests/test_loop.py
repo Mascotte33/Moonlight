@@ -18,6 +18,7 @@ from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import VK_F12, F12Monitor, RateLimiter
 from moonlight.core.state import Monster, WorldState
 from moonlight.hardware.input import FakeInput
+from moonlight.healing.healing import HealingAction, HealingDecision
 from moonlight.looting.looting import Looting
 from moonlight.targeting.targeting import TargetingDecision
 
@@ -102,6 +103,8 @@ def make_loop(
 ) -> tuple[GameLoop, FakeClock]:
     c = clock if clock is not None else FakeClock()
     cfg = config if config is not None else LoopConfig(enable_f12_monitor=False)
+    # Default healing rules: F2 spell at HP 50, F1 at 85, F3 potion at HP 40.
+    extra.setdefault("modules", DecisionModules(healing=HealingDecision(clock=c)))
     gl = GameLoop(ws, inp, cfg, clock=c, sleep_fn=c.sleep, **extra)  # type: ignore[arg-type]
     return gl, c
 
@@ -112,8 +115,6 @@ class TestBotStatePriority:
             BotState.KILL,
             BotState.PAUSED,
             BotState.ALARM,
-            BotState.EMERGENCY_HEAL,
-            BotState.NORMAL_HEAL,
             BotState.ATTACK,
             BotState.LOOT,
             BotState.REFILL,
@@ -125,8 +126,7 @@ class TestBotStatePriority:
     def test_priority_ranks(self) -> None:
         assert BotState.KILL.priority == 0
         assert BotState.PAUSED.priority == 1
-        assert BotState.IDLE.priority == 9
-        assert BotState.ALARM.priority < BotState.EMERGENCY_HEAL.priority
+        assert BotState.IDLE.priority == 7
 
 
 class TestGameLoopSafety:
@@ -135,10 +135,9 @@ class TestGameLoopSafety:
         inp = FakeInput()
         gl, _ = make_loop(ws, inp)
         gl.tick()
-        assert gl.current_state is BotState.EMERGENCY_HEAL
         assert inp.sent_lines == []
         stats = gl.get_stats()
-        assert stats["actions_dropped_unfocused"] == 1
+        assert stats["actions_dropped_unfocused"] == 2  # spell and potion
 
     def test_no_input_when_screen_not_ok(self) -> None:
         ws = make_state(screen_ok=False, hp=20.0)
@@ -242,21 +241,19 @@ class TestGameLoopSafety:
 
 
 class TestGameLoopStates:
-    def test_emergency_heal(self) -> None:
+    def test_low_hp_sends_spell_and_potion(self) -> None:
         ws = make_state(hp=20.0)
         inp = FakeInput()
         gl, _ = make_loop(ws, inp)
         gl.tick()
-        assert gl.current_state is BotState.EMERGENCY_HEAL
-        assert "K 1" in inp.sent_lines
+        assert inp.sent_lines == ["K F2", "K F3"]
 
-    def test_normal_heal(self) -> None:
-        ws = make_state(hp=50.0)
+    def test_mid_hp_sends_the_light_spell(self) -> None:
+        ws = make_state(hp=80.0)
         inp = FakeInput()
         gl, _ = make_loop(ws, inp)
         gl.tick()
-        assert gl.current_state is BotState.NORMAL_HEAL
-        assert "K 2" in inp.sent_lines
+        assert inp.sent_lines == ["K F1"]
 
     def test_attack_when_target_selected(self) -> None:
         ws = make_state(hp=100.0, target=True)
@@ -291,14 +288,17 @@ class TestGameLoopStates:
             route=SimpleNamespace(current=0),
         )
         inp = FakeInput()
-        gl, clock = make_loop(ws, inp, modules=DecisionModules(cavebot=cast(Cavebot, cavebot)))
+        clock = FakeClock()
+        modules = DecisionModules(
+            cavebot=cast(Cavebot, cavebot), healing=HealingDecision(clock=clock)
+        )
+        gl, _ = make_loop(ws, inp, clock=clock, modules=modules)
         gl.all_modules.targeting = cast(TargetingDecision, object())
         gl.paused = True
         assert gl.modules.cavebot is None and gl.modules.targeting is None
         gl.all_modules.targeting = None
         gl.tick()
-        assert gl.current_state is BotState.NORMAL_HEAL
-        assert "K 2" in inp.sent_lines
+        assert inp.sent_lines == ["K F2"]
         ws.hp_percent = 100.0
         gl.tick()
         assert steps == []
@@ -338,7 +338,7 @@ class TestGameLoopStates:
         gl, _ = make_loop(ws, inp)
         gl.tick()
         assert gl.current_state is BotState.ALARM
-        assert "K 1" in inp.sent_lines  # emergency heal continues
+        assert "K F2" in inp.sent_lines  # healing continues
 
     def test_alarm_on_fast_hp_drop(self) -> None:
         ws = make_state(hp=100.0)
@@ -356,29 +356,38 @@ class TestGameLoopStates:
         inp = FakeInput()
         gl, _ = make_loop(ws, inp)
         gl.tick()
-        assert gl.current_state is BotState.ALARM  # not EMERGENCY_HEAL
+        assert gl.current_state is BotState.ALARM
 
-        # Heal outranks attack.
+        # A heal sent skips the attack for that tick.
         ws2 = make_state(hp=10.0, target=True)
         inp2 = FakeInput()
         gl2, _ = make_loop(ws2, inp2)
         gl2.tick()
-        assert gl2.current_state is BotState.EMERGENCY_HEAL  # not ATTACK
-        assert "K r" not in inp2.sent_lines
+        assert inp2.sent_lines == ["K F2", "K F3"]
 
     def test_priority_heal_over_move(self) -> None:
         ws = make_state(hp=50.0)
         inp = FakeInput()
-        gl, _ = make_loop(ws, inp, move_provider=lambda s: True)
+        steps: list[int] = []
+        gl, _ = make_loop(
+            ws, inp, move_provider=lambda s: True, move_action=lambda: steps.append(1)
+        )
         gl.tick()
-        assert gl.current_state is BotState.NORMAL_HEAL  # not MOVE
+        assert inp.sent_lines == ["K F2"]
+        assert steps == []  # the heal skipped the step
 
 
 class TestGameLoopRateLimit:
     def test_actions_capped_at_10_per_second(self) -> None:
-        ws = make_state(hp=50.0)  # a heal is wanted on every tick
+        ws = make_state(hp=50.0)
         inp = FakeInput()
-        gl, clock = make_loop(ws, inp)
+        # A healer with no cooldown: a heal is wanted on every tick.
+        always_heal = SimpleNamespace(
+            decide=lambda s: [HealingAction("spell", "F2", "test")],
+            send=lambda action, backend: backend.press_combo(action.hotkey),
+        )
+        modules = DecisionModules(healing=cast(HealingDecision, always_heal))
+        gl, clock = make_loop(ws, inp, modules=modules)
         # 20 ticks with no time passing: the bucket (capacity 2) allows
         # a 2-heal burst; every other attempt is rate-limited.
         for _ in range(20):
@@ -401,7 +410,7 @@ class TestGameLoopRateLimit:
             ws.hp_percent = 50.0
         clock.advance(PERIOD)
         gl.tick()
-        assert inp.sent_lines == ["K r", "K 2"]
+        assert inp.sent_lines == ["K r", "K F2"]
 
     def test_non_heal_actions_still_paced_at_10_per_second(self) -> None:
         rl = RateLimiter(rate=10.0, capacity=2.0, clock=lambda: 0.0)
@@ -529,12 +538,12 @@ class TestGameLoopStats:
         inp = FakeInput()
         gl, clock = make_loop(ws, inp)
         for _ in range(3):
-            gl.tick()  # no time passes: heals get the 2-token burst, then rate-limited
+            gl.tick()  # no time passes: spell and potion once, then both on cooldown
         stats = gl.get_stats()
-        assert stats["state"] == "emergency_heal"
+        assert stats["state"] == "attack"
         assert stats["tick_count"] == 3
         assert stats["actions_sent"] == 2
-        assert stats["actions_dropped_rate_limit"] == 1
+        assert stats["actions_dropped_rate_limit"] == 2  # the attack waits for tokens
         assert stats["kill_switch_active"] is False
         assert stats["stop_requested"] is False
         assert isinstance(stats["state_transitions"], dict)
@@ -552,7 +561,10 @@ class TestGameLoopStats:
 
 class TestCurrentTask:
     def _task(self, ws: WorldState, modules: DecisionModules | None = None) -> object:
-        gl, _ = make_loop(ws, FakeInput(), modules=modules)
+        if modules is None:
+            gl, _ = make_loop(ws, FakeInput())
+        else:
+            gl, _ = make_loop(ws, FakeInput(), modules=modules)
         gl.tick()
         return gl.get_stats()["current_task"]
 

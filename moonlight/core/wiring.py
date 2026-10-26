@@ -25,6 +25,7 @@ from moonlight.core.loop import DecisionModules, GameLoop
 from moonlight.core.safety import RateLimitedInput, beep_alert
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.input import InputBackend
+from moonlight.perception.status_icons import CONDITION_TEMPLATES_DIR
 
 if TYPE_CHECKING:
     from moonlight.hardware.clicker import ClickController
@@ -55,7 +56,7 @@ logger = logging.getLogger(__name__)
 #: the standard calibration set (they need dedicated readers, T34), so they
 #: report as MISSING until those are calibrated.
 MODULE_REGIONS: dict[str, tuple[str, ...]] = {
-    "healing": ("hp_bar", "mp_bar"),
+    "healing": ("hp_bar", "mp_bar", "status_icons"),
     "targeting": ("battle_list",),
     "attack_spells": ("battle_list", "mp_bar"),
     "cavebot": ("minimap", "floor_indicator", "game_grid"),
@@ -67,7 +68,14 @@ MODULE_REGIONS: dict[str, tuple[str, ...]] = {
 
 
 #: Regions :func:`make_perceive` reads every tick.
-_PERCEIVE_REGIONS = ("hp_bar", "mp_bar", "battle_list", "minimap", "floor_indicator")
+_PERCEIVE_REGIONS = (
+    "hp_bar",
+    "mp_bar",
+    "battle_list",
+    "minimap",
+    "floor_indicator",
+    "status_icons",
+)
 
 
 def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect] | None:
@@ -212,6 +220,7 @@ def make_perceive(
     focus_check: Callable[[], bool] | None = None,
     start: Position | None = None,
     map_dir: Path = MAP_DIR,
+    conditions_dir: Path = CONDITION_TEMPLATES_DIR,
 ) -> Callable[[], None]:
     """Return a callback doing one capture -> perception -> WorldState pass.
 
@@ -224,11 +233,17 @@ def make_perceive(
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
+    from moonlight.perception.status_icons import StatusIconReader
     from moonlight.perception.vitals import VitalsReader
 
     vitals = VitalsReader(profile)
     battle = BattleReader(profile)
     floor = FloorReader(profile)
+    status_icons: StatusIconReader | None = None
+    if "status_icons" in profile.regions:
+        status_icons = StatusIconReader(profile, conditions_dir)
+    else:
+        logger.warning("no status_icons region: condition icons are not read")
     # At 100% the radar draws 1 or 2 px per tile, by the player's minimap zoom.
     unit = max(1, round(profile.ui_scale))
     minimap = MinimapReader(
@@ -249,6 +264,9 @@ def make_perceive(
             monsters, selected, players = entries_to_state(battle.read_battle_list(frame))
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
+            conditions = (
+                status_icons.read_active_conditions(frame) if status_icons else frozenset()
+            )
         except Exception:  # noqa: BLE001 - any perception failure = screen not ok
             with state.lock():
                 state.client_focused = focused
@@ -262,6 +280,7 @@ def make_perceive(
             state.monsters = monsters
             state.selected_target = selected
             state.players_on_screen = players
+            state.active_status_icons = conditions
             state.position_status = (
                 "lost" if minimap.lost else "estimated" if minimap.estimated else ""
             )
@@ -435,7 +454,7 @@ def build_modules(
 
     if prev is not None:
         for name, keys in (
-            ("healing", ("healing", "hotkeys")),
+            ("healing", ("healing",)),
             ("targeting", ("targeting",)),
             ("attack_spells", ("attack_spells", "hotkeys")),
             ("buffs", ("buffs", "hotkeys")),
@@ -446,7 +465,7 @@ def build_modules(
         if same("cavebot", "looting", "refill", "clicker", "templates_dir", "routes_dir"):
             m.cavebot, m.looting, m.refill = prev.cavebot, prev.looting, prev.refill
     if config.healing is not None and m.healing is None:
-        m.healing = HealingDecision(config.healing, spell_combos=combos, clock=clock)
+        m.healing = HealingDecision(config.healing, clock=clock)
     if config.targeting is not None and m.targeting is None:
         m.targeting = TargetingDecision(config.targeting)
         # F-01 (interim): no name resolver is wired yet (T34), so every

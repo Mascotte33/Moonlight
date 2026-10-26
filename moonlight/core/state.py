@@ -116,6 +116,9 @@ class WorldState:
     # Active buffs: name -> seconds remaining.
     buffs: dict[str, float] = field(default_factory=dict)
 
+    # Condition icons currently shown (``poison``, ``burn``, ...).
+    active_status_icons: frozenset[str] = frozenset()
+
     # Last full update (``time.monotonic()``); 0.0 = never updated.
     last_update: float = 0.0
 

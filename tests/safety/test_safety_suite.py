@@ -29,7 +29,7 @@ from moonlight.core.state import Capacity, Monster, Position, WorldState
 from moonlight.core.wiring import build_loop
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
-from moonlight.healing.healing import HealingConfig, HealingDecision, HealType
+from moonlight.healing.healing import HealingConfig, HealingDecision, HealingRule
 from moonlight.looting.looting import Looting, LootingConfig
 from moonlight.perception.loot import LootWindow
 from moonlight.refill.refill import Refill, RefillConfig
@@ -111,18 +111,17 @@ def test_1_kill_switch_f12_stops_loop_and_releases_all() -> None:
 def test_2_fail_closed_when_window_unfocused() -> None:
     ws = make_state(client_focused=False, hp_percent=10.0, selected_target=Monster("Wolf"))
     inp = FakeInput()
-    gl, _ = make_loop(ws, inp)
+    gl, _ = make_loop(ws, inp, healing=HealingDecision())
     for _ in range(5):
         gl.tick()
-    assert gl.current_state is BotState.EMERGENCY_HEAL  # wanted to act...
-    assert inp.sent_lines == []  # ...but sent nothing
-    assert gl.get_stats()["actions_dropped_unfocused"] == 5
+    assert inp.sent_lines == []  # wanted to heal, but sent nothing
+    assert gl.get_stats()["actions_dropped_unfocused"] == 15  # spell, potion, attack per tick
 
 
 def test_3_fail_closed_when_screen_not_ok() -> None:
     ws = make_state(screen_ok=False, hp_percent=10.0, selected_target=Monster("Wolf"))
     inp = FakeInput()
-    gl, _ = make_loop(ws, inp)
+    gl, _ = make_loop(ws, inp, healing=HealingDecision())
     for _ in range(5):
         gl.tick()
     assert gl.current_state is BotState.PAUSED  # loop pauses (F-05)...
@@ -187,29 +186,29 @@ def test_6_release_all_on_normal_stop() -> None:
     assert inp2.sent_lines == ["X"]
 
 
-def test_7_hp_emergency_threshold_triggers_emergency_heal() -> None:
-    healing = HealingDecision(
-        HealingConfig(), spell_combos={"exura gran": "F1", "exura": "F2"}
-    )
+def test_7_low_hp_sends_the_strong_spell_and_a_potion() -> None:
+    healing = HealingDecision()
     low = healing.decide(make_state(hp_percent=25.0))
-    assert low is not None and low.type is HealType.EMERGENCY
+    assert [(a.slot, a.hotkey) for a in low] == [("spell", "F2"), ("potion", "F3")]
     mid = healing.decide(make_state(hp_percent=60.0))
-    assert mid is not None and mid.type is HealType.NORMAL
-    # through the loop: the emergency spell combo goes out
+    assert [a.hotkey for a in mid] == ["F1"]
+    # through the loop: both keys go out in one tick
     inp = FakeInput()
     gl, _ = make_loop(make_state(hp_percent=25.0), inp, healing=healing)
     gl.tick()
-    assert gl.current_state is BotState.EMERGENCY_HEAL
-    assert inp.sent_lines == ["K F1"]
+    assert inp.sent_lines == ["K F2", "K F3"]
 
 
 def test_8_low_mp_stops_casting_spells() -> None:
-    healing = HealingDecision(HealingConfig(), spell_combos={"exura gran": "F1", "exura": "F2"})
-    assert healing.decide(make_state(hp_percent=10.0, mp_percent=5.0)) is None
+    rules = (
+        HealingRule("spell", "F2", hp_below_percent=50.0, minimum_mana_percent=20.0),
+        HealingRule("potion", "F3", hp_below_percent=40.0),
+    )
+    healing = HealingDecision(HealingConfig(rules=rules))
     inp = FakeInput()
     gl, _ = make_loop(make_state(hp_percent=10.0, mp_percent=5.0), inp, healing=healing)
     gl.tick()
-    assert inp.sent_lines == []  # no spell cast
+    assert inp.sent_lines == ["K F3"]  # no spell cast below the mana floor; the potion goes
 
 
 def test_9_rate_limit_never_exceeds_20hz() -> None:
@@ -384,8 +383,7 @@ class Built:
 def test_13_built_loop_heals_from_golden_frame() -> None:
     b = Built()
     b.gl.tick()
-    assert b.gl.current_state is BotState.NORMAL_HEAL
-    assert b.inp.sent_lines and "X" not in b.inp.sent_lines  # a real heal went out
+    assert "K F2" in b.inp.sent_lines and "X" not in b.inp.sent_lines  # a real heal went out
 
 
 @needs_golden
@@ -447,6 +445,6 @@ def test_18_built_pause_on_unfocus_resume_on_refocus() -> None:
     b.focused = True
     b.clock.sleep(5.0)  # past any heal cooldown
     b.gl.tick()
-    assert b.gl.get_stats()["state"] == BotState.NORMAL_HEAL.value
+    assert b.gl.current_state is not BotState.PAUSED
     assert not b.gl.stop_requested
     assert len(b.inp.sent_lines) > heals + 1 and b.inp.sent_lines[-1] != "X"

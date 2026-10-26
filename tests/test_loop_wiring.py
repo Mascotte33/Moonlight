@@ -1,7 +1,7 @@
 """T40: decision modules wired into GameLoop (each module is actually called).
 
 Modules are ``unittest.mock`` doubles (the loop only calls their public
-API) plus one real ``HealingDecision`` to prove the spell -> combo path.
+API) plus real ``HealingDecision`` instances to prove the heal hotkey path.
 """
 
 from __future__ import annotations
@@ -61,7 +61,6 @@ def idle_module(**overrides: object) -> mock.Mock:
     m.send.return_value = True
     m.alarm = None
     m.route.current = 0
-    m.config = HealingConfig()
     m.configure_mock(**overrides)
     return m
 
@@ -71,21 +70,10 @@ def test_healing_decide_and_send_every_tick_even_in_alarm() -> None:
     with ws.lock():
         ws.players_on_screen = 1  # ALARM
     inp = FakeInput()
-    healing = HealingDecision(HealingConfig(), spell_combos={"exura gran": "F1", "exura": "F2"})
-    gl, _ = make_loop(ws, inp, healing=healing)
+    gl, _ = make_loop(ws, inp, healing=HealingDecision(HealingConfig()))
     gl.tick()
     assert gl.current_state is BotState.ALARM
-    assert "K F1" in inp.sent_lines
-
-
-def test_healing_module_replaces_builtin_heal_combo() -> None:
-    inp = FakeInput()
-    healing = idle_module()
-    gl, _ = make_loop(make_state(hp=50.0), inp, healing=healing)
-    gl.tick()
-    healing.decide.assert_called_once()
-    assert gl.current_state is BotState.NORMAL_HEAL
-    assert "K 2" not in inp.sent_lines  # built-in normal_heal_combo skipped
+    assert inp.sent_lines == ["K F2", "K F3"]
 
 
 def test_targeting_decide_feeds_attack() -> None:
@@ -132,9 +120,9 @@ def test_buffs_track_and_send_when_not_busy() -> None:
     buffs.send.assert_called_once_with("haste", gl.input)
 
 
-def test_buffs_skipped_while_healing_state() -> None:
+def test_buffs_skipped_when_a_heal_is_sent() -> None:
     buffs = idle_module(**{"track.return_value": ["haste"]})
-    gl, _ = make_loop(make_state(hp=50.0), FakeInput(), buffs=buffs)
+    gl, _ = make_loop(make_state(hp=50.0), FakeInput(), buffs=buffs, healing=HealingDecision())
     gl.tick()
     buffs.track.assert_not_called()
 
@@ -200,4 +188,4 @@ def test_perceive_runs_before_snapshot() -> None:
         clock=clock, sleep_fn=clock.sleep, perceive=perceive,
     )
     gl.tick()
-    assert gl.current_state is BotState.NORMAL_HEAL
+    assert gl.current_state is BotState.IDLE  # perceive set screen_ok, so not PAUSED

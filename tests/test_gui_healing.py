@@ -1,90 +1,62 @@
-"""T4.F1.K1, T4.F1.K2: Healing tab options and spell hotkeys (no window opened)."""
+"""Healing tab: the row-to-config step and the cooldown options (no window opened)."""
 
 from __future__ import annotations
 
 import pytest
 
 from moonlight.core.config import BotConfig, ConfigError
-from moonlight.healing.tab import apply_healing
+from moonlight.gui.tab_base import Option, write_option
+from moonlight.healing.healing import CONDITIONS
+from moonlight.healing.tab import OPTIONS, CureRow, RuleRow, apply_healing
 
-VALUES: dict[str, object] = {
-    "healing.emergency_hp_percent": 25.0,
-    "healing.normal_hp_percent": 65.0,
-    "healing.mana_threshold": 30.0,
-    "healing.heal_cooldown_ms": 750.0,
-    "healing.emergency_spell": "exura vita",
-    "healing.normal_spell": "exura",
-    "healing.cure_poison": "exana pox",
-    "healing.cure_burn": "",
-}
-COMBOS = {
-    "healing.emergency_spell": "F3",
-    "healing.normal_spell": "F2",
-    "healing.cure_poison": "F4",
-    "healing.cure_burn": "F5",
-}
+CURES = [CureRow(name, False, "") for name in CONDITIONS]
 
 
-def test_apply_writes_thresholds_and_hotkeys() -> None:
-    cfg = apply_healing(BotConfig.default(), VALUES, COMBOS)
-    h = cfg.healing
-    assert h is not None
-    assert (h.emergency_hp_percent, h.normal_hp_percent) == (25.0, 65.0)
-    assert (h.mana_threshold, h.heal_cooldown_ms) == (30.0, 750)
-    assert h.emergency_spell == "exura vita"
-    assert cfg.spell_combos == {
-        "exura gran": "F1",
-        "exura": "F2",
-        "exura vita": "F3",
-        "exana pox": "F4",
-    }
-
-
-def test_spell_with_no_hotkey_is_refused() -> None:
-    with pytest.raises(ConfigError, match="exura vita"):
-        apply_healing(BotConfig.default(), VALUES, {**COMBOS, "healing.emergency_spell": " "})
-
-
-def test_each_spell_sits_under_its_hp_percent() -> None:
-    from moonlight.healing.tab import GROUPS
-
-    assert [t for t, _ in GROUPS] == ["Emergency", "Normal", "Cure", "Potions", "Mana and cooldown"]
-    fields = {t: [o.field for o in g] for t, g in GROUPS}
-    assert fields["Emergency"] == ["healing.emergency_hp_percent", "healing.emergency_spell"]
-    assert fields["Normal"] == ["healing.normal_hp_percent", "healing.normal_spell"]
-    assert len(fields["Cure"]) == 6
-
-
-def test_each_condition_has_its_own_cure() -> None:
-    cfg = apply_healing(BotConfig.default(), VALUES, COMBOS)
+def test_cooldown_sliders_write_the_slot_cooldowns() -> None:
+    assert [o.field for o in OPTIONS] == ["healing.spell_cooldown_ms", "healing.potion_cooldown_ms"]
+    cfg = BotConfig.default()
+    for option, value in zip(OPTIONS, (750.0, 400.0), strict=True):
+        cfg = write_option(cfg, option, value)
     assert cfg.healing is not None
-    # The blank burn spell is not cured, and its hotkey is not saved.
-    assert cfg.healing.cure_spells() == {"poison": "exana pox"}
+    assert (cfg.healing.spell_cooldown_ms, cfg.healing.potion_cooldown_ms) == (750, 400)
 
 
-def test_old_single_cure_spell_still_loads() -> None:
-    data = BotConfig.default().to_dict()
-    heal = data["modules"]["healing"]
-    for c in ("poison", "burn"):
-        del heal[f"cure_{c}"]
-    heal.update(cure_spell="exura gran", cure_conditions=["poison", "burn", "drain"])
-    healing = BotConfig.from_dict(data).healing
+def test_rows_become_rules_in_order_and_cures() -> None:
+    rules = [RuleRow("potion", "F4", "", "30", "0"), RuleRow("spell", "F1", "85", "", "20")]
+    cures = [CureRow("poison", True, "shift+F1"), *CURES[1:]]
+    cfg = apply_healing(BotConfig.default(), rules, cures, 900, 600)
+    healing = cfg.healing
     assert healing is not None
-    assert healing.cure_spells() == {"poison": "exura gran", "burn": "exura gran"}
+    assert [
+        (r.kind, r.hotkey, r.hp_below_percent, r.mp_below_percent, r.minimum_mana_percent)
+        for r in healing.rules
+    ] == [
+        ("potion", "F4", 0.0, 30.0, 0.0),
+        ("spell", "F1", 85.0, 0.0, 20.0),
+    ]
+    assert [(c.condition, c.enabled, c.hotkey) for c in healing.cures] == [
+        ("poison", True, "shift+F1")
+    ]
+    assert (healing.spell_cooldown_ms, healing.potion_cooldown_ms) == (900, 600)
 
 
-def test_potions_get_a_percent_and_a_hotkey() -> None:
-    values = {
-        **VALUES,
-        "healing.hp_potion_percent": 40.0,
-        "healing.hp_potion": "great health potion",
-        "healing.mp_potion_percent": 25.0,
-        "healing.mp_potion": "",
-    }
-    combos = {**COMBOS, "healing.hp_potion": "F6", "healing.mp_potion": "F7"}
-    cfg = apply_healing(BotConfig.default(), values, combos)
-    assert cfg.healing is not None
-    assert cfg.healing.potions() == {"hp": ("great health potion", 40.0)}
-    assert cfg.spell_combos["great health potion"] == "F6"
-    with pytest.raises(ConfigError, match="great health potion"):
-        apply_healing(BotConfig.default(), values, {**combos, "healing.hp_potion": ""})
+def test_a_turned_off_healing_module_stays_off() -> None:
+    cfg = write_option(BotConfig.default(), Option("on", "healing.enabled", "switch"), False)
+    cfg = apply_healing(cfg, [RuleRow("spell", "F1", "50", "", "")], CURES, 1000, 1000)
+    assert cfg.healing is None
+    assert cfg.off["healing"].rules[0].hotkey == "F1"
+
+
+@pytest.mark.parametrize(
+    ("rules", "cures"),
+    [
+        ([RuleRow("spell", "F1", "abc", "", "")], CURES),  # not a number
+        ([RuleRow("spell", "F1", "", "", "")], CURES),  # no trigger
+        ([RuleRow("spell", "", "50", "", "")], CURES),  # no hotkey
+        ([RuleRow("spell", "F1", "150", "", "")], CURES),  # out of range
+        ([RuleRow("spell", "F1", "50", "", "")], [CureRow("poison", True, "")]),  # cure no key
+    ],
+)
+def test_a_refused_row_raises_config_error(rules: list[RuleRow], cures: list[CureRow]) -> None:
+    with pytest.raises(ConfigError):
+        apply_healing(BotConfig.default(), rules, cures, 1000, 1000)

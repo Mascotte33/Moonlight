@@ -76,8 +76,7 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
     cfg = replace(
         BotConfig.default(),
         loop=LoopConfig(enable_f12_monitor=False),
-        hotkeys={"exura gran": "F1", "exura": "F2"}
-        | {b.spell: f"F{3 + i}" for i, b in enumerate(BuffManagerConfig().buffs)},
+        hotkeys={b.spell: f"F{5 + i}" for i, b in enumerate(BuffManagerConfig().buffs)},
         buffs=BuffManagerConfig(),
         cavebot=CavebotConfig(Route("hunt", waypoints=[Waypoint(100, 100, 7)])),
         looting=LootingConfig(),
@@ -138,7 +137,7 @@ def test_frame_cache_captures_once_per_refresh() -> None:
 def test_capture_regions_lists_tick_regions_or_falls_back_to_full() -> None:
     profile = make_profile()
     cfg = BotConfig.default()
-    names = ("battle_list", "floor_indicator", "hp_bar", "minimap", "mp_bar")
+    names = ("battle_list", "floor_indicator", "hp_bar", "minimap", "mp_bar", "status_icons")
     assert wiring.capture_regions(profile, cfg) == [
         profile.get_region(n).to_tuple for n in names
     ]
@@ -322,7 +321,7 @@ def test_reconfigure_swaps_only_changed_modules() -> None:
     loop = _live_loop(cfg)
     old = loop.modules
     assert cfg.healing is not None and loop.reconfigure is not None
-    new = replace(cfg, healing=replace(cfg.healing, normal_hp_percent=55))
+    new = replace(cfg, healing=replace(cfg.healing, spell_cooldown_ms=800))
     assert loop.reconfigure(new)
     assert loop.modules.healing is not old.healing
     assert loop.modules.targeting is old.targeting
@@ -366,3 +365,19 @@ def test_cavebot_on_or_off_keeps_the_bot_running() -> None:
     assert not wiring.needs_restart(on, off)
     assert wiring.needs_restart(off, replace(off, looting=LootingConfig()))
     assert not wiring.needs_restart(replace(off, looting=LootingConfig()), off)
+
+
+def test_perceive_writes_active_status_icons(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Icons:
+        def __init__(self, *args: object) -> None:
+            pass
+
+        def read_active_conditions(self, frame: np.ndarray) -> frozenset[str]:
+            return frozenset({"poison"})
+
+    monkeypatch.setattr("moonlight.perception.status_icons.StatusIconReader", _Icons)
+    state = WorldState()
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    wiring.make_perceive(state, make_profile(), lambda: frame)()
+    assert state.screen_ok
+    assert state.snapshot().active_status_icons == {"poison"}
