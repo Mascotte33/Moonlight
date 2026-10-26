@@ -157,7 +157,7 @@ class SpriteDetector:
     """Locate monster sprites in the game grid via template matching.
 
     Construct with the game-grid region (explicitly or from a
-    :class:`moonlight.setup.calibrate.CalibrationProfile`) and the per-monster
+    :class:`moonlight.calibration.calibrate.CalibrationProfile`) and the per-monster
     sprite templates. :meth:`detect` then returns one
     :class:`SpriteDetection` per visible sprite.
 

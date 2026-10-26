@@ -1,8 +1,8 @@
 """Tiny example user script: taps F1 once per tick while it is running."""
 
-from moonlight.bot.scripts import BotScript
-from moonlight.bot.state import WorldState
+from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
+from moonlight.scripts.scripts import BotScript
 
 
 class Example(BotScript):

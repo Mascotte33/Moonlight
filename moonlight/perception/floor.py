@@ -182,7 +182,7 @@ class TemplateSet:
 class FloorReader:
     """Read the current floor level (0–15) from captured frames.
 
-    Construct from a :class:`moonlight.setup.calibrate.CalibrationProfile` (which
+    Construct from a :class:`moonlight.calibration.calibrate.CalibrationProfile` (which
     stores the ``floor_indicator`` region) and/or an explicit region tuple.
     Templates are loaded lazily from *template_dir* on the first read unless
     a :class:`TemplateSet` is injected.

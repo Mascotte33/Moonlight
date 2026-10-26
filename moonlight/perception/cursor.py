@@ -94,7 +94,7 @@ class CursorReader:
     """Read the rendered mouse-cursor position from captured frames.
 
     Construct with the cursor region (explicitly, or from a
-    :class:`moonlight.setup.calibrate.CalibrationProfile` carrying a
+    :class:`moonlight.calibration.calibrate.CalibrationProfile` carrying a
     ``cursor`` region) and the cursor templates. :meth:`read` then
     returns the center of the best template match in frame coordinates,
     or ``None``.

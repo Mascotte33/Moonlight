@@ -41,7 +41,7 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 from label_golden import save_labels, validate_document  # noqa: E402
 
 # doc: docs/prs/gui-calibration.md#bar-finders
-from moonlight.setup.autofind import detect_bars, hp_fill_mask, mp_fill_mask  # noqa: E402
+from moonlight.calibration.autofind import detect_bars, hp_fill_mask, mp_fill_mask  # noqa: E402
 
 LAYOUT_MISMATCH_NOTE = "layout-mismatch"  # read by tests/perf/test_vitals_golden.py
 

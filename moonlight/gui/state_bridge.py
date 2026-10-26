@@ -4,10 +4,10 @@ Connects the GUI to the real bot runtime without touching bot logic:
 
 * :class:`LogFeed` — thread-safe ring buffer of log lines (the GUI's event
   log; mirrors ``ui.py``'s terminal log).
-* :class:`BotController` — runs :class:`moonlight.bot.loop.GameLoop` on a daemon
+* :class:`BotController` — runs :class:`moonlight.core.loop.GameLoop` on a daemon
   thread with start/stop/kill semantics (the loop's own F12 kill-switch and
   stop-event do the real work; the controller just hosts the thread).
-* :class:`StatePoller` — polls the shared :class:`moonlight.bot.state.WorldState`
+* :class:`StatePoller` — polls the shared :class:`moonlight.core.state.WorldState`
   on a Tk timer and pushes a snapshot into the tabs. Polling is a fast
   ``snapshot()`` call on the Tk thread; the loop thread is never blocked.
 * :class:`HardwareController` — owns the :class:`moonlight.hardware.input.ArduinoInput`
@@ -16,7 +16,7 @@ Connects the GUI to the real bot runtime without touching bot logic:
 
 .. note::
    The GUI's "Start bot" does **not** run perception in a side thread. It
-   builds the real bot loop through :func:`moonlight.bot.wiring.build_loop` (see
+   builds the real bot loop through :func:`moonlight.core.wiring.build_loop` (see
    :mod:`moonlight.gui.app`), which wires a real screen capture, the focus
    gate and every enabled decision module. The previous ``PerceptionWriter``
    background thread was removed (F-13): it duplicated ``make_perceive`` and
@@ -34,11 +34,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from moonlight.bot.state import WorldState
+from moonlight.core.state import WorldState
 from moonlight.gui import loop_factory
 
 if TYPE_CHECKING:  # pragma: no cover
-    from moonlight.bot.loop import GameLoop
+    from moonlight.core.loop import GameLoop
     from moonlight.hardware.input import InputBackend
 
 __all__ = [
@@ -132,7 +132,7 @@ class LogFeed:
 
 
 class BotController:
-    """Hosts the :class:`~moonlight.bot.loop.GameLoop` on a daemon thread.
+    """Hosts the :class:`~moonlight.core.loop.GameLoop` on a daemon thread.
 
     Start/stop/kill delegate to the loop's own thread-safe controls
     (``start`` runs ``loop.run()`` in the thread; ``stop``/``kill`` set the
@@ -157,7 +157,7 @@ class BotController:
 
     @property
     def state(self) -> Any:
-        """The loop's current :class:`~moonlight.bot.loop.BotState`."""
+        """The loop's current :class:`~moonlight.core.loop.BotState`."""
         return self.loop.current_state
 
     def start(self) -> None:

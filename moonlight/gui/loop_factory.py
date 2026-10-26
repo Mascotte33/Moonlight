@@ -1,9 +1,9 @@
 """Build the real bot loop for the GUI "Start bot" button (F-13).
 
-The GUI must never run a bare :class:`moonlight.bot.loop.GameLoop` with no
+The GUI must never run a bare :class:`moonlight.core.loop.GameLoop` with no
 ``perceive`` — the first tick would see ``screen_ok=False`` and stop (F-13).
 Instead the Start action builds the loop through
-:func:`moonlight.bot.wiring.build_loop`, which wires a **real** screen capture
+:func:`moonlight.core.wiring.build_loop`, which wires a **real** screen capture
 (frame provider + focus check), the focus gate and every enabled decision
 module.
 
@@ -28,17 +28,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from moonlight import x11
-from moonlight.bot.state import WorldState
-from moonlight.bot.wiring import build_loop, capture_providers, make_perceive
+from moonlight.calibration import autofind
+from moonlight.calibration.profile import ProfileManager
+from moonlight.core.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
+from moonlight.core.state import WorldState
+from moonlight.core.wiring import build_loop, capture_providers, make_perceive
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
-from moonlight.setup import autofind
-from moonlight.setup.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
-from moonlight.setup.profile import ProfileManager
 
 if TYPE_CHECKING:  # pragma: no cover
-    from moonlight.bot.loop import GameLoop
+    from moonlight.calibration.calibrate import CalibrationProfile
+    from moonlight.core.loop import GameLoop
     from moonlight.gui.state_bridge import HardwareController
-    from moonlight.setup.calibrate import CalibrationProfile
 
 __all__ = [
     "CONFIGS_DIR",
@@ -168,10 +168,10 @@ def save_config_as(
 
 
 def load_real_config(config_path: str | Path | None = None) -> BotConfig:
-    """Load the authoritative real :class:`~moonlight.setup.config.BotConfig`.
+    """Load the authoritative real :class:`~moonlight.core.config.BotConfig`.
 
     With no *config_path* it loads the picked config (:func:`picked_config`).
-    A missing file gives :meth:`~moonlight.setup.config.BotConfig.default`.
+    A missing file gives :meth:`~moonlight.core.config.BotConfig.default`.
     """
     path = Path(config_path) if config_path is not None else picked_config()
     # A missing config file means "use safe defaults" (fresh install); a
@@ -333,12 +333,12 @@ def build_gui_loop(
     """Build the real bot loop for the GUI Start button (F-13).
 
     Wires a real screen capture (frame provider + focus check) and every
-    enabled decision module through :func:`moonlight.bot.wiring.build_loop`. Never
+    enabled decision module through :func:`moonlight.core.wiring.build_loop`. Never
     builds a bare ``GameLoop`` with no ``perceive`` (which stops on tick 1).
 
     Args:
         hardware: The shared hardware controller (owns the Arduino).
-        state: The shared :class:`~moonlight.bot.state.WorldState` to mutate.
+        state: The shared :class:`~moonlight.core.state.WorldState` to mutate.
         config_path: Path to the real config file; ``None`` uses the picked one.
         profiles_dir: Directory holding calibration profiles.
 
@@ -349,7 +349,7 @@ def build_gui_loop(
             not enabled (F-13: no silent ``FakeInput``).
         ConfigError: When the real config fails validation.
         RuntimeError: When a calibration region is missing for an enabled
-            module (raised by :func:`moonlight.bot.wiring.build_loop`).
+            module (raised by :func:`moonlight.core.wiring.build_loop`).
     """
     real_config = load_real_config(config_path)
     # F12 is the GUI's Start/Pause key, so the loop's F12 kill switch stays off.
