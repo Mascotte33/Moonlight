@@ -138,7 +138,7 @@ def test_frame_cache_captures_once_per_refresh() -> None:
 def test_capture_regions_lists_tick_regions_or_falls_back_to_full() -> None:
     profile = make_profile()
     cfg = BotConfig.default()
-    names = ("battle_list", "floor_indicator", "hp_bar", "minimap", "mp_bar")
+    names = ("battle_list", "floor_indicator", "hp_bar", "minimap", "mp_bar", "status_icons")
     assert wiring.capture_regions(profile, cfg) == [
         profile.get_region(n).to_tuple for n in names
     ]
@@ -366,3 +366,19 @@ def test_cavebot_on_or_off_keeps_the_bot_running() -> None:
     assert not wiring.needs_restart(on, off)
     assert wiring.needs_restart(off, replace(off, looting=LootingConfig()))
     assert not wiring.needs_restart(replace(off, looting=LootingConfig()), off)
+
+
+def test_perceive_writes_active_status_icons(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Icons:
+        def __init__(self, *args: object) -> None:
+            pass
+
+        def read_active_conditions(self, frame: np.ndarray) -> frozenset[str]:
+            return frozenset({"poison"})
+
+    monkeypatch.setattr("moonlight.perception.status_icons.StatusIconReader", _Icons)
+    state = WorldState()
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    wiring.make_perceive(state, make_profile(), lambda: frame)()
+    assert state.screen_ok
+    assert state.snapshot().active_status_icons == {"poison"}
