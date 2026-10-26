@@ -17,7 +17,8 @@ from moonlight.cavebot.cavebot import Cavebot
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import VK_F12, F12Monitor, RateLimiter
 from moonlight.core.state import Monster, WorldState
-from moonlight.hardware.input import FakeInput
+from moonlight.hardware.clicker import ClickController
+from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
 from moonlight.healing.healing import HealingAction, HealingDecision
 from moonlight.looting.looting import Looting
 from moonlight.targeting.targeting import TargetingDecision
@@ -161,7 +162,7 @@ class TestGameLoopSafety:
             ws.screen_ok = True
         gl.tick()
         assert gl.get_stats()["state"] == BotState.ATTACK.value
-        assert inp.sent_lines == ["X", "K r"]
+        assert inp.sent_lines == ["X"]  # the client attacks the selection: no key
 
     def test_pause_stops_after_timeout(self) -> None:
         ws = make_state(screen_ok=False)
@@ -261,7 +262,7 @@ class TestGameLoopStates:
         gl, _ = make_loop(ws, inp)
         gl.tick()
         assert gl.current_state is BotState.ATTACK
-        assert "K r" in inp.sent_lines
+        assert inp.sent_lines == []  # never the attack key
 
     def test_move_when_route_active(self) -> None:
         ws = make_state(hp=100.0)
@@ -402,15 +403,17 @@ class TestGameLoopRateLimit:
         assert gl.get_stats()["actions_sent"] == 3
 
     def test_heal_never_waits_behind_attack(self) -> None:
-        ws = make_state(hp=100.0, target=True)
+        ws = make_state(hp=100.0)
+        with ws.lock():
+            ws.monsters = [Monster("Wolf")]
         inp = FakeInput()
-        gl, clock = make_loop(ws, inp)
-        gl.tick()  # attack takes a token, one stays reserved
+        gl, clock = make_targeting_loop(ws, inp)
+        gl.tick()  # the select click's jump takes a token, one stays reserved
         with ws.lock():
             ws.hp_percent = 50.0
         clock.advance(PERIOD)
         gl.tick()
-        assert inp.sent_lines == ["K r", "K F2"]
+        assert inp.sent_lines == ["A 180 222", "K F2"]
 
     def test_non_heal_actions_still_paced_at_10_per_second(self) -> None:
         rl = RateLimiter(rate=10.0, capacity=2.0, clock=lambda: 0.0)
@@ -419,56 +422,105 @@ class TestGameLoopRateLimit:
         assert rl.try_acquire()  # ...for a heal
 
 
-class TestAttackKey:
-    def test_attack_pressed_once_per_selected_target(self) -> None:
-        ws = make_state(hp=100.0, target=True)
-        inp = FakeInput()
-        gl, clock = make_loop(ws, inp)
-        for _ in range(40):  # 2 s of ticks on the same target
-            gl.tick()
-            clock.advance(PERIOD)
-        assert inp.sent_lines == ["K r"]
-        with ws.lock():
-            ws.selected_target = Monster(name="Rat")  # selection changed
-        gl.tick()
-        assert inp.sent_lines == ["K r", "K r"]
+class FakeClicker:
+    """Absolute-mode clicker double: one step jumps, the next one clicks."""
 
-    def test_attack_repress_cooldown_when_nothing_selected(self) -> None:
-        ws = make_state(hp=100.0, target=True)
-        inp = FakeInput()
-        gl, clock = make_loop(ws, inp)
-        gl.tick()
-        with ws.lock():
-            ws.selected_target = Monster(name="Rat")
-        for _ in range(19):  # 0.95 s: inside the 1 s cooldown
-            clock.advance(PERIOD)
-            gl.tick()
-        assert inp.sent_lines == ["K r"]
-        clock.advance(PERIOD)
-        gl.tick()
-        assert inp.sent_lines == ["K r", "K r"]
+    def __init__(self) -> None:
+        self.wire: InputBackend | None = None
+        self.target: tuple[int, int] | None = None
+        self.jumped = False
 
-    def test_frozen_hp_switches_target_and_skips_it(self) -> None:
-        ws = make_state(hp=100.0, target=True)
-        inp = FakeInput()
-        gl, clock = make_loop(ws, inp)
-        for _ in range(199):  # 9.95 s on a target whose HP never moves
-            gl.tick()
-            clock.advance(PERIOD)
-        assert inp.sent_lines == ["K r"]
+    @property
+    def busy(self) -> bool:
+        return self.target is not None
+
+    def request(self, target: tuple[int, int]) -> None:
+        self.target, self.jumped = target, False
+
+    def cancel(self) -> None:
+        self.target = None
+
+    def step(self) -> bool | None:
+        if self.target is None:
+            return None
+        assert self.wire is not None
+        if not self.jumped:
+            self.wire.mouse_to(*self.target)
+            self.jumped = True
+            return None
+        self.wire.click(ClickSide.LEFT)
+        self.target = None
+        return True
+
+
+def make_targeting_loop(ws: WorldState, inp: FakeInput) -> tuple[GameLoop, FakeClock]:
+    """A loop with real targeting over battle list region (100, 200, 170, 300)."""
+    clock = FakeClock()
+    clicker = FakeClicker()
+    modules = DecisionModules(
+        healing=HealingDecision(clock=clock),
+        targeting=TargetingDecision(None, (100, 200, 170, 300)),
+        clicker=cast(ClickController, clicker),
+    )
+    gl, _ = make_loop(ws, inp, clock=clock, modules=modules)
+    clicker.wire = gl.input
+    return gl, clock
+
+
+def ticks(gl: GameLoop, clock: FakeClock, n: int) -> None:
+    for _ in range(n):
+        gl.tick()
         clock.advance(PERIOD)
-        gl.tick()  # 10 s: press again, the client moves to the next target
-        assert inp.sent_lines == ["K r", "K r"]
+
+
+class TestSelectClick:
+    def test_clicks_the_name_centre_of_row_0(self) -> None:
+        ws = make_state()
         with ws.lock():
-            ws.selected_target = Monster(name="Rat")  # a different monster
-        clock.advance(1.0)
-        gl.tick()
-        assert inp.sent_lines == ["K r", "K r", "K r"]
-        with ws.lock():  # the attack key came back to the frozen one
-            ws.selected_target = make_state(hp=100.0, target=True).selected_target
-        clock.advance(1.0)
-        gl.tick()
-        assert inp.sent_lines[-1] == "K r" and len(inp.sent_lines) == 4
+            ws.monsters = [Monster("Wolf", 50.0)]
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp)
+        ticks(gl, clock, 3)  # jump, rate-limited tick, click
+        assert gl.current_state is BotState.ATTACK
+        assert inp.sent_lines == ["A 180 222", "C L"]  # 100+23+57, 200+11+11
+
+    def test_clicks_the_name_centre_of_row_3(self) -> None:
+        ws = make_state()
+        with ws.lock():
+            ws.monsters = [Monster("Wolf", 90.0, battle_list_row=r) for r in range(3)]
+            ws.monsters.append(Monster("Wolf", 10.0, battle_list_row=3))
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp)
+        ticks(gl, clock, 3)
+        assert inp.sent_lines == ["A 180 288", "C L"]  # 200+11+3*22+11
+
+    def test_one_click_in_flight_until_the_outline_shows(self) -> None:
+        ws = make_state()
+        wolf = Monster("Wolf", 50.0)
+        with ws.lock():
+            ws.monsters = [wolf]
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp)
+        ticks(gl, clock, 3 + 18)  # sent at 0.10 s, no outline by 1.00 s
+        assert inp.sent_lines == ["A 180 222", "C L"]
+        ticks(gl, clock, 4)  # 1 s without the outline: click again
+        assert inp.sent_lines == ["A 180 222", "C L"] * 2
+        with ws.lock():
+            ws.selected_target = wolf  # the outline shows
+        ticks(gl, clock, 40)
+        assert len(inp.sent_lines) == 4
+        assert gl.current_state is BotState.ATTACK
+
+    def test_frozen_hp_target_is_skipped(self) -> None:
+        ws = make_state()
+        wolf, rat = Monster("Wolf"), Monster("Rat", battle_list_row=1)
+        with ws.lock():
+            ws.monsters = [wolf, rat]
+            ws.selected_target = wolf
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp)
+        ticks(gl, clock, 203)  # 10 s on a target whose HP never moves, then a click
+        assert inp.sent_lines == ["A 180 244", "C L"]  # row 1
 
 
 class TestGameLoopRun:
@@ -543,7 +595,7 @@ class TestGameLoopStats:
         assert stats["state"] == "attack"
         assert stats["tick_count"] == 3
         assert stats["actions_sent"] == 2
-        assert stats["actions_dropped_rate_limit"] == 2  # the attack waits for tokens
+        assert stats["actions_dropped_rate_limit"] == 0  # attacking sends nothing
         assert stats["kill_switch_active"] is False
         assert stats["stop_requested"] is False
         assert isinstance(stats["state_transitions"], dict)

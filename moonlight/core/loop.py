@@ -29,8 +29,10 @@ without it the loop keeps its built-in behaviour.
 * **alarms** -- ``AlarmDecision.decide`` every tick; a critical alarm -> ALARM.
   PM detection is *not* wired in production (no PM perception exists);
   ``pm_open_check`` stays injectable for when it does.
-* **targeting** -- ``TargetingDecision.decide`` every tick; attack/switch
-  -> ATTACK, flee (players on screen) -> ALARM (disengage).
+* **targeting** -- ``TargetingDecision.decide`` every tick; a ``select``
+  (or a selected target) -> ATTACK, which clicks the battle-list row
+  through the shared ``clicker``, one click in flight at a time.
+  # doc: docs/prs/targeting.md#target-choice
 * **healing** -- ``HealingDecision.decide`` + ``send`` of each action
   first in every non-KILL state (healing continues through ALARM); a heal
   sent this tick skips the rest of the dispatch.
@@ -102,6 +104,7 @@ if TYPE_CHECKING:
     from moonlight.alarms.alarms import AlarmAction, AlarmDecision
     from moonlight.cavebot.cavebot import Cavebot
     from moonlight.extras.buffs import BuffManager
+    from moonlight.hardware.clicker import ClickController
     from moonlight.healing.healing import HealingDecision
     from moonlight.looting.looting import Looting
     from moonlight.refill.refill import Refill
@@ -120,6 +123,9 @@ logger = logging.getLogger("moonlight.core.loop")
 # doc: docs/prs/keys-walking.md#frozen-hp
 _FROZEN_HP = 10.0  # seconds a target's HP may stay the same before switching
 _FROZEN_SKIP = 30.0  # seconds a frozen target is not attacked again
+# Seconds a sent select click waits for the row's red outline before a
+# retry (clicking the attacked row again would stop the attack).
+_SELECT_OUTLINE_WAIT = 1.0
 
 
 @dataclass(frozen=True)
@@ -155,8 +161,6 @@ class LoopConfig:
     """Consecutive tick exceptions (each one pauses) before the loop stops.
     5 ticks = 250 ms: rides out a one-off glitch, not a dead device."""
 
-    attack_repress_cooldown: float = 1.0
-    """Minimum seconds between two attack-key presses."""
 
 
 class BotState(StrEnum):
@@ -196,6 +200,8 @@ class DecisionModules:
     cavebot: Cavebot | None = None
     looting: Looting | None = None
     refill: Refill | None = None
+    #: The one mouse: targeting, cavebot and looting share it.
+    clicker: ClickController | None = None
 
 
 class GameLoop:
@@ -277,9 +283,8 @@ class GameLoop:
         self._alarm: AlarmAction | None = None
         self._target: TargetingAction | None = None
         self._last_target: str | None = None
-        # Attack-key bookkeeping: when and for which selection it was pressed.
-        self._attack_pressed_at: float | None = None
-        self._attack_pressed_for: str | None = None
+        # The select click: (battle-list row, when sent; None while in flight).
+        self._select_click: tuple[int, float | None] | None = None
         # Frozen-HP bookkeeping: the selection's (name, HP), since when, and
         # the (name, HP) of skipped targets with their expiry.
         self._hp_seen: tuple[str, float] | None = None
@@ -489,7 +494,20 @@ class GameLoop:
         alarm = m.alarms.decide(snap) if m.alarms is not None else None
         # Only critical alarms stop the bot; warnings are advisory.
         self._alarm = alarm if alarm is not None and alarm.severity == "critical" else None
-        self._target = m.targeting.decide(snap) if m.targeting is not None else None
+        self._target = None
+        if m.targeting is not None:
+            now = self._clock()
+            self._hp_skip = {k: end for k, end in self._hp_skip.items() if end > now}
+            selected = snap.selected_target
+            if selected is not None:
+                self._frozen(selected, now)
+            # A frozen-HP target is skipped: targeting never sees it.
+            view = replace(
+                snap,
+                monsters=[mon for mon in snap.monsters if not self._skipped(mon)],
+                selected_target=None if selected is None or self._skipped(selected) else selected,
+            )
+            self._target = m.targeting.decide(view, now)
         if m.looting is not None:
             # ponytail: "selected target vanished from the battle list" = kill
             # (a target lost out of range counts too); use the server-log OCR
@@ -512,7 +530,8 @@ class GameLoop:
         if m.cavebot is not None and m.cavebot.luring():
             pass  # a lure waypoint walks past monsters
         elif m.targeting is not None:
-            if self._target is not None:  # flee was already handled as ALARM
+            selected = snap.selected_target
+            if self._target is not None or (selected is not None and not self._skipped(selected)):
                 return BotState.ATTACK
         elif snap.selected_target is not None and snap.selected_target.name:
             # Perception only selects targets that are in range and attackable;
@@ -535,8 +554,8 @@ class GameLoop:
         return None
 
     def _is_alarm(self, snap: WorldState) -> bool:
-        """ALARM: player on screen, PM open, fast HP drop, critical/module alarm or flee."""
-        if snap.players_on_screen > 0 or self._alarm is not None or self._fleeing():
+        """ALARM: player on screen, PM open, fast HP drop or a critical/module alarm."""
+        if snap.players_on_screen > 0 or self._alarm is not None:
             return True
         if self._module_alarm() is not None:
             return True
@@ -544,17 +563,12 @@ class GameLoop:
             return True
         return self._hp_drop_fast(snap)
 
-    def _fleeing(self) -> bool:
-        return self._target is not None and self._target.action == "flee"
-
     def _transition_reason(self, snap: WorldState, new_state: BotState) -> str:
         """Short human-readable reason for a transition (for logs)."""
         match new_state:
             case BotState.ALARM:
                 if self._alarm is not None:
                     return f"alarm {self._alarm.type.value}: {self._alarm.message}"
-                if self._target is not None and self._fleeing():
-                    return f"targeting flee: {self._target.reason}"
                 if snap.players_on_screen > 0:
                     return f"players on screen: {snap.players_on_screen}"
                 module_alarm = self._module_alarm()
@@ -565,7 +579,7 @@ class GameLoop:
                 return "fast HP drop"
             case BotState.ATTACK:
                 if self._target is not None:
-                    return f"target: {self._target.target_name} ({self._target.reason})"
+                    return f"select row {self._target.battle_list_row} ({self._target.reason})"
                 name = snap.selected_target.name if snap.selected_target is not None else "?"
                 return f"target: {name}"
             case BotState.LOOT:
@@ -588,6 +602,8 @@ class GameLoop:
             logger.info("resumed after pause")
         if new_state is BotState.ALARM:
             self._alert(f"ALARM: {reason}")
+        if new_state is BotState.ATTACK and self.modules.clicker is not None:
+            self.modules.clicker.cancel()  # drop a walk click; the select click goes first
         if new_state is BotState.MOVE and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # fight/loot time is not "stuck" (F-06)
 
@@ -699,36 +715,50 @@ class GameLoop:
         return bool(actions) and self._send(snap, lambda: buffs.send(actions[0], self.input))
 
     def _act_attack(self, snap: WorldState) -> None:
-        """ATTACK: tap the attack key when nothing (or a new target) is selected.
+        """ATTACK: click the battle-list row targeting chose, one click at a time.
 
-        With targeting wired and nothing selected yet, the attack key is
-        what selects a target in the client. While the same target stays
-        selected the key is not pressed again (it would cycle targets),
-        and presses are at least ``attack_repress_cooldown`` apart.
+        A click is in flight while the clicker is busy, and after it is sent
+        until the row shows as selected or ``_SELECT_OUTLINE_WAIT`` passes.
+        No attack key is sent.
         """
-        # ponytail: the attack key takes the client's next target, not
-        # necessarily targeting's target_name; click the battle-list row
-        # once picking a specific monster matters.
         spells = self.modules.attack_spells
         if spells is not None and self._send(snap, lambda: spells.cast(snap, self.input)):
             return
-        selected = snap.selected_target
-        if selected is None and self._target is None:
-            return  # decided from a stale snapshot; skip this tick
-        key = selected.name if selected is not None else None
-        now = self._clock()
-        if selected is not None and self._frozen(selected, now):
-            key = None  # press again: the attack key moves on to the next target
-        elif selected is not None and key == self._attack_pressed_for:
-            return  # already attacking this target
-        last = self._attack_pressed_at
-        if last is not None and now - last < self.config.attack_repress_cooldown:
+        targeting, clicker = self.modules.targeting, self.modules.clicker
+        if targeting is None:
             return
-        combo = self.config.attack_combo
-        if self._send(snap, lambda: self.input.press_combo(combo)):
-            self._attack_pressed_at = now
-            self._attack_pressed_for = key
-            logger.debug("attack combo=%s", combo)
+        if clicker is None:
+            raise RuntimeError("targeting is wired without a clicker")
+        now = self._clock()
+        if clicker.busy:
+            self._send(snap, lambda: self._step_select_click(clicker, now))
+            return
+        if self._select_click is not None:
+            row, sent_at = self._select_click
+            selected = snap.selected_target
+            outline_shows = selected is not None and selected.battle_list_row == row
+            if sent_at is not None and not outline_shows and now - sent_at < _SELECT_OUTLINE_WAIT:
+                return
+            self._select_click = None
+        if self._target is None:
+            return
+        row = self._target.battle_list_row
+        point = targeting.row_center(row)
+
+        def click() -> bool | None:
+            clicker.request(point)
+            self._select_click = (row, None)
+            return self._step_select_click(clicker, now)
+
+        if self._send(snap, click):
+            logger.debug("select click row %d at %s", row, point)
+
+    def _step_select_click(self, clicker: ClickController, now: float) -> bool | None:
+        """One clicker step; on the click, remember when it was sent."""
+        result = clicker.step()
+        if result is True and self._select_click is not None:
+            self._select_click = (self._select_click[0], now)
+        return result
 
     def _frozen(self, target: Monster, now: float) -> bool:
         """True when *target* is skipped: its HP stood still for ``_FROZEN_HP``.
@@ -739,7 +769,6 @@ class GameLoop:
         """
         # ponytail: (name, HP) can't tell two untouched monsters of one kind
         # apart; read battle-list rows if that skips the wrong one.
-        self._hp_skip = {k: end for k, end in self._hp_skip.items() if end > now}
         seen = (target.name, target.hp_percent)
         if seen != self._hp_seen:
             self._hp_seen, self._hp_since = seen, now
@@ -747,6 +776,10 @@ class GameLoop:
             logger.info("target %r HP frozen for %.0f s, switching", target.name, _FROZEN_HP)
             self._hp_skip[seen] = now + _FROZEN_SKIP
         return seen in self._hp_skip
+
+    def _skipped(self, monster: Monster) -> bool:
+        """True while *monster*'s (name, HP) is skipped as frozen."""
+        return (monster.name, monster.hp_percent) in self._hp_skip
 
     def _act_loot(self, snap: WorldState) -> None:
         """LOOT: one looting step per tick (rate-limited: it presses keys)."""

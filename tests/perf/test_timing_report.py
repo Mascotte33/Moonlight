@@ -151,7 +151,7 @@ def _decision_stats(tmp: Path) -> dict[str, Stats]:
 
     return {
         "healing": _measure(lambda _: healing.decide(ws.snapshot())),
-        "targeting": _measure(lambda _: targeting.decide(ws.snapshot())),
+        "targeting": _measure(lambda _: targeting.decide(ws.snapshot(), 0.0)),
         "buffs": _measure(lambda _: buffs.track(ws.snapshot())),
         "alarms": _measure(lambda _: alarms.decide(ws.snapshot())),
         "cavebot": _measure(lambda _: cavebot.step()),
@@ -209,7 +209,10 @@ def test_timing_report(tmp_path: Path) -> None:
         sleep_fn=lambda _dt: None,
         modules=DecisionModules(
             healing=HealingDecision(),
-            targeting=TargetingDecision(),
+            targeting=TargetingDecision(
+                None, profile.get_region("battle_list").to_tuple, profile.ui_scale
+            ),
+            clicker=mock.Mock(busy=False, **{"step.return_value": None}),
             buffs=BuffManager(),
             alarms=AlarmDecision(),
         ),

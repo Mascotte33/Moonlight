@@ -476,15 +476,8 @@ def build_modules(
     if config.healing is not None and m.healing is None:
         m.healing = HealingDecision(config.healing, clock=clock)
     if config.targeting is not None and m.targeting is None:
-        m.targeting = TargetingDecision(config.targeting)
-        # F-01 (interim): no name resolver is wired yet (T34), so every
-        # battle entry is a nameless/UNKNOWN creature. Targeting treats
-        # unknown entries as UNKNOWN and never auto-attacks them; say so
-        # explicitly at start rather than failing silently.
-        logger.warning(
-            "targeting is enabled but no name resolver is wired (T34); "
-            "unknown-named battle entries are treated as UNKNOWN and will "
-            "NOT be auto-attacked"
+        m.targeting = TargetingDecision(
+            config.targeting, profile.get_region("battle_list").to_tuple, profile.ui_scale
         )
     if config.attack_spells is not None and m.attack_spells is None:
         m.attack_spells = AttackSpells(config.attack_spells, combos, clock=clock)
@@ -493,8 +486,11 @@ def build_modules(
     if config.alarms is not None and m.alarms is None:
         m.alarms = AlarmDecision(config.alarms, clock=clock)
 
-    walkers = config.cavebot is not None or config.looting is not None
-    if walkers and m.cavebot is None and m.looting is None:
+    # One clicker (one mouse) for every module that clicks.
+    clicks = any(c is not None for c in (config.cavebot, config.looting, config.targeting))
+    if clicks and prev is not None and same("clicker", "templates_dir"):
+        m.clicker = prev.clicker
+    if clicks and m.clicker is None:
         from moonlight.hardware.clicker import ClickController
         from moonlight.perception.cursor import CursorReader, OsCursorReader
 
@@ -505,7 +501,7 @@ def build_modules(
             if not cursor and window_origin is not None
             else CursorReader(profile, cursor_templates=cursor or None)
         )
-        clicker = ClickController(
+        m.clicker = ClickController(
             backend,
             cursor_reader,
             frames,
@@ -518,7 +514,11 @@ def build_modules(
             ),
         )
         if on_clicker is not None:
-            on_clicker(clicker)
+            on_clicker(m.clicker)
+    walkers = config.cavebot is not None or config.looting is not None
+    if walkers and m.cavebot is None and m.looting is None:
+        assert m.clicker is not None
+        clicker = m.clicker
         if config.cavebot is not None:
             from moonlight.cavebot.cavebot import Cavebot
             from moonlight.cavebot.pathing import CostMap

@@ -77,22 +77,15 @@ def test_healing_decide_and_send_every_tick_even_in_alarm() -> None:
 
 
 def test_targeting_decide_feeds_attack() -> None:
-    inp = FakeInput()
-    action = SimpleNamespace(action="attack", target_name="Wolf", reason="lowest hp")
-    targeting = idle_module(**{"decide.return_value": action})
-    gl, _ = make_loop(make_state(monsters=1), inp, targeting=targeting)
+    action = SimpleNamespace(kind="select", battle_list_row=2, reason="lowest hp")
+    targeting = idle_module(**{"decide.return_value": action, "row_center.return_value": (5, 6)})
+    clicker = mock.Mock(busy=False, **{"step.return_value": None})
+    gl, _ = make_loop(make_state(monsters=3), FakeInput(), targeting=targeting, clicker=clicker)
     gl.tick()
     targeting.decide.assert_called_once()
     assert gl.current_state is BotState.ATTACK
-    assert "K r" in inp.sent_lines
-
-
-def test_targeting_flee_enters_alarm() -> None:
-    action = SimpleNamespace(action="flee", target_name=None, reason="player")
-    targeting = idle_module(**{"decide.return_value": action})
-    gl, _ = make_loop(make_state(), FakeInput(), targeting=targeting)
-    gl.tick()
-    assert gl.current_state is BotState.ALARM
+    targeting.row_center.assert_called_once_with(2)
+    clicker.request.assert_called_once_with((5, 6))
 
 
 def alarm(severity: str) -> SimpleNamespace:

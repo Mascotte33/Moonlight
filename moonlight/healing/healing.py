@@ -77,7 +77,7 @@ _DEFAULT_CURES = tuple(
 )
 
 
-def _check_hotkey(hotkey: str, where: str) -> None:
+def check_hotkey(hotkey: str, where: str) -> None:
     if not hotkey or any(ch.isspace() for ch in hotkey):
         raise ValueError(f"{where}: hotkey must be a combo without spaces, got {hotkey!r}")
 
@@ -101,7 +101,7 @@ class HealingConfig:
             where = f"healing rule {number}"
             if rule.kind not in _SLOTS:
                 raise ValueError(f"{where}: kind must be 'spell' or 'potion', got {rule.kind!r}")
-            _check_hotkey(rule.hotkey, where)
+            check_hotkey(rule.hotkey, where)
             for name in ("hp_below_percent", "mp_below_percent", "minimum_mana_percent"):
                 percent = getattr(rule, name)
                 if not 0.0 <= percent <= 100.0:
@@ -115,7 +115,7 @@ class HealingConfig:
             if cure.condition in seen:
                 raise ValueError(f"cure: condition {cure.condition!r} is listed twice")
             seen.add(cure.condition)
-            _check_hotkey(cure.hotkey, f"cure {cure.condition}")
+            check_hotkey(cure.hotkey, f"cure {cure.condition}")
         if self.spell_cooldown_ms <= 0 or self.potion_cooldown_ms <= 0:
             raise ValueError("spell_cooldown_ms and potion_cooldown_ms must be > 0")
         return self

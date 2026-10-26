@@ -107,16 +107,6 @@ def test_cavebot_switch_without_route_refused() -> None:
         write_option(BotConfig.default(), SWITCH, True)
 
 
-def test_max_monsters_writes_targeting_field() -> None:
-    from moonlight.targeting.tab import OPTIONS
-
-    opt = next(o for o in OPTIONS if o.field == "targeting.max_monsters_to_engage")
-    cfg = write_option(BotConfig.default(), opt, 7.0)
-    assert cfg.targeting is not None and cfg.targeting.max_monsters_to_engage == 7
-    with pytest.raises(ConfigError):
-        write_option(cfg, opt, 11)
-
-
 def test_off_module_without_kept_values_shows_defaults() -> None:
     cfg = BotConfig.default()
     assert cfg.attack_spells is None and "attack_spells" not in cfg.off
@@ -168,14 +158,6 @@ def test_typed_slider_value_is_a_whole_number(text: str, value: int) -> None:
 def test_whole_number_fits_a_float_field() -> None:
     cfg = write_option(BotConfig.default(), HP, 65)
     assert cfg.alarms is not None and cfg.alarms.low_hp_threshold == 65
-
-
-def test_remove_drops_the_selected_creatures() -> None:
-    from moonlight.targeting.tab import remove_creatures
-
-    names = ["Rat", "Cave Rat", "Troll"]
-    assert remove_creatures(names, (0, 2), "") == ["Cave Rat"]
-    assert remove_creatures(names, (), "troll") == ["Rat", "Cave Rat"]
 
 
 @pytest.mark.parametrize(

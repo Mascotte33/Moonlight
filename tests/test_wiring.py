@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import replace
 from pathlib import Path
 
@@ -148,39 +147,21 @@ def test_capture_regions_lists_tick_regions_or_falls_back_to_full() -> None:
     assert wiring.capture_regions(profile, cfg) is None  # uncalibrated: full grab
 
 
-# -- F-01: no auto-attack with unknown names (interim) -------------------------
+# -- targeting clicks through the shared clicker -----------------------------
 
 
-def test_targeting_without_resolver_warns(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """F-01: enabling targeting without a name resolver emits a visible warning.
-
-    The default config has targeting on and no name resolver is wired (T34),
-    so build_loop must emit an explicit, visible warning at start rather than
-    silently bypassing the no-nameless-attack rule.
-    """
+def test_targeting_gets_the_clicker_and_battle_list_region() -> None:
     cfg = BotConfig.default()
     assert cfg.targeting is not None  # targeting is on by default
-    state = WorldState()
     frame = np.zeros((600, 800, 3), dtype=np.uint8)
-
-    def frame_provider() -> np.ndarray:
-        return frame
-
-    with caplog.at_level(logging.WARNING, logger="moonlight.core.wiring"):
-        wiring.build_loop(
-            cfg,
-            make_profile(),
-            FakeInput(),
-            frame_provider=frame_provider,
-            state=state,
-        )
-    messages = [r.getMessage() for r in caplog.records]
-    assert any("name resolver" in m for m in messages), (
-        f"F-01 no-resolver warning did not fire; got: {messages!r}"
+    loop = wiring.build_loop(
+        cfg, make_profile(), FakeInput(), frame_provider=lambda: frame, state=WorldState()
     )
-
+    targeting = loop.all_modules.targeting
+    assert targeting is not None
+    assert loop.all_modules.clicker is not None
+    left, top, _, _ = make_profile().get_region("battle_list").to_tuple
+    assert targeting.row_center(0) == (left + 23 + 57, top + 11 + 11)
 
 
 # -- map matching wiring --------------------------------------------------------

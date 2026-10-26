@@ -1,436 +1,154 @@
-"""Unit tests for moonlight.targeting.targeting (TargetingDecision, T20).
-
-Fully hermetic: synthetic WorldState snapshots only. No hardware, no
-client, no input backend (targeting emits intents, it never sends input).
-"""
+"""Unit tests for moonlight.targeting.targeting (monster rows, target choice)."""
 
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
-
 import pytest
 
+from moonlight.core.config import BotConfig, ConfigError
 from moonlight.core.state import Monster, WorldState
 from moonlight.targeting.targeting import (
-    TargetingAction,
-    TargetingActionKind,
+    MonsterRow,
     TargetingConfig,
     TargetingDecision,
 )
 
 
-def make_state(
-    *,
-    monsters: list[Monster] | None = None,
-    selected_target: Monster | None = None,
-    players_on_screen: int = 0,
-) -> WorldState:
-    """One consistent world-state frame (reader-style, like the loop gets)."""
-    state = WorldState.default()
-    state.client_focused = True
-    state.screen_ok = True
-    state.monsters = list(monsters) if monsters is not None else []
-    state.selected_target = selected_target
-    state.players_on_screen = players_on_screen
-    state.last_update = 1.0
-    return state
-
-
-def make_targeting(config: TargetingConfig | None = None) -> TargetingDecision:
-    return TargetingDecision(config)
-
-
-# -- decide(): idle -------------------------------------------------------------
-
-
-class TestDecideIdle:
-    def test_empty_battle_list_is_idle(self) -> None:
-        assert make_targeting().decide(make_state()) is None
-
-    def test_only_players_in_battle_list_is_idle(self) -> None:
-        state = make_state(monsters=[Monster(name="Bob", is_player=True)])
-        assert make_targeting().decide(state) is None
-
-    def test_only_players_with_protection_disabled_is_idle(self) -> None:
-        config = TargetingConfig(player_protection=False)
-        state = make_state(
-            monsters=[Monster(name="Bob", is_player=True)],
-            players_on_screen=1,
-        )
-        assert make_targeting(config).decide(state) is None
-
-    def test_nameless_entries_never_auto_attacked(self) -> None:
-        """F-01: an entry without a name (no resolver wired) is UNKNOWN.
-
-        It may be a player, so it is never a candidate and targeting stays
-        idle rather than auto-attacking it.
-        """
-        state = make_state(monsters=[Monster(name="", hp_percent=10.0)])
-        assert make_targeting().decide(state) is None
-
-    def test_nameless_entry_is_skipped_in_favour_of_named(self) -> None:
-        """F-01: a nameless entry is skipped; only the named monster is targeted."""
-        state = make_state(
-            monsters=[
-                Monster(name="", hp_percent=1.0),
-                Monster(name="Wolf", hp_percent=100.0),
-            ]
-        )
-        action = make_targeting().decide(state)
-        assert action is not None
-        assert action.target_name == "Wolf"
-
-    def test_nameless_selection_is_not_kept(self) -> None:
-        """F-01: a nameless current selection is abandoned, never attacked."""
-        state = make_state(
-            monsters=[Monster(name="", hp_percent=1.0)],
-            selected_target=Monster(name="", hp_percent=1.0),
-        )
-        assert make_targeting().decide(state) is None
-
-
-# -- decide(): basic attack -----------------------------------------------------
-
-
-class TestDecideAttack:
-    def test_single_monster_no_selection_attacks_it(self) -> None:
-        wolf = Monster(name="Wolf", hp_percent=100.0)
-        action = make_targeting().decide(
-            make_state(monsters=[wolf], selected_target=None)
-        )
-        assert action is not None
-        assert action.action is TargetingActionKind.ATTACK
-        assert action.target_name == "Wolf"
-
-    def test_action_tokens_are_stable(self) -> None:
-        wolf = Monster(name="Wolf")
-        action = make_targeting().decide(make_state(monsters=[wolf]))
-        assert action is not None
-        assert action.action.value in {"attack", "switch", "flee"}
-        assert action.action.value == "attack"
-        assert isinstance(action, TargetingAction)
-        assert isinstance(action.reason, str) and action.reason
-
-    def test_existing_valid_selection_kept(self) -> None:
-        wolf = Monster(name="Wolf", hp_percent=80.0)
-        action = make_targeting().decide(
-            make_state(monsters=[wolf], selected_target=wolf)
-        )
-        assert action is not None
-        assert action.action is TargetingActionKind.ATTACK
-        assert action.target_name == "Wolf"
-        assert "Wolf" in action.reason
-
-    def test_selection_match_is_case_insensitive(self) -> None:
-        wolf = Monster(name="Wolf", hp_percent=80.0)
-        selected = Monster(name="wolf", hp_percent=80.0)
-        action = make_targeting().decide(
-            make_state(monsters=[wolf], selected_target=selected)
-        )
-        assert action is not None
-        assert action.action is TargetingActionKind.ATTACK
-        assert action.target_name == "Wolf"
-
-
-# -- decide(): prefer_low_hp ------------------------------------------------------
-
-
-class TestPreferLowHp:
-    # These scenarios intentionally hold several monsters, so they need a
-    # higher engage limit than the default of 1.
-    _config = TargetingConfig(max_monsters_to_engage=5)
-
-    def test_picks_weakest_monster(self) -> None:
-        state = make_state(
-            monsters=[
-                Monster(name="Wolf", hp_percent=90.0),
-                Monster(name="Rat", hp_percent=25.0),
-                Monster(name="Spider", hp_percent=50.0),
-            ],
-            selected_target=None,
-        )
-        action = make_targeting(self._config).decide(state)
-        assert action is not None
-        assert action.action is TargetingActionKind.ATTACK
-        assert action.target_name == "Rat"
-        assert "Rat" in action.reason
-
-    def test_hp_tie_keeps_battle_list_order(self) -> None:
-        state = make_state(
-            monsters=[
-                Monster(name="Rat", hp_percent=40.0),
-                Monster(name="Wolf", hp_percent=40.0),
-            ],
-            selected_target=None,
-        )
-        action = make_targeting(self._config).decide(state)
-        assert action is not None
-        assert action.target_name == "Rat"
-
-    def test_first_monster_when_prefer_low_hp_disabled(self) -> None:
-        config = TargetingConfig(prefer_low_hp=False, max_monsters_to_engage=5)
-        state = make_state(
-            monsters=[
-                Monster(name="Wolf", hp_percent=90.0),
-                Monster(name="Rat", hp_percent=25.0),
-            ],
-            selected_target=None,
-        )
-        action = make_targeting(config).decide(state)
-        assert action is not None
-        assert action.target_name == "Wolf"
-
-    def test_valid_current_selection_beats_lower_hp(self) -> None:
-        # A still-valid selected target is kept, even if another monster
-        # is weaker (selection is sticky until it stops being a monster).
-        wolf = Monster(name="Wolf", hp_percent=95.0)
-        rat = Monster(name="Rat", hp_percent=10.0)
-        action = make_targeting(self._config).decide(
-            make_state(monsters=[wolf, rat], selected_target=wolf)
-        )
-        assert action is not None
-        assert action.action is TargetingActionKind.ATTACK
-        assert action.target_name == "Wolf"
-
-
-# -- decide(): switch away from invalid selections ---------------------------------
-
-
-class TestSwitchAway:
-    def test_player_selected_switches_to_monster(self) -> None:
-        player = Monster(name="Bob", is_player=True)
-        wolf = Monster(name="Wolf", hp_percent=100.0)
-        action = make_targeting().decide(
-            make_state(monsters=[wolf], selected_target=player)
-        )
-        assert action is not None
-        assert action.action is TargetingActionKind.SWITCH
-        assert action.target_name == "Wolf"
-        assert "Bob" in action.reason
-
-    def test_stale_selection_switches_to_monster(self) -> None:
-        # Selected target no longer in the battle list (it died / left).
-        stale = Monster(name="Rat", hp_percent=10.0)
-        wolf = Monster(name="Wolf", hp_percent=100.0)
-        action = make_targeting().decide(
-            make_state(monsters=[wolf], selected_target=stale)
-        )
-        assert action is not None
-        assert action.action is TargetingActionKind.SWITCH
-        assert action.target_name == "Wolf"
-
-    def test_switch_reason_mentions_previous_selection(self) -> None:
-        player = Monster(name="Bob", is_player=True)
-        wolf = Monster(name="Wolf", hp_percent=100.0)
-        action = make_targeting().decide(
-            make_state(monsters=[wolf], selected_target=player)
-        )
-        assert action is not None
-        assert "Bob" in action.reason
-        assert "Wolf" in action.reason
-
-
-# -- safety: players ---------------------------------------------------------------
-
-
-class TestPlayerSafety:
-    def test_players_on_screen_flee(self) -> None:
-        wolf = Monster(name="Wolf", hp_percent=100.0)
-        action = make_targeting().decide(
-            make_state(monsters=[wolf], players_on_screen=1)
-        )
-        assert action is not None
-        assert action.action is TargetingActionKind.FLEE
-        assert action.target_name == ""
-
-    def test_flee_wins_over_target_selection(self) -> None:
-        wolf = Monster(name="Wolf", hp_percent=100.0)
-        action = make_targeting().decide(
-            make_state(
-                monsters=[wolf],
-                selected_target=wolf,
-                players_on_screen=2,
-            )
-        )
-        assert action is not None
-        assert action.action is TargetingActionKind.FLEE
-        assert "2" in action.reason
-
-    def test_players_on_screen_ignored_when_protection_disabled(self) -> None:
-        config = TargetingConfig(player_protection=False)
-        wolf = Monster(name="Wolf", hp_percent=100.0)
-        action = make_targeting(config).decide(
-            make_state(monsters=[wolf], players_on_screen=1)
-        )
-        assert action is not None
-        assert action.action is TargetingActionKind.ATTACK
-        assert action.target_name == "Wolf"
-
-    def test_player_never_targeted_even_if_listed_as_monster(self) -> None:
-        # Perception mislabels a player as a monster entry: safety filter
-        # must exclude it from targeting.
-        player = Monster(name="Bob", is_player=True)
-        wolf = Monster(name="Wolf", hp_percent=100.0)
-        action = make_targeting().decide(
-            make_state(monsters=[wolf, player], selected_target=None)
-        )
-        assert action is not None
-        assert action.target_name == "Wolf"
-
-    @pytest.mark.parametrize("players", [1, 2, 5])
-    def test_any_player_count_flees(self, players: int) -> None:
-        action = make_targeting().decide(
-            make_state(monsters=[Monster(name="Wolf")], players_on_screen=players)
-        )
-        assert action is not None
-        assert action.action is TargetingActionKind.FLEE
-
-
-# -- max_monsters_to_engage ----------------------------------------------------------
-
-
-class TestMaxMonstersToEngage:
-    def test_single_monster_engaged_with_default_config(self) -> None:
-        action = make_targeting().decide(make_state(monsters=[Monster(name="Wolf")]))
-        assert action is not None
-        assert action.action is TargetingActionKind.ATTACK
-
-    def test_crowd_keeps_attacking_and_warns_once(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        # F-08: no flee route exists yet, so a crowd only logs a warning.
-        state = make_state(monsters=[Monster(name=n) for n in "ABCDE"], selected_target=None)
-        targeting = make_targeting()
-        with caplog.at_level("WARNING"):
-            for _ in range(3):
-                action = targeting.decide(state)
-                assert action is not None
-                assert action.action is TargetingActionKind.ATTACK
-        assert sum("exceed max_monsters_to_engage" in r.message for r in caplog.records) == 1
-
-    def test_crowd_keeps_existing_selection(self) -> None:
-        wolf = Monster(name="Wolf")
-        state = make_state(
-            monsters=[wolf, *(Monster(name=n) for n in "ABCD")],
-            selected_target=wolf,
-        )
-        action = make_targeting().decide(state)
-        assert action is not None
-        assert action.action is TargetingActionKind.ATTACK
-        assert action.target_name == "Wolf"
-
-    def test_at_limit_engaged(self) -> None:
-        config = TargetingConfig(max_monsters_to_engage=3)
-        state = make_state(
-            monsters=[Monster(name="A"), Monster(name="B"), Monster(name="C")]
-        )
-        action = make_targeting(config).decide(state)
-        assert action is not None
-        assert action.action is TargetingActionKind.ATTACK
-
-    def test_above_limit_still_attacks(self) -> None:
-        config = TargetingConfig(max_monsters_to_engage=3)
-        state = make_state(
-            monsters=[
-                Monster(name="A"),
-                Monster(name="B"),
-                Monster(name="C"),
-                Monster(name="D"),
-            ]
-        )
-        action = make_targeting(config).decide(state)
-        assert action is not None
-        assert action.action is TargetingActionKind.ATTACK
-
-    def test_player_entries_do_not_count_towards_limit(self) -> None:
-        # Players are not monsters; they must not block engagement.
-        state = make_state(
-            monsters=[Monster(name="Wolf"), Monster(name="Bob", is_player=True)]
-        )
-        action = make_targeting().decide(state)
-        assert action is not None
-        assert action.action is TargetingActionKind.ATTACK
-        assert action.target_name == "Wolf"
-
-
-# -- config validation ------------------------------------------------------------------
-
-
-class TestConfigValidation:
-    def test_default_config_is_valid(self) -> None:
-        TargetingConfig().validate()
-        TargetingDecision()  # must not raise
-
-    def test_default_values_match_spec(self) -> None:
-        config = TargetingConfig()
-        assert config.max_monsters_to_engage == 4
-        assert config.prefer_low_hp is True
-        assert config.player_protection is True
-
-    @pytest.mark.parametrize("value", [0, -1, -100])
-    def test_nonpositive_max_monsters_rejected(self, value: int) -> None:
-        with pytest.raises(ValueError):
-            TargetingDecision(TargetingConfig(max_monsters_to_engage=value))
-
-    def test_bool_max_monsters_rejected(self) -> None:
-        with pytest.raises(ValueError):
-            TargetingDecision(TargetingConfig(max_monsters_to_engage=True))
-
-
-# -- TargetingAction structure ----------------------------------------------------------
-
-
-class TestTargetingActionStructure:
-    def test_action_kind_values(self) -> None:
-        assert TargetingActionKind.ATTACK.value == "attack"
-        assert TargetingActionKind.SWITCH.value == "switch"
-        assert TargetingActionKind.FLEE.value == "flee"
-
-    def test_frozen(self) -> None:
-        action = TargetingAction(
-            target_name="Wolf",
-            action=TargetingActionKind.ATTACK,
-            reason="first monster in battle list: 'Wolf'",
-        )
-        with pytest.raises(FrozenInstanceError):
-            action.target_name = "Rat"  # type: ignore[misc]
-
-    def test_flee_action_has_empty_target_name(self) -> None:
-        action = make_targeting().decide(make_state(players_on_screen=1))
-        assert action is not None
-        assert action.action is TargetingActionKind.FLEE
-        assert action.target_name == ""
-
-
-# -- whitelist / blacklist (T5.F1.K2) --------------------------------------------
-
-CROWD = [Monster(name="Rat", hp_percent=10.0), Monster(name="Dragon", hp_percent=50.0)]
+def state(monsters: list[Monster], selected: Monster | None = None) -> WorldState:
+    s = WorldState.default()
+    s.monsters = monsters
+    s.selected_target = selected
+    return s
+
+
+def rows(*monster_rows: MonsterRow, default: MonsterRow | None = None) -> TargetingDecision:
+    return TargetingDecision(
+        TargetingConfig(monsters=monster_rows, default_monster=default or MonsterRow())
+    )
+
+
+def picked(targeting: TargetingDecision, s: WorldState) -> int | None:
+    action = targeting.decide(s, 0.0)
+    if action is None:
+        return None
+    assert action.kind == "select"
+    return action.battle_list_row
+
+
+def test_empty_battle_list_is_idle() -> None:
+    assert picked(rows(), state([])) is None
+
+
+def test_priority_wins_over_hp() -> None:
+    monsters = [Monster("Rat", 10.0), Monster("Cyclops", 90.0, battle_list_row=1)]
+    assert picked(rows(MonsterRow("cyclops", priority=3)), state(monsters)) == 1
+
+
+def test_hp_wins_over_row() -> None:
+    monsters = [Monster("Rat", 80.0, battle_list_row=0), Monster("Rat", 20.0, battle_list_row=1)]
+    assert picked(rows(), state(monsters)) == 1
+
+
+def test_lowest_row_breaks_a_tie() -> None:
+    monsters = [Monster("Rat", 50.0, battle_list_row=2), Monster("Rat", 50.0, battle_list_row=1)]
+    assert picked(rows(), state(monsters)) == 1
+
+
+def test_stays_on_a_valid_target() -> None:
+    weak = Monster("Rat", 10.0, battle_list_row=0)
+    selected = Monster("Rat", 90.0, battle_list_row=1)
+    assert picked(rows(), state([weak, selected], selected)) is None
+
+
+def test_switches_when_a_higher_priority_appears() -> None:
+    selected = Monster("Rat", 10.0, battle_list_row=0)
+    boss = Monster("Cyclops", 100.0, battle_list_row=1)
+    targeting = rows(MonsterRow("Cyclops", priority=5))
+    assert picked(targeting, state([selected], selected)) is None
+    assert picked(targeting, state([selected, boss], selected)) == 1
+
+
+def test_selected_target_that_left_is_replaced() -> None:
+    gone = Monster("Rat", 10.0, battle_list_row=3)
+    assert picked(rows(), state([Monster("Wolf", 50.0)], gone)) == 0
+
+
+def test_ignored_row_is_never_chosen() -> None:
+    rat = Monster("RAT", 1.0, battle_list_row=0)
+    targeting = rows(MonsterRow("rat", ignore=True))
+    assert picked(targeting, state([rat])) is None
+    assert picked(targeting, state([rat, Monster("Wolf", 99.0, battle_list_row=1)])) == 1
+    assert picked(targeting, state([rat], rat)) is None  # never switched to, nothing else
+
+
+def test_nameless_monster_uses_default_monster() -> None:
+    nameless = Monster("", 50.0, battle_list_row=0)
+    rat = Monster("Rat", 50.0, battle_list_row=1)
+    assert picked(rows(MonsterRow("Rat", priority=2)), state([nameless, rat])) == 1
+    assert picked(rows(default=MonsterRow(priority=3)), state([nameless, rat])) == 0
+    assert picked(rows(default=MonsterRow(ignore=True)), state([nameless])) is None
+
+
+def test_players_are_never_chosen() -> None:
+    assert picked(rows(), state([Monster("Bob", 10.0, is_player=True)])) is None
+
+
+def test_row_center_matches_the_reader_geometry() -> None:
+    targeting = TargetingDecision(None, (100, 200, 170, 300), ui_scale=1.0)
+    assert targeting.row_center(0) == (100 + 23 + 57, 200 + 11 + 11)
+    assert targeting.row_center(3) == (180, 200 + 11 + 3 * 22 + 11)
+    scaled = TargetingDecision(None, (0, 0, 340, 600), ui_scale=2.0)
+    assert scaled.row_center(1) == (46 + 115, 22 + 44 + 22)
+
+
+def test_row_center_without_a_region_raises() -> None:
+    with pytest.raises(ValueError, match="battle_list"):
+        TargetingDecision().row_center(0)
 
 
 @pytest.mark.parametrize(
-    ("mode", "creatures", "target"),
+    "row",
     [
-        ("all", ("dragon",), "Rat"),
-        ("whitelist", ("DRAGON",), "Dragon"),
-        ("blacklist", ("rat",), "Dragon"),
-        ("whitelist", ("Orc",), None),
+        MonsterRow("rat", priority=0),
+        MonsterRow("rat", priority=6),
+        MonsterRow("rat", movement="run"),
+        MonsterRow("rat", hotkey="F 6"),
+        MonsterRow(""),
     ],
 )
-def test_mode_filters_targets(mode: str, creatures: tuple[str, ...], target: str | None) -> None:
-    action = make_targeting(TargetingConfig(mode=mode, creatures=creatures)).decide(
-        make_state(monsters=CROWD)
-    )
-    assert (action.target_name if action else None) == target
+def test_bad_rows_refused(row: MonsterRow) -> None:
+    with pytest.raises(ValueError):
+        TargetingConfig(monsters=(row,)).validate()
 
 
-def test_selected_blacklisted_target_is_switched() -> None:
-    action = make_targeting(TargetingConfig(mode="blacklist", creatures=("Rat",))).decide(
-        make_state(monsters=CROWD, selected_target=CROWD[0])
-    )
-    assert action is not None
-    assert action.action == TargetingActionKind.SWITCH and action.target_name == "Dragon"
+def test_duplicate_names_refused_ignoring_case() -> None:
+    with pytest.raises(ValueError, match="duplicate"):
+        TargetingConfig(monsters=(MonsterRow("Rat"), MonsterRow("rat"))).validate()
 
 
-def test_unknown_mode_refused() -> None:
-    with pytest.raises(ValueError, match="mode"):
-        TargetingConfig(mode="some").validate()
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("mode", "all"),
+        ("creatures", ["Rat"]),
+        ("prefer_low_hp", True),
+        ("max_monsters_to_engage", 4),
+        ("player_protection", True),
+    ],
+)
+def test_old_config_keys_raise(key: str, value: object) -> None:
+    data = BotConfig.default().to_dict()
+    data["modules"]["targeting"][key] = value
+    with pytest.raises(ConfigError, match=key):
+        BotConfig.from_dict(data)
+
+
+def test_rows_load_from_json() -> None:
+    data = BotConfig.default().to_dict()
+    data["modules"]["targeting"]["monsters"] = [
+        {"name": "cyclops", "priority": 3, "hotkey": "F6", "minimum_mana_percent": 10},
+        {"name": "rat", "ignore": True},
+    ]
+    cfg = BotConfig.from_dict(data)
+    assert cfg.targeting is not None
+    assert cfg.targeting.monsters[0] == MonsterRow("cyclops", 3, False, "F6", 10.0, "follow")
+    assert cfg.targeting.monsters[1].ignore
