@@ -208,14 +208,6 @@ class TestProfileAccess:
         # At a different runtime landmark:
         assert p.region_absolute("hp_bar", (200, 300)) == (205, 305, 10, 10)
 
-    def test_game_grid_tiles(self) -> None:
-        p = CalibrationProfile(landmark=(0, 0))
-        p.set_region("game_grid", Region(10, 10, 480, 352))
-        gx, gy, gw, gh, tw, th = p.game_grid_tiles((0, 0))
-        assert (gx, gy, gw, gh) == (10, 10, 480, 352)
-        assert tw == 480 // 15
-        assert th == 352 // 11
-
 
 class TestProfilesDir:
     def test_default_profiles_dir_exists_as_path(self) -> None:

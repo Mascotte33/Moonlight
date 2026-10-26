@@ -107,16 +107,6 @@ class SpriteDetection:
     height: int
     confidence: float
 
-    @property
-    def center(self) -> tuple[int, int]:
-        """Center of the match in frame coordinates (for clicks, T17)."""
-        return (self.x + self.width // 2, self.y + self.height // 2)
-
-    @property
-    def to_rect(self) -> Rect:
-        """The match as ``(x, y, width, height)`` in frame coordinates."""
-        return (self.x, self.y, self.width, self.height)
-
 
 class MonsterTemplates:
     """Sprite templates for one monster.

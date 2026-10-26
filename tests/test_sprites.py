@@ -39,7 +39,6 @@ from moonlight.calibration.calibrate import CalibrationProfile, Region
 from moonlight.perception.sprites import (
     DEFAULT_MATCH_THRESHOLD,
     MonsterTemplates,
-    SpriteDetection,
     SpriteDetector,
 )
 
@@ -423,15 +422,6 @@ def test_oversized_template_skipped() -> None:
 # --------------------------------------------------------------------------
 # Helpers and performance
 # --------------------------------------------------------------------------
-
-
-def test_center_property() -> None:
-    """The center property is the midpoint of the matched box."""
-    hit = SpriteDetection(
-        monster="m", x=10, y=20, width=SPRITE_W, height=SPRITE_H, confidence=1.0
-    )
-    assert hit.center == (10 + SPRITE_W // 2, 20 + SPRITE_H // 2)
-    assert hit.to_rect == (10, 20, SPRITE_W, SPRITE_H)
 
 
 def test_performance_within_budget() -> None:

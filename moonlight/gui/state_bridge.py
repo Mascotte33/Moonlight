@@ -104,12 +104,6 @@ class LogFeed:
         """Append an error line."""
         self.add("error", message)
 
-    def recent(self, n: int = 30) -> list[tuple[float, str, str]]:
-        """The last *n* lines, oldest first (thread-safe copy)."""
-        with self._lock:
-            items = list(self._lines)
-        return items[-n:]
-
     def text(self, n: int = 30, levels: tuple[str, ...] | None = None) -> str:
         """The last *n* lines (only *levels*, when given) as ``[HH:MM:SS] LEVEL message`` text."""
         with self._lock:
@@ -243,7 +237,6 @@ class StatePoller:
         self._on_error = on_error
         self._after_id: object | None = None
         self._stopped = True
-        self.poll_count = 0
 
     @property
     def running(self) -> bool:
@@ -266,7 +259,6 @@ class StatePoller:
     def poll_once(self) -> WorldState:
         """Take one snapshot and dispatch it (used by tests and the tick)."""
         snap = self._state.snapshot()
-        self.poll_count += 1
         if self._on_poll is not None:
             self._on_poll(snap)
         return snap

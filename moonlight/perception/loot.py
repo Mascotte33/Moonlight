@@ -43,16 +43,10 @@ LootItem = tuple[int, str, int]
 
 @dataclass(frozen=True)
 class LootWindow:
-    """One read of the loot window.
-
-    ``capacity_percent`` is not visible in the loot window itself; the
-    reader leaves it at 0.0 (unknown) and the caller may fill it from
-    ``WorldState.capacity``.
-    """
+    """One read of the loot window."""
 
     open: bool
     items: list[LootItem] = field(default_factory=list)
-    capacity_percent: float = 0.0
 
 
 class LootReader:

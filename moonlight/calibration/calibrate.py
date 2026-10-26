@@ -276,18 +276,6 @@ class CalibrationProfile:
         """Resolve a region to absolute coordinates at *current_landmark*."""
         return self.get_region(name).absolute(current_landmark)
 
-    def game_grid_tiles(self, current_landmark: Point) -> tuple[int, int, int, int, int, int]:
-        """Return the game-grid geometry for a landmark position.
-
-        Returns:
-            ``(grid_x, grid_y, grid_w, grid_h, tile_w, tile_h)`` where tile size
-            is derived from the 15x11 grid (see ``docs/ui_layout.md``).
-        """
-        gx, gy, gw, gh = self.region_absolute("game_grid", current_landmark)
-        tile_w = gw // GAME_GRID_COLS
-        tile_h = gh // GAME_GRID_ROWS
-        return (gx, gy, gw, gh, tile_w, tile_h)
-
     # -- validation ---------------------------------------------------------
 
     def validate(self) -> None:

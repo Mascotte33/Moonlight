@@ -183,8 +183,7 @@ def test_log_commands_switch(on: bool) -> None:
     log = LogFeed()
     backend = make_backend(_config(simulation=True, log_commands=on), HardwareController(log=log))
     backend.press_combo("F1")
-    lines = [msg for _, _, msg in log.recent()]
-    assert lines == (["input: press F1"] if on else [])
+    assert log.text().endswith("[info] input: press F1") if on else log.text() == ""
 
 
 def test_start_passes_window_title_to_capture(
@@ -262,7 +261,7 @@ def test_layout_same_size_starts_and_logs_the_skipped_stop_check(
 ) -> None:
     frame = np.zeros((600, 800, 3), dtype=np.uint8)
     log = _start_with_window(tmp_path, monkeypatch, frame, window_size=(800, 600))
-    assert "no stop_button.png, Stop button check skipped" in [m for _, _, m in log.recent()]
+    assert "no stop_button.png, Stop button check skipped" in log.text(n=1000)
 
 
 def test_layout_stop_button_must_stay_at_the_landmark(
