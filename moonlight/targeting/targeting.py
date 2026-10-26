@@ -38,7 +38,7 @@ __all__ = [
     "TargetingDecision",
 ]
 
-MOVEMENTS = ("follow", "keep_distance", "none")
+MOVEMENTS = ("follow", "none")
 
 Rect = tuple[int, int, int, int]
 
@@ -74,11 +74,12 @@ class MonsterRow:
 # doc: docs/prs/targeting.md#area-rules
 @dataclass(frozen=True)
 class AreaRule:
-    """Press ``hotkey`` when this many creature slots touch the player."""
+    """Press ``hotkey`` when this many creature slots touch the player (only while ``enabled``)."""
 
     hotkey: str
     minimum_adjacent_monsters: int = 1
     minimum_mana_percent: float = 0.0
+    enabled: bool = True
 
     def validate(self) -> None:
         """Raise ValueError on a bad hotkey, monster count or mana minimum."""

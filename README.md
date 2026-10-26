@@ -158,31 +158,37 @@ keys are refused at load. Rewrite the section to the new shape.
 ## Targeting
 
 Targeting clicks a monster's name in the battle list, then presses its
-attack hotkey. Set it up in the GUI's Targeting tab, or in the `targeting`
-section of your profile config:
+attack hotkey. Turn it on with the **Targeting on** switch at the top of
+the Targeting tab (grayed while the bot is paused). Set it up in that tab,
+or in the `targeting` section of your profile config:
 
 - **Monster rows** match a battle-list name (ignoring case). Each has a
-  priority (1-5, higher first), `ignore`, an attack `hotkey` (empty = melee
-  only), a mana floor (`minimum_mana_percent`) and a `movement`
-  (`follow` or `none`). Players are never targeted.
+  priority (1-5, higher first), `ignore` ("never attack" in the tab), an
+  attack `hotkey` (empty = melee only), a mana floor (`minimum_mana_percent`)
+  and a `movement`: `follow` (chase) or `none` (stand still). Players are
+  never targeted.
 - **`default_monster`** is the row for every monster without its own row, so
-  everything is attacked unless you ignore it. Default: priority 1, F6, 10% mana, follow.
+  everything is attacked unless you ignore it. The tab shows it as "all others".
+  Default: priority 1, F6, 10% mana, follow.
 - The bot picks the highest priority, then the lowest HP, then the closest
   row. It stays on a valid target and never clicks it twice (a second click
   untargets).
 - **Area rules** press a hotkey when at least `minimum_adjacent_monsters`
   creatures stand next to you and MP is at least `minimum_mana_percent`.
-  Default: F5 at 3 monsters, 30% mana. All attack keys share
-  `attack_cooldown_ms` (default 2000).
+  Default: F5 at 3 monsters, 30% mana. A rule is used only while it is
+  ticked (`enabled`). A ticked rule is grayed in the tab so it isn't edited
+  by accident. All attack keys share `attack_cooldown_ms` (default 2000).
 - **Unreachable:** when the target's HP stands still for
   `unreachable_after_seconds` (default 8), the bot takes one step toward it.
   After the same time again, it skips that monster for 30 s.
-- **Chase mode:** the bot clicks the side panel's Chase Opponent button for a
-  `follow` row and Stand While Fighting otherwise, only when the mode changes.
+- **Chase mode:** on every new target, the bot clicks the side panel's Chase
+  Opponent button for a `follow` row and Stand While Fighting otherwise.
   Calibrate the `chase_buttons` region in the Calibration tab.
-- **Seen monsters:** each new battle-list name is saved with a tesseract
-  guess. Correct names in the Targeting tab. Without tesseract the guesses
-  stay empty and you type the names.
+- **Seen monsters:** each new battle-list entry is saved with its picture
+  (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
+  The Targeting tab shows the picture next to the name. Type or correct the
+  name, then click **Add to monsters**. Without tesseract the guesses stay
+  empty and you type the names.
 
 Client setup: the battle list must show monsters (players may be filtered
 out) and be sorted by distance. Actions are logged to `logs/bot.log`.

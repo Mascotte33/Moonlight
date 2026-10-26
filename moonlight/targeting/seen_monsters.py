@@ -3,7 +3,9 @@
 # doc: docs/prs/targeting.md#seen-monsters
 
 The tick only looks a name hash up (:meth:`SeenMonsters.name_for`). A daemon
-thread runs tesseract once per new hash, so the tick never blocks (P4).
+thread runs tesseract once per new hash, so the tick never blocks (P4). Each
+hash also gets a PNG of its battle-list slot (icon and name), so the owner can
+see which monster it is.
 """
 
 from __future__ import annotations
@@ -44,6 +46,9 @@ class SeenMonsters:
 
     def __init__(self, path: Path) -> None:
         self._path = Path(path)
+        #: ``p.seen_monsters.json`` keeps its pictures in ``p.seen_monsters/``.
+        self._images_dir = self._path.with_suffix("")
+        self._hashes_with_image: set[str] = set()
         self._lock = threading.Lock()
         self._monsters: dict[str, SeenMonster] = {}
         self._crops: queue.Queue[tuple[str, np.ndarray]] = queue.Queue()
@@ -52,8 +57,13 @@ class SeenMonsters:
         if self._path.exists():
             self._load()
 
-    def name_for(self, name_hash: str, name_crop: np.ndarray) -> str:
-        """The owner's name, else the guess, else ``""``. Never blocks."""
+    def name_for(self, name_hash: str, name_crop: np.ndarray, clue_crop: np.ndarray) -> str:
+        """The owner's name, else the guess, else ``""``. Never blocks.
+
+        *clue_crop* (icon and name) is saved once per hash as its picture.
+        """
+        if name_hash not in self._hashes_with_image:
+            self._save_image(name_hash, clue_crop)
         with self._lock:
             monster = self._monsters.get(name_hash)
             if monster is not None:
@@ -72,6 +82,20 @@ class SeenMonsters:
         with self._lock:
             self._monsters.setdefault(name_hash, SeenMonster(name_hash)).name = name
             self._save()
+
+    def image_path(self, name_hash: str) -> Path:
+        """Where the slot picture of *name_hash* is (it may not exist yet)."""
+        return self._images_dir / f"{name_hash}.png"
+
+    def _save_image(self, name_hash: str, clue_crop: np.ndarray) -> None:
+        import cv2
+
+        path = self.image_path(name_hash)
+        if not path.exists():
+            self._images_dir.mkdir(parents=True, exist_ok=True)
+            if not cv2.imwrite(str(path), cv2.cvtColor(clue_crop, cv2.COLOR_RGB2BGR)):
+                raise OSError(f"could not write {path}")
+        self._hashes_with_image.add(name_hash)
 
     def entries(self) -> list[SeenMonster]:
         """A copy of every seen monster, for the tab."""

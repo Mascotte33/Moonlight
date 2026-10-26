@@ -223,7 +223,7 @@ def test_chase_button_center_is_the_lower_half_for_follow_else_the_upper() -> No
     targeting = TargetingDecision(None, chase_buttons_region=(2510, 119, 20, 43))
     assert targeting.chase_button_center("follow") == (2520, 151)
     assert targeting.chase_button_center("none") == (2520, 129)
-    assert targeting.chase_button_center("keep_distance") == (2520, 129)
+    assert targeting.chase_button_center("none") == (2520, 129)
 
 
 def test_chase_button_center_without_a_region_raises() -> None:

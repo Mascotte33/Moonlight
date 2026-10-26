@@ -14,7 +14,6 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from moonlight.core.config import ConfigError
-from moonlight.core.state import WorldState
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import (
     config_names,
@@ -33,10 +32,10 @@ OPTIONS = [
     Option("Game window", "window_title", "dropdown"),
     Option("Cavebot walks with arrow keys", "walk_keys", "switch"),
 ]
-#: The only switch for each module (T2.F4.K2); the cavebot's is on its own tab.
+#: The only switch for each module (T2.F4.K2); cavebot and targeting have theirs on their tabs.
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
-    for name in ("healing", "targeting", "looting", "refill", "buffs", "alarms")
+    for name in ("healing", "looting", "refill", "buffs", "alarms")
 ]
 
 #: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
@@ -127,9 +126,6 @@ class SettingsTab(Tab):
                     reason = ctk.CTkLabel(row, text="", anchor="w", text_color=theme.BLOOD)
                     reason.pack(side="left", padx=theme.UNIT)
                     self._reasons[option.field] = reason
-
-    def on_poll(self, snap: WorldState) -> None:
-        self.show_paused(["targeting.enabled"], self.ctx.paused)
 
     def _refresh_windows(self) -> None:
         self.menu_window.configure(values=window_titles() or ["No windows found"])

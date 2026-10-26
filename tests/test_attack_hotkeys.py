@@ -71,3 +71,11 @@ def test_cooldown_is_shared_by_area_and_row_keys() -> None:
     assert attack.decide(state(), ROW, 11.9) is None  # the row key waits too
     assert attack.decide(state(), ROW, 12.0) == "F6"
     assert inp.sent_lines == ["K F5"]
+
+
+def test_a_turned_off_area_rule_is_skipped() -> None:
+    attack = hotkeys(
+        AreaRule("F7", minimum_adjacent_monsters=1, enabled=False),
+        AreaRule("F5", minimum_adjacent_monsters=1),
+    )
+    assert attack.decide(state(AROUND[:2]), ROW, 0.0) == "F5"

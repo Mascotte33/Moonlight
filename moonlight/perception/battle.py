@@ -314,7 +314,9 @@ class BattleReader:
             name_hash = name_crop_hash(name_crop)
             name = ""
             if self._seen_monsters is not None and name_hash:
-                name = self._seen_monsters.name_for(name_hash, name_crop)
+                name = self._seen_monsters.name_for(
+                    name_hash, name_crop, slot_rgb[: bar[0], :name_x1]
+                )
             entries.append(
                 BattleEntry(
                     name=name,

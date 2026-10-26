@@ -552,10 +552,10 @@ def test_ui_scale_reads_an_enlarged_battle_list() -> None:
 def test_names_come_from_the_seen_monsters_store() -> None:
     class Store:
         def __init__(self) -> None:
-            self.calls: list[tuple[str, tuple[int, ...]]] = []
+            self.calls: list[tuple[str, int, int]] = []
 
-        def name_for(self, name_hash: str, name_crop: np.ndarray) -> str:
-            self.calls.append((name_hash, name_crop.shape))
+        def name_for(self, name_hash: str, name_crop: np.ndarray, clue_crop: np.ndarray) -> str:
+            self.calls.append((name_hash, name_crop.shape[1], clue_crop.shape[1]))
             return "wolf"
 
     frame, region = make_frame([{"text": True}])
@@ -563,3 +563,5 @@ def test_names_come_from_the_seen_monsters_store() -> None:
     entries = BattleReader(seen_monsters=store).read_battle_list(frame, region)  # type: ignore[arg-type]
     assert [e.name for e in entries] == ["wolf"]
     assert [call[0] for call in store.calls] == [entries[0].name_hash] != [""]
+    # The clue holds the creature icon left of the name, so it is wider.
+    assert store.calls[0][2] > store.calls[0][1]

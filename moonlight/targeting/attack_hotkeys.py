@@ -59,7 +59,8 @@ class AttackHotkeys:
         adjacent_creatures = count_adjacent_creatures(state.creature_slots)
         for rule in self.config.area_rules:
             if (
-                adjacent_creatures >= rule.minimum_adjacent_monsters
+                rule.enabled
+                and adjacent_creatures >= rule.minimum_adjacent_monsters
                 and mana >= rule.minimum_mana_percent
             ):
                 return rule.hotkey
