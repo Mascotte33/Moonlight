@@ -57,7 +57,7 @@ from typing import Protocol
 import cv2
 import numpy as np
 
-from moonlight.bot.state import Monster
+from moonlight.core.state import Monster
 
 __all__ = [
     "Rect",
@@ -166,7 +166,7 @@ class NameResolver(Protocol):
 class BattleReader:
     """Read the battle list from captured frames using calibrated regions.
 
-    Construct from a :class:`moonlight.setup.calibrate.CalibrationProfile` (which
+    Construct from a :class:`moonlight.calibration.calibrate.CalibrationProfile` (which
     stores the ``battle_list`` region) and/or an explicit region tuple. The
     stored region is the default used when :meth:`read_battle_list` is
     called without an explicit region.

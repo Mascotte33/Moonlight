@@ -25,7 +25,7 @@ T08 golden frames).
 We do NOT hard-code absolute pixel coordinates: the caller passes a
 calibrated region ``Rect = (x, y, w, h)`` (from ``calibrate.py`` /
 ``profiles/<name>.json``). :class:`VitalsReader` can be built from a
-:class:`moonlight.setup.calibrate.CalibrationProfile` so the ``hp_bar`` /
+:class:`moonlight.calibration.calibrate.CalibrationProfile` so the ``hp_bar`` /
 ``mp_bar`` regions are picked up automatically, while still allowing each
 ``read_*`` call to override the region explicitly.
 
@@ -169,7 +169,7 @@ def hp_fill_mask(rgb: np.ndarray) -> np.ndarray:
 class VitalsReader:
     """Read HP% and MP% from captured frames using calibrated regions.
 
-    Construct from a :class:`moonlight.setup.calibrate.CalibrationProfile` (which
+    Construct from a :class:`moonlight.calibration.calibrate.CalibrationProfile` (which
     stores the ``hp_bar`` / ``mp_bar`` regions) and/or explicit region
     tuples. The stored regions are the defaults used when ``read_*`` is
     called without an explicit region.

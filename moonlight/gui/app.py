@@ -22,9 +22,14 @@ from pathlib import Path
 import customtkinter as ctk
 
 from moonlight import x11
-from moonlight.bot.state import WorldState
+from moonlight.calibration.tab import CalibrationTab
+from moonlight.cavebot.tab import CavebotTab
+from moonlight.core.state import WorldState
 from moonlight.gui import theme
+from moonlight.gui.dashboard_tab import DashboardTab
+from moonlight.gui.diagnostics_tab import DiagnosticsTab
 from moonlight.gui.loop_factory import build_gui_loop, build_position_reader, load_real_config
+from moonlight.gui.settings_tab import SettingsTab
 from moonlight.gui.state_bridge import (
     BotController,
     GuiContext,
@@ -32,17 +37,12 @@ from moonlight.gui.state_bridge import (
     LogFeed,
     topbar_text,
 )
+from moonlight.gui.status_tab import StatusTab
 from moonlight.gui.sysinfo import cpu_percent, cpu_times, memory_text
-from moonlight.gui.tabs.base import Tab, dot_color, health
-from moonlight.gui.tabs.calibration import CalibrationTab
-from moonlight.gui.tabs.cavebot import CavebotTab
-from moonlight.gui.tabs.dashboard import DashboardTab
-from moonlight.gui.tabs.diagnostics import DiagnosticsTab
-from moonlight.gui.tabs.hardware import HardwareTab
-from moonlight.gui.tabs.healing import HealingTab
-from moonlight.gui.tabs.settings import SettingsTab
-from moonlight.gui.tabs.status import StatusTab
-from moonlight.gui.tabs.targeting import TargetingTab
+from moonlight.gui.tab_base import Tab, dot_color, health
+from moonlight.hardware.tab import HardwareTab
+from moonlight.healing.tab import HealingTab
+from moonlight.targeting.tab import TargetingTab
 
 #: Poller period in ms (10 Hz — light enough for a low-spec laptop).
 POLL_MS = 100
@@ -325,7 +325,7 @@ class GuiApp:
         self.start_bot(resume=True)
 
     def start_bot(self, *, resume: bool = False) -> None:
-        """Start the real bot loop through :mod:`moonlight.bot.wiring` (F-13).
+        """Start the real bot loop through :mod:`moonlight.core.wiring` (F-13).
 
         Builds the loop via :func:`moonlight.gui.loop_factory.build_gui_loop`,
         which wires a real screen capture (frame provider + focus check) and
@@ -471,8 +471,8 @@ def main(argv: list[str] | None = None) -> int:
     file = logging.FileHandler("logs/bot.log", mode="w", encoding="utf-8")
     file.setFormatter(logging.Formatter("%(asctime)s %(name)s %(message)s"))
     logging.getLogger("moonlight").addHandler(file)
-    logging.getLogger("moonlight.bot.safety").setLevel(logging.DEBUG)
-    logging.getLogger("moonlight.decision.cavebot").setLevel(logging.DEBUG)
+    logging.getLogger("moonlight.core.safety").setLevel(logging.DEBUG)
+    logging.getLogger("moonlight.cavebot.cavebot").setLevel(logging.DEBUG)
     app = GuiApp(start_bot=not args.no_bot)
     app.root.mainloop()
     return 0

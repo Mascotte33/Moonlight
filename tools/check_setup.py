@@ -17,10 +17,10 @@ import importlib
 import sys
 from pathlib import Path
 
-from moonlight.setup.calibrate import CalibrationProfile
-from moonlight.setup.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
-from moonlight.setup.profile import ProfileManager
-from moonlight.bot.wiring import check_module_regions
+from moonlight.calibration.calibrate import CalibrationProfile
+from moonlight.core.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
+from moonlight.calibration.profile import ProfileManager
+from moonlight.core.wiring import check_module_regions
 
 #: Modules imported to prove the perception stack loads.
 _PERCEPTION_MODULES = (

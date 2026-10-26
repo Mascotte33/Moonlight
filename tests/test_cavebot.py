@@ -1,0 +1,798 @@
+"""Unit tests for moonlight.cavebot.cavebot (T22).
+
+Offline: a tiny simulated world (``Sim``) renders synthetic frames -- a
+radar with the player marker at its center (x/y come from an injected
+MapMatcher) and a floor indicator drawn from an injected TemplateSet.
+Clicks go to a recording ClickController; hotkeys go to FakeInput.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import cv2
+import numpy as np
+import pytest
+
+from moonlight.cavebot.cavebot import Cavebot, Route, RouteError, RouteFileLoader, Waypoint
+from moonlight.cavebot.pathing import CostMap, next_step
+from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
+from moonlight.core.state import Monster, Position, WorldState
+from moonlight.hardware.clicker import ClickController
+from moonlight.hardware.input import ClickSide, FakeInput
+
+MINIMAP = (10, 10, 120, 120)
+GAME = (200, 0, 480, 352)  # 32 px tiles; player tile center = (440, 176)
+
+
+class RecordingClicker(ClickController):
+    """Records requested clicks; every click completes at once."""
+
+    def __init__(self) -> None:
+        self.clicks: list[tuple[tuple[int, int], ClickSide]] = []
+        self.cancels = 0
+
+    @property
+    def busy(self) -> bool:
+        return False
+
+    def request(
+        self,
+        target: tuple[int, int],
+        *,
+        tolerance: int = 2,
+        max_iters: int = 5,
+        side: ClickSide = ClickSide.LEFT,
+    ) -> None:
+        self.clicks.append((target, side))
+
+    def step(self) -> bool | None:
+        return None
+
+    def cancel(self) -> None:
+        self.cancels += 1
+
+
+class Sim:
+    """Player position + clock + the Cavebot wired to synthetic readers."""
+
+    def __init__(self, waypoints: list[Waypoint], start: Position, **kw: Any) -> None:
+        self.now = 0.0
+        self.fake = FakeInput()
+        self.clicker = RecordingClicker()
+        self.state = WorldState(client_focused=True, screen_ok=True)
+        self.reached: list[int] = []
+        self._pos: Position | None = start
+        self.state.position = start
+
+        self.route = Route("test", "", waypoints, loop=False)
+        self.bot = Cavebot(
+            self.route,
+            MINIMAP,
+            self.clicker,
+            self.state,
+            game_region=GAME,
+            input_backend=self.fake,
+            clock=lambda: self.now,
+            on_waypoint_reached=self.reached.append,
+            **kw,
+        )
+
+    @property
+    def pos(self) -> Position | None:
+        return self._pos
+
+    @pos.setter
+    def pos(self, value: Position | None) -> None:
+        self._pos = value
+        with self.state.lock():
+            self.state.position = (
+                value if value is not None else Position(0, 0, 0)
+            )
+
+    def step(self, dt: float = 0.05) -> None:
+        self.now += dt
+        self.bot.step()
+
+
+def walk(x: int, y: int, z: int = 7) -> Waypoint:
+    return Waypoint(x, y, z, "walk")
+
+
+# -- route loading -----------------------------------------------------------
+
+
+VALID = {
+    "name": "r",
+    "description": "d",
+    "waypoints": [
+        {"action": "label", "label": "start"},
+        {"x": 100, "y": 200, "z": 7, "action": "walk"},
+        {"x": 101, "y": 200, "z": 7, "action": "rope"},
+        {"action": "goto", "label": "start"},
+    ],
+}
+
+
+def test_load_valid_route(tmp_path: Path) -> None:
+    path = tmp_path / "r.json"
+    path.write_text(json.dumps(VALID), encoding="utf-8")
+    route = RouteFileLoader.load(path)
+    assert route.name == "r" and route.description == "d" and route.current == 0
+    assert route.waypoints[1] == Waypoint(100, 200, 7, "walk")
+    assert route.waypoints[2].action == "rope"
+    assert route.waypoints[3] == Waypoint(0, 0, 0, "goto", "start")
+
+
+README = Path(__file__).parents[1] / "data" / "waypoints" / "README.md"
+
+
+@pytest.mark.skipif(not README.exists(), reason="READMEs are owner-local")
+def test_readme_example_is_valid() -> None:
+    readme = README
+    example = readme.read_text(encoding="utf-8").split("```json")[1].split("```")[0]
+    assert RouteFileLoader.parse(json.loads(example)).name == "rotworm_loop"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        [],
+        {"waypoints": [{"x": 1, "y": 1, "z": 7}]},
+        {"name": "r", "waypoints": []},
+        {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7, "action": "fly"}]},
+        {"name": "r", "waypoints": [{"x": 1, "y": 1}]},
+        {"name": "r", "waypoints": [{"x": 1.5, "y": 1, "z": 7}]},
+        {"name": "r", "waypoints": [{"x": True, "y": 1, "z": 7}]},
+        {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 16}]},
+        {"name": "r", "waypoints": [{"action": "label", "label": "a"}]},
+        {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7}, {"action": "goto", "label": "x"}]},
+        {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7}, {"action": "label"}]},
+        {
+            "name": "r",
+            "waypoints": [
+                {"x": 1, "y": 1, "z": 7},
+                {"action": "label", "label": "a"},
+                {"action": "label", "label": "a"},
+            ],
+        },
+    ],
+)
+def test_parse_invalid_route(raw: object) -> None:
+    with pytest.raises(RouteError):
+        RouteFileLoader.parse(raw)
+
+
+def test_load_missing_and_bad_json(tmp_path: Path) -> None:
+    with pytest.raises(RouteError):
+        RouteFileLoader.load(tmp_path / "nope.json")
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json", encoding="utf-8")
+    with pytest.raises(RouteError):
+        RouteFileLoader.load(bad)
+
+
+def test_rope_route_without_input_backend_rejected() -> None:
+    with pytest.raises(ValueError):
+        Cavebot(
+            Route("r", "", [Waypoint(1, 1, 7, "rope")]),
+            MINIMAP,
+            RecordingClicker(),
+            WorldState(),
+            game_region=GAME,
+        )
+
+
+# -- navigation ----------------------------------------------------------------
+
+
+def test_walk_clicks_minimap_toward_waypoint_then_completes() -> None:
+    sim = Sim([walk(105, 98)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    center = (MINIMAP[0] + MINIMAP[2] // 2, MINIMAP[1] + MINIMAP[3] // 2)
+    assert sim.clicker.clicks == [((center[0] + 5, center[1] - 2), ClickSide.LEFT)]
+
+    sim.pos = Position(104, 99, 7)  # within 1 tile counts as reached
+    sim.step()
+    assert sim.reached == [0]
+    assert not sim.bot.is_active() and sim.bot.alarm is None
+
+
+def test_looping_route_starts_over_after_the_last_waypoint() -> None:
+    sim = Sim([walk(110, 100), walk(110, 110)], Position(110, 100, 7))
+    sim.route.loop = True
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(110, 110, 7)
+    sim.step()
+    assert sim.reached == [0, 1] and sim.route.current == 0 and sim.bot.is_active()
+
+
+def test_far_waypoint_click_is_clamped_to_radar() -> None:
+    sim = Sim([walk(1000, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    (x, _y), _side = sim.clicker.clicks[0]
+    assert MINIMAP[0] < x < MINIMAP[0] + MINIMAP[2]
+
+
+def test_no_reclick_while_moving_reclick_when_idle() -> None:
+    sim = Sim([walk(120, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    for i in range(1, 30):  # walking: position changes every tick
+        sim.pos = Position(100 + i // 3, 100, 7)
+        sim.step()
+    assert len(sim.clicker.clicks) == 1
+    for _ in range(25):  # stand still 1.25 s > reclick_interval
+        sim.step()
+    assert len(sim.clicker.clicks) == 2
+
+
+def test_multi_waypoint_route_runs_in_order() -> None:
+    sim = Sim([walk(110, 100), walk(110, 110)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(110, 100, 7)
+    sim.step()
+    assert sim.route.current == 1 and sim.bot.is_active()
+    sim.step()
+    sim.pos = Position(110, 110, 7)
+    sim.step()
+    assert sim.reached == [0, 1] and not sim.bot.is_active()
+
+
+def test_label_goto_loops_route() -> None:
+    wps = [
+        Waypoint(0, 0, 0, "label", "start"),
+        walk(110, 100),
+        Waypoint(0, 0, 0, "goto", "start"),
+    ]
+    sim = Sim(wps, Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(110, 100, 7)
+    sim.step()
+    sim.pos = Position(100, 100, 7)  # moved off: route must still be on wp 1
+    sim.step()
+    assert sim.bot.is_active() and sim.route.current == 1 and sim.reached == [1]
+
+
+# -- tile actions ------------------------------------------------------------
+
+
+def test_rope_presses_hotkey_clicks_tile_and_waits_for_floor_up() -> None:
+    sim = Sim([Waypoint(100, 100, 7, "rope"), walk(100, 100, 6)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    assert sim.fake.sent_lines == ["K F9"]
+    assert sim.clicker.clicks == [((440, 176), ClickSide.LEFT)]
+    sim.step()  # still on z 7: no spam before reclick_interval
+    assert len(sim.clicker.clicks) == 1
+    sim.pos = Position(100, 100, 6)
+    sim.step()
+    assert sim.reached[0] == 0
+
+
+def test_ladder_right_clicks_adjacent_tile() -> None:
+    sim = Sim([Waypoint(101, 99, 7, "ladder")], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    assert sim.clicker.clicks == [((440 + 32, 176 - 32), ClickSide.RIGHT)]
+    assert sim.fake.sent_lines == []
+    sim.pos = Position(101, 99, 6)
+    sim.step()
+    assert sim.reached == [0] and not sim.bot.is_active()
+
+
+def test_shovel_digs_then_steps_in_and_expects_floor_down() -> None:
+    sim = Sim([Waypoint(100, 101, 7, "shovel")], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    assert sim.fake.sent_lines == ["K F10"]
+    assert sim.clicker.clicks == [((440, 208), ClickSide.LEFT)] * 2
+    sim.pos = Position(100, 101, 8)
+    sim.step()
+    assert sim.reached == [0]
+
+
+def test_action_retried_when_floor_does_not_change() -> None:
+    sim = Sim([Waypoint(100, 100, 7, "ladder")], Position(100, 100, 7))
+    sim.bot.start()
+    for _ in range(25):
+        sim.step()
+    assert len(sim.clicker.clicks) == 2
+
+
+# -- stuck / floor change / stop -----------------------------------------------
+
+
+def test_stuck_same_position_raises_alarm_and_stops() -> None:
+    sim = Sim([walk(120, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    for _ in range(1190):  # 59.5 s standing still
+        sim.step()
+    assert sim.bot.is_active()
+    for _ in range(20):
+        sim.step()
+    assert not sim.bot.is_active() and sim.bot.alarm == "stuck"
+    clicks = len(sim.clicker.clicks)
+    sim.step()
+    assert len(sim.clicker.clicks) == clicks
+
+
+def run_until(sim: Sim, seconds: float) -> None:
+    while sim.now < seconds - 1e-9:
+        sim.step()
+
+
+def test_blocked_sidesteps_left_then_skips_walk_waypoint() -> None:
+    sim = Sim([walk(120, 100), walk(140, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    run_until(sim, 3.2)
+    assert sim.clicker.clicks[-1] == ((70, 69), ClickSide.LEFT)  # north of an east walk
+    sim.pos = Position(100, 99, 7)
+    sim.step()
+    assert sim.route.current == 1
+
+
+def test_blocked_tries_right_side_second_then_still_goes_stuck() -> None:
+    sim = Sim([walk(120, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    run_until(sim, 6.2)
+    targets = [t for t, _ in sim.clicker.clicks]
+    assert (70, 69) in targets and targets[-1] == (70, 71)
+    run_until(sim, 61.0)
+    assert sim.bot.alarm == "stuck"
+    targets = [t for t, _ in sim.clicker.clicks]
+    assert targets.count((70, 69)) == 1 and targets.count((70, 71)) == 1
+
+
+def test_blocked_non_walk_waypoint_is_retried_not_skipped() -> None:
+    sim = Sim([Waypoint(120, 100, 7, "node"), walk(140, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    run_until(sim, 3.2)
+    sim.pos = Position(100, 99, 7)
+    sim.step()
+    assert sim.route.current == 0
+
+
+def test_unreadable_position_sends_nothing_and_still_times_out() -> None:
+    sim = Sim([walk(120, 100)], Position(100, 100, 7))
+    sim.pos = None
+    sim.bot.start()
+    for _ in range(1220):
+        sim.step()
+    assert sim.clicker.clicks == [] and sim.bot.alarm == "stuck"
+
+
+def test_unexpected_floor_change_resyncs_to_waypoint_on_new_floor() -> None:
+    sim = Sim([walk(110, 100), walk(120, 100), walk(130, 100, 8)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(100, 100, 8)  # fell through a hole
+    sim.step()
+    assert sim.route.current == 2 and sim.bot.is_active()
+    sim.step()
+    assert sim.clicker.clicks[-1][0][0] > MINIMAP[0] + MINIMAP[2] // 2  # walking east
+
+
+def test_floor_change_with_no_matching_waypoint_alarms_lost() -> None:
+    sim = Sim([walk(110, 100), walk(120, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(100, 100, 9)
+    sim.step()
+    assert not sim.bot.is_active() and sim.bot.alarm == "lost"
+
+
+def test_go_to_walks_to_the_picked_waypoint_next() -> None:
+    sim = Sim([walk(110, 100), walk(120, 100), walk(130, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    sim.bot.go_to(2)
+    sim.pos = Position(130, 100, 7)
+    sim.step()
+    assert sim.reached == [2] and not sim.bot.is_active()
+
+
+def test_stop_mid_route_and_restart() -> None:
+    sim = Sim([walk(110, 100), walk(120, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(110, 100, 7)
+    sim.step()
+    sim.bot.stop()
+    clicks = len(sim.clicker.clicks)
+    sim.step()
+    assert not sim.bot.is_active() and len(sim.clicker.clicks) == clicks
+    sim.bot.start()
+    assert sim.route.current == 0 and sim.bot.is_active()
+
+
+def test_screen_not_ok_sends_nothing() -> None:
+    sim = Sim([walk(110, 100)], Position(100, 100, 7))
+    sim.state.screen_ok = False
+    sim.bot.start()
+    sim.step()
+    assert sim.clicker.clicks == []
+
+
+def test_runs_from_game_loop_move_step() -> None:
+    sim = Sim([walk(110, 100)], Position(100, 100, 7))
+    loop = GameLoop(
+        sim.state,
+        sim.fake,
+        LoopConfig(enable_f12_monitor=False),
+        move_provider=lambda _s: sim.bot.is_active(),
+        move_action=sim.bot.step,
+    )
+    sim.bot.start()
+    loop.tick()
+    assert len(sim.clicker.clicks) == 1
+    sim.pos = Position(110, 100, 7)
+    loop.tick()
+    assert not sim.bot.is_active()
+
+
+# -- F-06: stuck-timer reset on MOVE re-entry ---------------------------------
+
+
+def test_resume_resets_stuck_timer_on_move_reentry() -> None:
+    """F-06: re-entering MOVE calls resume(), which resets the stuck timer.
+
+    Time spent in a fight/IDLE (the loop is NOT in MOVE, so the cavebot's
+    step() is not called and only the clock advances) must not count toward
+    "stuck". When MOVE is (re)entered the loop calls Cavebot.resume()
+    (loop.py _enter_state), restarting _last_move so the first MOVE step
+    after re-entry does not immediately halt as stuck.
+    """
+    sim = Sim([walk(120, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()  # clock=0.05; _last_move set while in MOVE
+
+    # Simulate a >stuck_timeout fight/IDLE: the loop leaves MOVE, so the
+    # cavebot's step() is not called and only the clock advances.
+    sim.now += 61.0  # 61 s > stuck_timeout (60 s)
+
+    # The loop calls resume() when the state transitions back to MOVE.
+    sim.bot.resume()
+
+    # The first MOVE step after re-entry must NOT immediately halt as stuck.
+    sim.step()
+    assert sim.bot.alarm is None
+    assert sim.bot.is_active()
+
+
+def test_stuck_still_halts_without_resume_after_long_idle() -> None:
+    """Contrast for F-06: without resume() a long idle WOULD halt as stuck.
+
+    Proves the resume() call on MOVE re-entry (not the passage of time alone)
+    is what prevents the false stuck halt -- i.e. the fix is load-bearing.
+    """
+    sim = Sim([walk(120, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()  # clock=0.05; _last_move set
+
+    # Long fight/IDLE with NO resume() (the bug: timer not reset).
+    sim.now += 61.0
+    sim.step()
+    assert sim.bot.alarm == "stuck"
+    assert not sim.bot.is_active()
+
+
+def test_loop_calls_cavebot_resume_on_move_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """F-06 wiring: entering MOVE calls cavebot.resume() (loop._enter_state).
+
+    Closes the "verify it is actually called" requirement with a test: a MOVE
+    transition dispatches through _enter_state, which calls cavebot.resume()
+    so a long fight/loot never trips the stuck halt on the first MOVE.
+    """
+    sim = Sim([walk(110, 100)], Position(100, 100, 7))
+    loop = GameLoop(
+        sim.state,
+        sim.fake,
+        LoopConfig(enable_f12_monitor=False),
+        modules=DecisionModules(cavebot=sim.bot),
+    )
+    resumed: list[float] = []
+    original_resume = sim.bot.resume
+
+    def _spy_resume() -> None:
+        original_resume()
+        resumed.append(sim.now)
+
+    monkeypatch.setattr(sim.bot, "resume", _spy_resume)
+    sim.bot.start()
+    loop.tick()
+    assert loop.current_state is BotState.MOVE
+    assert resumed, "cavebot.resume() not called on MOVE entry"
+
+
+def test_busy_clicker_is_stepped_not_rerequested_and_cancelled_on_advance() -> None:
+    """P5: a pending click is driven one step per tick, never re-queued."""
+
+    class SlowClicker(RecordingClicker):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pending = 0
+            self.steps = 0
+
+        @property
+        def busy(self) -> bool:
+            return self.pending > 0
+
+        def request(self, target: tuple[int, int], **kw: object) -> None:
+            super().request(target)
+            self.pending = 5
+
+        def step(self) -> bool | None:
+            self.steps += 1
+            self.pending -= 1
+            return None
+
+        def cancel(self) -> None:
+            super().cancel()
+            self.pending = 0
+
+    sim = Sim([walk(105, 100)], Position(100, 100, 7))
+    slow = SlowClicker()
+    sim.clicker = slow
+    sim.bot._clicker = slow
+    sim.bot.start()
+    for _ in range(30):  # 1.5 s idle: past reclick_interval while busy
+        sim.step()
+        if len(slow.clicks) > 1:
+            break
+    assert slow.steps >= 5  # first step on request, then one per tick
+    sim.pos = Position(105, 100, 7)
+    cancels = slow.cancels
+    sim.step()
+    assert sim.reached == [0] and slow.cancels > cancels
+
+
+# -- T3.F10.K1: node, stand and lure ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("action", "near", "reached"),
+    [("node", 3, True), ("node", 4, False), ("stand", 1, False), ("stand", 0, True)],
+)
+def test_arrival_distance_per_action(action: str, near: int, reached: bool) -> None:
+    sim = Sim([Waypoint(110, 100, 7, action)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.pos = Position(110 - near, 100, 7)
+    sim.step()
+    assert (sim.reached == [0]) is reached
+
+
+def test_lure_waypoint_holds_attacks_until_reached() -> None:
+    sim = Sim([Waypoint(110, 100, 7, "lure"), walk(120, 100)], Position(100, 100, 7))
+    sim.state.selected_target = Monster(name="Wolf")
+    loop = GameLoop(
+        sim.state,
+        sim.fake,
+        LoopConfig(enable_f12_monitor=False),
+        modules=DecisionModules(cavebot=sim.bot),
+    )
+    sim.bot.start()
+    assert sim.bot.luring()
+    loop.tick()
+    assert loop.current_state is BotState.MOVE
+    sim.pos = Position(110, 100, 7)
+    loop.tick()  # lure reached; the next waypoint is a plain walk
+    assert not sim.bot.luring()
+    loop.tick()
+    assert loop.get_stats()["state"] == BotState.ATTACK.value
+
+
+# -- T8.F5.K1: stairs ---------------------------------------------------------
+
+
+def test_stairs_walks_onto_the_tile_and_is_done_on_a_floor_change() -> None:
+    sim = Sim([Waypoint(105, 100, 7, "stairs"), walk(110, 100, 6)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.pos = Position(104, 100, 7)
+    sim.step()
+    assert sim.reached == []  # next to the stairs is not on them
+    sim.pos = Position(105, 100, 6)  # stepped on, went up
+    sim.step()
+    assert sim.reached == [0] and sim.route.current == 1 and sim.bot.is_active()
+
+
+# -- arrow-key walking ------------------------------------------------------
+
+
+def test_walk_keys_needs_an_input_backend() -> None:
+    route = Route("test", "", [walk(100, 103)], loop=False)
+    state = WorldState(client_focused=True, screen_ok=True)
+    with pytest.raises(ValueError, match="walk_keys"):
+        Cavebot(route, MINIMAP, RecordingClicker(), state, game_region=GAME, walk_keys=True)
+
+
+def test_walk_keys_presses_one_arrow_per_step() -> None:
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    assert sim.fake.sent_lines == ["K down"] and sim.clicker.clicks == []
+    sim.step()  # still on the old tile: no second press yet
+    assert sim.fake.sent_lines == ["K down"]
+    sim.pos = Position(100, 101, 7)
+    sim.step()  # moved: next step at once
+    assert sim.fake.sent_lines == ["K down"] * 2
+    for _ in range(15):  # 0.7 s without moving: blocked, press around it
+        sim.step()
+    assert sim.fake.sent_lines[2] in ("K left", "K right")
+
+
+def test_walk_keys_follow_the_cost_map_around_a_wall(tmp_path: Path) -> None:
+    tile = np.full((256, 256, 3), 100, np.uint8)
+    tile[0:10, 4] = (0, 255, 255)  # wall at x = 4, y 0..9; walk around below it
+    cv2.imwrite(str(tmp_path / "0_0_7.png"), tile)
+    costs = CostMap(tmp_path)
+    assert next_step((3, 5, 7), (6, 5, 7), costs.walkable) == ((0, 1), 13)
+    assert next_step((3, 5, 7), (3, 2, 7), costs.walkable) == ((0, -1), 3)
+    sim = Sim([walk(6, 5)], Position(3, 5, 7), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    sim.step()
+    assert sim.fake.sent_lines == ["K down"]
+
+
+def test_cost_map_no_path_when_walled_in(tmp_path: Path) -> None:
+    tile = np.full((256, 256, 3), (0, 255, 255), np.uint8)
+    tile[50, 50] = 100
+    cv2.imwrite(str(tmp_path / "0_0_7.png"), tile)
+    assert next_step((50, 50, 7), (60, 50, 7), CostMap(tmp_path).walkable, margin=5) is None
+    assert CostMap(tmp_path / "missing").empty
+
+
+def test_walk_keys_remember_every_blocked_tile() -> None:
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    assert sim.fake.sent_lines == ["K down"]
+    for _ in range(15):  # an NPC stands below: try around it
+        sim.step()
+    assert sim.fake.sent_lines[-1] == "K left"
+    sim.pos = Position(99, 100, 7)
+    sim.step()
+    assert sim.fake.sent_lines[-1] == "K down"
+    for _ in range(15):  # that way is blocked too: not down again, not back right
+        sim.step()
+    assert sim.fake.sent_lines[-1] == "K left"
+    sim.pos = Position(98, 100, 7)
+    sim.step()
+    assert sim.fake.sent_lines[-1] == "K down"
+
+
+def test_walk_keys_forget_a_blocked_tile_after_a_while() -> None:
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    for _ in range(15):
+        sim.step()
+    assert sim.fake.sent_lines[-1] == "K left"
+    sim.pos = Position(99, 100, 7)
+    sim.step(11.0)  # the NPC left meanwhile
+    sim.pos = Position(100, 100, 7)
+    sim.step()
+    assert sim.fake.sent_lines[-1] == "K down"  # straight through again
+
+
+def _creature_sim(monkeypatch: pytest.MonkeyPatch, slots: list[tuple[int, int]]) -> Sim:
+    """Keys mode, waypoint below, the creature scan sees *slots*."""
+    monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: slots)
+    sim = Sim(
+        [walk(100, 104)],
+        Position(100, 100, 7),
+        walk_keys=True,
+        frames=lambda: np.zeros((1, 1, 3), np.uint8),
+        attack_combo="r",
+    )
+    sim.bot.start()
+    sim.step()
+    assert sim.fake.sent_lines == ["K down"]  # no scan before the first block
+    for _ in range(15):  # the step down did nothing: blocked
+        sim.step()
+    return sim
+
+
+def test_walk_keys_avoid_creatures_after_a_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    sim = _creature_sim(monkeypatch, [(6, 5)])  # a creature left of the player
+    assert sim.fake.sent_lines[-1] == "K right"
+
+
+def test_walk_keys_attack_when_creatures_close_every_way(monkeypatch: pytest.MonkeyPatch) -> None:
+    sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4), (7, 6)])
+    assert sim.fake.sent_lines[-1] == "K down"  # no monster in the battle list: wait
+    sim.state.monsters = [Monster("Rat", 100.0)]
+    for _ in range(15):
+        sim.step()
+    assert sim.fake.sent_lines[-1] == "K r"
+    sim.state.selected_target = sim.state.monsters[0]
+    n = len(sim.fake.sent_lines)
+    for _ in range(15):  # already fighting: no second press
+        sim.step()
+    assert len(sim.fake.sent_lines) == n
+    for hp in range(90, 10, -10):  # a long fight outlasts the 5 s scan window
+        sim.state.selected_target = Monster("Rat", float(hp))
+        sim.step(1.0)
+    assert sim.bot.alarm is None
+    sim.state.selected_target = None  # that one died, the way is still closed
+    for _ in range(15):
+        sim.step()
+    assert sim.fake.sent_lines[n:] == ["K r"]
+
+
+def test_walk_keys_fight_through_instead_of_a_long_detour(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    tile = np.full((256, 256, 3), (0, 255, 255), np.uint8)
+    tile[100:105, 100] = 100  # a corridor down to the waypoint
+    tile[100, 100:121] = tile[100:105, 120] = tile[104, 100:121] = 100  # a long loop around
+    cv2.imwrite(str(tmp_path / "0_0_7.png"), tile)
+    monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: [(7, 6)])
+    sim = Sim(
+        [walk(100, 104)],
+        Position(100, 100, 7),
+        walk_keys=True,
+        frames=lambda: np.zeros((1, 1, 3), np.uint8),
+        attack_combo="r",
+        cost_map=CostMap(tmp_path),
+    )
+    sim.state.monsters = [Monster("Rat", 100.0)]
+    sim.bot.start()
+    for _ in range(16):  # the step down is blocked by the rat below
+        sim.step()
+    assert sim.fake.sent_lines == ["K down", "K r"]
+
+
+def test_walk_keys_next_target_when_the_selected_one_takes_no_damage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4), (7, 6)])
+    sim.state.monsters = [Monster("Rat", 100.0)]
+    sim.state.selected_target = sim.state.monsters[0]  # out of reach: HP never drops
+    for _ in range(4):
+        sim.step(1.0)
+    assert sim.fake.sent_lines[-1] == "K down"
+    for _ in range(3):
+        sim.step(1.0)
+    assert sim.fake.sent_lines[-1] == "K r"
+
+
+def test_walk_keys_attack_presses_wait_for_a_selection(monkeypatch: pytest.MonkeyPatch) -> None:
+    sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4), (7, 6)])
+    sim.state.monsters = [Monster("Rat", 100.0)]
+    for _ in range(25):  # no selection shows up: no key spam
+        sim.step(0.1)
+    assert sim.fake.sent_lines.count("K r") == 1
+    for _ in range(2):  # 3 s after the press: still blocked, press again
+        sim.step(1.0)
+    assert sim.fake.sent_lines.count("K r") == 2
+
+
+def test_walk_keys_scan_only_inside_the_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4)])
+    sim.state.monsters = [Monster("Rat", 100.0)]
+    sim.step(5.0)  # window over: creatures forgotten, only the bumped tile stays
+    assert sim.fake.sent_lines[-1] == "K left"
+
+
+def test_walk_keys_stand_still_while_a_target_is_selected(monkeypatch: pytest.MonkeyPatch) -> None:
+    sim = _creature_sim(monkeypatch, [(6, 5)])  # the way around on the right is open
+    sim.state.monsters = [Monster("Rat", 100.0)]
+    sim.state.selected_target = sim.state.monsters[0]
+    n = len(sim.fake.sent_lines)
+    for hp in range(90, 0, -10):  # 9 s fight: no arrow, no stuck alarm
+        sim.state.selected_target = Monster("Rat", float(hp))
+        sim.step(1.0)
+    assert sim.fake.sent_lines[n:] == []
+    sim.state.selected_target = None  # it died: walk on
+    sim.step(1.0)
+    assert sim.fake.sent_lines[n:] == ["K down"]

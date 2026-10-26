@@ -47,28 +47,36 @@ flowchart LR
 
 ```
 moonlight/
-├── gui/          the desktop window and its 10 tabs
-├── bot/          the engine: loop, safety, wiring, WorldState, user scripts
+├── core/         the engine: loop, safety, wiring, WorldState, config
+├── healing/      heal and cure logic + its tab
+├── targeting/    target picking, attack spells + its tab
+├── cavebot/      walking, pathing, route recorder + its tab
+├── looting/      looting logic
+├── refill/       depot and shop trips
+├── scripts/      user scripts
+├── extras/       buffs
+├── alarms/       danger alarms
+├── calibration/  screen-region finder, profiles + its tab
+├── hardware/     Arduino input backends, closed-loop clicking + its tab
 ├── perception/   reading the game: screen capture + HP/MP, battle list, minimap, …
-├── decision/     choosing actions: healing, targeting, buffs, alarms, cavebot, …
-├── hardware/     talking to the Arduino: input backends, closed-loop clicking
-├── setup/        config, calibration profiles, the calibration tool
-└── profiles/     saved calibration profiles (<name>.json)
+├── gui/          the window shell and the dashboard, diagnostics, settings, status tabs
+├── profiles/     saved calibration profiles (<name>.json)
+└── x11.py        Linux desktop calls
 ```
+
+A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 
 | Path | Contents |
 |---|---|
-| `moonlight/gui/` | 10-tab desktop GUI (customtkinter) |
-| `moonlight/bot/loop.py` | 20 Hz priority state machine |
-| `moonlight/bot/safety.py` | Wire-level rate limit, F12 kill switch, operator alert |
-| `moonlight/bot/wiring.py` | Builds the bot loop from config + profile (`build_loop`) |
-| `moonlight/bot/state.py` | `WorldState` — the snapshot shared between perception and decision |
+| `moonlight/core/loop.py` | 20 Hz priority state machine |
+| `moonlight/core/safety.py` | Wire-level rate limit, F12 kill switch, operator alert |
+| `moonlight/core/wiring.py` | Builds the bot loop from config + profile (`build_loop`) |
+| `moonlight/core/state.py` | `WorldState`, the snapshot shared between perception and decision |
+| `moonlight/core/config.py` | Bot config (`BotConfig`), kept apart from the logic |
 | `moonlight/perception/` | `capture.py` (mss / dxcam, DPI-aware, focus) and the readers: HP/MP, battle list, minimap, floor, monster sprites, cursor, loot window, server-log OCR |
-| `moonlight/decision/` | Healing, targeting, buffs, alarms, cavebot, looting, refill |
-| `moonlight/hardware/` | Input backends (`ArduinoInput`, `FakeInput`) and closed-loop clicking |
-| `moonlight/setup/` | Bot config, profile manager, screen-region calibration tool |
+| `moonlight/gui/` | Desktop GUI shell (customtkinter) |
 | `firmware/` | Arduino Leonardo HID firmware and [wire protocol](firmware/README.md) |
-| `tests/` | Unit, golden, replay, safety, perf and hardware-in-the-loop suites ([details](tests/README.md)) |
+| `tests/` | Unit tests at the top level; golden, replay, safety, perf and hardware-in-the-loop suites ([details](tests/README.md)) |
 | `tools/` | Benchmarks, Arduino verification, labelling and calibration helpers ([details](tools/README.md)) |
 | `docs/` | Client UI layout, hardware budget, [PR docs](docs/prs/) and [task files](docs/tasks/) |
 

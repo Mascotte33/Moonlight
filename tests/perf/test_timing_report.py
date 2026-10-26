@@ -20,17 +20,16 @@ import cv2
 import numpy as np
 import pytest
 
-from moonlight.bot.loop import DecisionModules, GameLoop, LoopConfig
-from moonlight.bot.state import Capacity, Monster, Position, WorldState
-from moonlight.bot.wiring import make_perceive
-from moonlight.decision.alarms import AlarmDecision
-from moonlight.decision.buffs import BuffManager
-from moonlight.decision.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
-from moonlight.decision.healing import HealingDecision
-from moonlight.decision.looting import Looting
-from moonlight.decision.refill import Refill, RefillConfig
-from moonlight.decision.targeting import TargetingDecision
+from moonlight.alarms.alarms import AlarmDecision
+from moonlight.calibration.calibrate import CalibrationProfile
+from moonlight.cavebot.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
+from moonlight.core.loop import DecisionModules, GameLoop, LoopConfig
+from moonlight.core.state import Capacity, Monster, Position, WorldState
+from moonlight.core.wiring import make_perceive
+from moonlight.extras.buffs import BuffManager
 from moonlight.hardware.input import FakeInput
+from moonlight.healing.healing import HealingDecision
+from moonlight.looting.looting import Looting
 from moonlight.perception import (
     BattleReader,
     CursorReader,
@@ -42,7 +41,8 @@ from moonlight.perception import (
     VitalsReader,
 )
 from moonlight.perception.loot import TITLE_TEMPLATE, LootReader, LootWindow
-from moonlight.setup.calibrate import CalibrationProfile
+from moonlight.refill.refill import Refill, RefillConfig
+from moonlight.targeting.targeting import TargetingDecision
 
 pytestmark = pytest.mark.slow
 
@@ -260,10 +260,10 @@ def test_production_tick_within_budget(
     paths = _paths()
     if not paths or not PROFILE.is_file():
         pytest.skip("no golden frames or calibration profile")
-    from moonlight.bot.wiring import TickGrabber, build_loop, capture_regions
+    from moonlight.calibration.calibrate import Region
+    from moonlight.core.config import BotConfig
+    from moonlight.core.wiring import TickGrabber, build_loop, capture_regions
     from moonlight.perception.capture import ScreenCapture
-    from moonlight.setup.calibrate import Region
-    from moonlight.setup.config import BotConfig
 
     bgr = cv2.imread(str(paths[0]))
     assert bgr is not None, paths[0]
@@ -282,7 +282,7 @@ def test_production_tick_within_budget(
         def match(self, *_: object) -> tuple[int, int]:
             return (1000, 1000)
 
-    monkeypatch.setattr("moonlight.bot.wiring._world_map", lambda *_: _Here())
+    monkeypatch.setattr("moonlight.core.wiring._world_map", lambda *_: _Here())
     profile = CalibrationProfile.load(PROFILE)
     profile.regions.setdefault("game_grid", Region(*GAME_GRID))
     # Worst case first read: search the whole window (walk clicks hit the minimap).
