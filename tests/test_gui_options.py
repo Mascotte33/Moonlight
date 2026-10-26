@@ -8,6 +8,7 @@ import pytest
 
 from moonlight.core.config import BotConfig, ConfigError
 from moonlight.gui.tab_base import Option, combo_from_key, read_option, write_option
+from moonlight.looting.looting import LootingConfig
 
 HP = Option("Low HP %", "alarms.low_hp_threshold", "slider", min=0, max=100)
 
@@ -109,8 +110,8 @@ def test_cavebot_switch_without_route_refused() -> None:
 
 def test_off_module_without_kept_values_shows_defaults() -> None:
     cfg = BotConfig.default()
-    assert cfg.attack_spells is None and "attack_spells" not in cfg.off
-    assert read_option(cfg, "attack_spells.aoe_min_monsters") == 3
+    assert cfg.looting is None and "looting" not in cfg.off
+    assert read_option(cfg, "looting.max_items_per_loot") == LootingConfig().max_items_per_loot
     assert read_option(cfg, "cavebot.rope_hotkey") is None
 
 

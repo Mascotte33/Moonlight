@@ -36,9 +36,7 @@ OPTIONS = [
 #: The only switch for each module (T2.F4.K2); the cavebot's is on its own tab.
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
-    for name in (
-        "healing", "targeting", "attack_spells", "looting", "refill", "buffs", "alarms"
-    )
+    for name in ("healing", "targeting", "looting", "refill", "buffs", "alarms")
 ]
 
 #: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
@@ -48,7 +46,6 @@ REASONS = [
     ("capacity perception", "Refill needs a capacity reader, which the bot doesn't have yet."),
     ("buff-icon", "Buffs needs a buff-icon reader, which the bot doesn't have yet."),
     ("refill needs", "Refill needs Cavebot and Looting on."),
-    ("no hotkey", "Set a hotkey for each spell first ({spells})."),
 ]
 
 
@@ -56,7 +53,7 @@ def plain_reason(message: str) -> str:
     """The plain-words reason for a refused switch, or *message* itself."""
     for key, text in REASONS:
         if key in message:
-            return text.format(spells=message.partition(": ")[2].strip("[]").replace("'", ""))
+            return text
     return message
 
 

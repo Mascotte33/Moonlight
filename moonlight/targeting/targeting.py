@@ -31,6 +31,7 @@ from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
     "MOVEMENTS",
+    "AreaRule",
     "MonsterRow",
     "TargetingAction",
     "TargetingConfig",
@@ -66,18 +67,41 @@ class MonsterRow:
             raise ValueError(f"{where}: movement must be one of {MOVEMENTS}, got {self.movement!r}")
         if self.hotkey:
             check_hotkey(self.hotkey, where)
+        if not 0.0 <= self.minimum_mana_percent <= 100.0:
+            raise ValueError(f"{where}: minimum_mana_percent must be within 0..100")
+
+
+# doc: docs/prs/targeting.md#area-rules
+@dataclass(frozen=True)
+class AreaRule:
+    """Press ``hotkey`` when this many creature slots touch the player."""
+
+    hotkey: str
+    minimum_adjacent_monsters: int = 1
+    minimum_mana_percent: float = 0.0
+
+    def validate(self) -> None:
+        """Raise ValueError on a bad hotkey, monster count or mana minimum."""
+        where = f"area rule {self.hotkey!r}"
+        check_hotkey(self.hotkey, where)
+        if isinstance(self.minimum_adjacent_monsters, bool) or self.minimum_adjacent_monsters < 1:
+            raise ValueError(f"{where}: minimum_adjacent_monsters must be >= 1")
+        if not 0.0 <= self.minimum_mana_percent <= 100.0:
+            raise ValueError(f"{where}: minimum_mana_percent must be within 0..100")
 
 
 @dataclass(frozen=True)
 class TargetingConfig:
-    """Monster rows, the row for everything else, and the unreachable delay."""
+    """Monster rows, the row for everything else, area rules and the delays."""
 
     monsters: tuple[MonsterRow, ...] = ()
     default_monster: MonsterRow = MonsterRow()
+    area_rules: tuple[AreaRule, ...] = ()
+    attack_cooldown_ms: int = 2000
     unreachable_after_seconds: float = 8.0
 
     def validate(self) -> None:
-        """Raise ValueError on a bad row, a duplicate name or a bad delay."""
+        """Raise ValueError on a bad row or rule, a duplicate name or a bad delay."""
         if self.default_monster.name:
             raise ValueError("targeting.default_monster: name must be empty")
         self.default_monster.validate()
@@ -89,6 +113,10 @@ class TargetingConfig:
                 raise ValueError(f"targeting.monsters: duplicate name {row.name!r} (ignoring case)")
             seen.add(row.name.lower())
             row.validate()
+        for rule in self.area_rules:
+            rule.validate()
+        if isinstance(self.attack_cooldown_ms, bool) or self.attack_cooldown_ms < 0:
+            raise ValueError("targeting.attack_cooldown_ms must be >= 0")
         if self.unreachable_after_seconds <= 0:
             raise ValueError("targeting.unreachable_after_seconds must be > 0")
 

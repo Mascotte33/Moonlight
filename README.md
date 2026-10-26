@@ -49,7 +49,7 @@ flowchart LR
 moonlight/
 ├── core/         the engine: loop, safety, wiring, WorldState, config
 ├── healing/      heal and cure logic + its tab
-├── targeting/    target picking, attack spells + its tab
+├── targeting/    target picking, attack hotkeys + its tab
 ├── cavebot/      walking, pathing, route recorder + its tab
 ├── looting/      looting logic
 ├── refill/       depot and shop trips

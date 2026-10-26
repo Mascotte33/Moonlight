@@ -21,7 +21,8 @@ from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
 from moonlight.healing.healing import HealingAction, HealingDecision
 from moonlight.looting.looting import Looting
-from moonlight.targeting.targeting import TargetingDecision
+from moonlight.targeting.attack_hotkeys import AttackHotkeys
+from moonlight.targeting.targeting import AreaRule, MonsterRow, TargetingConfig, TargetingDecision
 
 PERIOD = 1.0 / 20.0  # 50 ms
 
@@ -453,13 +454,21 @@ class FakeClicker:
         return True
 
 
-def make_targeting_loop(ws: WorldState, inp: FakeInput) -> tuple[GameLoop, FakeClock]:
+def make_targeting_loop(
+    ws: WorldState,
+    inp: FakeInput,
+    targeting_config: TargetingConfig | None = None,
+    cavebot: object | None = None,
+) -> tuple[GameLoop, FakeClock]:
     """A loop with real targeting over battle list region (100, 200, 170, 300)."""
     clock = FakeClock()
     clicker = FakeClicker()
+    config = targeting_config if targeting_config is not None else TargetingConfig()
     modules = DecisionModules(
         healing=HealingDecision(clock=clock),
-        targeting=TargetingDecision(None, (100, 200, 170, 300)),
+        targeting=TargetingDecision(config, (100, 200, 170, 300)),
+        attack_hotkeys=AttackHotkeys(config),
+        cavebot=cast(Cavebot, cavebot),
         clicker=cast(ClickController, clicker),
     )
     gl, _ = make_loop(ws, inp, clock=clock, modules=modules)
@@ -524,6 +533,63 @@ class TestSelectClick:
         assert inp.sent_lines == ["K up"]
         ticks(gl, clock, 8 * 20 + 6)  # 8 s more, then the click on the next row
         assert inp.sent_lines == ["K up", "A 180 244", "C L"]
+
+
+F6_ROWS = TargetingConfig(
+    default_monster=MonsterRow(hotkey="F6"),
+    area_rules=(AreaRule("F5", minimum_adjacent_monsters=2),),
+)
+
+
+class TestAttackHotkeys:
+    def _wolf_selected(self) -> WorldState:
+        ws = make_state()
+        wolf = Monster("Wolf", 50.0)
+        with ws.lock():
+            ws.monsters = [wolf]
+            ws.selected_target = wolf
+            ws.mp_percent = 80.0
+        return ws
+
+    def test_selected_target_gets_the_row_hotkey_then_the_cooldown(self) -> None:
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self._wolf_selected(), inp, F6_ROWS)
+        ticks(gl, clock, 20)  # 1 s < the 2 s cooldown
+        assert inp.sent_lines == ["K F6"]
+        ticks(gl, clock, 21)
+        assert inp.sent_lines == ["K F6", "K F6"]
+
+    def test_area_rule_before_the_row_hotkey(self) -> None:
+        ws = self._wolf_selected()
+        with ws.lock():
+            ws.creature_slots = ((6, 5), (8, 6))
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, F6_ROWS)
+        ticks(gl, clock, 1)
+        assert inp.sent_lines == ["K F5"]
+
+    def test_no_key_without_a_selection(self) -> None:
+        ws = self._wolf_selected()
+        with ws.lock():
+            ws.selected_target = None
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, F6_ROWS)
+        ticks(gl, clock, 1)  # the select click starts: no attack key
+        assert all(line.startswith(("A ", "C ")) for line in inp.sent_lines)
+        ticks(gl, clock, 30)  # the click went out, the outline never shows
+        assert "K F6" not in inp.sent_lines
+
+    def test_no_key_while_luring(self) -> None:
+        cavebot = SimpleNamespace(
+            is_active=lambda: False,
+            luring=lambda: True,
+            route=SimpleNamespace(current=0),
+            alarm=None,
+        )
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self._wolf_selected(), inp, F6_ROWS, cavebot=cavebot)
+        ticks(gl, clock, 20)
+        assert inp.sent_lines == []
 
 
 class TestGameLoopRun:

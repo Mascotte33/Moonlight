@@ -33,6 +33,9 @@ without it the loop keeps its built-in behaviour.
   (or a selected target) -> ATTACK, which clicks the battle-list row
   through the shared ``clicker``, one click in flight at a time.
   # doc: docs/prs/targeting.md#target-choice
+* **attack_hotkeys** -- ``AttackHotkeys.decide`` in ATTACK while the
+  selection matches targeting's choice and no click is in flight.
+  # doc: docs/prs/targeting.md#area-rules
 * **healing** -- ``HealingDecision.decide`` + ``send`` of each action
   first in every non-KILL state (healing continues through ALARM); a heal
   sent this tick skips the rest of the dispatch.
@@ -109,7 +112,7 @@ if TYPE_CHECKING:
     from moonlight.healing.healing import HealingDecision
     from moonlight.looting.looting import Looting
     from moonlight.refill.refill import Refill
-    from moonlight.targeting.attack_spells import AttackSpells
+    from moonlight.targeting.attack_hotkeys import AttackHotkeys
     from moonlight.targeting.targeting import TargetingAction, TargetingDecision
 
 __all__ = [
@@ -192,7 +195,7 @@ class DecisionModules:
 
     healing: HealingDecision | None = None
     targeting: TargetingDecision | None = None
-    attack_spells: AttackSpells | None = None
+    attack_hotkeys: AttackHotkeys | None = None
     buffs: BuffManager | None = None
     alarms: AlarmDecision | None = None
     cavebot: Cavebot | None = None
@@ -703,11 +706,9 @@ class GameLoop:
 
         A click is in flight while the clicker is busy, and after it is sent
         until the row shows as selected or ``_SELECT_OUTLINE_WAIT`` passes.
-        No attack key is sent; a ``step_closer`` action presses one arrow key.
+        A ``step_closer`` action presses one arrow key. Only once the
+        selection matches targeting's choice does an attack hotkey go out.
         """
-        spells = self.modules.attack_spells
-        if spells is not None and self._send(snap, lambda: spells.cast(snap, self.input)):
-            return
         targeting, clicker = self.modules.targeting, self.modules.clicker
         if targeting is None:
             return
@@ -729,6 +730,7 @@ class GameLoop:
                 return
             self._select_click = None
         if self._target is None:
+            self._press_attack_hotkey(snap, targeting, now)
             return
         row = self._target.battle_list_row
         point = targeting.row_center(row)
@@ -740,6 +742,21 @@ class GameLoop:
 
         if self._send(snap, click):
             logger.debug("select click row %d at %s", row, point)
+
+    def _press_attack_hotkey(
+        self, snap: WorldState, targeting: TargetingDecision, now: float
+    ) -> None:
+        """Press the attack hotkey for the selected target, if one is due."""
+        attack_hotkeys = self.modules.attack_hotkeys
+        selected = snap.selected_target
+        if attack_hotkeys is None or selected is None or selected.is_player:
+            return
+        row = targeting.row_for(selected)
+        if row.ignore or targeting.is_unreachable(selected):
+            return
+        hotkey = attack_hotkeys.decide(snap, row, now)
+        if hotkey is not None:
+            self._send(snap, lambda: attack_hotkeys.send(hotkey, self.input, now))
 
     def _step_select_click(self, clicker: ClickController, now: float) -> bool | None:
         """One clicker step; on the click, remember when it was sent."""

@@ -314,7 +314,20 @@ def test_reconfigure_swaps_only_changed_modules() -> None:
     assert loop.reconfigure(new)
     assert loop.modules.healing is not old.healing
     assert loop.modules.targeting is old.targeting
+    assert loop.modules.attack_hotkeys is old.attack_hotkeys
     assert loop.modules.alarms is old.alarms
+
+
+def test_attack_hotkeys_follow_the_targeting_section() -> None:
+    cfg = replace(BotConfig.default(), loop=LoopConfig(enable_f12_monitor=False))
+    loop = _live_loop(cfg)
+    old = loop.modules
+    assert cfg.targeting is not None and old.attack_hotkeys is not None
+    assert loop.reconfigure is not None
+    assert loop.reconfigure(replace(cfg, targeting=replace(cfg.targeting, attack_cooldown_ms=900)))
+    assert loop.modules.attack_hotkeys is not old.attack_hotkeys
+    assert loop.reconfigure(replace(cfg, targeting=None))
+    assert loop.modules.attack_hotkeys is None
 
 
 def test_reconfigure_refuses_what_needs_a_restart() -> None:

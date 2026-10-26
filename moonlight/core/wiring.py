@@ -59,7 +59,6 @@ logger = logging.getLogger(__name__)
 MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "healing": ("hp_bar", "mp_bar", "status_icons"),
     "targeting": ("battle_list", "game_grid"),
-    "attack_spells": ("battle_list", "mp_bar"),
     "cavebot": ("minimap", "floor_indicator", "game_grid"),
     "looting": ("loot_window",),
     "refill": ("capacity",),
@@ -458,10 +457,9 @@ def build_modules(
     from moonlight.alarms.alarms import AlarmDecision
     from moonlight.extras.buffs import BuffManager
     from moonlight.healing.healing import HealingDecision
-    from moonlight.targeting.attack_spells import AttackSpells
+    from moonlight.targeting.attack_hotkeys import AttackHotkeys
     from moonlight.targeting.targeting import TargetingDecision
 
-    combos = config.spell_combos
     m = DecisionModules()
     prev_cfg, prev = old if old is not None else (None, None)
 
@@ -474,7 +472,7 @@ def build_modules(
         for name, keys in (
             ("healing", ("healing",)),
             ("targeting", ("targeting",)),
-            ("attack_spells", ("attack_spells", "hotkeys")),
+            ("attack_hotkeys", ("targeting",)),
             ("buffs", ("buffs", "hotkeys")),
             ("alarms", ("alarms",)),
         ):
@@ -488,10 +486,10 @@ def build_modules(
         m.targeting = TargetingDecision(
             config.targeting, profile.get_region("battle_list").to_tuple, profile.ui_scale
         )
-    if config.attack_spells is not None and m.attack_spells is None:
-        m.attack_spells = AttackSpells(config.attack_spells, combos, clock=clock)
+    if config.targeting is not None and m.attack_hotkeys is None:
+        m.attack_hotkeys = AttackHotkeys(config.targeting)
     if config.buffs is not None and m.buffs is None:
-        m.buffs = BuffManager(config.buffs, spell_combos=combos, clock=clock)
+        m.buffs = BuffManager(config.buffs, key_combos=config.hotkeys or {}, clock=clock)
     if config.alarms is not None and m.alarms is None:
         m.alarms = AlarmDecision(config.alarms, clock=clock)
 

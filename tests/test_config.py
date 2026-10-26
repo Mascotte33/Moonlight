@@ -11,6 +11,7 @@ import pytest
 
 from moonlight.core.config import MODULES, BotConfig, ConfigError
 from moonlight.healing.healing import CureRule, HealingConfig, HealingRule
+from moonlight.targeting.targeting import AreaRule
 
 
 def route_file(d: Path, name: str = "hunt") -> None:
@@ -40,7 +41,7 @@ def test_default_is_valid() -> None:
     cfg = BotConfig.default()
     assert cfg.healing is not None and cfg.targeting is not None and cfg.alarms is not None
     assert cfg.buffs is None and cfg.cavebot is None and cfg.refill is None
-    assert cfg.spell_combos == {}
+    assert cfg.hotkeys == {}
 
 
 def test_load_roundtrip(tmp_path: Path) -> None:
@@ -157,10 +158,42 @@ def test_clicker_open_loop_switch_and_validation() -> None:
         BotConfig.from_dict(data)
 
 
-def test_spell_without_hotkey_rejected() -> None:
-    data = raw(attack_spells={"enabled": True, "single_spell": "exori"})
-    with pytest.raises(ConfigError, match="exori"):
+def test_attack_spells_section_rejected() -> None:
+    data = raw(attack_spells={"enabled": False})
+    with pytest.raises(ConfigError, match="attack_spells"):
         BotConfig.from_dict(data)
+
+
+def test_area_rules_load_from_json() -> None:
+    data = raw(
+        targeting={
+            "enabled": True,
+            "area_rules": [
+                {"hotkey": "F5", "minimum_adjacent_monsters": 3, "minimum_mana_percent": 30}
+            ],
+            "attack_cooldown_ms": 1500,
+        }
+    )
+    targeting = BotConfig.from_dict(data).targeting
+    assert targeting is not None
+    assert targeting.area_rules == (AreaRule("F5", 3, 30.0),)
+    assert targeting.attack_cooldown_ms == 1500
+
+
+@pytest.mark.parametrize(
+    "targeting",
+    [
+        {"area_rules": [{"hotkey": "F5", "minimum_adjacent_monsters": 0}]},
+        {"area_rules": [{"hotkey": "", "minimum_adjacent_monsters": 2}]},
+        {"area_rules": [{"hotkey": "F5", "minimum_mana_percent": 120}]},
+        {"area_rules": [{"minimum_adjacent_monsters": 2}]},
+        {"attack_cooldown_ms": -1},
+        {"default_monster": {"minimum_mana_percent": -5}},
+    ],
+)
+def test_bad_attack_settings_rejected(targeting: dict[str, Any]) -> None:
+    with pytest.raises(ConfigError):
+        BotConfig.from_dict(raw(targeting={"enabled": True, **targeting}))
 
 
 def test_healing_rules_and_cures_load_from_json_lists() -> None:
