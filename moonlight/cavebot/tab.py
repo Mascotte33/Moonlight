@@ -28,6 +28,7 @@ from moonlight.cavebot.recorder import (
     route_path,
     save_route,
     should_add,
+    should_stop_recording,
 )
 from moonlight.core.config import BotConfig, ConfigError
 from moonlight.core.state import Position, WorldState
@@ -593,17 +594,31 @@ class CavebotTab(Tab):
         self.lbl_msg.configure(text=f"Deleted {name}")
 
     def _toggle(self) -> None:
-        self._recording = not self._recording
-        self.btn_record.configure(text="Stop recording" if self._recording else "Start recording")
         if self._recording:
-            self._hotkeys.start()
-            if self._hotkeys.failed:
-                self.lbl_msg.configure(
-                    text=f"Hotkeys in use elsewhere: {', '.join(self._hotkeys.failed)}"
-                )
-        else:
-            self._hotkeys.stop()
+            self._stop_recording()
+            return
+        self._recording = True
+        self.btn_record.configure(text="Stop recording")
+        self._hotkeys.start()
+        if self._hotkeys.failed:
+            self.lbl_msg.configure(
+                text=f"Hotkeys in use elsewhere: {', '.join(self._hotkeys.failed)}"
+            )
         self._draw()
+
+    def _stop_recording(self) -> None:
+        self._recording = False
+        self.btn_record.configure(text="Start recording")
+        self._hotkeys.stop()
+        self._draw()
+
+    def _auto_stop_recording(self) -> None:
+        """The cavebot started: stop recording and save what was recorded."""
+        self._stop_recording()
+        if self._dirty:
+            self._save()
+        saved = self.lbl_msg.cget("text")
+        self.lbl_msg.configure(text=f"Cavebot started, recording stopped. {saved}")
 
     def on_poll(self, snap: WorldState) -> None:
         self.show_paused([SWITCH.field], self.ctx.paused)
@@ -611,6 +626,9 @@ class CavebotTab(Tab):
         self._status = snap.position_status
         if pos != Position(0, 0, 0):
             self._last = pos
+        cavebot_on = bool(self._switches[SWITCH.field].get()) or self.ctx.live_cavebot() is not None
+        if should_stop_recording(self._recording, cavebot_on):
+            self._auto_stop_recording()
         if self._recording:
             while not self._pressed.empty():
                 action = self._pressed.get_nowait()

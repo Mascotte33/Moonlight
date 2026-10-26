@@ -14,6 +14,7 @@ from moonlight.cavebot.recorder import (
     route_path,
     save_route,
     should_add,
+    should_stop_recording,
     vk_code,
 )
 from moonlight.core.state import Position
@@ -98,3 +99,9 @@ def test_route_path_refuses_bad_names(tmp_path: Path) -> None:
     for bad in ("", "../x", "a/b"):
         with pytest.raises(RouteError):
             route_path(tmp_path, bad)
+
+
+def test_recording_stops_when_the_cavebot_starts() -> None:
+    assert should_stop_recording(True, True)
+    assert not should_stop_recording(True, False)
+    assert not should_stop_recording(False, True)  # nothing to stop

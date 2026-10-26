@@ -26,6 +26,7 @@ __all__ = [
     "route_path",
     "save_route",
     "should_add",
+    "should_stop_recording",
     "position_line",
     "vk_code",
 ]
@@ -151,6 +152,11 @@ def should_add(waypoints: list[Waypoint], pos: Position, min_tiles: int) -> bool
     if last is None or last.z != pos.z:
         return True
     return max(abs(pos.x - last.x), abs(pos.y - last.y)) >= min_tiles
+
+
+def should_stop_recording(recording: bool, cavebot_on: bool) -> bool:
+    """True when a recording is running and the cavebot has started walking a route."""
+    return recording and cavebot_on
 
 
 def position_line(pos: Position, status: str = "") -> str:
