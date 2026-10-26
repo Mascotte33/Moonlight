@@ -72,6 +72,7 @@ __all__ = [
     "NAME_WIDTH",
     "MAX_SLOTS",
     "TEXT_THRESHOLD",
+    "HOVERED_SELECTED_RGB",
     "SELECTED_RGB",
     "HP_BAR_ROWS",
     "BattleEntry",
@@ -121,6 +122,10 @@ HP_FILL_MIN_SPREAD = 60
 
 #: Attack-target outline color around the selected row's icon (T28).
 SELECTED_RGB: tuple[int, int, int] = (255, 0, 0)
+
+#: The same outline while the cursor is on the row (measured live, T1.F12.K1).
+#: The select click leaves the cursor there, so this is the usual case.
+HOVERED_SELECTED_RGB: tuple[int, int, int] = (255, 128, 128)
 
 #: Rows from the target outline's top edge down to the HP bar's outline
 #: (67 of 67 selected golden entries; the synthetic test frames use 16).
@@ -383,10 +388,13 @@ class BattleReader:
         if y0 < 0 or y1 > crop.shape[0]:
             return False
         icon = crop[y0:y1, : self._name_x, :3].astype(np.int16)
-        ref = np.array(SELECTED_RGB, dtype=np.int16)
-        red = (np.abs(icon - ref) <= self._highlight_tolerance).all(axis=2)
-        edge = red.sum(axis=1) >= self._edge_min
-        return bool(edge[: 2 * k + 1].any() and edge[-(2 * k + 1) :].any())
+        for outline_rgb in (SELECTED_RGB, HOVERED_SELECTED_RGB):
+            ref = np.array(outline_rgb, dtype=np.int16)
+            red = (np.abs(icon - ref) <= self._highlight_tolerance).all(axis=2)
+            edge = red.sum(axis=1) >= self._edge_min
+            if edge[: 2 * k + 1].any() and edge[-(2 * k + 1) :].any():
+                return True
+        return False
 
     def _is_player(self, name: str) -> bool:
         """Classify a resolved name as player when it is not a monster."""

@@ -261,6 +261,19 @@ class TestSelectedTarget:
         entries = read_default(frame, (x, y + shift, w, h))
         assert [e.is_selected for e in entries] == [False, True, False]
 
+    def test_hovered_selected_outline_detected(self) -> None:
+        # Live (T1.F12.K1): with the cursor on the targeted row the outline
+        # is (255, 128, 128); reading it as unselected re-clicked the row,
+        # which untargets it.
+        spec: RowSpec = {"text": True, "highlight": True, "highlight_rgb": (255, 128, 128)}
+        frame, region = make_frame([spec])
+        assert read_default(frame, region)[0].is_selected is True
+
+    def test_white_hover_outline_not_selected(self) -> None:
+        spec: RowSpec = {"text": True, "highlight": True, "highlight_rgb": (255, 255, 255)}
+        frame, region = make_frame([spec])
+        assert read_default(frame, region)[0].is_selected is False
+
     def test_highlight_outside_tolerance(self) -> None:
         # A green (follow) outline is not the attack target.
         spec: RowSpec = {"text": True, "highlight": True, "highlight_rgb": (0, 255, 0)}
