@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 #: the standard calibration set (they need dedicated readers, T34), so they
 #: report as MISSING until those are calibrated.
 MODULE_REGIONS: dict[str, tuple[str, ...]] = {
-    "healing": ("hp_bar", "mp_bar"),
+    "healing": ("hp_bar", "mp_bar", "status_icons"),
     "targeting": ("battle_list",),
     "attack_spells": ("battle_list", "mp_bar"),
     "cavebot": ("minimap", "floor_indicator", "game_grid"),
