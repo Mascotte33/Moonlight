@@ -26,6 +26,8 @@ class TestMonster:
         m = Monster(name="Wolf")
         assert m.hp_percent == 100.0
         assert m.is_player is False
+        assert m.name_hash == ""
+        assert m.battle_list_row == 0
 
     def test_frozen(self) -> None:
         m = Monster(name="Wolf")

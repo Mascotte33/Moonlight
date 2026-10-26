@@ -37,11 +37,11 @@ A row counts as a creature entry when its name area contains at least
 full read of a 20-row list is well under the 15 ms per-read budget (T30
 timing requirement; see ``perception/README.md``).
 
-Name resolution (template matching or OCR) is pluggable via
-:class:`NameResolver`. Until the golden dataset ships (T08) the default
-reader returns empty names and never fabricates OCR output. ``is_player``
-is derived from the resolved name when a monster-name set is provided
-(unknown name = likely a player; ui_layout.md section 8, technique 3).
+Each entry carries :func:`name_crop_hash`, a stable identity of its name
+pixels (no OCR). ``name`` stays empty until a later task fills it from the
+hash. ``is_player`` is derived from the name when a monster-name set is
+provided (unknown name = likely a player; ui_layout.md section 8,
+technique 3).
 
 Frames are RGB ``(H, W, 3)`` ``uint8`` arrays as produced by
 ``moonlight.perception.capture``.
@@ -49,10 +49,10 @@ Frames are RGB ``(H, W, 3)`` ``uint8`` arrays as produced by
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
 
 import cv2
 import numpy as np
@@ -71,9 +71,9 @@ __all__ = [
     "SELECTED_RGB",
     "HP_BAR_ROWS",
     "BattleEntry",
-    "NameResolver",
     "BattleReader",
     "entries_to_state",
+    "name_crop_hash",
 ]
 
 #: A rectangle as ``(x, y, width, height)`` (matches ``calibrate.Rect``).
@@ -137,12 +137,13 @@ class BattleEntry:
     """One creature row of the battle list.
 
     Attributes:
-        name: Creature name (via :class:`NameResolver`); empty string when
-            no resolver is configured or the name is unknown.
+        name: Creature name; empty string until a later task fills it.
         index: 0-based row position in the battle list.
         is_player: True when the name is not a known monster name.
         is_selected: True when this row is the currently attacked target.
         hp_percent: Creature HP percent when visible; None otherwise.
+        name_hash: :func:`name_crop_hash` of the name pixels; empty when
+            the name area holds no text.
     """
 
     name: str
@@ -150,17 +151,26 @@ class BattleEntry:
     is_player: bool = False
     is_selected: bool = False
     hp_percent: float | None = None
+    name_hash: str = ""
 
 
-class NameResolver(Protocol):
-    """Resolves the creature name of one battle-list slot.
+def name_crop_hash(slot_name_crop: np.ndarray) -> str:
+    """Stable identity of a slot's name pixels; ``""`` when there is no text.
 
-    Implementations perform template matching or OCR on the slot's
-    grayscale crop. Return an empty string for unknown names.
+    Binarizes the crop (max channel over :data:`TEXT_THRESHOLD`), trims it to
+    the bounding box of the set pixels and hashes the bits with the shape, so
+    the HP bar, the selection outline and a slightly different background do
+    not change it.
     """
-
-    def resolve(self, row: int, slot_gray: np.ndarray) -> str:  # pragma: no cover
-        """Return the creature name for *row* (empty string if unknown)."""
+    # doc: docs/prs/targeting.md#name-hash
+    bright = slot_name_crop if slot_name_crop.ndim == 2 else slot_name_crop.max(axis=2)
+    bits = bright > TEXT_THRESHOLD
+    rows, cols = np.flatnonzero(bits.any(axis=1)), np.flatnonzero(bits.any(axis=0))
+    if not rows.size:
+        return ""
+    bits = bits[rows[0] : rows[-1] + 1, cols[0] : cols[-1] + 1]
+    shape_bytes = np.array(bits.shape, dtype=np.int32).tobytes()
+    return hashlib.blake2b(bits.tobytes() + shape_bytes, digest_size=8).hexdigest()
 
 
 class BattleReader:
@@ -182,7 +192,6 @@ class BattleReader:
     def __init__(
         self,
         profile: object | None = None,
-        name_resolver: NameResolver | None = None,
         monster_names: set[str] | None = None,
         *,
         battle_region: Rect | None = None,
@@ -198,8 +207,7 @@ class BattleReader:
         Args:
             profile: Optional ``CalibrationProfile``. Its ``battle_list``
                 region is used as the default region.
-            name_resolver: Optional resolver for creature names.
-            monster_names: Known monster names; resolved names not in this
+            monster_names: Known monster names; names not in this
                 set are classified as players (None disables the check).
             battle_region: Explicit battle-list region; overrides the
                 profile.
@@ -234,7 +242,6 @@ class BattleReader:
         self._text_threshold = int(text_threshold)
         self._highlight_tolerance = int(highlight_tolerance)
         self._min_text_pixels = int(min_text_pixels)
-        self._name_resolver = name_resolver
         self._monster_names = monster_names
         self._battle_region: Rect | None = None
 
@@ -288,8 +295,9 @@ class BattleReader:
             bar = self._hp_bar(slot) if self._has_text(slot) else None
             if bar is None:
                 continue
-            name = self._resolve_name(row, slot)
+            name = ""
             slot_rgb = crop[top:bottom, :cols]
+            name_x1 = min(cols, self._name_x + self._name_w)
             outline_top = top + bar[0] - self._bar_offset
             entries.append(
                 BattleEntry(
@@ -298,6 +306,7 @@ class BattleReader:
                     is_player=self._is_player(name),
                     is_selected=self._is_selected(crop[:, :cols], outline_top),
                     hp_percent=self._hp_percent(slot_rgb, bar),
+                    name_hash=name_crop_hash(slot_rgb[: bar[0], self._name_x : name_x1]),
                 )
             )
         return entries
@@ -368,12 +377,6 @@ class BattleReader:
         edge = red.sum(axis=1) >= self._edge_min
         return bool(edge[: 2 * k + 1].any() and edge[-(2 * k + 1) :].any())
 
-    def _resolve_name(self, row: int, slot: np.ndarray) -> str:
-        """Resolve the slot's creature name via the configured resolver."""
-        if self._name_resolver is None:
-            return ""
-        return str(self._name_resolver.resolve(row, slot))
-
     def _is_player(self, name: str) -> bool:
         """Classify a resolved name as player when it is not a monster."""
         if not name or self._monster_names is None:
@@ -430,9 +433,20 @@ def entries_to_state(
         if entry.is_player:
             players_on_screen += 1
             if entry.is_selected and selected is None:
-                selected = Monster(name=entry.name, hp_percent=hp, is_player=True)
+                selected = Monster(
+                    name=entry.name,
+                    hp_percent=hp,
+                    is_player=True,
+                    name_hash=entry.name_hash,
+                    battle_list_row=entry.index,
+                )
             continue
-        monster = Monster(name=entry.name, hp_percent=hp)
+        monster = Monster(
+            name=entry.name,
+            hp_percent=hp,
+            name_hash=entry.name_hash,
+            battle_list_row=entry.index,
+        )
         monsters.append(monster)
         if entry.is_selected and selected is None:
             selected = monster

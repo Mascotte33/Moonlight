@@ -55,6 +55,8 @@ class Monster:
     name: str
     hp_percent: float = 100.0
     is_player: bool = False
+    name_hash: str = ""
+    battle_list_row: int = 0
 
 
 @dataclass(frozen=True)

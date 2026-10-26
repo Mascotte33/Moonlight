@@ -15,6 +15,7 @@ measured on the T08 golden frames, T28).
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import TypedDict
 
@@ -27,6 +28,7 @@ from moonlight.perception.battle import (
     BattleEntry,
     BattleReader,
     entries_to_state,
+    name_crop_hash,
 )
 
 BG: tuple[int, int, int] = (40, 40, 40)  # dark battle-list background
@@ -47,16 +49,6 @@ class RowSpec(TypedDict, total=False):
     highlight_rgb: tuple[int, int, int]
     hp: float
     hp_rgb: tuple[int, int, int]
-
-
-class FakeResolver:
-    """Deterministic stand-in for a template/OCR name resolver."""
-
-    def __init__(self, names: dict[int, str]) -> None:
-        self._names = names
-
-    def resolve(self, row: int, slot_gray: np.ndarray) -> str:
-        return self._names.get(row, "")
 
 
 def slot_origin(offset: tuple[int, int], row: int) -> tuple[int, int]:
@@ -154,11 +146,10 @@ class TestEntryDetection:
 
     def test_single_entry(self) -> None:
         frame, region = make_frame([{"text": True}])
-        reader = BattleReader(name_resolver=FakeResolver({0: "wolf"}))
-        entries = reader.read_battle_list(frame, region)
+        entries = read_default(frame, region)
         assert len(entries) == 1
         entry = entries[0]
-        assert entry.name == "wolf"
+        assert entry.name == ""
         assert entry.index == 0
         assert entry.is_player is False
         assert entry.is_selected is False
@@ -166,9 +157,7 @@ class TestEntryDetection:
 
     def test_multiple_entries_in_order(self) -> None:
         frame, region = make_frame([{"text": True}] * 3)
-        reader = BattleReader(name_resolver=FakeResolver({0: "wolf", 1: "rat", 2: "snake"}))
-        entries = reader.read_battle_list(frame, region)
-        assert [e.name for e in entries] == ["wolf", "rat", "snake"]
+        entries = read_default(frame, region)
         assert [e.index for e in entries] == [0, 1, 2]
 
     def test_empty_rows_skip_in_index(self) -> None:
@@ -176,7 +165,7 @@ class TestEntryDetection:
         entries = read_default(frame, region)
         assert [e.index for e in entries] == [0, 2]
 
-    def test_no_resolver_gives_empty_names(self) -> None:
+    def test_names_stay_empty(self) -> None:
         frame, region = make_frame([{"text": True}] * 2)
         entries = read_default(frame, region)
         assert len(entries) == 2
@@ -281,35 +270,20 @@ class TestSelectedTarget:
 
 
 class TestPlayerDetection:
-    """is_player from resolved name vs known monster names."""
-
-    def _reader(self, names: dict[int, str], monsters: set[str] | None) -> BattleReader:
-        return BattleReader(name_resolver=FakeResolver(names), monster_names=monsters)
+    """is_player from the name vs known monster names."""
 
     def test_unknown_name_is_player(self) -> None:
-        frame, region = make_frame([{"text": True}] * 2)
-        reader = self._reader({0: "wolf", 1: "Kamil"}, {"wolf", "rat"})
-        entries = reader.read_battle_list(frame, region)
-        assert [e.is_player for e in entries] == [False, True]
-
-    def test_known_monster_name(self) -> None:
-        frame, region = make_frame([{"text": True}])
-        reader = self._reader({0: "wolf"}, {"wolf"})
-        entries = reader.read_battle_list(frame, region)
-        assert entries[0].is_player is False
+        reader = BattleReader(monster_names={"wolf", "rat"})
+        assert reader._is_player("Kamil") is True
+        assert reader._is_player("wolf") is False
 
     def test_no_monster_names_means_no_players(self) -> None:
-        frame, region = make_frame([{"text": True}])
-        reader = self._reader({0: "Kamil"}, None)
-        entries = reader.read_battle_list(frame, region)
-        assert entries[0].is_player is False
+        assert BattleReader()._is_player("Kamil") is False
 
     def test_empty_name_never_player(self) -> None:
-        # No resolver: names are empty, so nothing can be a player.
         frame, region = make_frame([{"text": True}])
         reader = BattleReader(monster_names={"wolf"})
-        entries = reader.read_battle_list(frame, region)
-        assert entries[0].is_player is False
+        assert reader.read_battle_list(frame, region)[0].is_player is False
 
 
 class TestRegionHandling:
@@ -452,10 +426,59 @@ class TestEntriesToState:
         monsters, _, _ = entries_to_state(entries)
         assert monsters[0].hp_percent == 100.0
 
+    def test_hash_and_row_copied(self) -> None:
+        entries = [BattleEntry(name="", index=3, name_hash="ab12"), BattleEntry(name="", index=5)]
+        monsters, _, _ = entries_to_state(entries)
+        assert [(m.name_hash, m.battle_list_row) for m in monsters] == [("ab12", 3), ("", 5)]
+
     def test_hp_percent_preserved(self) -> None:
         entries = [BattleEntry(name="wolf", index=0, hp_percent=42.0)]
         monsters, _, _ = entries_to_state(entries)
         assert monsters[0].hp_percent == 42.0
+
+
+def hashes(spec_text: list[tuple[int, int]], **row: object) -> str:
+    """Hash of the single entry read from a row whose text is *spec_text* (x, y) pixels."""
+    spec: RowSpec = {"bar": True, **row}  # type: ignore[typeddict-item]
+    frame, region = make_frame([spec])
+    top, left = slot_origin((0, 0), 0)
+    for x, y in spec_text:
+        frame[top + y, left + x] = TEXT_RGB
+    return read_default(frame, region)[0].name_hash
+
+
+WOLF = [(x, y) for x in range(25, 45, 2) for y in range(7, 15)]
+RAT = [(x, y) for x in range(25, 35) for y in range(7, 15, 2)]
+
+
+class TestNameHash:
+    """Stable name identity without OCR."""
+
+    def test_same_text_same_hash_with_different_hp_bar(self) -> None:
+        assert hashes(WOLF, hp=1.0) == hashes(WOLF, hp=0.3, hp_rgb=(192, 0, 0))
+
+    def test_same_text_same_hash_with_selection_outline(self) -> None:
+        assert hashes(WOLF) == hashes(WOLF, highlight=True)
+
+    @pytest.mark.parametrize("delta", [-1, 1])
+    def test_background_brightness_does_not_matter(self, delta: int) -> None:
+        crop = np.full((10, 40, 3), 40, dtype=np.uint8)
+        crop[2:8, 5:30:2] = 247
+        shifted = np.clip(crop.astype(int) + delta, 0, 255).astype(np.uint8)
+        shifted[crop == 247] = 247
+        assert name_crop_hash(crop) == name_crop_hash(shifted) != ""
+
+    def test_text_position_does_not_matter(self) -> None:
+        crop = np.zeros((10, 40, 3), dtype=np.uint8)
+        crop[2:8, 5:30:2] = 247
+        moved = np.roll(crop, (1, 3), axis=(0, 1))
+        assert name_crop_hash(crop) == name_crop_hash(moved)
+
+    def test_different_text_different_hash(self) -> None:
+        assert hashes(WOLF) != hashes(RAT)
+
+    def test_empty_name_area_is_empty_hash(self) -> None:
+        assert name_crop_hash(np.full((10, 40, 3), 40, dtype=np.uint8)) == ""
 
 
 class TestPerformance:
@@ -475,7 +498,7 @@ class TestPerformance:
             frame[top + 16, ox + 24 : ox + 154] = (0, 0, 0)
         region = (ox, oy, CONTENT_W, TOP_PAD + n * SLOT_H)
 
-        reader = BattleReader(name_resolver=FakeResolver({i: "wolf" for i in range(n)}))
+        reader = BattleReader()
         # Warm up, then time several reads.
         for _ in range(3):
             reader.read_battle_list(frame, region)
@@ -504,7 +527,10 @@ def test_ui_scale_reads_an_enlarged_battle_list() -> None:
         reader = BattleReader(CalibrationProfile(ui_scale=1.5), battle_region=(0, 0, 234, 726))
         return reader.read_battle_list(big)
 
-    assert at_1_5(cv2.INTER_NEAREST) == at_1
+    # The name hash depends on the pixel scale, everything else must match.
+    assert [replace(e, name_hash="") for e in at_1_5(cv2.INTER_NEAREST)] == [
+        replace(e, name_hash="") for e in at_1
+    ]
     # Smooth enlarging blurs the 1 px red target frame out of tolerance.
     smooth = at_1_5(cv2.INTER_LINEAR)
     assert [(e.index, e.hp_percent) for e in smooth] == [(e.index, e.hp_percent) for e in at_1]

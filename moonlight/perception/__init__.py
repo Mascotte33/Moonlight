@@ -24,7 +24,6 @@ from __future__ import annotations
 from moonlight.perception.battle import (
     BattleEntry,
     BattleReader,
-    NameResolver,
     Rect,
     entries_to_state,
 )
@@ -75,7 +74,6 @@ __all__ = [
     "MapMatcher",
     "MinimapReader",
     "MonsterTemplates",
-    "NameResolver",
     "RGB",
     "Rect",
     "SpriteDetection",
