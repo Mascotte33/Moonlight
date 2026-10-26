@@ -534,3 +534,19 @@ def test_ui_scale_reads_an_enlarged_battle_list() -> None:
     # Smooth enlarging blurs the 1 px red target frame out of tolerance.
     smooth = at_1_5(cv2.INTER_LINEAR)
     assert [(e.index, e.hp_percent) for e in smooth] == [(e.index, e.hp_percent) for e in at_1]
+
+
+def test_names_come_from_the_seen_monsters_store() -> None:
+    class Store:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, tuple[int, ...]]] = []
+
+        def name_for(self, name_hash: str, name_crop: np.ndarray) -> str:
+            self.calls.append((name_hash, name_crop.shape))
+            return "wolf"
+
+    frame, region = make_frame([{"text": True}])
+    store = Store()
+    entries = BattleReader(seen_monsters=store).read_battle_list(frame, region)  # type: ignore[arg-type]
+    assert [e.name for e in entries] == ["wolf"]
+    assert [call[0] for call in store.calls] == [entries[0].name_hash] != [""]

@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from moonlight.hardware.clicker import ClickController
     from moonlight.perception.capture import ScreenCapture
     from moonlight.perception.worldmap import WorldMap
+    from moonlight.targeting.seen_monsters import SeenMonsters
 
 __all__ = [
     "MODULE_REGIONS",
@@ -221,6 +222,7 @@ def make_perceive(
     start: Position | None = None,
     map_dir: Path = MAP_DIR,
     conditions_dir: Path = CONDITION_TEMPLATES_DIR,
+    seen_monsters: SeenMonsters | None = None,
 ) -> Callable[[], None]:
     """Return a callback doing one capture -> perception -> WorldState pass.
 
@@ -228,7 +230,8 @@ def make_perceive(
     ``screen_ok = False``, which gates every input in the loop.
 
     The position comes from matching the radar on the map in *map_dir*;
-    *start* is the last known position, searched first.
+    *start* is the last known position, searched first. *seen_monsters*
+    fills the battle entries' names from their name hashes.
     """
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.floor import FloorReader
@@ -237,7 +240,7 @@ def make_perceive(
     from moonlight.perception.vitals import VitalsReader
 
     vitals = VitalsReader(profile)
-    battle = BattleReader(profile)
+    battle = BattleReader(profile, seen_monsters=seen_monsters)
     floor = FloorReader(profile)
     status_icons: StatusIconReader | None = None
     if "status_icons" in profile.regions:
@@ -364,6 +367,11 @@ def build_loop(
             roi_provider=roi_provider, window_origin=window_origin, on_clicker=on_clicker,
         )
 
+    from moonlight.calibration.calibrate import default_profiles_dir
+    from moonlight.targeting.seen_monsters import SeenMonsters
+
+    profiles_dir = config.profiles_dir or default_profiles_dir()
+    seen_monsters = SeenMonsters(profiles_dir / f"{config.profile}.seen_monsters.json")
     current = config
     m = modules(config, None)
     loop = GameLoop(
@@ -378,6 +386,7 @@ def build_loop(
             focus_check,
             # Search near where the last loop or the stopped-bot reader was.
             start=state.position,
+            seen_monsters=seen_monsters,
         ),
         clock=clock,
         sleep_fn=sleep_fn,

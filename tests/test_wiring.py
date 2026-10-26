@@ -381,3 +381,21 @@ def test_perceive_writes_active_status_icons(monkeypatch: pytest.MonkeyPatch) ->
     wiring.make_perceive(state, make_profile(), lambda: frame)()
     assert state.screen_ok
     assert state.snapshot().active_status_icons == {"poison"}
+
+
+def test_perceive_fills_names_from_the_seen_monsters_store(tmp_path: Path) -> None:
+    from moonlight.targeting.seen_monsters import SeenMonsters
+    from tests.test_battle import make_frame
+
+    profile = make_profile()
+    frame, region = make_frame([{"text": True}])
+    full = np.zeros((600, 800, 3), dtype=np.uint8)
+    full[: frame.shape[0], : frame.shape[1]] = frame
+    profile.set_region("battle_list", Region(*region))
+    store = SeenMonsters(tmp_path / "p.seen_monsters.json")
+    state = WorldState()
+    wiring.make_perceive(state, profile, lambda: full, seen_monsters=store)()
+    (entry,) = store.entries()
+    store.rename(entry.name_hash, "wolf")
+    wiring.make_perceive(state, profile, lambda: full, seen_monsters=store)()
+    assert [m.name for m in state.snapshot().monsters] == ["wolf"]

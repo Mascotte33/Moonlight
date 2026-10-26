@@ -38,8 +38,8 @@ full read of a 20-row list is well under the 15 ms per-read budget (T30
 timing requirement; see ``perception/README.md``).
 
 Each entry carries :func:`name_crop_hash`, a stable identity of its name
-pixels (no OCR). ``name`` stays empty until a later task fills it from the
-hash. ``is_player`` is derived from the name when a monster-name set is
+pixels (no OCR). ``name`` comes from the optional ``SeenMonsters`` store, looked up by
+that hash (empty without one). ``is_player`` is derived from the name when a monster-name set is
 provided (unknown name = likely a player; ui_layout.md section 8,
 technique 3).
 
@@ -53,11 +53,15 @@ import hashlib
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
 from moonlight.core.state import Monster
+
+if TYPE_CHECKING:
+    from moonlight.targeting.seen_monsters import SeenMonsters
 
 __all__ = [
     "Rect",
@@ -201,6 +205,7 @@ class BattleReader:
         text_threshold: int = TEXT_THRESHOLD,
         highlight_tolerance: int = DEFAULT_HIGHLIGHT_TOLERANCE,
         min_text_pixels: int = DEFAULT_MIN_TEXT_PIXELS,
+        seen_monsters: SeenMonsters | None = None,
     ) -> None:
         """Create a reader.
 
@@ -218,6 +223,7 @@ class BattleReader:
             highlight_tolerance: Per-channel tolerance for the red
                 target outline.
             min_text_pixels: Minimum text pixels for a row to be an entry.
+            seen_monsters: Store that turns a name hash into a name.
 
         Raises:
             ValueError: If a region is not a 4-element tuple.
@@ -243,6 +249,7 @@ class BattleReader:
         self._highlight_tolerance = int(highlight_tolerance)
         self._min_text_pixels = int(min_text_pixels)
         self._monster_names = monster_names
+        self._seen_monsters = seen_monsters
         self._battle_region: Rect | None = None
 
         if profile is not None:
@@ -295,10 +302,14 @@ class BattleReader:
             bar = self._hp_bar(slot) if self._has_text(slot) else None
             if bar is None:
                 continue
-            name = ""
             slot_rgb = crop[top:bottom, :cols]
             name_x1 = min(cols, self._name_x + self._name_w)
             outline_top = top + bar[0] - self._bar_offset
+            name_crop = slot_rgb[: bar[0], self._name_x : name_x1]
+            name_hash = name_crop_hash(name_crop)
+            name = ""
+            if self._seen_monsters is not None and name_hash:
+                name = self._seen_monsters.name_for(name_hash, name_crop)
             entries.append(
                 BattleEntry(
                     name=name,
@@ -306,7 +317,7 @@ class BattleReader:
                     is_player=self._is_player(name),
                     is_selected=self._is_selected(crop[:, :cols], outline_top),
                     hp_percent=self._hp_percent(slot_rgb, bar),
-                    name_hash=name_crop_hash(slot_rgb[: bar[0], self._name_x : name_x1]),
+                    name_hash=name_hash,
                 )
             )
         return entries
