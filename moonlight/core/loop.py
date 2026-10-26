@@ -113,6 +113,7 @@ if TYPE_CHECKING:
     from moonlight.looting.looting import Looting
     from moonlight.refill.refill import Refill
     from moonlight.targeting.attack_hotkeys import AttackHotkeys
+    from moonlight.targeting.seen_monsters import SeenMonsters
     from moonlight.targeting.targeting import MonsterRow, TargetingAction, TargetingDecision
 
 __all__ = [
@@ -274,6 +275,8 @@ class GameLoop:
         #: Takes a new BotConfig while running; False when it needs a rebuild
         #: (set by ``wiring.build_loop``).
         self.reconfigure: Callable[[Any], bool] | None = None
+        #: Monsters seen in the battle list, for the Targeting tab (set by ``build_loop``).
+        self.seen_monsters: SeenMonsters | None = None
         if move_provider is None and move_action is None:
             # Looked up every tick, so a cavebot swapped in by reconfigure is used.
             move_provider = self._cavebot_active

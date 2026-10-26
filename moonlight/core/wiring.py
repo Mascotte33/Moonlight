@@ -410,6 +410,7 @@ def build_loop(
         return True
 
     loop.reconfigure = reconfigure
+    loop.seen_monsters = seen_monsters
     return loop
 
 

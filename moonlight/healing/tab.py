@@ -10,7 +10,7 @@ saved. :func:`apply_healing` is the pure row-to-config step.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import asdict
 from functools import partial
 from typing import TYPE_CHECKING, NamedTuple
@@ -20,7 +20,15 @@ import customtkinter as ctk
 from moonlight.core.config import BotConfig, ConfigError
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
-from moonlight.gui.tab_base import HotkeyBox, Option, Tab, read_option, section
+from moonlight.gui.tab_base import (
+    HotkeyBox,
+    Option,
+    Tab,
+    read_option,
+    row_button,
+    row_entry,
+    section,
+)
 from moonlight.healing.healing import CONDITIONS, CureRule, HealingConfig, HealingRule
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -103,28 +111,6 @@ def apply_healing(
     return BotConfig.from_dict(data)
 
 
-def _entry(
-    parent: ctk.CTkFrame, text: str, width: int, on_submit: Callable[[], None]
-) -> ctk.CTkEntry:
-    entry = ctk.CTkEntry(parent, width=width, fg_color=theme.NIGHT, border_color=theme.RAISED)
-    entry.insert(0, text)
-    entry.pack(side="left", padx=(theme.UNIT, 0))
-    for event in ("<Return>", "<FocusOut>"):
-        entry.bind(event, lambda _e: on_submit())
-    return entry
-
-
-def _button(parent: ctk.CTkFrame, text: str, command: Callable[[], None]) -> ctk.CTkButton:
-    button = ctk.CTkButton(
-        parent,
-        text=text,
-        width=28,
-        command=command,
-        fg_color=theme.RAISED,
-        hover_color=theme.HOVER,
-    )
-    button.pack(side="left", padx=(theme.UNIT, 0))
-    return button
 
 
 class HealingTab(Tab):
@@ -147,7 +133,7 @@ class HealingTab(Tab):
         ).pack(fill="x", padx=theme.PAD)
         self._rules_frame = ctk.CTkFrame(rules_box, fg_color="transparent")
         self._rules_frame.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        _button(rules_box, "Add rule", self._add_rule).configure(width=80)
+        row_button(rules_box, "Add rule", self._add_rule).configure(width=80)
         rules_box.winfo_children()[-1].pack_configure(padx=theme.PAD, pady=theme.UNIT, anchor="w")
 
         cures_box = section(parent, "Cures (spell slot, after the rules)")
@@ -244,10 +230,10 @@ class HealingTab(Tab):
                 ctk.CTkLabel(line, text=label, text_color=theme.TEXT_DIM).pack(
                     side="left", padx=(theme.UNIT, 0)
                 )
-                entries.append(_entry(line, value, 48, self._save))
-            _button(line, "↑", partial(self._move_rule, index, -1))
-            _button(line, "↓", partial(self._move_rule, index, 1))
-            _button(line, "✕", partial(self._delete_rule, index))
+                entries.append(row_entry(line, value, 48, self._save))
+            row_button(line, "↑", partial(self._move_rule, index, -1))
+            row_button(line, "↓", partial(self._move_rule, index, 1))
+            row_button(line, "✕", partial(self._delete_rule, index))
             self._rule_widgets.append((kind, hotkey, entries))
 
     def _draw_cures(self, rows: Sequence[CureRow]) -> None:
