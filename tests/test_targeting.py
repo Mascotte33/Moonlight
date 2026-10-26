@@ -217,3 +217,13 @@ def test_no_creature_slot_means_no_step() -> None:
         s = stuck_state(slots)
         targeting.decide(s, 0.0)
         assert targeting.decide(s, 8.0) is None
+
+
+def test_chase_hotkeys_must_differ() -> None:
+    with pytest.raises(ValueError, match="must differ"):
+        TargetingConfig(chase_on_hotkey="shift+F9", chase_off_hotkey="Shift+F9").validate()
+
+
+def test_chase_hotkey_is_required() -> None:
+    with pytest.raises(ValueError):
+        TargetingConfig(chase_on_hotkey="").validate()

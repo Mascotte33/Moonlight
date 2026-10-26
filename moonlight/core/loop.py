@@ -113,7 +113,7 @@ if TYPE_CHECKING:
     from moonlight.looting.looting import Looting
     from moonlight.refill.refill import Refill
     from moonlight.targeting.attack_hotkeys import AttackHotkeys
-    from moonlight.targeting.targeting import TargetingAction, TargetingDecision
+    from moonlight.targeting.targeting import MonsterRow, TargetingAction, TargetingDecision
 
 __all__ = [
     "BotState",
@@ -286,6 +286,8 @@ class GameLoop:
         self._last_target: str | None = None
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
+        # The chase-mode hotkey last sent; None sends the next one for sure.
+        self._chase_hotkey_sent: str | None = None
         # Pause bookkeeping (reset by every healthy, exception-free tick).
         self._paused_since: float | None = None
         self._consecutive_errors = 0
@@ -493,6 +495,9 @@ class GameLoop:
         self._target = None
         if m.targeting is not None:
             self._target = m.targeting.decide(snap, self._clock())
+        else:
+            # Paused or off: resend the chase mode when targeting is back.
+            self._chase_hotkey_sent = None
         if m.looting is not None:
             # ponytail: "selected target vanished from the battle list" = kill
             # (a target lost out of range counts too); use the server-log OCR
@@ -754,9 +759,22 @@ class GameLoop:
         row = targeting.row_for(selected)
         if row.ignore or targeting.is_unreachable(selected):
             return
+        self._set_chase_mode(snap, targeting, row)
         hotkey = attack_hotkeys.decide(snap, row, now)
         if hotkey is not None:
             self._send(snap, lambda: attack_hotkeys.send(hotkey, self.input, now))
+
+    # doc: docs/prs/targeting.md#chase-mode
+    def _set_chase_mode(
+        self, snap: WorldState, targeting: TargetingDecision, row: MonsterRow
+    ) -> None:
+        """Press the chase key for *row*'s movement when it differs from the last one."""
+        config = targeting.config
+        hotkey = config.chase_on_hotkey if row.movement == "follow" else config.chase_off_hotkey
+        if hotkey != self._chase_hotkey_sent and self._send(
+            snap, lambda: self.input.press_combo(hotkey)
+        ):
+            self._chase_hotkey_sent = hotkey
 
     def _step_select_click(self, clicker: ClickController, now: float) -> bool | None:
         """One clicker step; on the click, remember when it was sent."""

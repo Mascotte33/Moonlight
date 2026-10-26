@@ -99,6 +99,8 @@ class TargetingConfig:
     area_rules: tuple[AreaRule, ...] = ()
     attack_cooldown_ms: int = 2000
     unreachable_after_seconds: float = 8.0
+    chase_on_hotkey: str = "shift+F9"
+    chase_off_hotkey: str = "shift+F10"
 
     def validate(self) -> None:
         """Raise ValueError on a bad row or rule, a duplicate name or a bad delay."""
@@ -119,6 +121,10 @@ class TargetingConfig:
             raise ValueError("targeting.attack_cooldown_ms must be >= 0")
         if self.unreachable_after_seconds <= 0:
             raise ValueError("targeting.unreachable_after_seconds must be > 0")
+        check_hotkey(self.chase_on_hotkey, "targeting.chase_on_hotkey")
+        check_hotkey(self.chase_off_hotkey, "targeting.chase_off_hotkey")
+        if self.chase_on_hotkey.lower() == self.chase_off_hotkey.lower():
+            raise ValueError("targeting: chase_on_hotkey and chase_off_hotkey must differ")
 
 
 @dataclass(frozen=True)
