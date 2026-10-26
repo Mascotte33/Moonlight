@@ -170,8 +170,9 @@ def _check(paths: list[Path], out: dict[str, list[Any]]) -> None:
         assert f is None or 0 <= f <= 16
     for i, j in pairs:
         a, b = out["floor"][i], out["floor"][j]
+        # Stairs and ladders change the floor by one between frames.
         if a is not None and b is not None:
-            assert a == b, paths[j].name
+            assert abs(a - b) <= 1, paths[j].name
 
     for c in out["cursor"]:
         assert c is None or (0 <= c[0] < w and 0 <= c[1] < h)

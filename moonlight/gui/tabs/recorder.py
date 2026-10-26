@@ -15,6 +15,7 @@ import threading
 from ctypes import wintypes
 from pathlib import Path
 
+from moonlight import x11
 from moonlight.bot.state import Position
 from moonlight.decision.cavebot import RouteError, RouteFileLoader, Waypoint
 
@@ -22,9 +23,10 @@ __all__ = [
     "HOTKEYS",
     "Hotkeys",
     "make_waypoint",
+    "route_path",
     "save_route",
     "should_add",
-    "status_line",
+    "position_line",
     "vk_code",
 ]
 
@@ -45,17 +47,27 @@ class Hotkeys:
     """:data:`HOTKEYS` as global hotkeys, pressed actions put on *out*.
 
     ``RegisterHotKey`` ties keys to the thread that registers them, so they
-    live on their own thread with a message loop. Windows only.
+    live on their own thread with a message loop. Linux has no such call, so
+    a thread polls the X11 key map instead. There the key also reaches the
+    game, so keep F4 to F9 free of client hotkeys while recording.
     """
 
     def __init__(self, out: queue.Queue[str]) -> None:
         self._out = out
         self._thread: threading.Thread | None = None
         self._thread_id = 0
+        self._stop = threading.Event()
         self.failed: list[str] = []
 
     def start(self) -> None:
-        if sys.platform != "win32" or self._thread is not None:
+        if self._thread is not None:
+            return
+        if sys.platform == "linux":
+            self._stop = threading.Event()
+            self._thread = threading.Thread(target=self._poll, daemon=True, name="recorder-keys")
+            self._thread.start()
+            return
+        if sys.platform != "win32":
             return
         ready = threading.Event()
         self._thread = threading.Thread(
@@ -65,11 +77,27 @@ class Hotkeys:
         ready.wait(1.0)
 
     def stop(self) -> None:
-        if sys.platform != "win32" or self._thread is None:
+        if self._thread is None:
+            return
+        if sys.platform == "linux":
+            self._stop.set()
+            self._thread.join(1.0)
+            self._thread = None
+            return
+        if sys.platform != "win32":
             return
         ctypes.windll.user32.PostThreadMessageW(self._thread_id, _WM_QUIT, 0, 0)
         self._thread.join(1.0)
         self._thread = None
+
+    def _poll(self) -> None:
+        held = {k: False for k in HOTKEYS}
+        while not self._stop.wait(0.03):
+            for k, was in held.items():
+                down = x11.vk_down(vk_code(k))
+                if down and not was:
+                    self._out.put(HOTKEYS[k])
+                held[k] = down
 
     def _run(self, ready: threading.Event) -> None:
         if sys.platform != "win32":
@@ -125,12 +153,23 @@ def should_add(waypoints: list[Waypoint], pos: Position, min_tiles: int) -> bool
     return max(abs(pos.x - last.x), abs(pos.y - last.y)) >= min_tiles
 
 
-def status_line(recording: bool, pos: Position) -> str:
-    """ "Recording" or "Not recording", plus *pos* when known."""
-    state = "Recording" if recording else "Not recording"
+def position_line(pos: Position, status: str = "") -> str:
+    """The character's coordinates and *status*, or "unknown" before the bot reads them."""
     if (pos.x, pos.y, pos.z) == (0, 0, 0):
-        return f"{state} · position unknown"
-    return f"{state} · {pos.x}, {pos.y}, {pos.z}"
+        return "Position unknown"
+    tail = f" ({status})" if status else ""
+    return f"Position {pos.x}, {pos.y}, {pos.z}{tail}"
+
+
+def route_path(routes_dir: Path, name: str) -> Path:
+    """The file of route *name* in *routes_dir*.
+
+    Raises:
+        RouteError: For a name that is not a plain file name.
+    """
+    if not _NAME_RE.match(name):
+        raise RouteError("route name: letters, digits, space, '.', '_' or '-'")
+    return Path(routes_dir) / f"{name}.json"
 
 
 def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
@@ -139,8 +178,7 @@ def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
     Raises:
         RouteError: For a bad name or a route the bot would refuse.
     """
-    if not _NAME_RE.match(name):
-        raise RouteError("route name: letters, digits, space, '.', '_' or '-'")
+    path = route_path(routes_dir, name)
     raw = {
         "name": name,
         "waypoints": [
@@ -151,7 +189,6 @@ def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
         ],
     }
     RouteFileLoader.parse(raw)
-    path = Path(routes_dir) / f"{name}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
     return path

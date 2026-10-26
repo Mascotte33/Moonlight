@@ -18,6 +18,7 @@ from moonlight.bot.safety import VK_F12, F12Monitor, RateLimiter
 from moonlight.bot.state import Monster, WorldState
 from moonlight.decision.cavebot import Cavebot
 from moonlight.decision.looting import Looting
+from moonlight.decision.targeting import TargetingDecision
 from moonlight.hardware.input import FakeInput
 
 PERIOD = 1.0 / 20.0  # 50 ms
@@ -279,6 +280,33 @@ class TestGameLoopStates:
         assert gl.current_state is BotState.MOVE
         assert steps == [1]
 
+    def test_pause_drops_cavebot_and_targeting_keeps_healing(self) -> None:
+        ws = make_state(hp=50.0)
+        steps: list[int] = []
+        cavebot = SimpleNamespace(
+            is_active=lambda: True,
+            step=lambda: steps.append(1),
+            resume=lambda: None,
+            luring=lambda: False,
+            route=SimpleNamespace(current=0),
+        )
+        inp = FakeInput()
+        gl, clock = make_loop(ws, inp, modules=DecisionModules(cavebot=cast(Cavebot, cavebot)))
+        gl.all_modules.targeting = cast(TargetingDecision, object())
+        gl.paused = True
+        assert gl.modules.cavebot is None and gl.modules.targeting is None
+        gl.all_modules.targeting = None
+        gl.tick()
+        assert gl.current_state is BotState.NORMAL_HEAL
+        assert "K 2" in inp.sent_lines
+        ws.hp_percent = 100.0
+        gl.tick()
+        assert steps == []
+        gl.paused = False
+        clock.sleep(1.0)  # let the rate limiter refill after the heal
+        gl.tick()
+        assert steps == [1]
+
     def test_idle_when_nothing_to_do(self) -> None:
         ws = make_state(hp=100.0)
         inp = FakeInput()
@@ -410,6 +438,28 @@ class TestAttackKey:
         clock.advance(PERIOD)
         gl.tick()
         assert inp.sent_lines == ["K r", "K r"]
+
+    def test_frozen_hp_switches_target_and_skips_it(self) -> None:
+        ws = make_state(hp=100.0, target=True)
+        inp = FakeInput()
+        gl, clock = make_loop(ws, inp)
+        for _ in range(199):  # 9.95 s on a target whose HP never moves
+            gl.tick()
+            clock.advance(PERIOD)
+        assert inp.sent_lines == ["K r"]
+        clock.advance(PERIOD)
+        gl.tick()  # 10 s: press again, the client moves to the next target
+        assert inp.sent_lines == ["K r", "K r"]
+        with ws.lock():
+            ws.selected_target = Monster(name="Rat")  # a different monster
+        clock.advance(1.0)
+        gl.tick()
+        assert inp.sent_lines == ["K r", "K r", "K r"]
+        with ws.lock():  # the attack key came back to the frozen one
+            ws.selected_target = make_state(hp=100.0, target=True).selected_target
+        clock.advance(1.0)
+        gl.tick()
+        assert inp.sent_lines[-1] == "K r" and len(inp.sent_lines) == 4
 
 
 class TestGameLoopRun:

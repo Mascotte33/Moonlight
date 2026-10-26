@@ -36,16 +36,21 @@ Implementation notes
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import ctypes
+import sys
+from collections.abc import Callable, Sequence
 
 import cv2
 import numpy as np
+
+from moonlight import x11
 
 __all__ = [
     "Rect",
     "DEFAULT_MATCH_THRESHOLD",
     "CursorTemplates",
     "CursorReader",
+    "OsCursorReader",
 ]
 
 #: A rectangle as ``(x, y, width, height)`` (matches ``calibrate.Rect``).
@@ -228,3 +233,43 @@ class CursorReader:
         if len(rect) != 4:
             raise ValueError(f"Region must have 4 values, got {len(rect)}")
         return (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+
+
+def _screen_cursor() -> tuple[int, int] | None:
+    """The mouse cursor's screen position from Windows or X11, or None elsewhere."""
+    if sys.platform == "linux":
+        return x11.cursor()
+    if sys.platform != "win32":
+        return None
+    point = (ctypes.c_long * 2)()
+    if not ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
+        return None
+    return (point[0], point[1])
+
+
+class OsCursorReader(CursorReader):
+    """Read the cursor position from Windows instead of the frame.
+
+    Screen captures leave the mouse cursor out, so without cursor templates
+    the frame cannot show where the Arduino moved it. Windows still knows,
+    in physical pixels once capture made the process DPI aware.
+    """
+
+    def __init__(
+        self,
+        window_origin: Callable[[], tuple[int, int]],
+        screen_cursor: Callable[[], tuple[int, int] | None] = _screen_cursor,
+    ) -> None:
+        """*window_origin* is the game area's screen ``(left, top)``."""
+        # The clicker grabs this region on a first read; one pixel is enough.
+        super().__init__(cursor_region=(0, 0, 1, 1))
+        self._origin = window_origin
+        self._screen_cursor = screen_cursor
+
+    def read(self, frame: np.ndarray, region: Rect | None = None) -> tuple[int, int] | None:
+        """The cursor in game-area coordinates; *frame* and *region* are ignored."""
+        pos = self._screen_cursor()
+        if pos is None:
+            return None
+        ox, oy = self._origin()
+        return (pos[0] - ox, pos[1] - oy)

@@ -109,6 +109,8 @@ class WorldState:
 
     # World.
     position: Position = field(default_factory=lambda: Position(0, 0, 0))
+    #: "" = map match, "estimated" = moved by the radar shift, "lost" = unknown.
+    position_status: str = ""
     capacity: Capacity = field(default_factory=Capacity)
 
     # Active buffs: name -> seconds remaining.

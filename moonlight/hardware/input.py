@@ -20,7 +20,8 @@ Wire protocol (see ``firmware/README.md``)::
     K <combo>    press + release combo
     D <combo>    hold combo down
     U <combo>    release combo
-    M <dx> <dy>  relative mouse move; EACH axis must be -127..127 per command
+    M <dx> <dy>  relative mouse move; EACH axis must be -4000..4000 per command
+    A <x> <y>    absolute mouse move; EACH axis 0..32767 across the screen
     C L | C R    mouse click (left / right)
     P            ping; the device replies PONG
     X            release all inputs
@@ -42,6 +43,7 @@ from types import TracebackType
 from typing import Protocol
 
 __all__ = [
+    "ABS_MAX",
     "ARDUINO_LEONARDO_VID",
     "MAX_MOUSE_DELTA",
     "ArduinoInput",
@@ -55,8 +57,13 @@ __all__ = [
     "find_arduino_port",
 ]
 
-#: Inclusive per-axis bound for a single ``M <dx> <dy>`` command.
-MAX_MOUSE_DELTA = 127
+#: Inclusive per-axis bound for a single ``M <dx> <dy>`` command. The
+#: firmware splits it into 127-count HID reports, so a whole trip is one
+#: command and one rate-limit token (F-20).
+MAX_MOUSE_DELTA = 4000
+
+#: Inclusive per-axis bound for an ``A <x> <y>`` command (HID absolute range).
+ABS_MAX = 32767
 
 #: Fire-and-forget commands allowed in flight before a send waits for
 #: their ACKs (P6); at 10 commands/s the heartbeat drains far sooner.
@@ -118,6 +125,10 @@ class InputBackend(ABC):
         """Move the mouse by a relative delta in pixels (may be negative)."""
         ...
 
+    def mouse_to(self, x: int, y: int) -> None:
+        """Jump the cursor to an absolute spot, each axis 0..ABS_MAX."""
+        raise NotImplementedError(f"{type(self).__name__} has no absolute mouse")
+
     @abstractmethod
     def click(self, side: ClickSide) -> None:
         """Click the left or right mouse button."""
@@ -144,7 +155,7 @@ class ProtocolEncoder:
     Pure and stateless: each method validates its input and returns exactly
     one wire line *without* a trailing newline (the transport appends it).
     Raises ValueError on protocol-invalid input (e.g. an M axis outside
-    -127..127, or a blank/whitespace combo that would break line framing).
+    -4000..4000, or a blank/whitespace combo that would break line framing).
     """
 
     def press_combo(self, combo: str) -> str:
@@ -160,10 +171,17 @@ class ProtocolEncoder:
         return f"U {self._validate_combo(combo)}"
 
     def mouse_move(self, dx: int, dy: int) -> str:
-        """Encode a relative mouse move: ``M <dx> <dy>`` (each axis -127..127)."""
+        """Encode a relative mouse move: ``M <dx> <dy>`` (each axis -4000..4000)."""
         x = self._validate_mouse_delta(dx, "dx")
         y = self._validate_mouse_delta(dy, "dy")
         return f"M {x} {y}"
+
+    def mouse_to(self, x: int, y: int) -> str:
+        """Encode an absolute mouse move: ``A <x> <y>`` (each axis 0..32767)."""
+        for value in (x, y):
+            if not 0 <= value <= ABS_MAX:
+                raise ValueError(f"absolute mouse {value} out of range 0..{ABS_MAX}")
+        return f"A {x} {y}"
 
     def click(self, side: ClickSide) -> str:
         """Encode a mouse click: ``C L`` or ``C R``."""
@@ -191,7 +209,7 @@ class ProtocolEncoder:
 
     @staticmethod
     def _validate_mouse_delta(value: int, axis: str) -> int:
-        """Ensure one M-command axis stays within -127..127."""
+        """Ensure one M-command axis stays within -MAX_MOUSE_DELTA..MAX_MOUSE_DELTA."""
         if not -MAX_MOUSE_DELTA <= value <= MAX_MOUSE_DELTA:
             raise ValueError(
                 f"mouse delta {value} ({axis}) out of range "
@@ -299,6 +317,10 @@ class FakeInput(InputBackend):
         self.write(self.encoder.mouse_move(dx, dy))
         self._advance_cursor(dx, dy)
 
+    def mouse_to(self, x: int, y: int) -> None:
+        """Absolute mouse move. Wire: ``A <x> <y>``."""
+        self.write(self.encoder.mouse_to(x, y))
+
     def click(self, side: ClickSide) -> None:
         """Mouse click. Wire: ``C L`` / ``C R``."""
         self.write(self.encoder.click(side))
@@ -337,6 +359,9 @@ class FakeInput(InputBackend):
             return "OK" if args else "ERR"
         if cmd == "M":
             return "OK" if self._valid_mouse_args(args) else "ERR"
+        if cmd == "A":
+            ok = len(args) == 2 and all(a.isdigit() and int(a) <= ABS_MAX for a in args)
+            return "OK" if ok else "ERR"
         if cmd == "C":
             return "OK" if len(args) == 1 and args[0] in {"L", "R"} else "ERR"
         if cmd == "P":
@@ -347,7 +372,7 @@ class FakeInput(InputBackend):
 
     @staticmethod
     def _valid_mouse_args(args: list[str]) -> bool:
-        """True if ``args`` are two integers each within -127..127."""
+        """True if ``args`` are two integers each within -4000..4000."""
         if len(args) != 2:
             return False
         try:
@@ -593,6 +618,10 @@ class ArduinoInput(InputBackend):
     def mouse_move(self, dx: int, dy: int) -> None:
         """Relative mouse move. Wire: ``M <dx> <dy>``."""
         self._send_async("mouse_move", self.encoder.mouse_move(dx, dy))
+
+    def mouse_to(self, x: int, y: int) -> None:
+        """Absolute mouse move. Wire: ``A <x> <y>``."""
+        self._send_async("mouse_to", self.encoder.mouse_to(x, y))
 
     def click(self, side: ClickSide) -> None:
         """Mouse click. Wire: ``C L`` / ``C R``."""

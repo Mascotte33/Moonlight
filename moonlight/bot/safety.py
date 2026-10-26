@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import shutil
+import subprocess
 import sys
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 
+from moonlight import x11
 from moonlight.hardware.input import ClickSide, InputBackend
 
 __all__ = [
@@ -30,14 +34,18 @@ logger = logging.getLogger("moonlight.bot.safety")
 
 #: Win32 virtual-key code for F12.
 VK_F12 = 0x7B
+_LINUX_BELL = "/usr/share/sounds/freedesktop/stereo/bell.oga"
 
 
 def default_key_state(vk: int) -> bool:
     """Return True if virtual key *vk* is currently held down.
 
-    Uses Win32 ``GetAsyncKeyState`` polling on Windows; always False
-    elsewhere (the programmatic kill switch still works everywhere).
+    Uses Win32 ``GetAsyncKeyState`` polling on Windows and the X11 key map
+    on Linux (function keys only); always False elsewhere (the programmatic
+    kill switch still works everywhere).
     """
+    if sys.platform == "linux":
+        return x11.vk_down(vk)
     if sys.platform != "win32":
         return False
     state = ctypes.windll.user32.GetAsyncKeyState(vk)
@@ -45,10 +53,18 @@ def default_key_state(vk: int) -> bool:
 
 
 def beep_alert(message: str) -> None:
-    """Operator alert sink: a non-blocking system beep (Windows). Never raises.
+    """Operator alert sink: a non-blocking system beep. Never raises.
 
-    The loop logs every alert itself; this only adds the sound.
+    The loop logs every alert itself; this only adds the sound. Linux plays
+    the desktop bell sound through ``paplay`` when both exist.
     """
+    if sys.platform == "linux":
+        if shutil.which("paplay") and Path(_LINUX_BELL).exists():
+            try:
+                subprocess.Popen(["paplay", _LINUX_BELL], stderr=subprocess.DEVNULL)
+            except OSError:
+                logger.debug("alert sound failed", exc_info=True)
+        return
     if sys.platform != "win32":
         return
     try:
@@ -139,7 +155,8 @@ class RateLimitedInput(InputBackend):
         return False
 
     def press_combo(self, combo: str) -> None:
-        if self._pay("press_combo"):
+        if self._pay(f"press_combo {combo}"):
+            logger.debug("key %s", combo)
             self.backend.press_combo(combo)
 
     def hold_combo(self, combo: str) -> None:
@@ -152,6 +169,10 @@ class RateLimitedInput(InputBackend):
     def mouse_move(self, dx: int, dy: int) -> None:
         if self._pay("mouse_move"):
             self.backend.mouse_move(dx, dy)
+
+    def mouse_to(self, x: int, y: int) -> None:
+        if self._pay("mouse_to"):
+            self.backend.mouse_to(x, y)
 
     def click(self, side: ClickSide) -> None:
         if self._pay("click"):
@@ -182,7 +203,7 @@ class RateLimitedInput(InputBackend):
 class F12Monitor:
     """Daemon thread that polls F12 and fires ``on_press`` on a rising edge.
 
-    Uses keyboard *polling* (GetAsyncKeyState) rather than a low-level
+    Uses keyboard *polling* (GetAsyncKeyState, or the X11 key map) rather than a low-level
     hook: simpler, and it cannot be blocked by hooks installed by other
     applications. ``on_press`` runs in the monitor thread, so it must be
     thread-safe and fast (the loop only sets an event). The key-state

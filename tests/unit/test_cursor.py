@@ -281,3 +281,26 @@ class TestCursorReaderRead:
         reader = CursorReader(cursor_region=FULL_REGION)
         frame = make_frame(center=(100, 80))
         assert reader.read(frame) is None
+
+
+def test_os_cursor_reader_maps_the_screen_cursor_into_the_game_area() -> None:
+    from moonlight.perception.cursor import OsCursorReader
+
+    frame = np.zeros((10, 10, 3), np.uint8)
+    reader = OsCursorReader(lambda: (100, 50), screen_cursor=lambda: (130, 70))
+    assert reader.read(frame) == (30, 20)
+    assert reader.cursor_region is not None
+    assert OsCursorReader(lambda: (0, 0), screen_cursor=lambda: None).read(frame) is None
+
+
+def test_clicker_converges_with_the_os_cursor_reader() -> None:
+    from moonlight.hardware.clicker import ClickController
+    from moonlight.hardware.input import FakeInput
+    from moonlight.perception.cursor import OsCursorReader
+
+    fake = FakeInput(cursor=(900, 700))  # screen coordinates
+    reader = OsCursorReader(lambda: (500, 300), screen_cursor=lambda: fake.cursor_position)
+    frame = np.zeros((10, 10, 3), np.uint8)
+    clicker = ClickController(fake, reader, lambda: frame, sleep_fn=lambda _s: None)
+    assert clicker.click_at((40, 60))
+    assert fake.cursor_position == (540, 360)

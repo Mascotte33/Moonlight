@@ -2,27 +2,71 @@
 
 The Health card (T10.F1.K1) shows the same dots as the Dashboard, each with
 its last value. The module switches live in Settings.
+
+"Show what the bot sees" opens a window with the game grid, a red box on
+every creature the health-bar scan finds and an orange box on the square
+each is predicted to step to. It scans about 5 times a second only while
+open, and never sends input.
 """
 
 from __future__ import annotations
 
 import time
+import tkinter as tk
 from collections import deque
 
 import customtkinter as ctk
+import cv2
+import numpy as np
 
 from moonlight.bot.state import WorldState
 from moonlight.gui import theme
+from moonlight.gui.loop_factory import load_profile, load_real_config
 from moonlight.gui.state_bridge import LogFeed
 from moonlight.gui.tabs.base import Tab, dot_color, health, section, stat_label, stat_num
+from moonlight.gui.tabs.settings import plain_reason
+from moonlight.perception.creatures import find_creatures, predict
 
-__all__ = ["DiagnosticsTab", "recent_errors"]
+__all__ = ["DiagnosticsTab", "recent_errors", "seen_view"]
 
 
 def recent_errors(log: LogFeed) -> str:
     """The last 20 warning and error lines, newest first, or "No errors"."""
     lines = log.text(20, levels=("warn", "error")).splitlines()
     return "\n".join(reversed(lines)) or "No errors"
+
+
+#: Debug window refresh, ms (about 5 scans a second).
+SEES_MS = 200
+#: Debug window width, px.
+SEES_W = 720
+
+
+def seen_view(
+    frame: np.ndarray,
+    grid: tuple[int, int, int, int],
+    creatures: list[tuple[int, int]],
+    predicted: set[tuple[int, int]],
+) -> np.ndarray:
+    """The game grid of *frame* (BGR) with tile lines and the scan's boxes.
+
+    # doc: docs/prs/keys-walking.md#creature-scan
+    """
+    gx, gy, gw, gh = grid
+    view = frame[gy : gy + gh, gx : gx + gw].copy()
+    tw, th = gw / 15, gh / 11
+    for col in range(16):
+        x = min(round(col * tw), gw - 1)
+        cv2.line(view, (x, 0), (x, gh - 1), (90, 90, 90), 1)
+    for row in range(12):
+        y = min(round(row * th), gh - 1)
+        cv2.line(view, (0, y), (gw - 1, y), (90, 90, 90), 1)
+    for slots, color in ((predicted, (62, 155, 201)), (creatures, (81, 93, 229))):
+        for col, row in slots:
+            a = (round(col * tw) + 2, round(row * th) + 2)
+            b = (round((col + 1) * tw) - 3, round((row + 1) * th) - 3)
+            cv2.rectangle(view, a, b, color, 3)
+    return view
 
 
 class DiagnosticsTab(Tab):
@@ -74,6 +118,16 @@ class DiagnosticsTab(Tab):
         ctk.CTkButton(
             logsec, text="Reset loop stats", command=self._reset_stats
         ).pack(anchor="e", padx=10, pady=(0, 8))
+
+        sees = section(parent, "What the bot sees")
+        sees.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
+        ctk.CTkButton(sees, text="Show what the bot sees", command=self._show_sees).pack(
+            anchor="w", padx=theme.PAD
+        )
+        self.lbl_sees = ctk.CTkLabel(sees, text="", anchor="w", text_color=theme.AMBER)
+        self.lbl_sees.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
+        self._sees: ctk.CTkToplevel | None = None
+        self._root = parent
         self._log_text: str = ""
         self._poll_times: deque[float] = deque(maxlen=200)
 
@@ -86,6 +140,51 @@ class DiagnosticsTab(Tab):
                 ctrl.loop.reset_stats()
             except Exception:  # noqa: BLE001 - display only
                 pass
+
+    def _show_sees(self) -> None:
+        """Open the live creature-scan window (one at a time)."""
+        if self._sees is not None and self._sees.winfo_exists():
+            self._sees.focus()
+            return
+        from moonlight.gui.tabs.calibration import _photo
+        from moonlight.perception.capture import CaptureError, ScreenCapture
+
+        try:
+            cfg = load_real_config()
+            grid = load_profile(cfg.profile, cfg.profiles_dir).get_region("game_grid").to_tuple
+            cap = ScreenCapture(window_title=cfg.window_title)
+        except Exception as exc:  # any setup failure is shown, never raised in Tk
+            self.lbl_sees.configure(text=plain_reason(str(exc)))
+            return
+        win = self._sees = ctk.CTkToplevel(self._root)
+        win.title("What the bot sees")
+        label = tk.Label(win, bg=theme.NIGHT, fg=theme.TEXT, text="Looking for Tibia...")
+        label.pack()
+        scale = SEES_W / grid[2]
+        prev: list[tuple[int, int]] = []
+
+        def close() -> None:
+            cap.close()
+            win.destroy()
+
+        def tick() -> None:
+            if not win.winfo_exists():
+                return
+            try:
+                frame = np.ascontiguousarray(cap.get_frame([grid])[:, :, ::-1])  # RGB -> BGR
+            except CaptureError as exc:
+                label.configure(image="", text=str(exc))
+                win.after(1000, tick)
+                return
+            slots = find_creatures(frame, grid)
+            photo = _photo(seen_view(frame, grid, slots, predict(slots, prev)), scale)
+            label.configure(image=photo, text="")
+            label.image = photo  # type: ignore[attr-defined]  # keep it alive
+            prev[:] = slots
+            win.after(SEES_MS, tick)
+
+        win.protocol("WM_DELETE_WINDOW", close)
+        win.after(0, tick)
 
     # -- helpers -----------------------------------------------------------
 

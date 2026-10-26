@@ -27,6 +27,15 @@ def raw(**modules: dict[str, Any]) -> dict[str, Any]:
     return {"profile": "p", "hotkeys": {"exura gran": "F1", "exura": "F2"}, "modules": sections}
 
 
+
+def test_old_walk_keys_in_cavebot_still_loads(tmp_path: Path) -> None:
+    route_file(tmp_path / "routes")
+    data = raw(cavebot={"enabled": True, "route": "hunt", "walk_keys": True})
+    data["routes_dir"] = str(tmp_path / "routes")
+    path = tmp_path / "moonlight_config.json"
+    path.write_text(json.dumps(data))
+    assert BotConfig.load(path).walk_keys is True
+
 def test_default_is_valid() -> None:
     cfg = BotConfig.default()
     assert cfg.healing is not None and cfg.targeting is not None and cfg.alarms is not None
@@ -45,6 +54,7 @@ def test_load_roundtrip(tmp_path: Path) -> None:
     data["routes_dir"] = str(tmp_path / "routes")
     data["loop"] = {"tick_rate": 10.0, "enable_f12_monitor": False}
     data["serial_port"] = "COM7"
+    data["walk_keys"] = True
     # F-09: looting / refill need their perception sources wired (T34).
     data["monster_name_source"] = True
     data["capacity_source"] = True
@@ -53,7 +63,7 @@ def test_load_roundtrip(tmp_path: Path) -> None:
     cfg = BotConfig.load(path)
     assert cfg.healing == HealingConfig(normal_hp_percent=65.0)
     assert cfg.cavebot is not None and cfg.cavebot.route.name == "hunt"
-    assert cfg.cavebot.rope_hotkey == "F5"
+    assert cfg.cavebot.rope_hotkey == "F5" and cfg.walk_keys is True
     assert cfg.refill is not None and cfg.refill.trigger_cap == 80.0
     assert cfg.loop.tick_rate == 10.0 and cfg.serial_port == "COM7"
     assert cfg.targeting is None
@@ -115,12 +125,6 @@ def test_buffs_refused_without_icon_source() -> None:
         lambda d: d["modules"].update(cavebot={"enabled": True}),
         lambda d: d["modules"].update(cavebot={"enabled": True, "route": "missing"}),
         lambda d: d["modules"].update(refill={"enabled": True}),
-        # F-03: minimap_start must be a (x, y, z) of non-negative ints.
-        lambda d: d.update(minimap_start=[100, 200]),
-        lambda d: d.update(minimap_start=[-1, 0, 0]),
-        lambda d: d.update(minimap_start=[True, 0, 0]),
-        lambda d: d.update(minimap_start=["abc", 0, 0]),
-        lambda d: d.update(minimap_start="not-a-tuple"),
     ],
 )
 def test_fail_closed(mutate: Any) -> None:
@@ -130,13 +134,10 @@ def test_fail_closed(mutate: Any) -> None:
         BotConfig.from_dict(data)
 
 
-def test_minimap_start_roundtrip() -> None:
-    """F-03: a valid minimap_start round-trips as an absolute (x, y, z) seed."""
+def test_old_minimap_start_is_ignored() -> None:
     data = raw()
     data["minimap_start"] = [100, 200, 7]
-    cfg = BotConfig.from_dict(data)
-    assert cfg.minimap_start == (100, 200, 7)
-    assert cfg.validate() is cfg
+    assert BotConfig.from_dict(data) == BotConfig.from_dict(raw())
 
 
 def test_clicker_open_loop_switch_and_validation() -> None:
@@ -149,11 +150,6 @@ def test_clicker_open_loop_switch_and_validation() -> None:
     data["clicker"] = {"settle_ms": 500}
     with pytest.raises(ConfigError):
         BotConfig.from_dict(data)
-
-
-def test_minimap_start_default_none() -> None:
-    """F-03: minimap_start defaults to None (legacy relative behavior)."""
-    assert BotConfig.default().minimap_start is None
 
 
 def test_spell_without_hotkey_rejected() -> None:
@@ -200,7 +196,6 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
         serial_port="COM7",
         profiles_dir=str(tmp_path / "profiles"),
         routes_dir=str(tmp_path / "routes"),
-        minimap_start=[100, 200, 7],
         loop={"tick_rate": 10.0},
         clicker={"open_loop": True},
         monster_name_source=True,

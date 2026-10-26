@@ -17,6 +17,7 @@ dependencies = [
     "mss>=9.0",
     "pytesseract>=0.3.10",
     "customtkinter>=5.2",
+    "python-xlib>=0.33 ; sys_platform=='linux'",
 ]
 
 [project.optional-dependencies]
@@ -60,7 +61,7 @@ exclude = ["^tools/"]
 
 
 [[tool.mypy.overrides]]
-module = ["customtkinter", "pytesseract"]
+module = ["customtkinter", "pytesseract", "Xlib"]
 ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
