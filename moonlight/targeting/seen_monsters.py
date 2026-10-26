@@ -117,8 +117,9 @@ class SeenMonsters:
             black_on_white, None, fx=GUESS_SCALE, fy=GUESS_SCALE, interpolation=cv2.INTER_NEAREST
         )
         big = cv2.copyMakeBorder(big, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
-        letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ -'"
-        config = f'--psm 7 -c tessedit_char_whitelist="{letters}"'
+        # No space or quote in the whitelist: pytesseract splits the config on them.
+        letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-"
+        config = f"--psm 7 -c tessedit_char_whitelist={letters}"
         return str(pytesseract.image_to_string(big, config=config)).strip().lower()
 
     def _guess_loop(self) -> None:
