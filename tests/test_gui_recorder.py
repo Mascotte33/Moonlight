@@ -9,6 +9,7 @@ import pytest
 from moonlight.cavebot.cavebot import RouteError, RouteFileLoader, Waypoint
 from moonlight.cavebot.recorder import (
     HOTKEYS,
+    StandTracker,
     make_waypoint,
     position_line,
     route_path,
@@ -105,3 +106,84 @@ def test_recording_stops_when_the_cavebot_starts() -> None:
     assert should_stop_recording(True, True)
     assert not should_stop_recording(True, False)
     assert not should_stop_recording(False, True)  # nothing to stop
+
+
+class _Clock:
+    now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _walk_east(tracker: StandTracker, clock: _Clock, start: int, tiles: int) -> list[Position]:
+    """10 Hz reads; the minimap reports each tile at step start, a step takes 3 reads.
+
+    Returns the tile the tracker confirmed after every read.
+    """
+    confirmed: list[Position] = []
+    for x in range(start, start + tiles):
+        for _ in range(3):
+            tracker.update(Position(x, 50, 7))
+            stood = tracker.stood
+            if stood is not None:
+                confirmed.append(stood)
+            clock.now += 0.1
+    return confirmed
+
+
+def test_live_position_is_the_tile_being_walked_to() -> None:
+    """Sampling the live read, a waypoint lands on a tile the character has not reached yet.
+
+    A step to x=105 starts at x=104: the read already says 105 on the first
+    tick, so ``should_add`` records 105 while the character still stands on 104.
+    """
+    standing_on = 104
+    read = Position(105, 50, 7)  # the minimap re-centered on the destination
+    assert should_add([Waypoint(100, 50, 7)], read, 5)
+    assert read.x != standing_on
+
+
+def test_stand_tracker_confirms_the_tile_left_while_walking() -> None:
+    clock = _Clock()
+    tracker = StandTracker(settle=0.6, clock=clock)
+    confirmed = _walk_east(tracker, clock, 100, 8)
+    # 3 reads per tile: the first tile is unconfirmed, then each read is one tile behind.
+    assert confirmed == [Position(100 + i // 3 - 1, 50, 7) for i in range(3, 24)]
+
+
+def test_stand_tracker_confirms_the_current_tile_after_it_settles() -> None:
+    clock = _Clock()
+    tracker = StandTracker(settle=0.6, clock=clock)
+    tracker.update(Position(100, 50, 7))
+    assert tracker.stood is None  # nothing known to have been stood on yet
+    clock.now = 0.7
+    assert tracker.stood == Position(100, 50, 7)
+    tracker.update(Position(101, 50, 7))  # step starts
+    assert tracker.stood == Position(100, 50, 7)
+    clock.now = 1.4
+    assert tracker.stood == Position(101, 50, 7)
+
+
+def test_stand_tracker_ignores_unknown_reads() -> None:
+    clock = _Clock()
+    tracker = StandTracker(settle=0.6, clock=clock)
+    tracker.update(Position(100, 50, 7))
+    tracker.update(Position(0, 0, 0))
+    clock.now = 1.0
+    assert tracker.stood == Position(100, 50, 7)
+
+
+def test_recorded_waypoints_are_tiles_the_character_stood_on() -> None:
+    clock = _Clock()
+    tracker = StandTracker(settle=0.6, clock=clock)
+    waypoints = [Waypoint(100, 50, 7)]
+    for x in range(100, 125):
+        for _ in range(3):
+            tracker.update(Position(x, 50, 7))
+            stood = tracker.stood
+            if stood is not None and should_add(waypoints, stood, 5):
+                waypoints.append(Waypoint(stood.x, stood.y, stood.z))
+            clock.now += 0.1
+        # the character is on x only once it takes the next step
+        assert all(wp.x < x for wp in waypoints[1:])
+    assert [wp.x for wp in waypoints] == [100, 105, 110, 115, 120]
