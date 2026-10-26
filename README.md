@@ -187,8 +187,12 @@ or in the `targeting` section of your profile config:
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
   The Targeting tab shows the picture next to the name. Type or correct the
-  name, then click **Add to monsters**. Without tesseract the guesses stay
-  empty and you type the names.
+  name, then click **Add to monsters**. You name each monster kind once.
+  Without tesseract the guesses stay empty and you type the names. Only gray
+  name text counts, so icons and other panels don't create fake monsters.
+- **Timing log:** every 10 s `logs/bot.log` gets a `tick timing:` line
+  (average, screen-reading share, max), and each restart logs its reason
+  (`bot restarts: ...`).
 
 Client setup: the battle list must show monsters (players may be filtered
 out) and be sorted by distance. Actions are logged to `logs/bot.log`.

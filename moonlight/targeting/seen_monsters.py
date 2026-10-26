@@ -20,6 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
+from moonlight.perception.battle import name_text_mask
+
 __all__ = ["SeenMonster", "SeenMonsters"]
 
 logger = logging.getLogger(__name__)
@@ -109,10 +111,15 @@ class SeenMonsters:
         import cv2
         import pytesseract
 
+        # Black gray-text pixels on white, upscaled sharp and padded: tesseract's best case.
+        black_on_white = np.where(name_text_mask(name_crop), 0, 255).astype(np.uint8)
         big = cv2.resize(
-            name_crop, None, fx=GUESS_SCALE, fy=GUESS_SCALE, interpolation=cv2.INTER_CUBIC
+            black_on_white, None, fx=GUESS_SCALE, fy=GUESS_SCALE, interpolation=cv2.INTER_NEAREST
         )
-        return str(pytesseract.image_to_string(big, config="--psm 7")).strip().lower()
+        big = cv2.copyMakeBorder(big, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
+        letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ -'"
+        config = f'--psm 7 -c tessedit_char_whitelist="{letters}"'
+        return str(pytesseract.image_to_string(big, config=config)).strip().lower()
 
     def _guess_loop(self) -> None:
         while True:

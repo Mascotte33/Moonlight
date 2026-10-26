@@ -490,6 +490,20 @@ class TestNameHash:
     def test_different_text_different_hash(self) -> None:
         assert hashes(WOLF) != hashes(RAT)
 
+    def test_coloured_pixels_in_the_name_area_do_not_change_the_hash(self) -> None:
+        crop = np.zeros((10, 40, 3), dtype=np.uint8)
+        crop[2:8, 5:30:2] = 247
+        with_icon = crop.copy()
+        with_icon[1:9, 32:38] = (230, 60, 60)
+        assert name_crop_hash(crop) == name_crop_hash(with_icon)
+
+    def test_a_row_of_only_coloured_bright_pixels_is_not_an_entry(self) -> None:
+        frame, region = make_frame([{"bar": True}])
+        top, left = slot_origin((0, 0), 0)
+        for x, y in WOLF:
+            frame[top + y, left + x] = (230, 60, 60)
+        assert read_default(frame, region) == []
+
     def test_empty_name_area_is_empty_hash(self) -> None:
         assert name_crop_hash(np.full((10, 40, 3), 40, dtype=np.uint8)) == ""
 

@@ -79,6 +79,7 @@ __all__ = [
     "BattleReader",
     "entries_to_state",
     "name_crop_hash",
+    "name_text_mask",
 ]
 
 #: A rectangle as ``(x, y, width, height)`` (matches ``calibrate.Rect``).
@@ -119,6 +120,10 @@ HP_BAR_MIN_RUN = 80
 #: Channel spread (max - min) above which a fill pixel is HP colour
 #: (green/yellow/red); the lost part shows the grey panel (spread ~0).
 HP_FILL_MIN_SPREAD = 60
+
+#: Largest channel spread of a name-text pixel: names are gray, icons and
+#: HP fill are coloured, so they never enter the name hash.
+NAME_TEXT_MAX_SPREAD = 40
 
 #: Attack-target outline color around the selected row's icon (T28).
 SELECTED_RGB: tuple[int, int, int] = (255, 0, 0)
@@ -163,17 +168,26 @@ class BattleEntry:
     name_hash: str = ""
 
 
+def name_text_mask(slot_name_crop: np.ndarray) -> np.ndarray:
+    """True on the name's text pixels: brighter than :data:`TEXT_THRESHOLD` and gray."""
+    # doc: docs/prs/targeting.md#name-hash
+    if slot_name_crop.ndim == 2:
+        return np.asarray(slot_name_crop > TEXT_THRESHOLD)
+    rgb = slot_name_crop[..., :3].astype(np.int16)
+    spread = rgb.max(axis=2) - rgb.min(axis=2)
+    return np.asarray((rgb.max(axis=2) > TEXT_THRESHOLD) & (spread <= NAME_TEXT_MAX_SPREAD))
+
+
 def name_crop_hash(slot_name_crop: np.ndarray) -> str:
     """Stable identity of a slot's name pixels; ``""`` when there is no text.
 
-    Binarizes the crop (max channel over :data:`TEXT_THRESHOLD`), trims it to
-    the bounding box of the set pixels and hashes the bits with the shape, so
-    the HP bar, the selection outline and a slightly different background do
-    not change it.
+    Binarizes the crop with :func:`name_text_mask`, trims it to the bounding
+    box of the set pixels and hashes the bits with the shape, so the HP bar,
+    the selection outline, coloured icons and a slightly different background
+    do not change it.
     """
     # doc: docs/prs/targeting.md#name-hash
-    bright = slot_name_crop if slot_name_crop.ndim == 2 else slot_name_crop.max(axis=2)
-    bits = bright > TEXT_THRESHOLD
+    bits = name_text_mask(slot_name_crop)
     rows, cols = np.flatnonzero(bits.any(axis=1)), np.flatnonzero(bits.any(axis=0))
     if not rows.size:
         return ""
@@ -312,8 +326,10 @@ class BattleReader:
             outline_top = top + bar[0] - self._bar_offset
             name_crop = slot_rgb[: bar[0], self._name_x : name_x1]
             name_hash = name_crop_hash(name_crop)
+            if not name_hash:
+                continue  # bright but coloured pixels: not a creature name
             name = ""
-            if self._seen_monsters is not None and name_hash:
+            if self._seen_monsters is not None:
                 name = self._seen_monsters.name_for(
                     name_hash, name_crop, slot_rgb[: bar[0], :name_x1]
                 )

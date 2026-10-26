@@ -321,7 +321,7 @@ class GuiApp:
             self.log.error(f"settings not applied: {exc!r}")
             return
         self.log.info("settings changed, restarting the bot")
-        ctrl.stop()
+        ctrl.stop("calibration saved" if restart else "settings need a restart")
         self.start_bot(resume=True)
 
     def start_bot(self, *, resume: bool = False) -> None:

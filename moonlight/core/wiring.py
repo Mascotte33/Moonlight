@@ -427,13 +427,18 @@ def needs_restart(old: BotConfig, new: BotConfig) -> bool:
     """
     # doc: docs/prs/gui-calibration.md#live-apply
     names = [f.name for f in fields(old) if f.name not in LIVE_FIELDS]
-    if any(getattr(old, n) != getattr(new, n) for n in names):
+    changed = [n for n in names if getattr(old, n) != getattr(new, n)]
+    if changed:
+        logger.info("bot restarts: changed %s", ", ".join(changed))
         return True
 
     def regions(cfg: BotConfig) -> set[str]:
         return {r for m in _enabled_modules(cfg) for r in MODULE_REGIONS[m]}
 
-    return not regions(new) <= regions(old) | set(_PERCEIVE_REGIONS) | {"game_grid"}
+    missing = regions(new) - regions(old) - set(_PERCEIVE_REGIONS) - {"game_grid"}
+    if missing:
+        logger.info("bot restarts: a module now reads %s", ", ".join(sorted(missing)))
+    return bool(missing)
 
 
 def build_modules(

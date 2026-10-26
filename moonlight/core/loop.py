@@ -125,6 +125,9 @@ __all__ = [
 
 logger = logging.getLogger("moonlight.core.loop")
 
+#: How often the tick timing line goes to the log.
+TIMING_LOG_SECONDS = 10.0
+
 # Seconds a sent select click waits for the row's red outline before a
 # retry (clicking the attacked row again would stop the attack).
 _SELECT_OUTLINE_WAIT = 1.0
@@ -319,6 +322,9 @@ class GameLoop:
         self._actions_dropped_unfocused = 0
         self._tick_time_total = 0.0
         self._tick_time_max = 0.0
+        # (start, ticks, total s, perceive s, max s) of the current timing-log window.
+        self._timing_window = (0.0, 0, 0.0, 0.0, 0.0)
+        self._perceive_time = 0.0
         self._state_transitions: dict[BotState, int] = {}
         self._start_time: float | None = None
 
@@ -430,8 +436,10 @@ class GameLoop:
             self._record_tick_time(t0)
             return
 
+        self._perceive_time = 0.0
         if self._perceive is not None:
             self._perceive()
+            self._perceive_time = self._clock() - t0
         snap = self.state.snapshot()
 
         # Pause gate: !screen_ok (unfocused / bad frame) pauses, fail-closed.
@@ -866,6 +874,22 @@ class GameLoop:
         self._tick_time_total += elapsed
         if elapsed > self._tick_time_max:
             self._tick_time_max = elapsed
+        start, ticks, total, perceive, longest = self._timing_window
+        ticks, total = ticks + 1, total + elapsed
+        perceive, longest = perceive + self._perceive_time, max(longest, elapsed)
+        now = self._clock()
+        if now - start >= TIMING_LOG_SECONDS:
+            if start:
+                logger.info(
+                    "tick timing: %d ticks, avg %.1f ms (screen reading %.1f ms), max %.1f ms",
+                    ticks,
+                    total / ticks * 1000.0,
+                    perceive / ticks * 1000.0,
+                    longest * 1000.0,
+                )
+            self._timing_window = (now, 0, 0.0, 0.0, 0.0)
+        else:
+            self._timing_window = (start, ticks, total, perceive, longest)
 
     def _shutdown(self) -> None:
         if self._f12_monitor is not None:
