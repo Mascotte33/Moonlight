@@ -6,24 +6,16 @@ Routes are the bot's own files, ``<routes_dir>/<name>.json``, in the format
 
 from __future__ import annotations
 
-import ctypes
 import json
-import queue
 import re
-import sys
-import threading
 import time
 from collections.abc import Callable
-from ctypes import wintypes
 from pathlib import Path
 
-from moonlight import x11
 from moonlight.cavebot.cavebot import RouteError, RouteFileLoader, Waypoint
 from moonlight.core.state import Position
 
 __all__ = [
-    "HOTKEYS",
-    "Hotkeys",
     "make_waypoint",
     "route_path",
     "StandTracker",
@@ -32,99 +24,9 @@ __all__ = [
     "should_stop_recording",
     "stairs_waypoint",
     "position_line",
-    "vk_code",
 ]
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
-#: Recording hotkeys: function key -> waypoint action (or "undo").
-HOTKEYS = {"F4": "ladder", "F5": "undo", "F6": "walk", "F7": "rope", "F8": "shovel", "F9": "label"}
-_WM_QUIT = 0x0012
-_WM_HOTKEY = 0x0312
-_MOD_NOREPEAT = 0x4000
-
-
-def vk_code(key: str) -> int:
-    """Windows virtual-key code of function key *key* ("F1" is 0x70)."""
-    return 0x6F + int(key[1:])
-
-
-class Hotkeys:
-    """:data:`HOTKEYS` as global hotkeys, pressed actions put on *out*.
-
-    ``RegisterHotKey`` ties keys to the thread that registers them, so they
-    live on their own thread with a message loop. Linux has no such call, so
-    a thread polls the X11 key map instead. There the key also reaches the
-    game, so keep F4 to F9 free of client hotkeys while recording.
-    """
-
-    def __init__(self, out: queue.Queue[str]) -> None:
-        self._out = out
-        self._thread: threading.Thread | None = None
-        self._thread_id = 0
-        self._stop = threading.Event()
-        self.failed: list[str] = []
-
-    def start(self) -> None:
-        if self._thread is not None:
-            return
-        if sys.platform == "linux":
-            self._stop = threading.Event()
-            self._thread = threading.Thread(target=self._poll, daemon=True, name="recorder-keys")
-            self._thread.start()
-            return
-        if sys.platform != "win32":
-            return
-        ready = threading.Event()
-        self._thread = threading.Thread(
-            target=self._run, args=(ready,), daemon=True, name="recorder-hotkeys"
-        )
-        self._thread.start()
-        ready.wait(1.0)
-
-    def stop(self) -> None:
-        if self._thread is None:
-            return
-        if sys.platform == "linux":
-            self._stop.set()
-            self._thread.join(1.0)
-            self._thread = None
-            return
-        if sys.platform != "win32":
-            return
-        ctypes.windll.user32.PostThreadMessageW(self._thread_id, _WM_QUIT, 0, 0)
-        self._thread.join(1.0)
-        self._thread = None
-
-    def _poll(self) -> None:
-        held = {k: False for k in HOTKEYS}
-        while not self._stop.wait(0.03):
-            for k, was in held.items():
-                down = x11.vk_down(vk_code(k))
-                if down and not was:
-                    self._out.put(HOTKEYS[k])
-                held[k] = down
-
-    def _run(self, ready: threading.Event) -> None:
-        if sys.platform != "win32":
-            return
-        user32 = ctypes.windll.user32
-        self._thread_id = ctypes.windll.kernel32.GetCurrentThreadId()
-        msg = wintypes.MSG()
-        user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)  # makes the message queue
-        keys = list(HOTKEYS)
-        self.failed = [
-            k
-            for i, k in enumerate(keys)
-            if not user32.RegisterHotKey(None, i + 1, _MOD_NOREPEAT, vk_code(k))
-        ]
-        ready.set()
-        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-            if msg.message == _WM_HOTKEY and 1 <= msg.wParam <= len(keys):
-                self._out.put(HOTKEYS[keys[msg.wParam - 1]])
-        for i in range(len(keys)):
-            user32.UnregisterHotKey(None, i + 1)
-
-
 class StandTracker:
     """The tile the character stood on, not the one it is walking to.
 

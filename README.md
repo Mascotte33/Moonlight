@@ -113,8 +113,9 @@ The route recorder saves the tile the character stood on, never the one it is
 walking to: a position counts after it held for 0.6 s, or once the character
 stepped off it. Recording stops and saves the route when the cavebot starts. Walking
 over stairs or into a hole records a `stairs` waypoint on that tile, so the
-route plays back across floors; for a ladder, rope or shovel press its
-recording key (F4, F7, F8) before you use it.
+route plays back across floors; for a ladder, rope or shovel click its
+button while standing on the tile you use it from. While recording, every
+waypoint button adds a waypoint on the character's tile.
 
 ## Getting started
 

@@ -9,7 +9,6 @@ and reach the route file only on Save.
 
 from __future__ import annotations
 
-import queue
 import tkinter as tk
 from collections.abc import Callable
 from dataclasses import replace
@@ -21,8 +20,6 @@ import customtkinter as ctk
 
 from moonlight.cavebot.cavebot import ACTIONS, Route, RouteError, RouteFileLoader, Waypoint
 from moonlight.cavebot.recorder import (
-    HOTKEYS,
-    Hotkeys,
     StandTracker,
     make_waypoint,
     position_line,
@@ -334,7 +331,7 @@ class CavebotTab(Tab):
             button.grid(row=i // 3, column=i % 3, padx=1, pady=1)
 
         rec = ctk.CTkFrame(edit, fg_color="transparent")
-        rec.pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0))
+        rec.pack(fill="x", padx=theme.PAD, pady=theme.PAD)
         self.btn_record = _button(rec, "Start recording", self._toggle)
         self.btn_record.configure(width=130)
         self.btn_record.pack(side="left")
@@ -342,16 +339,6 @@ class CavebotTab(Tab):
         self.ent_tiles = _entry(rec, "", 36)
         self.ent_tiles.insert(0, "5")
         ctk.CTkLabel(rec, text="tiles").pack(side="left", padx=theme.UNIT)
-        keys = "  ".join(f"{k} {a}" for k, a in sorted(HOTKEYS.items()))
-        ctk.CTkLabel(
-            edit,
-            text=keys,
-            anchor="w",
-            justify="left",
-            wraplength=260,
-            text_color=theme.TEXT_MUTED,
-            font=ctk.CTkFont(family=theme.MONO),
-        ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, theme.PAD))
 
         self._pos = Position(0, 0, 0)
         #: The last position read, shown while the reader is lost.
@@ -366,11 +353,8 @@ class CavebotTab(Tab):
         self._error = ""
         self._text = ""
         self._recording = False
-        self._pressed: queue.Queue[str] = queue.Queue()
-        self._hotkeys = Hotkeys(self._pressed)
         self._stand = StandTracker()
         self._stood_before: Position | None = None  # for the stairs walked over
-        self.btn_record.bind("<Destroy>", lambda _e: self._hotkeys.stop(), add="+")
         self._reload()
 
     def _refresh_names(self) -> list[str]:
@@ -526,13 +510,14 @@ class CavebotTab(Tab):
             self.menu_route.set(self._name)
             self.submit()
 
-    def _add_action(self, action: str, manual: bool = True, at: Position | None = None) -> None:
-        """Add *action* at X, Y, Z (only when *manual*), else at *at* or the bot's position."""
-        typed = (self.ent_x.get(), self.ent_y.get(), self.ent_z.get()) if manual else ("",) * 3
+    def _add_action(self, action: str) -> None:
+        """Add *action* at the character's tile; X, Y, Z when typed and not recording."""
+        typed = (self.ent_x.get(), self.ent_y.get(), self.ent_z.get())
+        if self._recording:
+            typed = ("",) * 3
+        at = self._stand.stood if self._recording else None
         try:
-            wp = make_waypoint(
-                action, self.ent_label.get(), typed, at if at is not None else self._pos
-            )
+            wp = make_waypoint(action, self.ent_label.get(), typed, at or self._pos)
         except RouteError as exc:
             self.lbl_msg.configure(text=str(exc))
             return
@@ -613,17 +598,11 @@ class CavebotTab(Tab):
         self._stand = StandTracker()
         self._stood_before = None
         self.btn_record.configure(text="Stop recording")
-        self._hotkeys.start()
-        if self._hotkeys.failed:
-            self.lbl_msg.configure(
-                text=f"Hotkeys in use elsewhere: {', '.join(self._hotkeys.failed)}"
-            )
         self._draw()
 
     def _stop_recording(self) -> None:
         self._recording = False
         self.btn_record.configure(text="Start recording")
-        self._hotkeys.stop()
         self._draw()
 
     def _auto_stop_recording(self) -> None:
@@ -647,12 +626,6 @@ class CavebotTab(Tab):
             self._stand.update(pos)
             # The tile stood on, never the one being walked to.
             stood = self._stand.stood
-            while not self._pressed.empty():
-                action = self._pressed.get_nowait()
-                if action == "undo":
-                    self._undo()
-                else:
-                    self._add_action(action, manual=False, at=stood or Position(0, 0, 0))
             try:
                 tiles = max(1, int(self.ent_tiles.get()))
             except ValueError:
