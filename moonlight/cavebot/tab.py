@@ -23,11 +23,13 @@ from moonlight.cavebot.cavebot import ACTIONS, Route, RouteError, RouteFileLoade
 from moonlight.cavebot.recorder import (
     HOTKEYS,
     Hotkeys,
+    StandTracker,
     make_waypoint,
     position_line,
     route_path,
     save_route,
     should_add,
+    should_stop_recording,
 )
 from moonlight.core.config import BotConfig, ConfigError
 from moonlight.core.state import Position, WorldState
@@ -65,9 +67,15 @@ KIND_ROWS = (ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:])
 LOST_HINT = "No map match. Use minimap zoom 1 or 2, or explore the area first."
 #: Direction pad: (arrow, dx, dy) in 3x3 order. Up is north, y - 1.
 DIRECTIONS = (
-    ("↖", -1, -1), ("↑", 0, -1), ("↗", 1, -1),
-    ("←", -1, 0), ("•", 0, 0), ("→", 1, 0),
-    ("↙", -1, 1), ("↓", 0, 1), ("↘", 1, 1),
+    ("↖", -1, -1),
+    ("↑", 0, -1),
+    ("↗", 1, -1),
+    ("←", -1, 0),
+    ("•", 0, 0),
+    ("→", 1, 0),
+    ("↙", -1, 1),
+    ("↓", 0, 1),
+    ("↘", 1, 1),
 )
 #: Shown 1-based; ``cavebot.start_index`` is 0-based.
 START = Option("Start from waypoint", "cavebot.start_index", "entry")
@@ -141,7 +149,7 @@ def waypoint_table(route: Route | None, current: int | None = None) -> str:
 
 
 def waypoint_line(current: int | None, total: int) -> str:
-    """"Waypoint N of M" for 0-based *current*, or "Not running" for None."""
+    """ "Waypoint N of M" for 0-based *current*, or "Not running" for None."""
     return "Not running" if current is None else f"Waypoint {current + 1} of {total}"
 
 
@@ -359,6 +367,7 @@ class CavebotTab(Tab):
         self._recording = False
         self._pressed: queue.Queue[str] = queue.Queue()
         self._hotkeys = Hotkeys(self._pressed)
+        self._stand = StandTracker()
         self.btn_record.bind("<Destroy>", lambda _e: self._hotkeys.stop(), add="+")
         self._reload()
 
@@ -515,11 +524,13 @@ class CavebotTab(Tab):
             self.menu_route.set(self._name)
             self.submit()
 
-    def _add_action(self, action: str, manual: bool = True) -> None:
-        """Add *action* at X, Y, Z (only when *manual*) or the bot's position."""
+    def _add_action(self, action: str, manual: bool = True, at: Position | None = None) -> None:
+        """Add *action* at X, Y, Z (only when *manual*), else at *at* or the bot's position."""
         typed = (self.ent_x.get(), self.ent_y.get(), self.ent_z.get()) if manual else ("",) * 3
         try:
-            wp = make_waypoint(action, self.ent_label.get(), typed, self._pos)
+            wp = make_waypoint(
+                action, self.ent_label.get(), typed, at if at is not None else self._pos
+            )
         except RouteError as exc:
             self.lbl_msg.configure(text=str(exc))
             return
@@ -593,17 +604,32 @@ class CavebotTab(Tab):
         self.lbl_msg.configure(text=f"Deleted {name}")
 
     def _toggle(self) -> None:
-        self._recording = not self._recording
-        self.btn_record.configure(text="Stop recording" if self._recording else "Start recording")
         if self._recording:
-            self._hotkeys.start()
-            if self._hotkeys.failed:
-                self.lbl_msg.configure(
-                    text=f"Hotkeys in use elsewhere: {', '.join(self._hotkeys.failed)}"
-                )
-        else:
-            self._hotkeys.stop()
+            self._stop_recording()
+            return
+        self._recording = True
+        self._stand = StandTracker()
+        self.btn_record.configure(text="Stop recording")
+        self._hotkeys.start()
+        if self._hotkeys.failed:
+            self.lbl_msg.configure(
+                text=f"Hotkeys in use elsewhere: {', '.join(self._hotkeys.failed)}"
+            )
         self._draw()
+
+    def _stop_recording(self) -> None:
+        self._recording = False
+        self.btn_record.configure(text="Start recording")
+        self._hotkeys.stop()
+        self._draw()
+
+    def _auto_stop_recording(self) -> None:
+        """The cavebot started: stop recording and save what was recorded."""
+        self._stop_recording()
+        if self._dirty:
+            self._save()
+        saved = self.lbl_msg.cget("text")
+        self.lbl_msg.configure(text=f"Cavebot started, recording stopped. {saved}")
 
     def on_poll(self, snap: WorldState) -> None:
         self.show_paused([SWITCH.field], self.ctx.paused)
@@ -611,19 +637,25 @@ class CavebotTab(Tab):
         self._status = snap.position_status
         if pos != Position(0, 0, 0):
             self._last = pos
+        cavebot_on = bool(self._switches[SWITCH.field].get()) or self.ctx.live_cavebot() is not None
+        if should_stop_recording(self._recording, cavebot_on):
+            self._auto_stop_recording()
         if self._recording:
+            self._stand.update(pos)
+            # The tile stood on, never the one being walked to.
+            stood = self._stand.stood
             while not self._pressed.empty():
                 action = self._pressed.get_nowait()
                 if action == "undo":
                     self._undo()
                 else:
-                    self._add_action(action, manual=False)
+                    self._add_action(action, manual=False, at=stood or Position(0, 0, 0))
             try:
                 tiles = max(1, int(self.ent_tiles.get()))
             except ValueError:
                 tiles = 5
-            if should_add(self._waypoints, pos, tiles):
-                self._waypoints.append(Waypoint(pos.x, pos.y, pos.z))
+            if stood is not None and should_add(self._waypoints, stood, tiles):
+                self._waypoints.append(Waypoint(stood.x, stood.y, stood.z))
                 self._changed()
         self._draw()
 

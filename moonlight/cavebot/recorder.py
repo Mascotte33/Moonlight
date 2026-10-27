@@ -12,6 +12,8 @@ import queue
 import re
 import sys
 import threading
+import time
+from collections.abc import Callable
 from ctypes import wintypes
 from pathlib import Path
 
@@ -24,8 +26,10 @@ __all__ = [
     "Hotkeys",
     "make_waypoint",
     "route_path",
+    "StandTracker",
     "save_route",
     "should_add",
+    "should_stop_recording",
     "position_line",
     "vk_code",
 ]
@@ -120,6 +124,37 @@ class Hotkeys:
             user32.UnregisterHotKey(None, i + 1)
 
 
+class StandTracker:
+    """The tile the character stood on, not the one it is walking to.
+
+    The minimap re-centers on the destination as soon as a step starts, while
+    the character is still on the tile it left. So a position read is only
+    trusted once it held for *settle* seconds; until then the tile the
+    character left is the confirmed one.
+    """
+
+    def __init__(self, settle: float = 0.6, clock: Callable[[], float] = time.monotonic) -> None:
+        self._settle = settle
+        self._clock = clock
+        self._current: Position | None = None
+        self._previous: Position | None = None
+        self._since = 0.0
+
+    def update(self, pos: Position) -> None:
+        """Feed the position read this tick; (0, 0, 0) is no read."""
+        if (pos.x, pos.y, pos.z) == (0, 0, 0) or pos == self._current:
+            return
+        self._previous, self._current = self._current, pos
+        self._since = self._clock()
+
+    @property
+    def stood(self) -> Position | None:
+        """The current tile once it held for *settle* seconds, else the tile left (or None)."""
+        if self._current is not None and self._clock() - self._since >= self._settle:
+            return self._current
+        return self._previous
+
+
 def make_waypoint(
     action: str, label: str, manual: tuple[str, str, str], live: Position
 ) -> Waypoint:
@@ -151,6 +186,11 @@ def should_add(waypoints: list[Waypoint], pos: Position, min_tiles: int) -> bool
     if last is None or last.z != pos.z:
         return True
     return max(abs(pos.x - last.x), abs(pos.y - last.y)) >= min_tiles
+
+
+def should_stop_recording(recording: bool, cavebot_on: bool) -> bool:
+    """True when a recording is running and the cavebot has started walking a route."""
+    return recording and cavebot_on
 
 
 def position_line(pos: Position, status: str = "") -> str:
