@@ -441,16 +441,15 @@ class Cavebot:
             self._scan_until = now + _SCAN_WINDOW  # see the creatures when it walks on
             self._attack(now)
         elif self._last_move > self._last_cmd or now - self._last_cmd >= _KEY_RETRY:
-            did_not_move = self._last_move <= self._last_cmd and self._target is not None
-            target = self._target
+            target = self._target if self._last_move <= self._last_cmd else None
             step = None if target is None else (target[0] - pos.x, target[1] - pos.y)
-            if did_not_move and self._target != self._retried_target and step in WALK_KEYS:
-                self._retried_target = self._target  # a lag looks like a block: press once more
+            if step is not None and target != self._retried_target and step in WALK_KEYS:
+                self._retried_target = target  # a lag looks like a block: press once more
                 self._press_walk_key(step)
             else:
-                if did_not_move:
-                    logger.info("cavebot: tile %s,%s,%s blocked, walking around", *self._target)
-                    self._blocked[self._target] = now + _BLOCK_TTL
+                if target is not None:
+                    logger.info("cavebot: tile %s,%s,%s blocked, walking around", *target)
+                    self._blocked[target] = now + _BLOCK_TTL
                     self._scan_until = now + _SCAN_WINDOW
                 self._retried_target = None
                 self._step_toward(wp, pos, now)
