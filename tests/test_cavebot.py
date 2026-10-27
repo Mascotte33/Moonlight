@@ -886,3 +886,42 @@ def test_walk_keys_ignore_the_scrolling_view_right_after_a_step(
     sim.pos = Position(100, 101 if around == "down" else 99, 7)
     sim.step()  # the view still shows the creature on its old screen slot: a tile off
     assert pressed(sim)[-1] == "left"  # not back to the blocked tile's row
+
+
+def test_walk_keys_skip_unreachable_waypoints_until_one_has_a_way(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    tile = np.full((256, 256, 3), 100, np.uint8)
+    tile[99:102, 109:112] = (0, 255, 255)  # walls all around waypoint 0
+    tile[100, 110] = 100
+    cv2.imwrite(str(tmp_path / "0_0_7.png"), tile)
+    sim = Sim(
+        [walk(110, 100), walk(100, 104, z=6), walk(100, 104)],
+        Position(100, 100, 7),
+        walk_keys=True,
+        cost_map=CostMap(tmp_path),
+    )
+    sim.bot.start()
+    with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
+        for _ in range(3 * _BLOCK_STEPS):  # walks into the wall first: the map can be wrong
+            sim.step()
+            if sim.route.current == 2:
+                break
+    for _ in range(_BLOCK_STEPS // 2):
+        sim.step()
+    assert sim.route.current == 2  # waypoint 1 is on another floor: skipped too
+    assert "waypoint 0 unreachable, skipping" in caplog.text
+    assert "waypoint 1 unreachable, skipping" in caplog.text
+    assert pressed(sim)[0] == "right" and pressed(sim)[-1] == "down"
+    assert sim.bot.is_active()
+
+
+def test_walk_keys_stuck_alarm_when_no_waypoint_is_reachable() -> None:
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    for _ in range(400):  # every tile around bumped, nothing to fight
+        sim.step()
+        if not sim.bot.is_active():
+            break
+    assert sim.bot.alarm == "stuck" and sim.now < 20
+    assert len(set(pressed(sim))) == 8
