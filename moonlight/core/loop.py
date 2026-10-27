@@ -346,6 +346,9 @@ class GameLoop:
 
     @modules.setter
     def modules(self, value: DecisionModules) -> None:
+        old = self.all_modules.cavebot
+        if old is not None and old is not value.cavebot:
+            old.release_walk_key()  # nothing ticks a replaced cavebot again
         self.all_modules = value
 
     def _cavebot_active(self, _snap: WorldState) -> bool:

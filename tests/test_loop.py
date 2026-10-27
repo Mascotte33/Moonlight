@@ -316,6 +316,17 @@ class TestGameLoopStates:
         gl.tick()
         assert steps == [1]
 
+    def test_replacing_the_cavebot_lets_go_of_its_walk_key(self) -> None:
+        released: list[int] = []
+        cavebot = SimpleNamespace(release_walk_key=lambda: released.append(1))
+        gl, _ = make_loop(
+            make_state(), FakeInput(), modules=DecisionModules(cavebot=cast(Cavebot, cavebot))
+        )
+        gl.modules = DecisionModules(cavebot=gl.all_modules.cavebot)
+        assert released == []
+        gl.modules = DecisionModules()  # the cavebot switched off
+        assert released == [1]
+
     def test_idle_when_nothing_to_do(self) -> None:
         ws = make_state(hp=100.0)
         inp = FakeInput()
