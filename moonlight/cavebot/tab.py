@@ -645,6 +645,8 @@ class CavebotTab(Tab):
         self._reload()
 
     def apply(self) -> BotConfig:
+        if self._dirty:
+            self._save()  # the cavebot runs the list shown, saved or not
         path = picked_config()
         values = {field: read() for field, read in self._readers.items()}
         cfg = apply_cavebot(load_real_config(path), values)
