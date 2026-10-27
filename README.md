@@ -188,12 +188,16 @@ or in the `targeting` section of your profile config:
   tab) and, when it differs from the target's row, presses
   `toggle_chase_hotkey` ("Client key: Toggle Chase Mode" in the tab) before
   attacking. Bind the same key to Toggle Chase Mode in the client's hotkey
-  options. An empty key, or no `chase_buttons` region, leaves the mode as it
-  is.
+  options. With an empty key the bot attacks in the current mode and logs
+  one warning ("set the Toggle Chase Mode key"). No `chase_buttons` region
+  leaves the mode as it is.
 - **Cavebot when blocked:** with targeting on, the cavebot never presses the
   attack key (the client's "attack next" ignores never-attack rows);
-  targeting does the fighting. With targeting off it presses
-  `loop.attack_combo`.
+  targeting does the fighting. It walks around monsters through any free
+  tile; when the scan says monsters close the way and nothing may fight, it
+  still tries every tile it has not bumped into yet. With targeting off it
+  presses `loop.attack_combo`.
+- **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
   The Targeting tab lists the ones with no monster row yet: the picture,

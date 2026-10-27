@@ -684,7 +684,11 @@ def test_walk_keys_forget_a_blocked_tile_after_a_while() -> None:
     assert sim.fake.sent_lines[-1] == "K down"  # straight through again
 
 
-def _creature_sim(monkeypatch: pytest.MonkeyPatch, slots: list[tuple[int, int]]) -> Sim:
+def _creature_sim(
+    monkeypatch: pytest.MonkeyPatch,
+    slots: list[tuple[int, int]],
+    attack_combo_when_blocked: str | None = "r",
+) -> Sim:
     """Keys mode, waypoint below, the creature scan sees *slots*."""
     monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: slots)
     sim = Sim(
@@ -692,7 +696,7 @@ def _creature_sim(monkeypatch: pytest.MonkeyPatch, slots: list[tuple[int, int]])
         Position(100, 100, 7),
         walk_keys=True,
         frames=lambda: np.zeros((1, 1, 3), np.uint8),
-        attack_combo="r",
+        attack_combo=attack_combo_when_blocked,
     )
     sim.bot.start()
     sim.step()
@@ -727,6 +731,19 @@ def test_walk_keys_attack_when_creatures_close_every_way(monkeypatch: pytest.Mon
     for _ in range(15):
         sim.step()
     assert sim.fake.sent_lines[n:] == ["K r"]
+
+
+def test_walk_keys_try_unbumped_tiles_when_nothing_may_fight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The scan says creatures close every way, but no attack key is allowed (targeting on).
+    sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4), (7, 6)], None)
+    assert sim.fake.sent_lines[-1] in ("K left", "K right")  # not the bumped tile below
+    sim.state.monsters = [Monster("Rat", 100.0)]
+    for _ in range(15):  # that tile is blocked too: the other side next
+        sim.step()
+    assert set(sim.fake.sent_lines[1:]) == {"K left", "K right"}
+    assert sim.bot.alarm is None
 
 
 def test_walk_keys_fight_through_instead_of_a_long_detour(

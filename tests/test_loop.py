@@ -7,12 +7,15 @@ key-state probe (that suite uses tiny real sleeps for the thread).
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import cast
+
+import pytest
 
 from moonlight.cavebot.cavebot import Cavebot
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
@@ -657,12 +660,16 @@ class TestChaseMode:
             ticks(gl, clock, 1)
             assert inp.sent_lines == ["K F6"]
 
-    def test_no_toggle_key_leaves_the_owners_mode(self) -> None:
+    def test_no_toggle_key_attacks_and_warns_once(self, caplog: pytest.LogCaptureFixture) -> None:
         inp = FakeInput()
         ws = self._wolf_selected("none")
         gl, clock = make_targeting_loop(ws, inp, F6_ROWS, toggle_chase_hotkey="")
-        ticks(gl, clock, 1)
-        assert inp.sent_lines == ["K F6"]
+        with caplog.at_level(logging.WARNING, logger="moonlight.core.loop"):
+            ticks(gl, clock, 40)
+        assert inp.sent_lines[0] == "K F6"
+        assert "K F9" not in inp.sent_lines
+        warnings = [r for r in caplog.records if "Toggle Chase Mode" in r.getMessage()]
+        assert len(warnings) == 1
 
     def test_pause_sends_no_key(self) -> None:
         inp = FakeInput()

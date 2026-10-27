@@ -556,22 +556,37 @@ class Cavebot:
         def walkable(x: int, y: int, z: int) -> bool:
             return (x, y) not in self._creatures and free(x, y, z)
 
+        def not_bumped(x: int, y: int, z: int) -> bool:
+            return (x, y, z) not in self._blocked and (cost is None or cost.walkable(x, y, z))
+
         start, goal = (pos.x, pos.y, pos.z), (wp.x, wp.y, wp.z)
         path = next_step(start, goal, walkable)
         if self._creatures:
             short = next_step(start, goal, free)
             if path is None or (short is not None and path[1] > short[1] + _DETOUR):
-                self._target = None
-                self._scan_until = now + _SCAN_WINDOW  # keep scanning while it fights
-                self._attack(now)
-                return
+                if self.attack_combo_when_blocked is not None:
+                    self._target = None
+                    self._scan_until = now + _SCAN_WINDOW  # keep scanning while it fights
+                    self._attack(now)
+                    return
+                # Nothing may fight: the scan can be a tile off, so try every tile not bumped yet.
+                path = next_step(start, goal, not_bumped)
         if path is None:
-            dx, dy = wp.x - pos.x, wp.y - pos.y
-            step = ((dx > 0) - (dx < 0), 0) if abs(dx) >= abs(dy) else (0, (dy > 0) - (dy < 0))
+            step = self._best_unbumped_step(wp, pos)
         else:
             step = path[0]
         self._target = (pos.x + step[0], pos.y + step[1], pos.z)
         self._press_arrow(step)
+
+    def _best_unbumped_step(self, wp: Waypoint, pos: Position) -> tuple[int, int]:
+        """No path: the step nearest *wp*, unbumped tiles first (map data can be wrong)."""
+
+        def rank(step: tuple[int, int]) -> tuple[bool, int, int]:
+            x, y = pos.x + step[0], pos.y + step[1]
+            dx, dy = abs(wp.x - x), abs(wp.y - y)
+            return (x, y, pos.z) in self._blocked, max(dx, dy), dx + dy
+
+        return min(ARROW_KEYS, key=rank)
 
     def _scan(self, pos: Position, now: float) -> None:
         """Refresh the creature tiles inside the scan window, else forget them."""

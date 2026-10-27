@@ -297,6 +297,7 @@ class GameLoop:
         self._select_click: tuple[int, float | None] | None = None
         # Until when a pressed chase toggle may not show on screen yet (no second press).
         self._chase_toggle_settles_at = 0.0
+        self._warned_no_chase_toggle_key = False
         # Pause bookkeeping (reset by every healthy, exception-free tick).
         self._paused_since: float | None = None
         self._consecutive_errors = 0
@@ -773,18 +774,29 @@ class GameLoop:
         # doc: docs/prs/targeting.md#chase-mode
         attack_hotkeys = self.modules.attack_hotkeys
         selected = snap.selected_target
-        if attack_hotkeys is None or selected is None or selected.is_player:
+        if selected is None or selected.is_player:
             return
         row = targeting.row_for(selected)
         if row.ignore or targeting.is_unreachable(selected):
             return
         toggle = targeting.config.toggle_chase_hotkey
-        if toggle and snap.chase_mode is not None and snap.chase_mode != row.movement:
-            # The attack key waits until the screen shows the toggled mode.
-            if now >= self._chase_toggle_settles_at and self._send(
-                snap, lambda: self.input.press_combo(toggle)
-            ):
-                self._chase_toggle_settles_at = now + CHASE_TOGGLE_SETTLE_SECONDS
+        if snap.chase_mode is not None and snap.chase_mode != row.movement:
+            if toggle:
+                # The attack key waits until the screen shows the toggled mode.
+                if now >= self._chase_toggle_settles_at and self._send(
+                    snap, lambda: self.input.press_combo(toggle)
+                ):
+                    self._chase_toggle_settles_at = now + CHASE_TOGGLE_SETTLE_SECONDS
+                return
+            if not self._warned_no_chase_toggle_key:
+                logger.warning(
+                    "chase mode is %r but %s's row wants %r: set the Toggle Chase Mode key",
+                    snap.chase_mode,
+                    selected.name,
+                    row.movement,
+                )
+                self._warned_no_chase_toggle_key = True
+        if attack_hotkeys is None:
             return
         hotkey = attack_hotkeys.decide(snap, row, now)
         if hotkey is not None:
