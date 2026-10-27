@@ -4,8 +4,12 @@ or on a timer with "example 60" in Cavebot > Scripts.
 Each ``yield`` hands the tick back to the bot, so healing never waits.
 """
 
+from collections.abc import Iterator
 
-def run(bot):
+from moonlight.scripts.scripts import Bot
+
+
+def run(bot: Bot) -> Iterator[object]:
     if bot.mana > 90:
         yield bot.say("utevo lux")  # a light spell burns spare mana
     yield 1  # wait 1 second
