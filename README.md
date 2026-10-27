@@ -195,13 +195,16 @@ or in the `targeting` section of your profile config:
   way goes on in the same direction, so the character walks without a pause
   between tiles. A turn lets go and holds the new key; a fight, a stop, a
   floor change or a pause lets go.
+- **Cavebot around monsters:** with walk keys on, the cavebot reads the
+  monsters' health bars in the game view before every step and walks around
+  them when that costs at most 8 more steps, instead of bumping into them.
 - **Cavebot when blocked:** a step key that does not move the player in
   0.7 s is pressed once more (a lag looks the same); a second miss marks
   that tile blocked for 12 s (freed early once the monster on it
   walks off). The cavebot takes the cheapest way to the waypoint around
   blocked tiles and monsters, diagonals included (Q/E/Z/C, the
   client's WASD-mode diagonals; a diagonal costs 3 straight steps). **Stuck** means no way around,
-  or a way more than 8 steps longer: with monsters in the battle list
+  or a way more than 8 steps longer, after a bump: with monsters in the battle list
   targeting takes over with every monster attacking, never-attack rows
   included (players never), even with targeting off. Attack spells and area rules work as
   usual. After each kill the cavebot looks for a way again and walks on

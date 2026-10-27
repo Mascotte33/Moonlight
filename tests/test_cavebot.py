@@ -718,8 +718,9 @@ _RING = [(6, 4), (7, 4), (8, 4), (6, 5), (8, 5), (6, 6), (7, 6), (8, 6)]
 
 
 def _creature_sim(monkeypatch: pytest.MonkeyPatch, slots: list[tuple[int, int]]) -> Sim:
-    """Keys mode, waypoint below, the creature scan sees *slots*."""
-    monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: slots)
+    """Keys mode, waypoint below, *slots* show up after the first step and block it."""
+    seen: list[tuple[int, int]] = []
+    monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: seen)
     sim = Sim(
         [walk(100, 104)],
         Position(100, 100, 7),
@@ -728,7 +729,8 @@ def _creature_sim(monkeypatch: pytest.MonkeyPatch, slots: list[tuple[int, int]])
     )
     sim.bot.start()
     sim.step()
-    assert pressed(sim) == ["down"]  # no scan before the first block
+    assert pressed(sim) == ["down"]  # nothing seen yet
+    seen.extend(slots)
     for _ in range(_BLOCK_STEPS):  # the step down did nothing: blocked
         sim.step()
     return sim
@@ -816,14 +818,38 @@ def test_walk_keys_fight_through_instead_of_a_long_detour(
     assert sim.bot.stuck_on_creatures
 
 
-def test_walk_keys_scan_only_inside_the_window(monkeypatch: pytest.MonkeyPatch) -> None:
-    sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4)])
+def _seeing_sim(monkeypatch: pytest.MonkeyPatch, slots: list[tuple[int, int]]) -> Sim:
+    """Keys mode, waypoint below, the scan sees *slots* from the first tick, Rats listed."""
+    monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: slots)
+    sim = Sim(
+        [walk(100, 104)],
+        Position(100, 100, 7),
+        walk_keys=True,
+        frames=lambda: np.zeros((1, 1, 3), np.uint8),
+    )
     sim.state.monsters = [Monster("Rat", 100.0)]
-    assert pressed(sim)[-1] == "z"
-    sim.step(5.0)  # window over: creatures forgotten, it walks instead of fighting
-    assert pressed(sim)[-1] == "z"  # a lag? pressed once more
-    sim.step(1.0)
-    assert pressed(sim)[-1] == "c"  # the corner it tried did not move it
+    sim.bot.start()
+    sim.step()
+    return sim
+
+
+def test_walk_keys_walk_around_a_creature_ahead_without_bumping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sim = _seeing_sim(monkeypatch, [(7, 6)])  # a rat on the tile below
+    assert pressed(sim) in (["left"], ["right"], ["z"], ["c"])  # around it, not "down"
+    assert not sim.bot.stuck_on_creatures
+
+
+def test_walk_keys_walk_into_closing_creatures_before_standing_stuck(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sim = _seeing_sim(monkeypatch, _RING)  # no way around, but no bump yet
+    assert pressed(sim) == ["down"]  # straight in: the scan can be a tile off
+    assert not sim.bot.stuck_on_creatures
+    for _ in range(_BLOCK_STEPS):  # it bumped: now targeting takes over
+        sim.step()
+    assert sim.bot.stuck_on_creatures
 
 
 def test_walk_keys_stand_still_while_a_target_is_selected(monkeypatch: pytest.MonkeyPatch) -> None:

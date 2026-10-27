@@ -27,20 +27,23 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   blocked (a player, an NPC, a creature) for ``_BLOCK_TTL``
   seconds and the path is searched again around every blocked tile. The
   sidestep below is for minimap clicks only.
-* **Creatures** (``walk_keys``): a blocked tile also opens a ``_SCAN_WINDOW``
-  second window. In it, every arrow key is preceded by a health-bar scan of
-  the game grid (:mod:`moonlight.perception.creatures`); creature tiles are
-  avoided too (no guess where a creature steps next: it closed 2-wide corridors).
-  Within ``_VIEW_SETTLE`` of a step the view still scrolls, so the last
-  settled scan is kept instead. The path search
+* **Creatures** (``walk_keys``): every arrow key is preceded by a
+  health-bar scan of the game grid (:mod:`moonlight.perception.creatures`);
+  creature tiles are walked around when that costs at most ``_DETOUR`` more
+  steps (no guess where a creature steps next: it closed 2-wide corridors).
+  The view scrolls for ``_VIEW_SETTLE`` after a step: on the tick the
+  position changed it still shows the previous tile, so the scan is mapped
+  from there; later ticks in the scroll keep that scan. The path search
   also steps diagonally (Q/E/Z/C) where that is the cheaper way past.
   **Stuck** means no way around the creatures and bumped tiles, or a way
-  around over ``_DETOUR`` steps longer, with monsters in the battle list:
-  it sets :attr:`Cavebot.stuck_on_creatures` and stands still; the loop
-  then targets with "all others" attacking (spells and area rules
-  included) and clears the flag after each kill, so the cavebot looks for
-  a way again. While a target is selected it stands still, whatever
-  selected it, and walks on once nothing is.
+  around over ``_DETOUR`` steps longer, with monsters in the battle list,
+  within ``_STUCK_WINDOW`` seconds of a bump (before one it walks the short
+  way and bumps first: the scan can be a tile off): it sets
+  :attr:`Cavebot.stuck_on_creatures` and stands still; the loop then
+  targets with every monster attacking (spells and area rules included)
+  and clears the flag after each kill, so the cavebot looks for a way again.
+  While a target is selected it stands still, whatever selected it, and
+  walks on once nothing is.
 * **Arrival**: within 1 tile (Chebyshev distance) of the waypoint on the
   same floor; ``node`` within 3 tiles, ``stand`` only on the exact tile.
   ``walk``/``node``/``stand``/``lure`` are then done (``lure`` walks with
@@ -124,7 +127,7 @@ WALK_KEYS = {
 _KEY_RETRY = 0.7
 #: Outlasts bumping all 8 neighbours (2 presses each); a creature walking off frees its tile.
 _BLOCK_TTL = 12.0
-_SCAN_WINDOW = 5.0
+_STUCK_WINDOW = 5.0
 #: The game view scrolls a step after the position changed: a scan then sees creatures a tile off.
 _VIEW_SETTLE = 0.5
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
@@ -315,8 +318,9 @@ class Cavebot:
         self._frames = frames
         #: Creatures leave no way through: the loop targets them (cleared after each kill).
         self.stuck_on_creatures = False
-        self._scan_until = float("-inf")
+        self._stuck_allowed_until = float("-inf")
         self._creatures: set[tuple[int, int]] = set()  # tiles the last scan saw
+        self._previous_pos: Position | None = None  # where the view still is right after a step
         #: Bumped tiles a scan saw a creature on: free again once it walks off.
         self._bumped_into_creature: set[tuple[int, int, int]] = set()
         self._clock = clock if clock is not None else time.monotonic
@@ -411,7 +415,7 @@ class Cavebot:
         if pos is not None and pos != self._last_pos:
             moved_aside = self._sidesteps > 0
             self._sidesteps = 0
-            self._last_pos = pos
+            self._previous_pos, self._last_pos = self._last_pos, pos
             self._last_move = self._moved_at = now
         elif now - self._last_move > self._stuck_timeout:
             self._halt("stuck")
@@ -456,7 +460,7 @@ class Cavebot:
         elif self._state.selected_target is not None and not self.luring():
             self._target = None  # stand still while a target is selected
             self.release_walk_key()
-            self._scan_until = now + _SCAN_WINDOW  # see the creatures when it walks on
+            self._stuck_allowed_until = now + _STUCK_WINDOW  # the fight may have closed the way
         elif self._last_move > self._last_cmd or now - self._last_cmd >= _KEY_RETRY:
             target = self._target if self._last_move <= self._last_cmd else None
             step = None if target is None else (target[0] - pos.x, target[1] - pos.y)
@@ -467,7 +471,7 @@ class Cavebot:
                 if target is not None:
                     logger.info("cavebot: tile %s,%s,%s blocked, walking around", *target)
                     self._blocked[target] = now + _BLOCK_TTL
-                    self._scan_until = now + _SCAN_WINDOW
+                    self._stuck_allowed_until = now + _STUCK_WINDOW
                 self._retried_target = None
                 self._step_toward(wp, pos, now)
             self._last_cmd = now
@@ -601,16 +605,18 @@ class Cavebot:
             short = next_step(start, goal, free)
             detour_too_long = short is not None and path[1] > short[1] + _DETOUR
         stuck = path is None or detour_too_long
-        if stuck and self._state.monsters:
+        if stuck and self._state.monsters and now < self._stuck_allowed_until:
             if not self.stuck_on_creatures:
                 logger.info("cavebot: creatures block the way, targeting takes over")
             self.stuck_on_creatures = True
             self._target = None
             self.release_walk_key()
-            self._scan_until = now + _SCAN_WINDOW  # keep scanning while it fights
+            self._stuck_allowed_until = now + _STUCK_WINDOW  # stay put while it fights
             return
         self.stuck_on_creatures = False
-        if stuck:
+        if stuck and now >= self._stuck_allowed_until:
+            path = next_step(start, goal, free)  # no bump yet: walk into it, then react
+        elif stuck:
             # Nothing to fight: the scan can be a tile off, so try every tile not bumped yet.
             path = next_step(start, goal, not_bumped)
         if path is None:
@@ -641,18 +647,20 @@ class Cavebot:
         return min(WALK_KEYS, key=rank)
 
     def _scan(self, pos: Position, now: float) -> bool:
-        """Refresh the creature tiles inside the scan window, else forget them.
+        """Refresh the creature tiles from the game grid (see the module docstring).
 
         Returns whether a frame was scanned.
         """
-        scanning = self._frames is not None and now < self._scan_until
-        if scanning and now - self._moved_at < _VIEW_SETTLE:
-            return False  # mid-step: keep the last settled scan (its tiles are absolute)
-        frame = self._frames() if scanning and self._frames is not None else None
+        scrolling = now - self._moved_at < _VIEW_SETTLE
+        if scrolling and now != self._moved_at:
+            return False  # mid-step: keep the last scan (its tiles are absolute)
+        frame = self._frames() if self._frames is not None else None
         if frame is None:
             self._creatures = set()
             return False
-        px, py = pos.x - PLAYER_SLOT[0], pos.y - PLAYER_SLOT[1]
+        # ponytail: the first tick after a step counts as unscrolled; a slow one is a tile off
+        view = self._previous_pos if scrolling and self._previous_pos is not None else pos
+        px, py = view.x - PLAYER_SLOT[0], view.y - PLAYER_SLOT[1]
         self._creatures = {(px + c, py + r) for c, r in find_creatures(frame, self._game_region)}
         return True
 
