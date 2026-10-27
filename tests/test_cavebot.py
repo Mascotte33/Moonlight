@@ -34,6 +34,8 @@ class RecordingClicker(ClickController):
     def __init__(self) -> None:
         self.clicks: list[tuple[tuple[int, int], ClickSide]] = []
         self.cancels = 0
+        self._screen: tuple[int, int, int, int] | None = (0, 0, 1000, 1000)
+        self._window_origin = None
 
     @property
     def busy(self) -> bool:
@@ -62,7 +64,7 @@ class Sim:
     def __init__(self, waypoints: list[Waypoint], start: Position, **kw: Any) -> None:
         self.now = 0.0
         self.fake = FakeInput()
-        self.clicker = RecordingClicker()
+        self.clicker = kw.pop("clicker", None) or RecordingClicker()
         self.state = WorldState(client_focused=True, screen_ok=True)
         self.reached: list[int] = []
         self._pos: Position | None = start
@@ -319,7 +321,27 @@ def test_key_resends_a_press_the_wire_limiter_dropped() -> None:
     assert sim.fake.sent_lines == ["K F1", "K F5"]
 
 
-@pytest.mark.parametrize(("action", "label"), [("say", "hi!"), ("key", "ctrl 1")])
+def test_drag_moves_holds_moves_and_lets_go_one_command_per_tick() -> None:
+    sim = Sim([Waypoint(0, 0, 0, "drag", "100 200 300 400"), walk(110, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    for _ in range(5):
+        sim.step()
+    a, b = sim.clicker.to_wire((100, 200)), sim.clicker.to_wire((300, 400))
+    assert sim.fake.sent_lines == [f"A {a[0]} {a[1]}", "H L", f"A {b[0]} {b[1]}", "R L"]
+    sim.step(1.0)
+    assert sim.route.current == 1
+
+
+def test_drag_needs_the_absolute_clicker() -> None:
+    clicker = RecordingClicker()
+    clicker._screen = None
+    with pytest.raises(ValueError, match="absolute"):
+        Sim([Waypoint(0, 0, 0, "drag", "1 2 3 4")], Position(100, 100, 7), clicker=clicker)
+
+
+@pytest.mark.parametrize(
+    ("action", "label"), [("say", "hi!"), ("key", "ctrl 1"), ("drag", "1 2 3")]
+)
 def test_bad_say_or_key_label_refused(action: str, label: str) -> None:
     raw = {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7}, {"action": action, "label": label}]}
     with pytest.raises(RouteError, match=action):

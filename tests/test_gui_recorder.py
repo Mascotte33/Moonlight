@@ -9,6 +9,7 @@ import pytest
 from moonlight.cavebot.cavebot import RouteError, RouteFileLoader, Waypoint
 from moonlight.cavebot.recorder import (
     StandTracker,
+    cursor_line,
     make_waypoint,
     position_line,
     route_path,
@@ -178,3 +179,9 @@ def test_a_floor_change_by_walking_records_the_stairs_tile() -> None:
     assert stairs_waypoint(wps, Position(100, 101, 7), Position(100, 100, 7)) is None
     roped = [*wps, Waypoint(100, 101, 7, "rope")]
     assert stairs_waypoint(roped, Position(100, 101, 7), Position(100, 100, 6)) is None
+
+
+def test_cursor_line_is_in_client_pixels() -> None:
+    assert cursor_line((150, 260), (100, 200, 800, 600)) == "Cursor 50 60"
+    assert cursor_line((50, 260), (100, 200, 800, 600)) == "Cursor: outside the client"
+    assert cursor_line(None, (100, 200, 800, 600)) == "Cursor: client not found"

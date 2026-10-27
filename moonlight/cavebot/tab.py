@@ -15,6 +15,7 @@ from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from tkinter import messagebox
+from typing import Any
 
 import customtkinter as ctk
 
@@ -28,6 +29,7 @@ from moonlight.cavebot.cavebot import (
 )
 from moonlight.cavebot.recorder import (
     StandTracker,
+    cursor_line,
     make_waypoint,
     position_line,
     route_path,
@@ -311,6 +313,12 @@ class CavebotTab(Tab):
         add.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.ent_label = _entry(add, "label", 80)
         self.ent_x, self.ent_y, self.ent_z = (_entry(add, axis, 56) for axis in "XYZ")
+        # doc: docs/prs/refill.md#drag-waypoint
+        self.lbl_cursor = ctk.CTkLabel(
+            edit, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
+        )
+        self.lbl_cursor.pack(fill="x", padx=theme.PAD)
+        self._capture: Any = None  # ScreenCapture, made on the first draw
         tools = ctk.CTkFrame(edit, fg_color="transparent")
         tools.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         for text, command in (("Undo", self._undo), ("Clear", self._clear)):
@@ -452,6 +460,7 @@ class CavebotTab(Tab):
             (self.lbl_current, running),
             (self.lbl_pos, position_line(self._last if lost else self._pos, self._status)),
             (self.lbl_hint, hint),
+            (self.lbl_cursor, self._cursor_text()),
         ):
             if label.cget("text") != value:
                 label.configure(text=value)
@@ -465,6 +474,14 @@ class CavebotTab(Tab):
             self.wp_list.tag_add("current", f"{current + 2}.0", f"{current + 2}.end")
             self.wp_list.see(f"{current + 2}.0")
         self.wp_list.configure(state="disabled")
+
+    def _cursor_text(self) -> str:
+        from moonlight.perception.capture import ScreenCapture
+        from moonlight.perception.cursor import screen_cursor
+
+        if self._capture is None:
+            self._capture = ScreenCapture(window_title=load_real_config().window_title)
+        return cursor_line(screen_cursor(), self._capture.get_window_rect())
 
     def _pick_waypoint(self, event: tk.Event) -> str:
         """Double-click: the running bot walks to that waypoint next, else starts there."""

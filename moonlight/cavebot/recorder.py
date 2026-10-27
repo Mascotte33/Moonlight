@@ -24,6 +24,7 @@ __all__ = [
     "should_stop_recording",
     "stairs_waypoint",
     "position_line",
+    "cursor_line",
 ]
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
@@ -127,6 +128,18 @@ def position_line(pos: Position, status: str = "") -> str:
         return "Position unknown"
     tail = f" ({status})" if status else ""
     return f"Position {pos.x}, {pos.y}, {pos.z}{tail}"
+
+
+def cursor_line(
+    cursor: tuple[int, int] | None, window: tuple[int, int, int, int] | None
+) -> str:
+    """The mouse in client-window pixels (what a ``drag`` label takes)."""
+    if cursor is None or window is None:
+        return "Cursor: client not found"
+    x, y = cursor[0] - window[0], cursor[1] - window[1]
+    if not (0 <= x < window[2] and 0 <= y < window[3]):
+        return "Cursor: outside the client"
+    return f"Cursor {x} {y}"
 
 
 def route_path(routes_dir: Path, name: str) -> Path:

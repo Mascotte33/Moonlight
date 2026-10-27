@@ -87,6 +87,7 @@ the loop); they stop the route and set :attr:`alarm`.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import re
@@ -123,13 +124,13 @@ logger = logging.getLogger(__name__)
 #: Valid waypoint actions.
 ACTIONS = (
     "walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto", "check",
-    "say", "key",
+    "say", "key", "drag",
 )
 
 #: Actions that need no position (executed immediately).
 _JUMP_ACTIONS = ("label", "goto", "check")
-#: Actions done where the bot stands (one key per tick, then a hold).
-_HAND_ACTIONS = ("say", "key")
+#: Actions done where the bot stands (one command per tick, then a hold).
+_HAND_ACTIONS = ("say", "key", "drag")
 #: Actions without a tile (their x, y, z are 0).
 NO_TILE = _JUMP_ACTIONS + _HAND_ACTIONS
 #: Seconds the route holds after a hand action.
@@ -262,9 +263,11 @@ class RouteFileLoader:
 
 
 def label_error(action: str, label: str) -> str | None:
-    """Why *label* cannot be the label of a ``say`` / ``key``, or None."""
+    """Why *label* cannot be the label of a ``say`` / ``key`` / ``drag``, or None."""
     if action == "say" and not re.fullmatch(r"[A-Za-z0-9 ]+", label):
         return "say text is letters, digits and spaces"
+    if action == "drag" and not re.fullmatch(r"\d+ \d+ \d+ \d+", label):
+        return "drag label is four numbers: x1 y1 x2 y2"
     if action == "key" and any(ch.isspace() for ch in label):
         return f"key {label!r} has a space"
     return None
@@ -338,7 +341,9 @@ class Cavebot:
             raise ValueError("stuck_timeout and reclick_interval must be > 0")
         needs_keys = any(wp.action in ("rope", "shovel", *_HAND_ACTIONS) for wp in route.waypoints)
         if needs_keys and input_backend is None:
-            raise ValueError("rope/shovel/say/key waypoints need an input_backend for hotkeys")
+            raise ValueError("rope/shovel/say/key/drag waypoints need an input_backend")
+        if any(wp.action == "drag" for wp in route.waypoints) and not clicker.absolute:
+            raise ValueError("drag waypoints need the absolute clicker")
         if walk_keys and input_backend is None:
             raise ValueError("walk_keys needs an input_backend for the arrow keys")
         self.route = route
@@ -371,7 +376,7 @@ class Cavebot:
         self.refill_cap = refill_cap
         #: Refill now: the next ``check`` jumps to town (cleared by the jump).
         self.refill_now = False
-        self._keys_sent = 0  # of the current hand action
+        self._sends_done = 0  # of the current hand action
         self._hand_done_at: float | None = None
 
         #: Why the route stopped on its own ("stuck", "lost", "goto_loop"),
@@ -611,21 +616,37 @@ class Cavebot:
         full = self.refill_cap is not None and cap.max_weight > 0 and cap.percent >= self.refill_cap
         return self.refill_now or full
 
+    # doc: docs/prs/refill.md#drag-waypoint
+    def _hand_sends(self, wp: Waypoint) -> list[Callable[[], None]]:
+        """The wire commands of a ``say`` / ``key`` / ``drag``, in order."""
+        send = self._input
+        assert send is not None  # __init__: hand actions need it
+        if wp.action == "drag":
+            x1, y1, x2, y2 = (int(v) for v in wp.label.split())
+            a, b = self._clicker.to_wire((x1, y1)), self._clicker.to_wire((x2, y2))
+            return [
+                lambda: send.mouse_to(*a),
+                lambda: send.mouse_down(ClickSide.LEFT),
+                lambda: send.mouse_to(*b),
+                lambda: send.mouse_up(ClickSide.LEFT),
+            ]
+        keys = [wp.label] if wp.action == "key" else _say_keys(wp.label)
+        return [functools.partial(send.press_combo, k) for k in keys]
+
     # doc: docs/prs/refill.md#say-key-waypoints
     def _hand_action(self, wp: Waypoint, now: float) -> None:
-        """Send the next key of a ``say`` / ``key``, then hold before moving on."""
+        """Send the next command of a hand action, then hold before moving on."""
         if self._hand_done_at is None:
-            keys = [wp.label] if wp.action == "key" else _say_keys(wp.label)
-            if self._keys_sent < len(keys):
-                assert self._input is not None  # __init__: hand actions need it
+            sends = self._hand_sends(wp)
+            if self._sends_done < len(sends):
                 dropped = getattr(self._input, "dropped", 0)
-                self._input.press_combo(keys[self._keys_sent])
+                sends[self._sends_done]()
                 if getattr(self._input, "dropped", 0) == dropped:
-                    self._keys_sent += 1
+                    self._sends_done += 1
                 return
             self._hand_done_at = now
         if now - self._hand_done_at >= _HAND_HOLD:
-            self._keys_sent, self._hand_done_at = 0, None
+            self._sends_done, self._hand_done_at = 0, None
             self._last_move = now  # standing still here is not being stuck
             self._advance()
 
