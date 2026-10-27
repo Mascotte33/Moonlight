@@ -99,7 +99,7 @@ from enum import StrEnum
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from moonlight.cavebot.cavebot import ARROW_KEYS
+from moonlight.cavebot.cavebot import WALK_KEYS
 from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
@@ -739,7 +739,7 @@ class GameLoop:
         if clicker is None:
             raise RuntimeError("targeting is wired without a clicker")
         if self._target is not None and self._target.kind == "step_closer":
-            key = ARROW_KEYS[self._target.step]
+            key = WALK_KEYS[self._target.step]
             self._send(snap, lambda: self.input.press_combo(key))
             return
         now = self._clock()

@@ -289,7 +289,7 @@ def test_cavebot_starts_at_start_index() -> None:
 
 
 @pytest.mark.parametrize("targeting_on", [True, False])
-def test_cavebot_presses_attack_when_blocked_only_without_targeting(targeting_on: bool) -> None:
+def test_cavebot_presses_attack_when_stuck_with_or_without_targeting(targeting_on: bool) -> None:
     route = Route("hunt", waypoints=[Waypoint(100, 100, 7)])
     cfg = replace(
         BotConfig.default(),
@@ -303,8 +303,8 @@ def test_cavebot_presses_attack_when_blocked_only_without_targeting(targeting_on
         frame_provider=lambda: np.zeros((600, 800, 3), np.uint8),
     )
     assert loop.modules.cavebot is not None
-    # The client's attack key ignores never-attack rows, so targeting does the fighting.
-    expected = None if targeting_on else "r"
+    # Stuck fights never-attack monsters too, so the key is set with targeting on.
+    expected = "r"
     assert loop.modules.cavebot.attack_combo_when_blocked == expected
 
 

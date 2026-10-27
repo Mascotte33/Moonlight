@@ -191,12 +191,18 @@ or in the `targeting` section of your profile config:
   options. With an empty key the bot attacks in the current mode and logs
   one warning ("set the Toggle Chase Mode key"). No `chase_buttons` region
   leaves the mode as it is.
-- **Cavebot when blocked:** with targeting on, the cavebot never presses the
-  attack key (the client's "attack next" ignores never-attack rows);
-  targeting does the fighting. It walks around monsters through any free
-  tile; when the scan says monsters close the way and nothing may fight, it
-  still tries every tile it has not bumped into yet. With targeting off it
-  presses `loop.attack_combo`.
+- **Cavebot when blocked:** a step key that does not move the player in
+  0.7 s marks that tile blocked for 10 s (freed early once the monster on it
+  walks off). The cavebot takes the cheapest way to the waypoint around
+  blocked tiles and monsters, diagonals included (numpad 1/3/7/9; a diagonal
+  costs 3 straight steps, as in the client). **Stuck** means no way around,
+  or a way more than 8 steps longer: with monsters in the battle list it
+  presses `loop.attack_combo` (the client's "Attack Next", "Client key:
+  Attack Next (cavebot when stuck)" in the Targeting tab), also with
+  targeting on and for never-attack monsters. With nothing to fight it tries
+  every tile it has not bumped into yet. The route stops after 60 s without
+  moving. Diagonal steps need the current firmware: reflash
+  `firmware/moonlight/moonlight.ino` (older firmware ignores `num1`..`num9`).
 - **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.

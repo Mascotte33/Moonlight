@@ -581,10 +581,8 @@ def build_modules(
                 reader, clicker, backend, state, config.looting, frame_provider=frames
             )
     if m.cavebot is not None:
-        # The client's "attack next" key ignores never-attack rows (set on every rebuild).
-        m.cavebot.attack_combo_when_blocked = (
-            None if config.targeting is not None else config.loop.attack_combo
-        )
+        # Pressed when stuck, never-attack rows included (set on every rebuild).
+        m.cavebot.attack_combo_when_blocked = config.loop.attack_combo or None
     if config.refill is not None and m.refill is None:
         from moonlight.cavebot.cavebot import RouteFileLoader
         from moonlight.refill.refill import Refill

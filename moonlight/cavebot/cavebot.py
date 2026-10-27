@@ -26,14 +26,14 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
 * **Creatures** (``walk_keys``): a blocked tile also opens a ``_SCAN_WINDOW``
   second window. In it, every arrow key is preceded by a health-bar scan of
   the game grid (:mod:`moonlight.perception.creatures`); creature tiles and
-  one predicted tile per moving creature are avoided too. When they leave
-  no way through, or the way around is over ``_DETOUR`` steps longer, the
-  bot presses ``attack_combo`` (if the battle list has
-  monsters and nothing is selected) instead of an arrow. With targeting on
-  it never presses it: the client's "attack next" ignores the never-attack
-  list, so targeting picks the fights and the cavebot waits. While a target is
-  selected it stands still, whatever selected it, and walks on once
-  nothing is.
+  one predicted tile per moving creature are avoided too. The path search
+  also steps diagonally (numpad keys) where that is the cheaper way past.
+  **Stuck** means no way around the creatures and bumped tiles, or a way
+  around over ``_DETOUR`` steps longer: the bot then presses
+  ``attack_combo`` (if the battle list has monsters and nothing is
+  selected) instead of a walk key, also with targeting on and for
+  never-attack monsters. While a target is selected it stands still,
+  whatever selected it, and walks on once nothing is.
 * **Arrival**: within 1 tile (Chebyshev distance) of the waypoint on the
   same floor; ``node`` within 3 tiles, ``stand`` only on the exact tile.
   ``walk``/``node``/``stand``/``lure`` are then done (``lure`` walks with
@@ -110,11 +110,14 @@ _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
 _REACH = {"node": 3, "stand": 0, "stairs": 0}
 # doc: docs/prs/keys-walking.md#arrow-steps
 # doc: docs/prs/keys-walking.md#learned-blocks
-#: Arrow key per one-tile step (y grows downward, up is north).
-ARROW_KEYS = {(0, -1): "up", (0, 1): "down", (-1, 0): "left", (1, 0): "right"}
+#: Walk key per one-tile step (y grows downward, up is north); numpad keys walk diagonally.
+WALK_KEYS = {
+    (0, -1): "up", (0, 1): "down", (-1, 0): "left", (1, 0): "right",
+    (-1, -1): "num7", (1, -1): "num9", (-1, 1): "num1", (1, 1): "num3",
+}  # fmt: skip
 #: Seconds without moving before an arrow key is pressed again.
 _KEY_RETRY = 0.7
-_BLOCK_TTL = 10.0
+_BLOCK_TTL = 10.0  # outlasts bumping all 8 neighbours; a creature walking off frees its tile
 _SCAN_WINDOW = 5.0
 _FIGHT_STALL = 5.0  # seconds the selected target's HP may stand still before the next one
 _ATTACK_WAIT = 3.0  # seconds between attack presses (a press toggles/cycles the target)
@@ -302,11 +305,13 @@ class Cavebot:
         self._blocked: dict[tuple[int, int, int], float] = {}  # tile -> expiry
         self._target: tuple[int, int, int] | None = None
         self._frames = frames
-        #: Pressed when creatures block the way; None while targeting picks the fights.
+        #: Pressed when stuck (the client's "attack next"); None: never fight to get through.
         self.attack_combo_when_blocked = attack_combo
         self._scan_until = float("-inf")
         self._seen: list[tuple[int, int]] = []  # creature tiles of the last scan
         self._creatures: set[tuple[int, int]] = set()  # seen + predicted
+        #: Bumped tiles a scan saw a creature on: free again once it walks off.
+        self._bumped_into_creature: set[tuple[int, int, int]] = set()
         self._fight: tuple[str, float] | None = None  # (name, HP) of the target it waits on
         self._fight_since = 0.0
         self._attack_at = float("-inf")
@@ -537,16 +542,17 @@ class Cavebot:
         self._clicker.request((mx + mw // 2 + dx, my + mh // 2 + dy))
 
     def _step_toward(self, wp: Waypoint, pos: Position, now: float) -> None:
-        """Press the arrow of the next step to *wp* around blocked tiles.
+        """Press the walk key of the next step to *wp* around blocked tiles.
 
         Without map data every tile but the blocked ones counts as walkable.
-        When creatures close the way, or walking around them costs more than
-        ``_DETOUR`` extra steps, it attacks; with no path at all, it presses
-        straight at *wp*.
+        Stuck (no way around the creatures and bumped tiles, or the way
+        around costs over ``_DETOUR`` more) with monsters in the battle list:
+        it attacks. Otherwise it tries tiles not bumped yet.
         """
         self._blocked = {t: end for t, end in self._blocked.items() if end > now}
         cost = self._cost_map if self._cost_map is not None and not self._cost_map.empty else None
-        self._scan(pos, now)
+        if self._scan(pos, now):
+            self._release_tiles_creatures_left()
 
         def free(x: int, y: int, z: int) -> bool:  # a creature on a bumped tile can be killed
             return ((x, y, z) not in self._blocked or (x, y) in self._creatures) and (
@@ -561,22 +567,35 @@ class Cavebot:
 
         start, goal = (pos.x, pos.y, pos.z), (wp.x, wp.y, wp.z)
         path = next_step(start, goal, walkable)
-        if self._creatures:
+        detour_too_long = False
+        if path is not None and self._creatures:
             short = next_step(start, goal, free)
-            if path is None or (short is not None and path[1] > short[1] + _DETOUR):
-                if self.attack_combo_when_blocked is not None:
-                    self._target = None
-                    self._scan_until = now + _SCAN_WINDOW  # keep scanning while it fights
-                    self._attack(now)
-                    return
-                # Nothing may fight: the scan can be a tile off, so try every tile not bumped yet.
-                path = next_step(start, goal, not_bumped)
+            detour_too_long = short is not None and path[1] > short[1] + _DETOUR
+        stuck = path is None or detour_too_long
+        if stuck and self.attack_combo_when_blocked is not None and self._state.monsters:
+            self._target = None
+            self._scan_until = now + _SCAN_WINDOW  # keep scanning while it fights
+            self._attack(now)
+            return
+        if stuck:
+            # Nothing to fight: the scan can be a tile off, so try every tile not bumped yet.
+            path = next_step(start, goal, not_bumped)
         if path is None:
             step = self._best_unbumped_step(wp, pos)
         else:
             step = path[0]
         self._target = (pos.x + step[0], pos.y + step[1], pos.z)
-        self._press_arrow(step)
+        self._press_walk_key(step)
+
+    def _release_tiles_creatures_left(self) -> None:
+        """A bumped tile is free again once the creature that stood on it walked off."""
+        self._bumped_into_creature &= self._blocked.keys()
+        for tile in list(self._blocked):
+            if (tile[0], tile[1]) in self._creatures:
+                self._bumped_into_creature.add(tile)
+            elif tile in self._bumped_into_creature:
+                del self._blocked[tile]
+                self._bumped_into_creature.discard(tile)
 
     def _best_unbumped_step(self, wp: Waypoint, pos: Position) -> tuple[int, int]:
         """No path: the step nearest *wp*, unbumped tiles first (map data can be wrong)."""
@@ -586,18 +605,22 @@ class Cavebot:
             dx, dy = abs(wp.x - x), abs(wp.y - y)
             return (x, y, pos.z) in self._blocked, max(dx, dy), dx + dy
 
-        return min(ARROW_KEYS, key=rank)
+        return min(WALK_KEYS, key=rank)
 
-    def _scan(self, pos: Position, now: float) -> None:
-        """Refresh the creature tiles inside the scan window, else forget them."""
+    def _scan(self, pos: Position, now: float) -> bool:
+        """Refresh the creature tiles inside the scan window, else forget them.
+
+        Returns whether a frame was scanned.
+        """
         frame = self._frames() if self._frames is not None and now < self._scan_until else None
         if frame is None:
             self._seen, self._creatures = [], set()
-            return
+            return False
         px, py = pos.x - PLAYER_SLOT[0], pos.y - PLAYER_SLOT[1]
         seen = [(px + c, py + r) for c, r in find_creatures(frame, self._game_region)]
         self._creatures = set(seen) | predict(seen, self._seen)
         self._seen = seen
+        return True
 
     def _attack(self, now: float) -> None:
         """Creatures block the way: select one to fight (the loop fights it).
@@ -633,9 +656,9 @@ class Cavebot:
         assert self._input is not None  # checked in __init__
         self._input.press_combo(self.attack_combo_when_blocked)
 
-    def _press_arrow(self, step: tuple[int, int]) -> None:
+    def _press_walk_key(self, step: tuple[int, int]) -> None:
         assert self._input is not None  # checked in __init__
-        self._input.press_combo(ARROW_KEYS[step])
+        self._input.press_combo(WALK_KEYS[step])
 
     def _sidestep(self, wp: Waypoint, pos: Position) -> None:
         """Step to the tile beside the walking direction: left first, then right."""

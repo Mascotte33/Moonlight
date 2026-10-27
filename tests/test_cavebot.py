@@ -684,6 +684,10 @@ def test_walk_keys_forget_a_blocked_tile_after_a_while() -> None:
     assert sim.fake.sent_lines[-1] == "K down"  # straight through again
 
 
+#: Creatures on all 8 tiles around the player (slot (7, 5)).
+_RING = [(6, 4), (7, 4), (8, 4), (6, 5), (8, 5), (6, 6), (7, 6), (8, 6)]
+
+
 def _creature_sim(
     monkeypatch: pytest.MonkeyPatch,
     slots: list[tuple[int, int]],
@@ -711,9 +715,26 @@ def test_walk_keys_avoid_creatures_after_a_block(monkeypatch: pytest.MonkeyPatch
     assert sim.fake.sent_lines[-1] == "K right"
 
 
+def test_walk_keys_step_diagonally_past_creatures(monkeypatch: pytest.MonkeyPatch) -> None:
+    sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4), (7, 6)])  # only the free corners
+    assert sim.fake.sent_lines[-1] in ("K num1", "K num3")
+
+
+def test_walk_keys_attack_when_stuck_without_seeing_creatures() -> None:
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True, attack_combo="r")
+    sim.state.monsters = [Monster("Rat", 100.0)]
+    sim.bot.start()
+    for _ in range(200):  # every tile around bumped, the scan saw nothing
+        sim.step()
+        if sim.fake.sent_lines[-1] == "K r":
+            break
+    assert sim.fake.sent_lines[-1] == "K r"
+    assert len(set(sim.fake.sent_lines)) == 9  # tried all 8 tiles first
+
+
 def test_walk_keys_attack_when_creatures_close_every_way(monkeypatch: pytest.MonkeyPatch) -> None:
-    sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4), (7, 6)])
-    assert sim.fake.sent_lines[-1] == "K down"  # no monster in the battle list: wait
+    sim = _creature_sim(monkeypatch, _RING)
+    assert sim.fake.sent_lines[-1] in ("K left", "K right")  # nothing to fight: a tile not bumped
     sim.state.monsters = [Monster("Rat", 100.0)]
     for _ in range(15):
         sim.step()
@@ -737,7 +758,7 @@ def test_walk_keys_try_unbumped_tiles_when_nothing_may_fight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The scan says creatures close every way, but no attack key is allowed (targeting on).
-    sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4), (7, 6)], None)
+    sim = _creature_sim(monkeypatch, _RING, None)
     assert sim.fake.sent_lines[-1] in ("K left", "K right")  # not the bumped tile below
     sim.state.monsters = [Monster("Rat", 100.0)]
     for _ in range(15):  # that tile is blocked too: the other side next
@@ -772,19 +793,19 @@ def test_walk_keys_fight_through_instead_of_a_long_detour(
 def test_walk_keys_next_target_when_the_selected_one_takes_no_damage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4), (7, 6)])
+    sim = _creature_sim(monkeypatch, _RING)
     sim.state.monsters = [Monster("Rat", 100.0)]
     sim.state.selected_target = sim.state.monsters[0]  # out of reach: HP never drops
     for _ in range(4):
         sim.step(1.0)
-    assert sim.fake.sent_lines[-1] == "K down"
+    assert "K r" not in sim.fake.sent_lines
     for _ in range(3):
         sim.step(1.0)
     assert sim.fake.sent_lines[-1] == "K r"
 
 
 def test_walk_keys_attack_presses_wait_for_a_selection(monkeypatch: pytest.MonkeyPatch) -> None:
-    sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4), (7, 6)])
+    sim = _creature_sim(monkeypatch, _RING)
     sim.state.monsters = [Monster("Rat", 100.0)]
     for _ in range(25):  # no selection shows up: no key spam
         sim.step(0.1)
@@ -797,8 +818,9 @@ def test_walk_keys_attack_presses_wait_for_a_selection(monkeypatch: pytest.Monke
 def test_walk_keys_scan_only_inside_the_window(monkeypatch: pytest.MonkeyPatch) -> None:
     sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4)])
     sim.state.monsters = [Monster("Rat", 100.0)]
-    sim.step(5.0)  # window over: creatures forgotten, only the bumped tile stays
-    assert sim.fake.sent_lines[-1] == "K left"
+    assert sim.fake.sent_lines[-1] == "K num1"
+    sim.step(5.0)  # window over: creatures forgotten, it walks instead of fighting
+    assert sim.fake.sent_lines[-1] == "K num3"  # the corner it tried did not move it
 
 
 def test_walk_keys_stand_still_while_a_target_is_selected(monkeypatch: pytest.MonkeyPatch) -> None:
