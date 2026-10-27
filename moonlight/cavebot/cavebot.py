@@ -113,7 +113,7 @@ _REACH = {"node": 3, "stand": 0, "stairs": 0}
 #: Walk key per one-tile step (y grows downward, up is north); numpad keys walk diagonally.
 WALK_KEYS = {
     (0, -1): "up", (0, 1): "down", (-1, 0): "left", (1, 0): "right",
-    (-1, -1): "num7", (1, -1): "num9", (-1, 1): "num1", (1, 1): "num3",
+    (-1, -1): "q", (1, -1): "e", (-1, 1): "z", (1, 1): "c",
 }  # fmt: skip
 #: Seconds without moving before an arrow key is pressed again.
 _KEY_RETRY = 0.7

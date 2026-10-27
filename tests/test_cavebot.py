@@ -717,7 +717,7 @@ def test_walk_keys_avoid_creatures_after_a_block(monkeypatch: pytest.MonkeyPatch
 
 def test_walk_keys_step_diagonally_past_creatures(monkeypatch: pytest.MonkeyPatch) -> None:
     sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4), (7, 6)])  # only the free corners
-    assert sim.fake.sent_lines[-1] in ("K num1", "K num3")
+    assert sim.fake.sent_lines[-1] in ("K z", "K c")
 
 
 def test_walk_keys_attack_when_stuck_without_seeing_creatures() -> None:
@@ -818,9 +818,9 @@ def test_walk_keys_attack_presses_wait_for_a_selection(monkeypatch: pytest.Monke
 def test_walk_keys_scan_only_inside_the_window(monkeypatch: pytest.MonkeyPatch) -> None:
     sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4)])
     sim.state.monsters = [Monster("Rat", 100.0)]
-    assert sim.fake.sent_lines[-1] == "K num1"
+    assert sim.fake.sent_lines[-1] == "K z"
     sim.step(5.0)  # window over: creatures forgotten, it walks instead of fighting
-    assert sim.fake.sent_lines[-1] == "K num3"  # the corner it tried did not move it
+    assert sim.fake.sent_lines[-1] == "K c"  # the corner it tried did not move it
 
 
 def test_walk_keys_stand_still_while_a_target_is_selected(monkeypatch: pytest.MonkeyPatch) -> None:

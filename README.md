@@ -194,15 +194,14 @@ or in the `targeting` section of your profile config:
 - **Cavebot when blocked:** a step key that does not move the player in
   0.7 s marks that tile blocked for 10 s (freed early once the monster on it
   walks off). The cavebot takes the cheapest way to the waypoint around
-  blocked tiles and monsters, diagonals included (numpad 1/3/7/9; a diagonal
-  costs 3 straight steps, as in the client). **Stuck** means no way around,
+  blocked tiles and monsters, diagonals included (Q/E/Z/C, the
+  client's WASD-mode diagonals; a diagonal costs 3 straight steps). **Stuck** means no way around,
   or a way more than 8 steps longer: with monsters in the battle list it
   presses `loop.attack_combo` (the client's "Attack Next", "Client key:
   Attack Next (cavebot when stuck)" in the Targeting tab), also with
   targeting on and for never-attack monsters. With nothing to fight it tries
   every tile it has not bumped into yet. The route stops after 60 s without
-  moving. Diagonal steps need the current firmware: reflash
-  `firmware/moonlight/moonlight.ino` (older firmware ignores `num1`..`num9`).
+  moving. Diagonals need the client's chat off (WASD walking).
 - **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.

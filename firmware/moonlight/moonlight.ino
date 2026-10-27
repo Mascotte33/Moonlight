@@ -80,7 +80,6 @@
 #define HID_0         '0'
 #define HID_F1        0xC2   // HID_F1 .. HID_F12 (0xC2..0xCD)
 #define HID_F13       0xF0   // HID_F13 .. HID_F24 (0xF0..0xFB)
-#define HID_KP_0      0xE0   // HID_KP_0 + n = keypad n (1..9), 0xE1..0xE9 (Keyboard.h KEY_KP_n)
 
 #define KEY_TAP_HOLD_MS       5UL      // min press duration for K taps
 #define MOUSE_CLICK_HOLD_MS   5UL      // min press duration for C clicks
@@ -231,10 +230,6 @@ static int mapTokenToKey(const char* tok) {
     if (n >= 13 && n <= 24) return HID_F13 + (n - 13);
     return -1;
   }
-
-  // num1..num9 (numpad; the client walks diagonally on 7, 9, 1, 3)
-  if (len == 4 && !strncmp(lower, "num", 3) && lower[3] >= '1' && lower[3] <= '9')
-    return HID_KP_0 + (lower[3] - '0');
 
   if (!strcmp(lower, "ctrl"))                              return HID_LCTRL;
   if (!strcmp(lower, "alt"))                               return HID_LALT;
