@@ -6,12 +6,14 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import threading
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from moonlight.perception.battle import NAME_START_X
 from moonlight.targeting.seen_monsters import SeenMonsters
 
 CROP = np.full((8, 40, 3), 255, dtype=np.uint8)
@@ -109,3 +111,29 @@ def test_each_hash_saves_its_slot_picture_once(tmp_path: Path) -> None:
     written_at = picture.stat().st_mtime_ns
     store.name_for("aa", CROP, np.zeros_like(CROP))
     assert picture.stat().st_mtime_ns == written_at
+
+
+@pytest.mark.skipif(shutil.which("tesseract") is None, reason="needs tesseract")
+def test_guess_keeps_the_space_in_a_two_word_name(tmp_path: Path) -> None:
+    import cv2
+
+    slot_picture = cv2.imread(str(Path(__file__).parent / "seen_monster_pictures" / "cave_rat.png"))
+    assert slot_picture is not None
+    name_crop = cv2.cvtColor(slot_picture, cv2.COLOR_BGR2RGB)[:, NAME_START_X:]
+    assert SeenMonsters(tmp_path / "s.json")._guess(name_crop) == "cave rat"
+
+
+def test_forget_drops_the_entry_and_its_picture(tmp_path: Path) -> None:
+    path = tmp_path / "p.seen_monsters.json"
+    store, calls = make_store(path)
+    store.name_for("junk", CROP, CROP)
+    finish_guessing(store)
+    assert store.image_path("junk").exists()
+    store.forget("junk")
+    assert store.entries() == []
+    assert not store.image_path("junk").exists()
+    assert SeenMonsters(path).entries() == []
+    store.name_for("junk", CROP, CROP)  # seen again: new again
+    finish_guessing(store)
+    assert store.image_path("junk").exists()
+    assert len(calls) == 2

@@ -193,6 +193,18 @@ def find_status_icons(screenshot: np.ndarray) -> Rect | None:
     return (hit[0] + STATUS_OFFSET[0], hit[1] + STATUS_OFFSET[1], *STATUS_SIZE)
 
 
+# doc: docs/prs/targeting.md#chase-mode
+# Stand While Fighting and Chase Opponent sit stacked above the Stop button.
+CHASE_OFFSET, CHASE_SIZE = (0, -144), (20, 43)
+
+
+def find_chase_buttons(screenshot: np.ndarray) -> Rect | None:
+    hit = _match(screenshot, "stop_button")
+    if hit is None:
+        return None
+    return (hit[0] + CHASE_OFFSET[0], hit[1] + CHASE_OFFSET[1], *CHASE_SIZE)
+
+
 # doc: docs/prs/gui-calibration.md#ui-scale
 SCALES = np.arange(0.5, 3.0001, 0.05)
 
@@ -244,6 +256,7 @@ FINDERS: list[tuple[str, Finder]] = [
     ("floor_indicator", find_floor_indicator),
     ("game_grid", find_game_grid),
     ("status_icons", find_status_icons),
+    ("chase_buttons", find_chase_buttons),
 ]
 
 

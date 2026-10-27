@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import queue
+import re
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -91,6 +92,14 @@ class SeenMonsters:
             self._monsters.setdefault(name_hash, SeenMonster(name_hash)).name = name
             self._save()
 
+    def forget(self, name_hash: str) -> None:
+        """Drop *name_hash* and its picture. Seen again, it comes back as new."""
+        with self._lock:
+            del self._monsters[name_hash]
+            self._save()
+        self._hashes_with_image.discard(name_hash)
+        self.image_path(name_hash).unlink(missing_ok=True)
+
     def image_path(self, name_hash: str) -> Path:
         """Where the slot picture of *name_hash* is (it may not exist yet)."""
         return self._images_dir / f"{name_hash}.png"
@@ -123,10 +132,10 @@ class SeenMonsters:
             black_on_white, None, fx=GUESS_SCALE, fy=GUESS_SCALE, interpolation=cv2.INTER_NEAREST
         )
         big = cv2.copyMakeBorder(big, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
-        # No space or quote in the whitelist: pytesseract splits the config on them.
-        letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-"
-        config = f"--psm 7 -c tessedit_char_whitelist={letters}"
-        return str(pytesseract.image_to_string(big, config=config)).strip().lower()
+        # No char whitelist: it cannot hold a space (pytesseract splits the config on
+        # spaces and quotes), and without one tesseract drops the gap in "Cave Rat".
+        text = str(pytesseract.image_to_string(big, config="--psm 7")).lower()
+        return " ".join(re.sub(r"[^a-z -]", "", text).split())
 
     def _guess_loop(self) -> None:
         while True:

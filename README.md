@@ -150,6 +150,7 @@ in the GUI's Healing tab, or in the `healing` section of your profile config:
   (default `shift+F1` to `shift+F5`, all off). A cure never replaces a needed
   heal spell.
 - Healing needs the `status_icons` region in the Calibration tab for cures.
+- Targeting reads the chase mode from the `chase_buttons` region (auto-find in the Calibration tab).
 
 Default rules: F2 spell below 50% HP, F1 spell below 85% HP, F3 potion below
 40% HP, F4 potion below 30% MP. Old configs with `emergency_spell` and similar
@@ -182,10 +183,13 @@ or in the `targeting` section of your profile config:
 - **Unreachable:** when the target's HP stands still for
   `unreachable_after_seconds` (default 8), the bot takes one step toward it.
   After the same time again, it skips that monster for 30 s.
-- **Chase mode:** on every new target, the bot presses `chase_hotkey` for a
-  `follow` row and `stand_still_hotkey` otherwise ("Client keys" in the tab).
-  Bind the same keys to Chase Opponent and Stand While Fighting in the
-  client's hotkey options. An empty key leaves that mode as it is.
+- **Chase mode:** each monster row is "chase" or "stand still". The bot reads
+  the active (red) chase button from the `chase_buttons` region (Calibration
+  tab) and, when it differs from the target's row, presses
+  `toggle_chase_hotkey` ("Client key: Toggle Chase Mode" in the tab) before
+  attacking. Bind the same key to Toggle Chase Mode in the client's hotkey
+  options. An empty key, or no `chase_buttons` region, leaves the mode as it
+  is.
 - **Cavebot when blocked:** with targeting on, the cavebot never presses the
   attack key (the client's "attack next" ignores never-attack rows);
   targeting does the fighting. With targeting off it presses
@@ -194,7 +198,8 @@ or in the `targeting` section of your profile config:
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
   The Targeting tab lists the ones with no monster row yet: the picture,
   then the guessed name (filled in once tesseract reads it). Correct the
-  name, then click **Add to monsters** and the line leaves the list. You name
+  name, then click **Add to monsters** and the line leaves the list. The ✕
+  forgets a line and its picture (it is learned again on its next sighting). You name
   each monster kind once. Without tesseract the guesses stay empty and you
   type the names. Only gray name text counts, and new names are learned only
   while the client is the foreground window, so other windows covering it

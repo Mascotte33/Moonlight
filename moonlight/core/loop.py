@@ -125,6 +125,9 @@ __all__ = [
 
 logger = logging.getLogger("moonlight.core.loop")
 
+#: How long a pressed chase toggle takes to show on the side panel.
+CHASE_TOGGLE_SETTLE_SECONDS = 0.5
+
 #: How often the tick timing line goes to the log.
 TIMING_LOG_SECONDS = 10.0
 
@@ -292,9 +295,8 @@ class GameLoop:
         self._last_target: str | None = None
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
-        # The movement whose chase mode key was last pressed; None presses the next one for sure.
-        self._chase_movement_set: str | None = None
-        self._chase_set_for_target: tuple[str, int] | None = None
+        # Until when a pressed chase toggle may not show on screen yet (no second press).
+        self._chase_toggle_settles_at = 0.0
         # Pause bookkeeping (reset by every healthy, exception-free tick).
         self._paused_since: float | None = None
         self._consecutive_errors = 0
@@ -506,14 +508,9 @@ class GameLoop:
         # Only critical alarms stop the bot; warnings are advisory.
         self._alarm = alarm if alarm is not None and alarm.severity == "critical" else None
         self._report_module_alarm()
-        if snap.selected_target is None:
-            self._chase_set_for_target = None  # the next target is a new attack
         self._target = None
         if m.targeting is not None:
             self._target = m.targeting.decide(snap, self._clock())
-        else:
-            # Paused or off: set the chase mode again when targeting is back.
-            self._chase_movement_set = None
         if m.looting is not None:
             # ponytail: "selected target vanished from the battle list" = kill
             # (a target lost out of range counts too); use the server-log OCR
@@ -772,7 +769,7 @@ class GameLoop:
     def _press_attack_hotkey(
         self, snap: WorldState, targeting: TargetingDecision, now: float
     ) -> None:
-        """Press the attack hotkey for the selected target, once its chase mode is set."""
+        """Press the attack hotkey for the selected target, once the screen shows its chase mode."""
         # doc: docs/prs/targeting.md#chase-mode
         attack_hotkeys = self.modules.attack_hotkeys
         selected = snap.selected_target
@@ -781,19 +778,14 @@ class GameLoop:
         row = targeting.row_for(selected)
         if row.ignore or targeting.is_unreachable(selected):
             return
-        # The owner may have changed the mode by hand: set it again for every new target.
-        attacked = (selected.name, selected.battle_list_row)
-        if attacked != self._chase_set_for_target:
-            self._chase_movement_set = None
-            self._chase_set_for_target = attacked
-        if row.movement != self._chase_movement_set:
-            key = targeting.movement_hotkey(row.movement)
-            if key:
-                # The attack key waits for the next tick, after the mode key.
-                if self._send(snap, lambda: self.input.press_combo(key)):
-                    self._chase_movement_set = row.movement
-                return
-            self._chase_movement_set = row.movement  # no key set: the owner's mode stays
+        toggle = targeting.config.toggle_chase_hotkey
+        if toggle and snap.chase_mode is not None and snap.chase_mode != row.movement:
+            # The attack key waits until the screen shows the toggled mode.
+            if now >= self._chase_toggle_settles_at and self._send(
+                snap, lambda: self.input.press_combo(toggle)
+            ):
+                self._chase_toggle_settles_at = now + CHASE_TOGGLE_SETTLE_SECONDS
+            return
         hotkey = attack_hotkeys.decide(snap, row, now)
         if hotkey is not None:
             self._send(snap, lambda: attack_hotkeys.send(hotkey, self.input, now))

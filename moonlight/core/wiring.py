@@ -238,6 +238,7 @@ def make_perceive(
     hash is learned (another window may cover the battle list).
     """
     from moonlight.perception.battle import BattleReader, entries_to_state
+    from moonlight.perception.chase_mode import read_chase_mode
     from moonlight.perception.creatures import find_creatures
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
@@ -252,6 +253,11 @@ def make_perceive(
         status_icons = StatusIconReader(profile, conditions_dir)
     else:
         logger.warning("no status_icons region: condition icons are not read")
+    chase_buttons: Rect | None = None
+    if "chase_buttons" in profile.regions:
+        chase_buttons = profile.get_region("chase_buttons").to_tuple
+    else:
+        logger.warning("no chase_buttons region: the chase mode is not set")
     # At 100% the radar draws 1 or 2 px per tile, by the player's minimap zoom.
     unit = max(1, round(profile.ui_scale))
     minimap = MinimapReader(
@@ -275,6 +281,7 @@ def make_perceive(
             slots = tuple(find_creatures(frame, creature_grid)) if creature_grid else ()
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
+            chase_mode = read_chase_mode(frame, chase_buttons) if chase_buttons else None
             conditions = (
                 status_icons.read_active_conditions(frame) if status_icons else frozenset()
             )
@@ -293,6 +300,7 @@ def make_perceive(
             state.players_on_screen = players
             state.creature_slots = slots
             state.active_status_icons = conditions
+            state.chase_mode = chase_mode
             state.position_status = (
                 "lost" if minimap.lost else "estimated" if minimap.estimated else ""
             )

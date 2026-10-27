@@ -82,8 +82,7 @@ class TargetingSettings(NamedTuple):
 
     attack_cooldown_ms: str
     unreachable_after_seconds: str
-    chase_hotkey: str = ""
-    stand_still_hotkey: str = ""
+    toggle_chase_hotkey: str = ""
 
 
 def _number(text: str, cast: Callable[[str], float], where: str) -> float:
@@ -149,8 +148,7 @@ def apply_targeting(
         unreachable_after_seconds=_number(
             settings.unreachable_after_seconds, float, "unreachable time"
         ),
-        chase_hotkey=settings.chase_hotkey.strip(),
-        stand_still_hotkey=settings.stand_still_hotkey.strip(),
+        toggle_chase_hotkey=settings.toggle_chase_hotkey.strip(),
     )
     return BotConfig.from_dict(data)
 
@@ -261,15 +259,10 @@ class TargetingTab(Tab):
         chase_line = ctk.CTkFrame(settings_box, fg_color="transparent")
         chase_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
         ctk.CTkLabel(
-            chase_line, text="Client keys: Chase Opponent", text_color=theme.TEXT_DIM
+            chase_line, text="Client key: Toggle Chase Mode", text_color=theme.TEXT_DIM
         ).pack(side="left")
-        self._chase_hotkey = HotkeyBox(chase_line, self._save)
-        self._chase_hotkey.pack(side="left", padx=(theme.UNIT, 0))
-        ctk.CTkLabel(
-            chase_line, text="Stand While Fighting", text_color=theme.TEXT_DIM
-        ).pack(side="left", padx=(theme.PAD, 0))
-        self._stand_still_hotkey = HotkeyBox(chase_line, self._save)
-        self._stand_still_hotkey.pack(side="left", padx=(theme.UNIT, 0))
+        self._toggle_chase_hotkey = HotkeyBox(chase_line, self._save)
+        self._toggle_chase_hotkey.pack(side="left", padx=(theme.UNIT, 0))
 
         monsters_box, self._monsters_frame = _card(
             parent,
@@ -356,8 +349,7 @@ class TargetingTab(Tab):
         ):
             entry.delete(0, "end")
             entry.insert(0, value)
-        self._chase_hotkey.set(targeting.chase_hotkey)
-        self._stand_still_hotkey.set(targeting.stand_still_hotkey)
+        self._toggle_chase_hotkey.set(targeting.toggle_chase_hotkey)
 
     def _next_grid_row(self) -> int:
         self._last_grid_row += 1
@@ -459,8 +451,7 @@ class TargetingTab(Tab):
         return TargetingSettings(
             self._cooldown_entry.get(),
             self._unreachable_entry.get(),
-            self._chase_hotkey.get(),
-            self._stand_still_hotkey.get(),
+            self._toggle_chase_hotkey.get(),
         )
 
     def _save(self) -> None:
@@ -500,7 +491,7 @@ class TargetingTab(Tab):
         return controller.loop.seen_monsters if controller is not None else None
 
     def _add_seen_line(self, monster: SeenMonster, store: SeenMonsters) -> None:
-        """One seen monster: its battle-list picture, a name box and an add button."""
+        """One seen monster: its picture, a name box, an add and a remove button."""
         rows = self._seen_frame
         picture_path = store.image_path(monster.name_hash)
         picture_widget: Any
@@ -522,7 +513,10 @@ class TargetingTab(Tab):
             130,
             False,
         )
-        widgets = [picture_widget, entry, add]
+        remove = row_button(
+            rows, "✕", partial(self._remove_seen, store, monster.name_hash), 28, False
+        )
+        widgets = [picture_widget, entry, add, remove]
         self._seen_last_grid_row += 1
         _place(widgets, self._seen_last_grid_row)
         self._seen_lines[monster.name_hash] = (entry, widgets)
@@ -541,6 +535,14 @@ class TargetingTab(Tab):
         store.rename(name_hash, name)
         self._add_monster(name)
 
+    def _remove_seen(self, store: SeenMonsters, name_hash: str) -> None:
+        store.forget(name_hash)
+        self._drop_seen_line(name_hash)
+
+    def _drop_seen_line(self, name_hash: str) -> None:
+        for widget in self._seen_lines.pop(name_hash)[1]:
+            widget.destroy()
+
     def _show_seen_monsters(self, store: SeenMonsters) -> None:
         """A line per seen monster that has no monster row yet."""
         names_with_a_row = {
@@ -553,9 +555,7 @@ class TargetingTab(Tab):
             line = self._seen_lines.get(monster.name_hash)
             if name and name in names_with_a_row:
                 if line is not None:
-                    for widget in line[1]:
-                        widget.destroy()
-                    del self._seen_lines[monster.name_hash]
+                    self._drop_seen_line(monster.name_hash)
             elif line is None:
                 self._add_seen_line(monster, store)
             elif monster.display_name and not line[0].get():

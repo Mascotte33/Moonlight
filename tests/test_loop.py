@@ -460,15 +460,13 @@ def make_targeting_loop(
     inp: FakeInput,
     targeting_config: TargetingConfig | None = None,
     cavebot: object | None = None,
+    toggle_chase_hotkey: str = "F9",
 ) -> tuple[GameLoop, FakeClock]:
-    """A loop with real targeting over battle list region (100, 200, 170, 300).
-
-    The chase key is F9 and the stand-still key F10.
-    """
+    """A loop with real targeting over battle list region (100, 200, 170, 300)."""
     clock = FakeClock()
     clicker = FakeClicker()
     config = targeting_config if targeting_config is not None else TargetingConfig()
-    config = replace(config, chase_hotkey="F9", stand_still_hotkey="F10")
+    config = replace(config, toggle_chase_hotkey=toggle_chase_hotkey)
     modules = DecisionModules(
         healing=HealingDecision(clock=clock),
         targeting=TargetingDecision(config, (100, 200, 170, 300)),
@@ -488,7 +486,6 @@ def ticks(gl: GameLoop, clock: FakeClock, n: int) -> None:
 
 
 #: The Chase Opponent key a follow row presses before its first attack key.
-CHASE = ["K F9"]
 
 
 class TestSelectClick:
@@ -526,7 +523,7 @@ class TestSelectClick:
         with ws.lock():
             ws.selected_target = wolf  # the outline shows
         ticks(gl, clock, 40)
-        assert inp.sent_lines == ["A 180 222", "C L"] * 2 + CHASE  # chase mode only
+        assert inp.sent_lines == ["A 180 222", "C L"] * 2  # no hotkey on the row
         assert gl.current_state is BotState.ATTACK
 
     def test_stuck_target_gets_one_arrow_step_then_the_next_target_is_clicked(self) -> None:
@@ -539,9 +536,9 @@ class TestSelectClick:
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp)
         ticks(gl, clock, 8 * 20 + 3)  # 8 s on a target whose HP never moves
-        assert inp.sent_lines == [*CHASE, "K up"]
+        assert inp.sent_lines == ["K up"]
         ticks(gl, clock, 8 * 20 + 6)  # 8 s more, then the click on the next row
-        assert inp.sent_lines == [*CHASE, "K up", "A 180 244", "C L"]
+        assert inp.sent_lines == ["K up", "A 180 244", "C L"]
 
 
 F6_ROWS = TargetingConfig(
@@ -564,9 +561,9 @@ class TestAttackHotkeys:
         inp = FakeInput()
         gl, clock = make_targeting_loop(self._wolf_selected(), inp, F6_ROWS)
         ticks(gl, clock, 20)  # 1 s < the 2 s cooldown
-        assert inp.sent_lines == [*CHASE, "K F6"]
-        ticks(gl, clock, 25)  # the chase key held the first F6 back
-        assert inp.sent_lines == [*CHASE, "K F6", "K F6"]
+        assert inp.sent_lines == ["K F6"]
+        ticks(gl, clock, 25)
+        assert inp.sent_lines == ["K F6", "K F6"]
 
     def test_area_rule_before_the_row_hotkey(self) -> None:
         ws = self._wolf_selected()
@@ -574,8 +571,8 @@ class TestAttackHotkeys:
             ws.creature_slots = ((6, 5), (8, 6))
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp, F6_ROWS)
-        ticks(gl, clock, 5)  # the chase key, then the area key once the limiter refills
-        assert inp.sent_lines == [*CHASE, "K F5"]
+        ticks(gl, clock, 5)
+        assert inp.sent_lines == ["K F5"]
 
     def test_no_key_without_a_selection(self) -> None:
         ws = self._wolf_selected()
@@ -620,76 +617,59 @@ class TestAttackHotkeys:
 
 class TestChaseMode:
     @staticmethod
-    def _chase_clicks(inp: FakeInput) -> list[str]:
-        return [line for line in inp.sent_lines if line in ("K F9", "K F10")]
-
-    @staticmethod
-    def _selected(ws: WorldState, monster: Monster) -> None:
+    def _wolf_selected(chase_mode_on_screen: str | None) -> WorldState:
+        ws = make_state()
+        wolf = Monster("Wolf", 50.0)
         with ws.lock():
-            ws.monsters = [monster]
-            ws.selected_target = monster
+            ws.monsters = [wolf]
+            ws.selected_target = wolf
+            ws.chase_mode = chase_mode_on_screen
+        return ws
 
-    def test_follow_row_presses_chase_once(self) -> None:
-        ws = make_state()
-        self._selected(ws, Monster("Wolf", 50.0))
+    def test_wrong_mode_presses_the_toggle_and_holds_the_attack_until_it_shows(self) -> None:
+        ws = self._wolf_selected("none")
         inp = FakeInput()
-        gl, clock = make_targeting_loop(ws, inp)
-        ticks(gl, clock, 40)
-        assert self._chase_clicks(inp) == ["K F9"]
-
-    def test_switch_to_a_none_row_presses_stand_still(self) -> None:
-        ws = make_state()
-        self._selected(ws, Monster("Wolf", 50.0))
-        config = TargetingConfig(monsters=(MonsterRow(name="Rat", movement="none"),))
-        inp = FakeInput()
-        gl, clock = make_targeting_loop(ws, inp, config)
-        ticks(gl, clock, 5)
-        self._selected(ws, Monster("Rat", 50.0))
-        ticks(gl, clock, 5)
-        assert self._chase_clicks(inp) == ["K F9", "K F10"]
-
-    def test_each_new_target_presses_the_mode_again(self) -> None:
-        ws = make_state()
-        self._selected(ws, Monster("Wolf", 50.0))
-        inp = FakeInput()
-        gl, clock = make_targeting_loop(ws, inp)
-        ticks(gl, clock, 5)
+        gl, clock = make_targeting_loop(ws, inp, F6_ROWS)  # rows chase ("follow")
+        ticks(gl, clock, 5)  # 0.25 s: inside the settle time, no second press
+        assert inp.sent_lines == ["K F9"]
         with ws.lock():
-            ws.selected_target = None  # the wolf died
-        ticks(gl, clock, 2)
-        self._selected(ws, Monster("Wolf", 50.0))
-        ticks(gl, clock, 5)
-        assert self._chase_clicks(inp) == ["K F9", "K F9"]
+            ws.chase_mode = "follow"
+        ticks(gl, clock, 1)
+        assert inp.sent_lines == ["K F9", "K F6"]
 
-    def test_pause_sends_no_attack_key(self) -> None:
-        ws = make_state()
-        self._selected(ws, Monster("Wolf", 50.0))
+    def test_toggle_is_pressed_again_when_the_screen_still_shows_the_old_mode(self) -> None:
         inp = FakeInput()
-        gl, clock = make_targeting_loop(ws, inp)
+        gl, clock = make_targeting_loop(self._wolf_selected("none"), inp, F6_ROWS)
+        ticks(gl, clock, 12)  # 0.6 s > the 0.5 s settle time
+        assert inp.sent_lines == ["K F9", "K F9"]
+
+    def test_stand_still_row_toggles_away_from_chase(self) -> None:
+        config = replace(F6_ROWS, default_monster=MonsterRow(hotkey="F6", movement="none"))
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self._wolf_selected("follow"), inp, config)
+        ticks(gl, clock, 1)
+        assert inp.sent_lines == ["K F9"]
+
+    def test_right_mode_or_unread_mode_attacks_without_the_toggle(self) -> None:
+        for chase_mode_on_screen in ("follow", None):
+            inp = FakeInput()
+            gl, clock = make_targeting_loop(self._wolf_selected(chase_mode_on_screen), inp, F6_ROWS)
+            ticks(gl, clock, 1)
+            assert inp.sent_lines == ["K F6"]
+
+    def test_no_toggle_key_leaves_the_owners_mode(self) -> None:
+        inp = FakeInput()
+        ws = self._wolf_selected("none")
+        gl, clock = make_targeting_loop(ws, inp, F6_ROWS, toggle_chase_hotkey="")
+        ticks(gl, clock, 1)
+        assert inp.sent_lines == ["K F6"]
+
+    def test_pause_sends_no_key(self) -> None:
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self._wolf_selected("none"), inp, F6_ROWS)
         gl.paused = True
         ticks(gl, clock, 60)
         assert inp.sent_lines == []
-
-    def test_pause_presses_the_mode_again(self) -> None:
-        ws = make_state()
-        self._selected(ws, Monster("Wolf", 50.0))
-        inp = FakeInput()
-        gl, clock = make_targeting_loop(ws, inp)
-        ticks(gl, clock, 5)
-        gl.paused = True
-        ticks(gl, clock, 5)
-        gl.paused = False
-        ticks(gl, clock, 5)
-        assert self._chase_clicks(inp) == ["K F9", "K F9"]
-
-    def test_restart_presses_the_mode_again(self) -> None:
-        ws = make_state()
-        self._selected(ws, Monster("Wolf", 50.0))
-        inp = FakeInput()
-        for _ in range(2):
-            gl, clock = make_targeting_loop(ws, inp)
-            ticks(gl, clock, 5)
-        assert self._chase_clicks(inp) == ["K F9", "K F9"]
 
 
 class TestGameLoopRun:

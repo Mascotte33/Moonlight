@@ -123,6 +123,9 @@ class WorldState:
     # Condition icons currently shown (``poison``, ``burn``, ...).
     active_status_icons: frozenset[str] = frozenset()
 
+    #: The client's chase mode, ``"follow"`` or ``"none"``; None = not read.
+    chase_mode: str | None = None
+
     # Last full update (``time.monotonic()``); 0.0 = never updated.
     last_update: float = 0.0
 

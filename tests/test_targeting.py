@@ -225,12 +225,6 @@ def test_no_creature_slot_means_no_step() -> None:
         assert targeting.decide(s, 8.0) is None
 
 
-def test_movement_hotkey_is_the_chase_key_for_follow_else_the_stand_still_key() -> None:
-    targeting = TargetingDecision(TargetingConfig(chase_hotkey="F9", stand_still_hotkey="F10"))
-    assert targeting.movement_hotkey("follow") == "F9"
-    assert targeting.movement_hotkey("none") == "F10"
-
-
 def test_a_bad_chase_hotkey_is_refused() -> None:
-    with pytest.raises(ValueError, match="chase_hotkey"):
-        TargetingDecision(TargetingConfig(chase_hotkey="not a key"))
+    with pytest.raises(ValueError, match="toggle_chase_hotkey"):
+        TargetingDecision(TargetingConfig(toggle_chase_hotkey="not a key"))

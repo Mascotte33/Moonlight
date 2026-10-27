@@ -100,9 +100,8 @@ class TargetingConfig:
     area_rules: tuple[AreaRule, ...] = ()
     attack_cooldown_ms: int = 2000
     unreachable_after_seconds: float = 8.0
-    #: The client's Chase Opponent / Stand While Fighting keys; "" = the bot leaves that mode.
-    chase_hotkey: str = ""
-    stand_still_hotkey: str = ""
+    #: The client's "Toggle Chase Mode" key; "" = the bot leaves the owner's mode.
+    toggle_chase_hotkey: str = ""
 
     def validate(self) -> None:
         """Raise ValueError on a bad row or rule, a duplicate name or a bad delay."""
@@ -123,10 +122,8 @@ class TargetingConfig:
             raise ValueError("targeting.attack_cooldown_ms must be >= 0")
         if self.unreachable_after_seconds <= 0:
             raise ValueError("targeting.unreachable_after_seconds must be > 0")
-        if self.chase_hotkey:
-            check_hotkey(self.chase_hotkey, "targeting.chase_hotkey")
-        if self.stand_still_hotkey:
-            check_hotkey(self.stand_still_hotkey, "targeting.stand_still_hotkey")
+        if self.toggle_chase_hotkey:
+            check_hotkey(self.toggle_chase_hotkey, "targeting.toggle_chase_hotkey")
 
 
 @dataclass(frozen=True)
@@ -257,10 +254,3 @@ class TargetingDecision:
         x = left + px(NAME_START_X) + px(NAME_WIDTH) // 2
         y = top + px(TOP_PADDING) + battle_list_row * slot + slot // 2
         return x, y
-
-    # doc: docs/prs/targeting.md#chase-mode
-    def movement_hotkey(self, movement: str) -> str:
-        """The key that sets *movement*'s chase mode; ``""`` when the owner set none."""
-        if movement == "follow":
-            return self.config.chase_hotkey
-        return self.config.stand_still_hotkey
