@@ -105,9 +105,9 @@ def test_blank_deposit_hotkey_writes_none(tmp_path: Path) -> None:
 
 def test_loot_values_are_written(tmp_path: Path) -> None:
     cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
-    cfg = apply_cavebot(cfg, {"looting.move_all_hotkey": "", "looting.min_cap_to_loot": "5"})
+    cfg = apply_cavebot(cfg, {"looting.wait_ms": "600", "looting.min_cap_to_loot": "5"})
     kept = cfg.off["looting"]
-    assert (kept.move_all_hotkey, kept.min_cap_to_loot) == (None, 5.0)
+    assert (kept.wait_ms, kept.min_cap_to_loot) == (600, 5.0)
 
 
 def test_loot_tab_has_no_unused_max_items() -> None:

@@ -23,7 +23,7 @@ JSON format (``moonlight_config.json``)::
       "loop": {"tick_rate": 20.0},         # any LoopConfig field
       "clicker": {"open_loop": false},     # any ClickerConfig field (F-14)
       "hotkeys": {"utani hur": "F8"},      # buff -> combo
-      "monster_name_source": false,        # F-09: looting needs this true (T34)
+      "monster_name_source": false,        # unused
       "capacity_source": false,            # F-09: refill needs this true (T34)
       "buff_icon_source": false,           # F-10: buffs needs this true (T34)
       "modules": {
@@ -40,9 +40,9 @@ JSON format (``moonlight_config.json``)::
 Fail closed: ``profile``, ``modules`` and every module's ``enabled`` flag
 are required; unknown keys, wrong types, invalid values, a bad hotkey
 combo, a missing cavebot route file, or refill without cavebot+looting
-all raise :class:`ConfigError`. Looting, refill and buffs additionally
-require their perception source (``monster_name_source`` /
-``capacity_source`` / ``buff_icon_source``) to be true (F-09 / F-10).
+all raise :class:`ConfigError`. Refill and buffs additionally require
+their perception source (``capacity_source`` / ``buff_icon_source``) to be
+true (F-09 / F-10).
 Fields left out of a module section take the dataclass defaults.
 
 A module that is off keeps its values: ``{"enabled": false, "potion_cooldown_ms":
@@ -163,7 +163,8 @@ class BotConfig:
     #: capacity reader and the monster-name resolver are deferred (T34), so
     #: the corresponding modules would run against *unpopulated* state. Set
     #: these to true only once a real reader populates the state; ``validate``
-    #: refuses to enable looting / refill / buffs without their source.
+    #: refuses to enable refill / buffs without their source.
+    #: ``monster_name_source`` is unused; kept so saved configs still load.
     monster_name_source: bool = False
     capacity_source: bool = False
     buff_icon_source: bool = False
@@ -255,6 +256,9 @@ class BotConfig:
                     kwargs.setdefault("walk_keys", old)
                 value = _cavebot(section, routes_dir)
             else:
+                if name == "looting":  # the loot-window keys, gone with the window
+                    section.pop("move_all_hotkey", None)
+                    section.pop("max_items_per_loot", None)
                 value = _coerce(section, hints[name], f"modules.{name}")
             if enabled:
                 kwargs[name] = value
@@ -321,15 +325,8 @@ class BotConfig:
                 )
         if self.refill is not None and (self.cavebot is None or self.looting is None):
             raise ConfigError("refill needs the cavebot and looting modules enabled")
-        # F-09: unreachable gates must be honest. Looting and refill read
-        # state that no reader populates yet (monster names, capacity). Refuse
-        # to enable them until a perception source is wired (T34).
-        if self.looting is not None and not self.monster_name_source:
-            raise ConfigError(
-                "looting is enabled but no monster-name perception source is "
-                "configured: set 'monster_name_source' to true once a name "
-                "resolver is wired (T34), or disable the looting module"
-            )
+        # F-09: unreachable gates must be honest. Refill reads capacity, which
+        # no reader populates yet. Refuse to enable it until one is wired (T34).
         if self.refill is not None and not self.capacity_source:
             raise ConfigError(
                 "refill is enabled but no capacity perception source is "

@@ -11,7 +11,7 @@ import pytest
 
 from moonlight.calibration.calibrate import REGIONS, CalibrationProfile, Region
 from moonlight.core.config import BotConfig
-from moonlight.looting.looting import LootingConfig
+from moonlight.refill.refill import RefillConfig
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "check_setup.py"
 _spec = importlib.util.spec_from_file_location("check_setup", _SCRIPT)
@@ -27,12 +27,12 @@ def test_missing_region_reports_fail(
     for i, name in enumerate(REGIONS):
         p.set_region(name, Region(10 + 40 * i, 20, 30, 10))
     p.save(tmp_path / "moonlight_user.json")
-    # Looting needs ``loot_window``, which is not in the standard region set.
-    config = replace(BotConfig.default(), looting=LootingConfig())
+    # Refill needs ``capacity``, which is not in the standard region set.
+    config = replace(BotConfig.default(), refill=RefillConfig())
     with (
         mock.patch.object(check_setup, "_load_config", return_value=config),
         mock.patch("moonlight.hardware.input.find_arduino_port", return_value="COM9"),
     ):
         assert check_setup.main(["--profiles-dir", str(tmp_path)]) == 1
     out = capsys.readouterr().out
-    assert "[FAIL] module looting: missing calibration region(s) loot_window" in out
+    assert "[FAIL] module refill: missing calibration region(s) capacity" in out

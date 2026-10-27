@@ -2,7 +2,7 @@
 
 Frames are read from ``tests/golden/``; labels from ``tests/golden/labels.json``. The reader
 APIs are the real ones (see tests/perf/test_golden_smoke.py for the template
-cuts used by the unlabelled readers). Labels carry no sprite/loot/log truth
+cuts used by the unlabelled readers). Labels carry no sprite/log truth
 and only placeholder battle data (monster_count 0), so those readers get
 validity + no-exception checks, plus label-conditional checks that become
 active once real battle labels exist.
@@ -36,7 +36,6 @@ from moonlight.perception import (
     SpriteDetector,
     VitalsReader,
 )
-from moonlight.perception.loot import TITLE_TEMPLATE, LootReader, LootWindow
 from tests.golden_labels import PlaceholderLabelsError, load_golden_labels
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -48,8 +47,6 @@ GAME_GRID = (416, 60, 1442, 1056)
 LOG_REGION = (180, 1210, 2020, 135)
 SPRITE_CUT = (1105, 556, 64, 64)
 CURSOR_CUT = (2520, 20, 16, 16)
-LOOT_TITLE_CUT = (0, 0, 120, 16)
-LOOT_ITEM_CUT = (10, 40, 20, 20)
 FAST_N = 10
 # Measured: real players move up to ~8 tiles between burst frames, so the
 # briefed +/-3 does not hold. The tracker itself rejects shifts > radar/2.
@@ -101,10 +98,6 @@ def _make_readers(first: np.ndarray) -> dict[str, Callable[[np.ndarray], Any]]:
         "sprites": SpriteDetector(
             game_grid_region=GAME_GRID, monster_templates={"probe": [_cut(first, SPRITE_CUT)]}
         ).detect,
-        "loot": LootReader(
-            {TITLE_TEMPLATE: _cut(first, LOOT_TITLE_CUT), "probe": _cut(first, LOOT_ITEM_CUT)},
-            region=(0, 0, 400, 400),
-        ).read_loot_window,
         "logocr": lambda f: log.read(f, log_cfg),
     }
 
@@ -186,10 +179,6 @@ def _check(paths: list[Path], out: dict[str, list[Any]]) -> None:
         assert isinstance(log, LogFrame)
         assert 0.0 <= log.confidence <= 1.0
 
-    loot = out["loot"]
-    assert all(x is None or isinstance(x, LootWindow) for x in loot)
-    # "Rare window" is not asserted: no real loot-window template is in the repo, and
-    # the probe cut (frame 0's top-left corner) matches every frame.
 
 
 def test_label_gated_checks_have_labels() -> None:

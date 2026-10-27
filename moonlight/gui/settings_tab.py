@@ -41,7 +41,6 @@ MODULE_SWITCHES = [
 #: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
 REASONS = [
     ("cavebot.route", "Cavebot needs a route. Pick one in the Route dropdown or record one below."),
-    ("monster-name", "Looting needs a monster-name reader, which the bot doesn't have yet."),
     ("capacity perception", "Refill needs a capacity reader, which the bot doesn't have yet."),
     ("buff-icon", "Buffs needs a buff-icon reader, which the bot doesn't have yet."),
     ("refill needs", "Refill needs Cavebot and Looting on."),

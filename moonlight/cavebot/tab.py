@@ -85,9 +85,10 @@ OPTIONS = [
     Option("Shovel hotkey", "cavebot.shovel_hotkey", "hotkey"),
 ]
 LOOT_OPTIONS = [
-    Option("Loot hotkey", "looting.loot_hotkey", "hotkey"),
-    Option("Move-all hotkey (blank = none)", "looting.move_all_hotkey", "hotkey"),
-    Option("Min cap to loot (oz)", "looting.min_cap_to_loot", "entry"),
+    Option("Loot hotkey (loots every corpse around)", "looting.loot_hotkey", "hotkey"),
+    Option("Wait after looting (ms)", "looting.wait_ms", "entry"),
+    Option("Skip looting below HP %", "looting.min_hp_to_loot", "entry"),
+    Option("Min free cap to loot (%)", "looting.min_cap_to_loot", "entry"),
 ]
 REFILL_ROUTE = Option("Refill route", "refill.route_name", "dropdown")
 REFILL_OPTIONS = [
@@ -157,7 +158,7 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
     The cavebot route is written first. With no route on disk picked the
     cavebot options are skipped, so Save still works for an off cavebot
     without routes. A blank cavebot hotkey keeps its default; a blank
-    deposit or move-all hotkey means none. The start waypoint is given
+    deposit hotkey means none. The start waypoint is given
     1-based. Loot goes before refill, which needs looting on. The switch
     goes after the route, so turning the cavebot on with no route is refused.
 

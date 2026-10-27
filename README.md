@@ -73,7 +73,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | `moonlight/core/wiring.py` | Builds the bot loop from config + profile (`build_loop`) |
 | `moonlight/core/state.py` | `WorldState`, the snapshot shared between perception and decision |
 | `moonlight/core/config.py` | Bot config (`BotConfig`), kept apart from the logic |
-| `moonlight/perception/` | `capture.py` (mss / dxcam, DPI-aware, focus) and the readers: HP/MP, battle list, minimap, floor, monster sprites, cursor, loot window, server-log OCR |
+| `moonlight/perception/` | `capture.py` (mss / dxcam, DPI-aware, focus) and the readers: HP/MP, battle list, minimap, floor, monster sprites, cursor, server-log OCR |
 | `moonlight/gui/` | Desktop GUI shell (customtkinter) |
 | `firmware/` | Arduino Leonardo HID firmware and [wire protocol](firmware/README.md) |
 | `tests/` | Unit tests at the top level; golden, replay, safety, perf and hardware-in-the-loop suites ([details](tests/README.md)) |
@@ -116,6 +116,11 @@ over stairs or into a hole records a `stairs` waypoint on that tile, so the
 route plays back across floors; for a ladder (or a sewer grate: Ladder too),
 rope or shovel click its button while standing on the tile you use it from. While recording, every
 waypoint button adds a waypoint on the character's tile.
+
+Looting presses the loot hotkey (the OTS loots every corpse around on
+Alt+Q) after each kill and again when the battle list empties, then stands
+still for the set wait (400 ms by default) before walking on. It is skipped
+while HP is below the set percent. Set it in Cavebot > Loot.
 
 ## Getting started
 

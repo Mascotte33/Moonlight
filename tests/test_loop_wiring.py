@@ -161,6 +161,18 @@ def test_kill_detection_and_loot_state() -> None:
     looting.step.assert_called_once()
 
 
+def test_emptied_battle_list_queues_a_loot() -> None:
+    ws = make_state(monsters=2)
+    looting = idle_module()
+    gl, clock = make_loop(ws, FakeInput(), looting=looting)
+    gl.tick()
+    with ws.lock():
+        ws.monsters = []
+    clock.now += 1.0
+    gl.tick()
+    looting.on_target_died.assert_called_once_with("")
+
+
 def test_refill_start_step_and_resume_cavebot() -> None:
     cavebot = idle_module()
     refill = idle_module(**{"should_refill.return_value": True, "step.return_value": False})

@@ -296,6 +296,7 @@ class GameLoop:
         self._alarm: AlarmAction | None = None
         self._target: TargetingAction | None = None
         self._last_target: str | None = None
+        self._had_monsters = False
         self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
@@ -535,6 +536,9 @@ class GameLoop:
             self._last_target = cur.name if cur is not None else None
             if prev and cur is None and all(mon.name != prev for mon in snap.monsters):
                 m.looting.on_target_died(prev)
+            elif self._had_monsters and not snap.monsters:
+                m.looting.on_target_died("")  # the battle list emptied: loot again
+        self._had_monsters = bool(snap.monsters)
 
     def _targeting(self) -> TargetingDecision | None:
         """``stuck_targeting`` while the cavebot is stuck on creatures, else ``targeting``."""

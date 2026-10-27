@@ -71,12 +71,8 @@ def test_load_roundtrip(tmp_path: Path) -> None:
     assert cfg.monster_name_source is True and cfg.capacity_source is True
 
 
-def test_looting_refused_without_name_source() -> None:
-    """F-09: looting without a monster-name perception source is refused."""
-    data = raw(looting={"enabled": True})
-    with pytest.raises(ConfigError, match="monster-name perception source"):
-        BotConfig.from_dict(data)
-    data["monster_name_source"] = True
+def test_looting_loads_a_config_saved_with_the_loot_window_keys() -> None:
+    data = raw(looting={"enabled": True, "move_all_hotkey": None, "max_items_per_loot": 25})
     assert BotConfig.from_dict(data).looting is not None
 
 

@@ -363,7 +363,6 @@ def test_reconfigure_refuses_what_needs_a_restart() -> None:
     old = loop.modules
     assert loop.reconfigure is not None
     assert not loop.reconfigure(replace(cfg, loop=LoopConfig(tick_rate=5)))
-    assert not loop.reconfigure(replace(cfg, looting=LootingConfig()))  # reads a new region
     assert not loop.reconfigure(replace(cfg, serial_port="COM9"))
     assert loop.modules is old
 
@@ -392,7 +391,7 @@ def test_cavebot_on_or_off_keeps_the_bot_running() -> None:
     on = replace(off, cavebot=CavebotConfig(Route("hunt", waypoints=[Waypoint(1, 1, 7)])))
     assert not wiring.needs_restart(off, on)
     assert not wiring.needs_restart(on, off)
-    assert wiring.needs_restart(off, replace(off, looting=LootingConfig()))
+    assert not wiring.needs_restart(off, replace(off, looting=LootingConfig()))
     assert not wiring.needs_restart(replace(off, looting=LootingConfig()), off)
 
 

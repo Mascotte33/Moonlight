@@ -92,13 +92,12 @@ def _switch(name: str) -> Option:
 
 
 def test_looting_switch_off_and_on_keeps_values() -> None:
-    cfg = replace(BotConfig.default(), monster_name_source=True)
-    cfg = write_option(cfg, _switch("looting"), True)
-    cfg = write_option(cfg, Option("Max", "looting.max_items_per_loot", "entry"), "7")
+    cfg = write_option(BotConfig.default(), _switch("looting"), True)
+    cfg = write_option(cfg, Option("Wait", "looting.wait_ms", "entry"), "7")
     cfg = write_option(cfg, _switch("looting"), False)
     assert cfg.looting is None
     cfg = write_option(cfg, _switch("looting"), True)
-    assert cfg.looting is not None and cfg.looting.max_items_per_loot == 7
+    assert cfg.looting is not None and cfg.looting.wait_ms == 7
 
 
 def test_cavebot_switch_without_route_refused() -> None:
@@ -111,7 +110,7 @@ def test_cavebot_switch_without_route_refused() -> None:
 def test_off_module_without_kept_values_shows_defaults() -> None:
     cfg = BotConfig.default()
     assert cfg.looting is None and "looting" not in cfg.off
-    assert read_option(cfg, "looting.max_items_per_loot") == LootingConfig().max_items_per_loot
+    assert read_option(cfg, "looting.wait_ms") == LootingConfig().wait_ms
     assert read_option(cfg, "cavebot.rope_hotkey") is None
 
 
@@ -126,7 +125,6 @@ def test_no_field_is_shown_by_two_tabs() -> None:
     ("cfg", "name", "reason"),
     [
         (BotConfig.default(), "cavebot", "Cavebot needs a route"),
-        (BotConfig.default(), "looting", "Looting needs a monster-name reader"),
         (BotConfig.default(), "buffs", "Buffs needs a buff-icon reader"),
         (BotConfig.default(), "refill", "Refill needs Cavebot and Looting on"),
     ],

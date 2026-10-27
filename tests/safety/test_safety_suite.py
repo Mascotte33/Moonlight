@@ -31,7 +31,6 @@ from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.healing.healing import HealingConfig, HealingDecision, HealingRule
 from moonlight.looting.looting import Looting, LootingConfig
-from moonlight.perception.loot import LootWindow
 from moonlight.refill.refill import Refill, RefillConfig
 
 pytestmark = pytest.mark.safety
@@ -260,40 +259,17 @@ def test_10_no_input_while_idle() -> None:
     assert inp.sent_lines == []
 
 
-def test_11_loot_window_input_only_when_open_and_focused() -> None:
+def test_11_loot_key_only_when_focused() -> None:
     inp = FakeInput()
     ws = make_state()
-    reader = mock.Mock()
-    cfg = LootingConfig(loot_hotkey="F7", move_all_hotkey="F6")
-    looting = Looting(
-        reader, mock.Mock(), inp, ws, cfg, frame_provider=lambda: np.zeros((4, 4, 3), np.uint8)
-    )
-    item = mock.Mock()
-    window = LootWindow(open=True, items=[item])
-
-    # Open window but unfocused client -> nothing.
+    looting = Looting(inp, LootingConfig(loot_hotkey="alt+q"), clock=lambda: 0.0)
     looting.on_target_died("Wolf")
-    reader.read_loot_window.return_value = window
     ws.client_focused = False
     assert looting.step(ws) is False
     assert inp.sent_lines == []
-
-    # Focused + open window -> the items are moved.
     ws.client_focused = True
     looting.step(ws)
-    assert inp.sent_lines == ["K F6"]
-
-    # Window never opens: only the single open-hotkey press, then give up.
-    inp2 = FakeInput()
-    looting2 = Looting(
-        reader, mock.Mock(), inp2, ws, cfg, frame_provider=lambda: np.zeros((4, 4, 3), np.uint8)
-    )
-    reader.read_loot_window.return_value = None
-    looting2.on_target_died("Wolf")
-    for _ in range(30):
-        looting2.step(ws)
-    assert inp2.sent_lines == ["K F7"]
-    assert looting2.pending is None
+    assert inp.sent_lines == ["K alt+q"]
 
 
 def test_12_refill_only_starts_above_cap_threshold(tmp_path: Path) -> None:

@@ -53,14 +53,14 @@ logger = logging.getLogger(__name__)
 #: perception readers in :func:`make_perceive` / :func:`build_loop`.
 #: ``tools/check_setup.py`` uses this to report per-module readiness (F-11): a
 #: module is MISSING when any of its required regions is absent from the
-#: profile. ``looting`` and ``refill`` reference regions that are not part of
-#: the standard calibration set (they need dedicated readers, T34), so they
-#: report as MISSING until those are calibrated.
+#: profile. ``refill`` references a region that is not part of the standard
+#: calibration set (it needs a dedicated reader, T34), so it reports as
+#: MISSING until that is calibrated.
 MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "healing": ("hp_bar", "mp_bar", "status_icons"),
     "targeting": ("battle_list", "game_grid"),
     "cavebot": ("minimap", "floor_indicator", "game_grid"),
-    "looting": ("loot_window",),
+    "looting": (),
     "refill": ("capacity",),
     "buffs": ("status_icons",),
     "alarms": (),
@@ -590,12 +590,8 @@ def build_modules(
                 m.cavebot.start(nearest=True)
         if config.looting is not None:
             from moonlight.looting.looting import Looting
-            from moonlight.perception.loot import LootReader
 
-            reader = LootReader(_templates(config.templates_dir / "loot"), profile)
-            m.looting = Looting(
-                reader, clicker, backend, state, config.looting, frame_provider=frames
-            )
+            m.looting = Looting(backend, config.looting, clock=clock or time.monotonic)
     if config.refill is not None and m.refill is None:
         from moonlight.cavebot.cavebot import RouteFileLoader
         from moonlight.refill.refill import Refill
