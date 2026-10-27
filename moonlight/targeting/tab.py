@@ -50,7 +50,6 @@ __all__ = [
 
 OPTIONS = [
     Option("Targeting on", "targeting.enabled", "switch"),
-    Option("Client key: Attack Next (cavebot when stuck)", "loop.attack_combo", "hotkey"),
 ]
 
 #: Movement menu text for each config value.

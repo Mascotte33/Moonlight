@@ -406,7 +406,9 @@ def build_loop(
             start=state.position,
             seen_monsters=seen_monsters,
             creature_grid=(
-                profile.get_region("game_grid").to_tuple if config.targeting is not None else None
+                profile.get_region("game_grid").to_tuple
+                if config.targeting is not None or config.walk_keys
+                else None
             ),
             client_is_foreground=client_is_foreground,
         ),
@@ -478,7 +480,7 @@ def build_modules(
     from moonlight.extras.buffs import BuffManager
     from moonlight.healing.healing import HealingDecision
     from moonlight.targeting.attack_hotkeys import AttackHotkeys
-    from moonlight.targeting.targeting import TargetingDecision
+    from moonlight.targeting.targeting import TargetingConfig, TargetingDecision
 
     m = DecisionModules()
     prev_cfg, prev = old if old is not None else (None, None)
@@ -492,7 +494,8 @@ def build_modules(
         for name, keys in (
             ("healing", ("healing",)),
             ("targeting", ("targeting",)),
-            ("attack_hotkeys", ("targeting",)),
+            ("stuck_targeting", ("targeting", "off", "walk_keys", "cavebot")),
+            ("attack_hotkeys", ("targeting", "off")),
             ("buffs", ("buffs", "hotkeys")),
             ("alarms", ("alarms",)),
         ):
@@ -508,8 +511,17 @@ def build_modules(
             profile.get_region("battle_list").to_tuple,
             profile.ui_scale,
         )
-    if config.targeting is not None and m.attack_hotkeys is None:
-        m.attack_hotkeys = AttackHotkeys(config.targeting)
+    # doc: docs/prs/targeting.md#stuck-targeting
+    # The owner's rows (kept while targeting is off) with "all others" attacking.
+    rows = config.targeting or config.off.get("targeting") or TargetingConfig()
+    if config.walk_keys and config.cavebot is not None and m.stuck_targeting is None:
+        m.stuck_targeting = TargetingDecision(
+            replace(rows, default_monster=replace(rows.default_monster, ignore=False)),
+            profile.get_region("battle_list").to_tuple,
+            profile.ui_scale,
+        )
+    if (config.targeting is not None or m.stuck_targeting) and m.attack_hotkeys is None:
+        m.attack_hotkeys = AttackHotkeys(rows)
     if config.buffs is not None and m.buffs is None:
         m.buffs = BuffManager(config.buffs, key_combos=config.hotkeys or {}, clock=clock)
     if config.alarms is not None and m.alarms is None:
@@ -580,9 +592,6 @@ def build_modules(
             m.looting = Looting(
                 reader, clicker, backend, state, config.looting, frame_provider=frames
             )
-    if m.cavebot is not None:
-        # Pressed when stuck, never-attack rows included (set on every rebuild).
-        m.cavebot.attack_combo_when_blocked = config.loop.attack_combo or None
     if config.refill is not None and m.refill is None:
         from moonlight.cavebot.cavebot import RouteFileLoader
         from moonlight.refill.refill import Refill

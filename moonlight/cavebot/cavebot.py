@@ -32,11 +32,12 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   settled scan is kept instead. The path search
   also steps diagonally (Q/E/Z/C) where that is the cheaper way past.
   **Stuck** means no way around the creatures and bumped tiles, or a way
-  around over ``_DETOUR`` steps longer: the bot then presses
-  ``attack_combo`` (if the battle list has monsters and nothing is
-  selected) instead of a walk key, also with targeting on and for
-  never-attack monsters. While a target is selected it stands still,
-  whatever selected it, and walks on once nothing is.
+  around over ``_DETOUR`` steps longer, with monsters in the battle list:
+  it sets :attr:`Cavebot.stuck_on_creatures` and stands still; the loop
+  then targets with "all others" attacking (spells and area rules
+  included) and clears the flag after each kill, so the cavebot looks for
+  a way again. While a target is selected it stands still, whatever
+  selected it, and walks on once nothing is.
 * **Arrival**: within 1 tile (Chebyshev distance) of the waypoint on the
   same floor; ``node`` within 3 tiles, ``stand`` only on the exact tile.
   ``walk``/``node``/``stand``/``lure`` are then done (``lure`` walks with
@@ -123,8 +124,6 @@ _BLOCK_TTL = 12.0
 _SCAN_WINDOW = 5.0
 #: The game view scrolls a step after the position changed: a scan then sees creatures a tile off.
 _VIEW_SETTLE = 0.5
-_FIGHT_STALL = 5.0  # seconds the selected target's HP may stand still before the next one
-_ATTACK_WAIT = 3.0  # seconds between attack presses (a press toggles/cycles the target)
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
 
 #: Game grid layout (docs/ui_layout.md #10): 15x11 tiles, player at (7, 5).
@@ -250,7 +249,6 @@ class Cavebot:
         walk_keys: bool = False,
         cost_map: CostMap | None = None,
         frames: Callable[[], np.ndarray] | None = None,
-        attack_combo: str | None = None,
         clock: Callable[[], float] | None = None,
         on_waypoint_reached: Callable[[int], None] | None = None,
     ) -> None:
@@ -278,7 +276,6 @@ class Cavebot:
                 it the bot steps straight at the waypoint.
             frames: The current screenshot, for the creature scan; without
                 it creatures are found only by bumping into them.
-            attack_combo: Pressed when creatures leave no way through.
             clock: Monotonic-clock override (tests).
             on_waypoint_reached: Called with the index of each reached
                 positional waypoint.
@@ -311,15 +308,12 @@ class Cavebot:
         #: The target tile whose key was pressed a second time after not moving.
         self._retried_target: tuple[int, int, int] | None = None
         self._frames = frames
-        #: Pressed when stuck (the client's "attack next"); None: never fight to get through.
-        self.attack_combo_when_blocked = attack_combo
+        #: Creatures leave no way through: the loop targets them (cleared after each kill).
+        self.stuck_on_creatures = False
         self._scan_until = float("-inf")
         self._creatures: set[tuple[int, int]] = set()  # tiles the last scan saw
         #: Bumped tiles a scan saw a creature on: free again once it walks off.
         self._bumped_into_creature: set[tuple[int, int, int]] = set()
-        self._fight: tuple[str, float] | None = None  # (name, HP) of the target it waits on
-        self._fight_since = 0.0
-        self._attack_at = float("-inf")
         self._clock = clock if clock is not None else time.monotonic
         self._callback = on_waypoint_reached
 
@@ -329,6 +323,8 @@ class Cavebot:
         self._active = False
         self._last_pos: Position | None = None
         self._last_move = 0.0
+        #: Last position change (resume() also restarts _last_move, a fight is not "stuck").
+        self._moved_at = float("-inf")
         self._last_cmd = 0.0
         self._expected_z: int | None = None
         #: Sidestep clicks sent since the player last moved (0-2).
@@ -370,6 +366,7 @@ class Cavebot:
     def stop(self) -> None:
         """Stop the route (no further input is sent)."""
         self._active = False
+        self.stuck_on_creatures = False
         self._clicker.cancel()
 
     def is_active(self) -> bool:
@@ -402,7 +399,7 @@ class Cavebot:
             moved_aside = self._sidesteps > 0
             self._sidesteps = 0
             self._last_pos = pos
-            self._last_move = now
+            self._last_move = self._moved_at = now
         elif now - self._last_move > self._stuck_timeout:
             self._halt("stuck")
             return
@@ -443,7 +440,6 @@ class Cavebot:
         elif self._state.selected_target is not None and not self.luring():
             self._target = None  # stand still while a target is selected
             self._scan_until = now + _SCAN_WINDOW  # see the creatures when it walks on
-            self._attack(now)
         elif self._last_move > self._last_cmd or now - self._last_cmd >= _KEY_RETRY:
             target = self._target if self._last_move <= self._last_cmd else None
             step = None if target is None else (target[0] - pos.x, target[1] - pos.y)
@@ -467,11 +463,13 @@ class Cavebot:
         self._last_cmd = float("-inf")
         self._expected_z = None
         self._sidesteps = 0
+        self.stuck_on_creatures = False
 
     def _halt(self, alarm: str) -> None:
         logger.warning("cavebot: route %r stopped: %s", self.route.name, alarm)
         self.alarm = alarm
         self._active = False
+        self.stuck_on_creatures = False
         self._clicker.cancel()
 
     def _read_position(self) -> Position | None:
@@ -559,7 +557,8 @@ class Cavebot:
         Without map data every tile but the blocked ones counts as walkable.
         Stuck (no way around the creatures and bumped tiles, or the way
         around costs over ``_DETOUR`` more) with monsters in the battle list:
-        it attacks. Otherwise it tries tiles not bumped yet.
+        it sets :attr:`stuck_on_creatures` and waits. Otherwise it tries
+        tiles not bumped yet.
         """
         self._blocked = {t: end for t, end in self._blocked.items() if end > now}
         cost = self._cost_map if self._cost_map is not None and not self._cost_map.empty else None
@@ -584,11 +583,14 @@ class Cavebot:
             short = next_step(start, goal, free)
             detour_too_long = short is not None and path[1] > short[1] + _DETOUR
         stuck = path is None or detour_too_long
-        if stuck and self.attack_combo_when_blocked is not None and self._state.monsters:
+        if stuck and self._state.monsters:
+            if not self.stuck_on_creatures:
+                logger.info("cavebot: creatures block the way, targeting takes over")
+            self.stuck_on_creatures = True
             self._target = None
             self._scan_until = now + _SCAN_WINDOW  # keep scanning while it fights
-            self._attack(now)
             return
+        self.stuck_on_creatures = False
         if stuck:
             # Nothing to fight: the scan can be a tile off, so try every tile not bumped yet.
             path = next_step(start, goal, not_bumped)
@@ -625,7 +627,7 @@ class Cavebot:
         Returns whether a frame was scanned.
         """
         scanning = self._frames is not None and now < self._scan_until
-        if scanning and now - self._last_move < _VIEW_SETTLE:
+        if scanning and now - self._moved_at < _VIEW_SETTLE:
             return False  # mid-step: keep the last settled scan (its tiles are absolute)
         frame = self._frames() if scanning and self._frames is not None else None
         if frame is None:
@@ -634,40 +636,6 @@ class Cavebot:
         px, py = pos.x - PLAYER_SLOT[0], pos.y - PLAYER_SLOT[1]
         self._creatures = {(px + c, py + r) for c, r in find_creatures(frame, self._game_region)}
         return True
-
-    def _attack(self, now: float) -> None:
-        """Creatures block the way: select one to fight (the loop fights it).
-
-        While a target is selected it waits; its HP dropping counts as
-        progress for the stuck timeout. HP standing still ``_FIGHT_STALL``
-        seconds (out of reach) presses the key again for the next target.
-        """
-        sel = self._state.selected_target
-        logger.debug(
-            "cavebot: attack? monsters=%d selected=%s since_press=%.1fs",
-            len(self._state.monsters),
-            None if sel is None else f"{sel.hp_percent:.0f}%",
-            now - self._attack_at,
-        )
-        if self.attack_combo_when_blocked is None or not self._state.monsters:
-            return  # nothing to fight: wait, the stuck timeout decides
-        if now - self._attack_at < _ATTACK_WAIT:
-            return  # give the last press time to show a selection
-        if sel is not None:
-            seen = (sel.name, sel.hp_percent)
-            if seen != self._fight:
-                if self._fight is not None and self._fight[0] == sel.name:
-                    self._last_move = now  # its HP dropped: a fight is not "stuck"
-                self._fight, self._fight_since = seen, now
-                return
-            if now - self._fight_since < _FIGHT_STALL:
-                return
-            logger.info("cavebot: target HP frozen, attacking the next one")
-        else:
-            logger.info("cavebot: creatures block the way, attacking")
-        self._fight, self._fight_since, self._attack_at = None, now, now
-        assert self._input is not None  # checked in __init__
-        self._input.press_combo(self.attack_combo_when_blocked)
 
     def _press_walk_key(self, step: tuple[int, int]) -> None:
         assert self._input is not None  # checked in __init__

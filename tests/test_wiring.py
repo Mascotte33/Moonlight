@@ -19,6 +19,7 @@ from moonlight.extras.buffs import BuffManagerConfig
 from moonlight.hardware.input import FakeInput
 from moonlight.looting.looting import LootingConfig
 from moonlight.refill.refill import RefillConfig
+from moonlight.targeting.targeting import MonsterRow, TargetingConfig
 
 
 def make_profile() -> CalibrationProfile:
@@ -289,23 +290,25 @@ def test_cavebot_starts_at_start_index() -> None:
 
 
 @pytest.mark.parametrize("targeting_on", [True, False])
-def test_cavebot_presses_attack_when_stuck_with_or_without_targeting(targeting_on: bool) -> None:
+def test_stuck_targeting_attacks_all_others_with_or_without_targeting(targeting_on: bool) -> None:
     route = Route("hunt", waypoints=[Waypoint(100, 100, 7)])
+    rows = TargetingConfig(default_monster=MonsterRow(ignore=True))
     cfg = replace(
         BotConfig.default(),
-        loop=LoopConfig(enable_f12_monitor=False, attack_combo="r"),
+        loop=LoopConfig(enable_f12_monitor=False),
         cavebot=CavebotConfig(route),
+        walk_keys=True,
+        targeting=rows if targeting_on else None,
+        off={} if targeting_on else {"targeting": rows},
     )
-    if not targeting_on:
-        cfg = replace(cfg, targeting=None)
     loop = wiring.build_loop(
         cfg.validate(), make_profile(), FakeInput(),
         frame_provider=lambda: np.zeros((600, 800, 3), np.uint8),
     )
-    assert loop.modules.cavebot is not None
-    # Stuck fights never-attack monsters too, so the key is set with targeting on.
-    expected = "r"
-    assert loop.modules.cavebot.attack_combo_when_blocked == expected
+    stuck = loop.modules.stuck_targeting
+    assert stuck is not None and not stuck.config.default_monster.ignore
+    assert loop.modules.attack_hotkeys is not None  # spells and area rules while stuck
+    assert (loop.modules.targeting is not None) == targeting_on
 
 
 def test_start_index_past_the_end_is_refused() -> None:

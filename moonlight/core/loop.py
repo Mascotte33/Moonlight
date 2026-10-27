@@ -33,6 +33,10 @@ without it the loop keeps its built-in behaviour.
   (or a selected target) -> ATTACK, which clicks the battle-list row
   through the shared ``clicker``, one click in flight at a time.
   # doc: docs/prs/targeting.md#target-choice
+  While the cavebot is stuck on creatures, ``stuck_targeting`` (the same
+  rows, "all others" attacking) decides instead, also with targeting off;
+  a kill clears the cavebot's flag so it looks for a way again.
+  # doc: docs/prs/targeting.md#stuck-targeting
 * **attack_hotkeys** -- ``AttackHotkeys.decide`` in ATTACK while the
   selection matches targeting's choice and no click is in flight.
   # doc: docs/prs/targeting.md#area-rules
@@ -152,9 +156,6 @@ class LoopConfig:
     hp_drop_alarm_window: float = 2.0
     """Time window (seconds) for the fast-HP-drop alarm check."""
 
-    attack_combo: str = "r"
-    """Tibia's default attack hotkey."""
-
     f12_poll_interval: float = 0.01
     """Seconds between F12 keyboard polls."""
 
@@ -202,6 +203,8 @@ class DecisionModules:
 
     healing: HealingDecision | None = None
     targeting: TargetingDecision | None = None
+    #: Decides while the cavebot is stuck on creatures: "all others" attack.
+    stuck_targeting: TargetingDecision | None = None
     attack_hotkeys: AttackHotkeys | None = None
     buffs: BuffManager | None = None
     alarms: AlarmDecision | None = None
@@ -293,6 +296,7 @@ class GameLoop:
         self._alarm: AlarmAction | None = None
         self._target: TargetingAction | None = None
         self._last_target: str | None = None
+        self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
         # Until when a pressed chase toggle may not show on screen yet (no second press).
@@ -509,9 +513,12 @@ class GameLoop:
         # Only critical alarms stop the bot; warnings are advisory.
         self._alarm = alarm if alarm is not None and alarm.severity == "critical" else None
         self._report_module_alarm()
-        self._target = None
-        if m.targeting is not None:
-            self._target = m.targeting.decide(snap, self._clock())
+        selected = snap.selected_target
+        if self._had_selection and selected is None and m.cavebot is not None:
+            m.cavebot.stuck_on_creatures = False  # a kill: the cavebot looks for a way again
+        self._had_selection = selected is not None
+        targeting = self._targeting()
+        self._target = targeting.decide(snap, self._clock()) if targeting is not None else None
         if m.looting is not None:
             # ponytail: "selected target vanished from the battle list" = kill
             # (a target lost out of range counts too); use the server-log OCR
@@ -522,6 +529,13 @@ class GameLoop:
             if prev and cur is None and all(mon.name != prev for mon in snap.monsters):
                 m.looting.on_target_died(prev)
 
+    def _targeting(self) -> TargetingDecision | None:
+        """``stuck_targeting`` while the cavebot is stuck on creatures, else ``targeting``."""
+        m = self.modules
+        if m.stuck_targeting and m.cavebot is not None and m.cavebot.stuck_on_creatures:
+            return m.stuck_targeting
+        return m.targeting
+
     def _decide_state(self, snap: WorldState) -> BotState:
         """Priority state machine: the first matching condition wins.
 
@@ -531,12 +545,13 @@ class GameLoop:
         if self._is_alarm(snap):
             return BotState.ALARM
         m = self.modules
+        targeting = self._targeting()
         if m.cavebot is not None and m.cavebot.luring():
             pass  # a lure waypoint walks past monsters
-        elif m.targeting is not None:
+        elif targeting is not None:
             selected = snap.selected_target
             if self._target is not None or (
-                selected is not None and not m.targeting.is_unreachable(selected)
+                selected is not None and not targeting.is_unreachable(selected)
             ):
                 return BotState.ATTACK
         elif snap.selected_target is not None and snap.selected_target.name:
@@ -733,7 +748,7 @@ class GameLoop:
         A ``step_closer`` action presses one arrow key. Only once the
         selection matches targeting's choice does an attack hotkey go out.
         """
-        targeting, clicker = self.modules.targeting, self.modules.clicker
+        targeting, clicker = self._targeting(), self.modules.clicker
         if targeting is None:
             return
         if clicker is None:

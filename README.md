@@ -197,10 +197,12 @@ or in the `targeting` section of your profile config:
   walks off). The cavebot takes the cheapest way to the waypoint around
   blocked tiles and monsters, diagonals included (Q/E/Z/C, the
   client's WASD-mode diagonals; a diagonal costs 3 straight steps). **Stuck** means no way around,
-  or a way more than 8 steps longer: with monsters in the battle list it
-  presses `loop.attack_combo` (the client's "Attack Next", "Client key:
-  Attack Next (cavebot when stuck)" in the Targeting tab), also with
-  targeting on and for never-attack monsters. With nothing to fight it tries
+  or a way more than 8 steps longer: with monsters in the battle list
+  targeting takes over with your monster rows and "all others" attacking,
+  even with targeting off or "all others" on never attack (named
+  never-attack rows stay ignored). Attack spells and area rules work as
+  usual. After each kill the cavebot looks for a way again and walks on
+  once there is one, back to your own targeting. With nothing to fight it tries
   every tile it has not bumped into yet. The route stops after 60 s without
   moving. Diagonals need the client's chat off (WASD walking).
 - **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
