@@ -52,7 +52,7 @@ moonlight/
 ├── targeting/    target picking, attack hotkeys + its tab
 ├── cavebot/      walking, pathing, route recorder + its tab
 ├── looting/      looting logic
-├── refill/       depot and shop trips
+├── refill/       refill trigger (start %)
 ├── scripts/      user scripts
 ├── extras/       buffs
 ├── alarms/       danger alarms
@@ -97,7 +97,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Alarms | ✅ | ✅ | ❌ |
 | Cavebot (waypoint routing, route recorder) | ✅ | ✅ | ❌ |
 | Looting | ✅ | ✅ | ❌ |
-| Refill route | ✅ | ✅ | ❌ |
+| Refill (check, say, key, drag waypoints) | ✅ | ✅ | ❌ |
 | User script runner | ✅ | ✅ | ❌ |
 | Arduino HID input | ✅ | ✅ | 🟡 |
 | Closed-loop clicking | ✅ | ✅ | 🟡 |
@@ -121,6 +121,17 @@ Looting presses the loot hotkey (the OTS loots every corpse around on
 Alt+Q) after each kill and again when the battle list empties, then stands
 still for the set wait (400 ms by default) before walking on. It is skipped
 while HP is below the set percent. Set it in Cavebot > Loot.
+
+Refill is part of the waypoint list. A `check` waypoint with label `town`
+jumps to label `town` when used capacity reaches the start % (Cavebot >
+Refill) or after **Refill now** is pressed; otherwise the bot walks past it.
+The town section uses `say` (types its label into chat and presses Enter, for
+NPC talk like `hi`, `deposit all`, `yes`), `key` (presses its label as a
+hotkey) and `drag` (label `x1 y1 x2 y2` in client pixels: drags the left
+button from one spot to the other, such as the loot backpack onto the depot
+stash). Edit route shows the cursor in client pixels for drag labels. End
+the town section with a `goto` back to the hunt. Drag needs the firmware's
+`H` / `R` mouse commands: reflash the Leonardo.
 
 ## Getting started
 
