@@ -111,7 +111,10 @@ full live session has not happened yet.
 
 The route recorder saves the tile the character stood on, never the one it is
 walking to: a position counts after it held for 0.6 s, or once the character
-stepped off it. Recording stops and saves the route when the cavebot starts.
+stepped off it. Recording stops and saves the route when the cavebot starts. Walking
+over stairs or into a hole records a `stairs` waypoint on that tile, so the
+route plays back across floors; for a ladder, rope or shovel press its
+recording key (F4, F7, F8) before you use it.
 
 ## Getting started
 
@@ -213,8 +216,10 @@ or in the `targeting` section of your profile config:
   included (players never), even with targeting off. Attack spells and area rules work as
   usual. After each kill the cavebot looks for a way again and walks on
   once there is one, back to your own targeting. With nothing to fight it tries
-  every tile it has not bumped into yet. The route stops after 60 s without
-  moving. Diagonals need the client's chat off (WASD walking).
+  every tile it has not bumped into yet; with none left it skips the
+  waypoint (`cavebot: waypoint N unreachable, skipping` in the log) and the
+  next ones until one on its floor has a way. When none has, or the route
+  goes 60 s without moving, the route stops with the stuck alarm. Diagonals need the client's chat off (WASD walking).
 - **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
