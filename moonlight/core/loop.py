@@ -62,6 +62,8 @@ Safety invariants (re-checked on every tick, never just at startup):
   sent, and the loop resumes automatically when perception is healthy.
   It stops for good after ``pause_timeout`` seconds paused or
   ``max_consecutive_errors`` consecutive tick exceptions (operator alert).
+  The account switch (``rotate``) is no pause: it alone runs on the
+  login screen, needing only ``client_focused``.
 * **No input unless focused** -- no action is sent unless the snapshot
   has both ``client_focused`` and ``screen_ok`` True. The one exception is
   ``release_all``: kill, pause, tick exceptions and shutdown call it
@@ -456,6 +458,10 @@ class GameLoop:
             self._perceive_time = self._clock() - t0
         snap = self.state.snapshot()
 
+        if self._switching_account(snap):
+            self._record_tick_time(t0)
+            return
+
         # Pause gate: !screen_ok (unfocused / bad frame) pauses, fail-closed.
         if not snap.screen_ok:
             self._pause("screen not ok (client unfocused or perception failed)")
@@ -471,6 +477,22 @@ class GameLoop:
         self._paused_since = None
         self._consecutive_errors = 0
         self._record_tick_time(t0)
+
+    # doc: docs/prs/rotation.md#rotation
+    def _switching_account(self, snap: WorldState) -> bool:
+        """The account switch, alone: True while it runs (the login screen is not a pause)."""
+        scripts = self.modules.scripts
+        if scripts is None or scripts.rotation is None or scripts.running != "rotate":
+            return False
+        self._task = "Switching account"
+        self._send(snap, lambda: scripts.step(snap, self.input), login_screen=True)
+        if scripts.rotation.failed:
+            scripts.rotation.failed = False
+            self._fail_stop("no rotation account logged in")
+        elif scripts.running is None and self.modules.cavebot is not None:
+            self.modules.cavebot.resume()  # the switch is not "stuck"
+        self._paused_since = None
+        return True
 
     # -- pause / release / alert ---------------------------------------------
 
@@ -544,6 +566,9 @@ class GameLoop:
             m.extras.observe(snap)
             if m.extras.refill_due and m.cavebot is not None:
                 m.cavebot.refill_now = True  # a player stays: the next check goes to refill
+        rotation = m.scripts.rotation if m.scripts is not None else None
+        if rotation is not None and m.cavebot is not None and rotation.refill_due():
+            m.cavebot.refill_now = True  # the account's time is up: to the depot's rotate
 
     def _targeting(self) -> TargetingDecision | None:
         """``stuck_targeting`` while the cavebot is stuck on creatures, else ``targeting``."""
@@ -707,7 +732,14 @@ class GameLoop:
             case BotState.IDLE:
                 self._act_script(snap)
 
-    def _send(self, snap: WorldState, action: Callable[[], object], *, heal: bool = False) -> bool:
+    def _send(
+        self,
+        snap: WorldState,
+        action: Callable[[], object],
+        *,
+        heal: bool = False,
+        login_screen: bool = False,
+    ) -> bool:
         """Gate one input action; the wire limiter paces its commands.
 
         Never sends input unless the snapshot has both ``client_focused``
@@ -716,10 +748,12 @@ class GameLoop:
         was not sent); every command it issues pays one token at the wire
         (:class:`~moonlight.core.safety.RateLimitedInput`), surplus commands are dropped.
         Non-*heal* actions leave one token in reserve so heals never wait
-        behind them. An *action* returning ``False`` (a module declined to
-        send) or losing a command to the limit is not counted as sent.
+        behind them. A *login_screen* action (the account switch) needs only
+        ``client_focused``: the login screen never reads as ``screen_ok``.
+        An *action* returning ``False`` (a module declined to send) or
+        losing a command to the limit is not counted as sent.
         """
-        if not (snap.client_focused and snap.screen_ok):
+        if not (snap.client_focused and (snap.screen_ok or login_screen)):
             self._actions_dropped_unfocused += 1
             return False
         wire = self.input

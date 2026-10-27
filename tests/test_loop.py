@@ -27,6 +27,7 @@ from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
 from moonlight.healing.healing import HealingAction, HealingDecision
 from moonlight.looting.looting import Looting
+from moonlight.scripts.rotation import Account, Rotation, RotationConfig
 from moonlight.scripts.scripts import ScriptRunner
 from moonlight.targeting.attack_hotkeys import AttackHotkeys
 from moonlight.targeting.targeting import AreaRule, MonsterRow, TargetingConfig, TargetingDecision
@@ -901,3 +902,27 @@ class TestExtras:
         gl.tick()
         assert gl.current_state is BotState.ALARM and cavebot.refill_now
         assert alerts == ["ALARM: player in sight over 1 min"]
+
+
+
+# doc: docs/prs/rotation.md#rotation
+class TestRotation:
+    def test_the_switch_runs_on_the_login_screen_without_pausing(self) -> None:
+        clock = FakeClock()
+        accounts = (Account("a", "p", minutes=1.0), Account("b", "q"))
+        scripts = ScriptRunner(clock=clock)
+        scripts.rotation = Rotation(RotationConfig(accounts=accounts), clock=clock)
+        ws = make_state()
+        inp = FakeInput()
+        gl, _ = make_loop(ws, inp, clock=clock, modules=DecisionModules(scripts=scripts))
+        clock.advance(60.0)
+        assert scripts.start("rotate")
+        for _ in range(3):
+            gl.tick()
+            clock.advance(0.2)
+        assert inp.sent_lines == ["K ctrl+l"]
+        ws.screen_ok = False  # logged out
+        for _ in range(30):
+            gl.tick()
+            clock.advance(0.2)
+        assert gl.current_state is not BotState.PAUSED and "K tab" in inp.sent_lines
