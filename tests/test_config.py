@@ -297,3 +297,19 @@ def test_extras_load_and_a_config_without_extras_still_loads() -> None:
     assert BotConfig.from_dict(old).extras is None
     with pytest.raises(ConfigError):
         BotConfig.from_dict(raw(extras={"enabled": True, "food": True}))
+
+
+def test_rotation_accounts_load_round_trip_and_need_the_cavebot(tmp_path: Path) -> None:
+    route_file(tmp_path / "routes")
+    accounts = [{"login": "a1", "password": "p1"}, {"login": "b2", "password": "p2", "minutes": 30}]
+    section = {"enabled": True, "accounts": accounts}
+    with pytest.raises(ConfigError, match="rotation needs the cavebot"):
+        BotConfig.from_dict(raw(rotation=section))
+    data = raw(cavebot={"enabled": True, "route": "hunt"}, rotation=section)
+    data["routes_dir"] = str(tmp_path / "routes")
+    cfg = BotConfig.from_dict(data)
+    assert cfg.rotation is not None and cfg.rotation.accounts[1].minutes == 30.0
+    assert BotConfig.from_dict(cfg.to_dict()) == cfg
+    old = raw()
+    del old["modules"]["rotation"]
+    assert BotConfig.from_dict(old).rotation is None

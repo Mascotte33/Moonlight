@@ -35,14 +35,17 @@ JSON format (``moonlight_config.json``)::
         "looting":   {"enabled": false},
         "refill":    {"enabled": false},
         "scripts":   {"enabled": false, "timers": "eat 60"},
-        "extras":    {"enabled": false, "food": true, "food_hotkey": "F10"}
+        "extras":    {"enabled": false, "food": true, "food_hotkey": "F10"},
+        "rotation":  {"enabled": false, "logout_hotkey": "ctrl+l", "accounts": [
+          {"login": "abc", "password": "xyz", "character": 1, "minutes": 60}
+        ]}
       }
     }
 
 Fail closed: ``profile``, ``modules`` and every module's ``enabled`` flag
 are required; unknown keys, wrong types, invalid values, a bad hotkey
-combo, a missing cavebot route file, or refill without the cavebot
-all raise :class:`ConfigError`. Buffs additionally require its perception
+combo, a missing cavebot route file, or refill or rotation without the
+cavebot all raise :class:`ConfigError`. Buffs additionally require its perception
 source (``buff_icon_source``) to be true (F-10).
 Fields left out of a module section take the dataclass defaults.
 
@@ -71,6 +74,7 @@ from moonlight.hardware.clicker import ClickerConfig
 from moonlight.healing.healing import HealingConfig, check_hotkey
 from moonlight.looting.looting import LootingConfig
 from moonlight.refill.refill import RefillConfig
+from moonlight.scripts.rotation import RotationConfig
 from moonlight.scripts.scripts import ScriptsConfig
 from moonlight.targeting.targeting import TargetingConfig
 
@@ -96,6 +100,7 @@ MODULES = (
     "refill",
     "scripts",
     "extras",
+    "rotation",
 )
 
 _TOP_KEYS = {
@@ -168,6 +173,8 @@ class BotConfig:
     scripts: ScriptsConfig | None = None
     #: Food, haste, buff potion, ring, amulet, player timer, PM alarm.
     extras: ExtrasConfig | None = None
+    #: Accounts played in turn; their logins stay in this gitignored file.
+    rotation: RotationConfig | None = None
     #: Perception sources that are actually wired up (F-10). The buff-icon
     #: reader is deferred (T34), so buffs would run against *unpopulated*
     #: state; ``validate`` refuses to enable buffs without its source.
@@ -251,7 +258,7 @@ class BotConfig:
         _reject_unknown(modules, set(MODULES), "modules")
         routes_dir = kwargs.get("routes_dir", Path("data/waypoints"))
         for name in MODULES:
-            if name in ("scripts", "extras") and name not in modules:
+            if name in ("scripts", "extras", "rotation") and name not in modules:
                 continue  # configs saved before these had a section
             if name not in modules:
                 raise ConfigError(f"modules: missing required section {name!r}")
@@ -327,7 +334,13 @@ class BotConfig:
         try:
             GameLoop._validate_config(self.loop)
             sections: tuple[Any, ...] = (
-                self.healing, self.targeting, self.buffs, self.alarms, self.scripts, self.extras
+                self.healing,
+                self.targeting,
+                self.buffs,
+                self.alarms,
+                self.scripts,
+                self.extras,
+                self.rotation,
             )
             for cfg in sections:
                 if cfg is not None:
@@ -344,6 +357,8 @@ class BotConfig:
                 )
         if self.refill is not None and self.cavebot is None:
             raise ConfigError("refill needs the cavebot module enabled")
+        if self.rotation is not None and self.cavebot is None:
+            raise ConfigError("rotation needs the cavebot module enabled")
         # F-10: the buffs module reads buff-icon state that no reader
         # populates yet; refuse to enable it until one is wired.
         if self.buffs is not None and not self.buff_icon_source:

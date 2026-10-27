@@ -61,6 +61,7 @@ MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "looting": (),
     "refill": (),
     "scripts": (),
+    "rotation": (),
     "extras": (),  # player_list is optional: without it no player is timed
     "buffs": ("status_icons",),
     "alarms": (),
@@ -581,6 +582,12 @@ def build_modules(
         m.scripts = ScriptRunner(grab=screen_grab, clock=clock or time.monotonic)
     m.scripts.clicker = m.clicker
     m.scripts.timers = parse_timers(config.scripts.timers) if config.scripts else []
+    if config.rotation is None:
+        m.scripts.rotation = None
+    elif m.scripts.rotation is None or not same("rotation"):
+        from moonlight.scripts.rotation import Rotation
+
+        m.scripts.rotation = Rotation(config.rotation, clock=clock or time.monotonic)
     if config.extras is not None:
         from moonlight.extras.extras import Extras
 

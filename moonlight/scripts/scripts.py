@@ -49,6 +49,7 @@ from moonlight.hardware.input import ClickSide, InputBackend
 if TYPE_CHECKING:
     from moonlight.cavebot.cavebot import Cavebot
     from moonlight.hardware.clicker import ClickController
+    from moonlight.scripts.rotation import Rotation
 
 __all__ = ["DEFAULT_SCRIPTS_DIR", "Bot", "ScriptRunner", "ScriptsConfig", "parse_timers"]
 
@@ -109,6 +110,19 @@ class Bot:
         cap = self._snap.capacity
         return cap.percent if cap.max_weight > 0 else 0.0
 
+    @property
+    def in_game(self) -> bool:
+        """The game screen reads (False on the login screen)."""
+        return self._snap.screen_ok and self._snap.hp_percent > 0
+
+    def type(self, text: str, *, secret: bool = False) -> list[Command]:
+        """Type *text* (letters and digits, no Enter); *secret* keeps it out of the command log."""
+        if not re.fullmatch(r"[A-Za-z0-9]*", text):
+            raise ValueError("type text is letters and digits")
+        keys = [f"shift+{ch.lower()}" if ch.isupper() else ch for ch in text]
+        press = _secret_press if secret else _press
+        return [functools.partial(press, self._runner, k) for k in keys]
+
     def press(self, key: str) -> list[Command]:
         return [functools.partial(self._runner.input.press_combo, key)]
 
@@ -152,6 +166,27 @@ class Bot:
         return (x + w // 2, y + h // 2)
 
 
+def _press(runner: ScriptRunner, key: str) -> None:
+    runner.input.press_combo(key)
+
+
+def _secret_press(runner: ScriptRunner, key: str) -> None:
+    """Press *key* with the command log (``LoggedInput.quiet``) muted."""
+    logged = []
+    backend: Any = runner.input
+    while backend is not None:  # the wire wrappers keep the next one in .backend / .inner
+        if "quiet" in vars(type(backend)):
+            logged.append(backend)
+        backend = vars(backend).get("backend") or vars(backend).get("inner")
+    for b in logged:
+        b.quiet = True
+    try:
+        runner.input.press_combo(key)
+    finally:
+        for b in logged:
+            b.quiet = False
+
+
 class ScriptRunner:
     """Runs one user script at a time, one wire command per tick."""
 
@@ -178,6 +213,8 @@ class ScriptRunner:
         self.snap = WorldState()
         self.input: InputBackend
         self.cavebot: Cavebot | None = None
+        #: Account rotation: the ``rotate`` script is its switch (docs/prs/rotation.md).
+        self.rotation: Rotation | None = None
 
     def names(self) -> list[str]:
         """The script names in the scripts dir."""
@@ -187,12 +224,17 @@ class ScriptRunner:
         """Start script *name* (read fresh from disk); False when it cannot run."""
         path = self.scripts_dir / f"{name}.py"
         try:
-            spec = importlib.util.spec_from_file_location(f"moonlight_user_script_{name}", path)
-            if spec is None or spec.loader is None:
-                raise ImportError(f"cannot load {path}")
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            self._script = module.run(Bot(self))
+            if name == "rotate" and self.rotation is not None:
+                self._script = self.rotation.run(Bot(self))  # built in, no file
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    f"moonlight_user_script_{name}", path
+                )
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"cannot load {path}")
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                self._script = module.run(Bot(self))
         except (Exception, SystemExit):  # user code must not crash the bot
             log.exception("script %s did not start", name)
             return False
