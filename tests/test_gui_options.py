@@ -193,3 +193,18 @@ def test_show_paused_shows_off_but_keeps_the_saved_value() -> None:
     tab.show_paused(["targeting.enabled"], False)
     assert widget["on"] is True and switch.state == "normal"
     assert tab._readers["targeting.enabled"]() is True
+
+
+# doc: docs/prs/extras.md#extras
+def test_extras_options_write_in_order() -> None:
+    from moonlight.gui.settings_tab import EXTRAS_OPTIONS
+
+    cfg = write_option(BotConfig.default(), _switch("extras"), True)
+    values = {"extras.food_hotkey": "F9", "extras.food": True, "extras.player_minutes": "2.5"}
+    for option in EXTRAS_OPTIONS:
+        if option.field in values:
+            cfg = write_option(cfg, option, values[option.field])
+    assert cfg.extras is not None and cfg.extras.food and cfg.extras.food_hotkey == "F9"
+    assert cfg.extras.player_minutes == 2.5
+    with pytest.raises(ConfigError):
+        write_option(cfg, Option("", "extras.haste", "switch"), True)
