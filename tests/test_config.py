@@ -29,7 +29,6 @@ def raw(**modules: dict[str, Any]) -> dict[str, Any]:
     return {"profile": "p", "hotkeys": {}, "modules": sections}
 
 
-
 def test_old_walk_keys_in_cavebot_still_loads(tmp_path: Path) -> None:
     route_file(tmp_path / "routes")
     data = raw(cavebot={"enabled": True, "route": "hunt", "walk_keys": True})
@@ -37,6 +36,7 @@ def test_old_walk_keys_in_cavebot_still_loads(tmp_path: Path) -> None:
     path = tmp_path / "moonlight_config.json"
     path.write_text(json.dumps(data))
     assert BotConfig.load(path).walk_keys is True
+
 
 def test_default_is_valid() -> None:
     cfg = BotConfig.default()
@@ -287,3 +287,13 @@ def test_window_title_roundtrip() -> None:
     assert BotConfig.default().window_title == TIBIA_WINDOW_TITLE
     cfg = replace(BotConfig.default(), window_title="Tibia - Gunzodus")
     assert BotConfig.from_dict(cfg.to_dict()).window_title == "Tibia - Gunzodus"
+
+
+def test_extras_load_and_a_config_without_extras_still_loads() -> None:
+    cfg = BotConfig.from_dict(raw(extras={"enabled": True, "food": True, "food_hotkey": "F10"}))
+    assert cfg.extras is not None and cfg.extras.food_hotkey == "F10"
+    old = raw()
+    del old["modules"]["extras"]
+    assert BotConfig.from_dict(old).extras is None
+    with pytest.raises(ConfigError):
+        BotConfig.from_dict(raw(extras={"enabled": True, "food": True}))

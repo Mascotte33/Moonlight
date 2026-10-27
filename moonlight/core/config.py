@@ -34,7 +34,8 @@ JSON format (``moonlight_config.json``)::
         "cavebot":   {"enabled": false, "route": "rotworms"},
         "looting":   {"enabled": false},
         "refill":    {"enabled": false},
-        "scripts":   {"enabled": false, "timers": "eat 60"}
+        "scripts":   {"enabled": false, "timers": "eat 60"},
+        "extras":    {"enabled": false, "food": true, "food_hotkey": "F10"}
       }
     }
 
@@ -65,6 +66,7 @@ from moonlight.alarms.alarms import AlarmConfig
 from moonlight.cavebot.cavebot import Route, RouteError, RouteFileLoader
 from moonlight.core.loop import GameLoop, LoopConfig
 from moonlight.extras.buffs import BuffManagerConfig
+from moonlight.extras.extras import ExtrasConfig
 from moonlight.hardware.clicker import ClickerConfig
 from moonlight.healing.healing import HealingConfig, check_hotkey
 from moonlight.looting.looting import LootingConfig
@@ -93,6 +95,7 @@ MODULES = (
     "looting",
     "refill",
     "scripts",
+    "extras",
 )
 
 _TOP_KEYS = {
@@ -163,6 +166,8 @@ class BotConfig:
     refill: RefillConfig | None = None
     #: Timed scripts; on or off, ``script`` waypoints always run.
     scripts: ScriptsConfig | None = None
+    #: Food, haste, buff potion, ring, amulet, player timer, PM alarm.
+    extras: ExtrasConfig | None = None
     #: Perception sources that are actually wired up (F-10). The buff-icon
     #: reader is deferred (T34), so buffs would run against *unpopulated*
     #: state; ``validate`` refuses to enable buffs without its source.
@@ -246,8 +251,8 @@ class BotConfig:
         _reject_unknown(modules, set(MODULES), "modules")
         routes_dir = kwargs.get("routes_dir", Path("data/waypoints"))
         for name in MODULES:
-            if name == "scripts" and name not in modules:
-                continue  # configs saved before scripts had a section
+            if name in ("scripts", "extras") and name not in modules:
+                continue  # configs saved before these had a section
             if name not in modules:
                 raise ConfigError(f"modules: missing required section {name!r}")
             section = dict(_require_dict(modules[name], f"modules.{name}"))
@@ -321,7 +326,10 @@ class BotConfig:
                 raise ConfigError(f"off: {name!r} is not a module that is off")
         try:
             GameLoop._validate_config(self.loop)
-            for cfg in (self.healing, self.targeting, self.buffs, self.alarms, self.scripts):
+            sections: tuple[Any, ...] = (
+                self.healing, self.targeting, self.buffs, self.alarms, self.scripts, self.extras
+            )
+            for cfg in sections:
                 if cfg is not None:
                     cfg.validate()
             for name, combo in (self.hotkeys or {}).items():
