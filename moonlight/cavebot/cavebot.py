@@ -1,6 +1,6 @@
 """Cavebot movement (T22).
 
-Waypoint execution: walk/rope/shovel/ladder/stairs/label/goto/check, stuck detection.
+Waypoint execution: walk/rope/shovel/ladder/stairs/label/goto/check/say/key, stuck detection.
 Waypoint format: ``data/waypoints/README.md``.
 
 How a route is executed (one :meth:`Cavebot.step` per 20 Hz loop tick,
@@ -62,6 +62,10 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   at or over ``refill_cap``, or :attr:`Cavebot.refill_now` set, which the
   jump clears); otherwise falls through. The town trip is a section behind
   a label that ends in a ``goto`` back to the hunt.
+* **say / key**: positionless, done where the bot stands. ``say`` types its
+  label into the chat and presses Enter; ``key`` presses its label as a
+  hotkey. One key per tick (a key the wire limiter drops is sent again),
+  then the route holds 1 s so NPC answers and windows land.
 * **End of route**: a hunting route starts over at waypoint 0; a route
   with ``loop`` off completes and the cavebot stops.
 * **Blocked** (an NPC in the way): after ``sidestep_after`` seconds without
@@ -85,6 +89,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -104,11 +109,13 @@ __all__ = [
     "ACTIONS",
     "GAME_GRID_COLS",
     "GAME_GRID_ROWS",
+    "NO_TILE",
     "Cavebot",
     "Route",
     "RouteError",
     "RouteFileLoader",
     "Waypoint",
+    "label_error",
 ]
 
 logger = logging.getLogger(__name__)
@@ -116,10 +123,17 @@ logger = logging.getLogger(__name__)
 #: Valid waypoint actions.
 ACTIONS = (
     "walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto", "check",
+    "say", "key",
 )
 
 #: Actions that need no position (executed immediately).
 _JUMP_ACTIONS = ("label", "goto", "check")
+#: Actions done where the bot stands (one key per tick, then a hold).
+_HAND_ACTIONS = ("say", "key")
+#: Actions without a tile (their x, y, z are 0).
+NO_TILE = _JUMP_ACTIONS + _HAND_ACTIONS
+#: Seconds the route holds after a hand action.
+_HAND_HOLD = 1.0
 
 #: Floor change each tile action causes (0 = sky, 15 = deepest).
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
@@ -211,7 +225,7 @@ class RouteFileLoader:
             raise RouteError("route 'waypoints' must be a non-empty list")
 
         waypoints = [RouteFileLoader._waypoint(i, item) for i, item in enumerate(items)]
-        if all(wp.action in _JUMP_ACTIONS for wp in waypoints):
+        if all(wp.action in NO_TILE for wp in waypoints):
             raise RouteError("route needs at least one positional waypoint")
         labels = [wp.label for wp in waypoints if wp.action == "label"]
         if len(labels) != len(set(labels)):
@@ -229,9 +243,11 @@ class RouteFileLoader:
         if action not in ACTIONS:
             raise RouteError(f"waypoint {index}: action must be one of {ACTIONS}, got {action!r}")
         label = item.get("label", "")
-        if action in _JUMP_ACTIONS:
+        if action in NO_TILE:
             if not isinstance(label, str) or not label:
                 raise RouteError(f"waypoint {index}: {action} needs a non-empty 'label'")
+            if bad := label_error(action, label):
+                raise RouteError(f"waypoint {index}: {bad}")
             return Waypoint(0, 0, 0, action, label)
         coords = []
         for key in ("x", "y", "z"):
@@ -243,6 +259,20 @@ class RouteFileLoader:
         if not MIN_FLOOR <= coords[2] <= MAX_FLOOR:
             raise RouteError(f"waypoint {index}: z must be {MIN_FLOOR}..{MAX_FLOOR}")
         return Waypoint(coords[0], coords[1], coords[2], action, "")
+
+
+def label_error(action: str, label: str) -> str | None:
+    """Why *label* cannot be the label of a ``say`` / ``key``, or None."""
+    if action == "say" and not re.fullmatch(r"[A-Za-z0-9 ]+", label):
+        return "say text is letters, digits and spaces"
+    if action == "key" and any(ch.isspace() for ch in label):
+        return f"key {label!r} has a space"
+    return None
+
+
+def _say_keys(text: str) -> list[str]:
+    """The key presses that type *text* into the chat and send it."""
+    return [ch if ch != " " else "space" for ch in text.lower()] + ["enter"]
 
 
 class Cavebot:
@@ -306,9 +336,9 @@ class Cavebot:
         self._minimap_region: Rect = minimap_region
         if stuck_timeout <= 0 or reclick_interval <= 0:
             raise ValueError("stuck_timeout and reclick_interval must be > 0")
-        needs_keys = any(wp.action in ("rope", "shovel") for wp in route.waypoints)
+        needs_keys = any(wp.action in ("rope", "shovel", *_HAND_ACTIONS) for wp in route.waypoints)
         if needs_keys and input_backend is None:
-            raise ValueError("rope/shovel waypoints need an input_backend for hotkeys")
+            raise ValueError("rope/shovel/say/key waypoints need an input_backend for hotkeys")
         if walk_keys and input_backend is None:
             raise ValueError("walk_keys needs an input_backend for the arrow keys")
         self.route = route
@@ -341,6 +371,8 @@ class Cavebot:
         self.refill_cap = refill_cap
         #: Refill now: the next ``check`` jumps to town (cleared by the jump).
         self.refill_now = False
+        self._keys_sent = 0  # of the current hand action
+        self._hand_done_at: float | None = None
 
         #: Why the route stopped on its own ("stuck", "lost", "goto_loop"),
         #: or None.
@@ -441,6 +473,10 @@ class Cavebot:
             return
 
         wp = self.route.waypoints[self.route.current]
+        if wp.action in _HAND_ACTIONS:
+            self.release_walk_key()
+            self._hand_action(wp, now)
+            return
         if moved_aside and wp.action == "walk":
             logger.info("cavebot: got past a blocker, skipping waypoint %d", self.route.current)
             self._advance()
@@ -522,7 +558,7 @@ class Cavebot:
         candidates = [
             (max(abs(wp.x - pos.x), abs(wp.y - pos.y)), i)
             for i, wp in enumerate(self.route.waypoints)
-            if wp.action not in _JUMP_ACTIONS and wp.z == pos.z
+            if wp.action not in NO_TILE and wp.z == pos.z
         ]
         return min(candidates)[1] if candidates else 0
 
@@ -575,6 +611,24 @@ class Cavebot:
         full = self.refill_cap is not None and cap.max_weight > 0 and cap.percent >= self.refill_cap
         return self.refill_now or full
 
+    # doc: docs/prs/refill.md#say-key-waypoints
+    def _hand_action(self, wp: Waypoint, now: float) -> None:
+        """Send the next key of a ``say`` / ``key``, then hold before moving on."""
+        if self._hand_done_at is None:
+            keys = [wp.label] if wp.action == "key" else _say_keys(wp.label)
+            if self._keys_sent < len(keys):
+                assert self._input is not None  # __init__: hand actions need it
+                dropped = getattr(self._input, "dropped", 0)
+                self._input.press_combo(keys[self._keys_sent])
+                if getattr(self._input, "dropped", 0) == dropped:
+                    self._keys_sent += 1
+                return
+            self._hand_done_at = now
+        if now - self._hand_done_at >= _HAND_HOLD:
+            self._keys_sent, self._hand_done_at = 0, None
+            self._last_move = now  # standing still here is not being stuck
+            self._advance()
+
     # doc: docs/prs/walking.md#skip-unreachable
     def _skip_unreachable(self, pos: Position, walkable: Callable[[int, int, int], bool]) -> None:
         """Move on to the next waypoint with a path over *walkable*; none: alarm "stuck"."""
@@ -608,7 +662,7 @@ class Cavebot:
         n = len(wps)
         for k in range(n):
             i = (self.route.current + k) % n
-            if wps[i].action not in _JUMP_ACTIONS and wps[i].z == z:
+            if wps[i].action not in NO_TILE and wps[i].z == z:
                 logger.info("cavebot: floor changed to %d, resync to waypoint %d", z, i)
                 self.route.current = i
                 self._expected_z = None

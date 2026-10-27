@@ -19,6 +19,7 @@ import pytest
 from moonlight.cavebot.cavebot import Cavebot, Route, RouteError, RouteFileLoader, Waypoint
 from moonlight.cavebot.pathing import CostMap, next_step
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
+from moonlight.core.safety import RateLimitedInput, RateLimiter
 from moonlight.core.state import Monster, Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
@@ -289,6 +290,39 @@ def test_check_jumps_to_town_once_on_refill_now() -> None:
 def test_check_needs_an_existing_label() -> None:
     raw = {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7}, {"action": "check", "label": "x"}]}
     with pytest.raises(RouteError, match="check target"):
+        RouteFileLoader.parse(raw)
+
+
+# doc: docs/prs/refill.md#say-key-waypoints
+def test_say_types_one_key_per_tick_then_holds_before_moving_on() -> None:
+    wps = [walk(100, 100), Waypoint(0, 0, 0, "say", "Hi Bob"), walk(110, 100)]
+    sim = Sim(wps, Position(100, 100, 7))
+    sim.bot.start()
+    for _ in range(9):
+        sim.step()
+    assert sim.fake.sent_lines == ["K h", "K i", "K space", "K b", "K o", "K b", "K enter"]
+    assert sim.route.current == 1
+    sim.step(1.0)
+    assert sim.route.current == 2
+
+
+def test_key_resends_a_press_the_wire_limiter_dropped() -> None:
+    sim = Sim([Waypoint(0, 0, 0, "key", "F5"), walk(110, 100)], Position(100, 100, 7))
+    limited = RateLimitedInput(sim.fake, RateLimiter(rate=1.0, capacity=1.0, clock=lambda: sim.now))
+    limited.reserve = 0.0
+    limited.press_combo("F1")  # empties the bucket
+    sim.bot._input = limited
+    sim.bot.start()
+    sim.step()
+    assert sim.fake.sent_lines == ["K F1"]  # dropped
+    sim.step(1.0)
+    assert sim.fake.sent_lines == ["K F1", "K F5"]
+
+
+@pytest.mark.parametrize(("action", "label"), [("say", "hi!"), ("key", "ctrl 1")])
+def test_bad_say_or_key_label_refused(action: str, label: str) -> None:
+    raw = {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7}, {"action": action, "label": label}]}
+    with pytest.raises(RouteError, match=action):
         RouteFileLoader.parse(raw)
 
 

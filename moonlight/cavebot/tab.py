@@ -19,8 +19,8 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from moonlight.cavebot.cavebot import (
-    _JUMP_ACTIONS,
     ACTIONS,
+    NO_TILE,
     Route,
     RouteError,
     RouteFileLoader,
@@ -65,9 +65,9 @@ NO_ROUTES_HINT = "No routes yet. Press New, then add waypoints in Edit route."
 #: The cavebot's only on/off switch (Settings has none for it).
 SWITCH = Option("Cavebot on", "cavebot.enabled", "switch")
 ROUTE = Option("Route", "cavebot.route", "dropdown")
-#: Waypoint buttons, one row each: walking, changing floor, jumping. Stairs
-#: are walked over like any tile, so they get no button.
-KIND_ROWS = (ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:])
+#: Waypoint buttons, one row each: walking, changing floor, jumping, town.
+#: Stairs are walked over like any tile, so they get no button.
+KIND_ROWS = (ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:11], ACTIONS[11:])
 #: Shown under the position while the minimap matches no map tile.
 LOST_HINT = "No map match. Use minimap zoom 1 or 2, or explore the area first."
 #: Direction pad: (arrow, dx, dy) in 3x3 order. Up is north, y - 1.
@@ -144,7 +144,7 @@ def waypoint_table(route: Route | None, current: int | None = None) -> str:
     lines = [f" {'#':>3}  {'Type':<7} {'Coordinates':<19} Label"]
     for i, wp in enumerate(route.waypoints):
         mark = ">" if i == current else " "
-        where = "" if wp.action in _JUMP_ACTIONS else f"({wp.x}, {wp.y}, {wp.z})"
+        where = "" if wp.action in NO_TILE else f"({wp.x}, {wp.y}, {wp.z})"
         lines.append(f"{mark}{i + 1:>3}  {wp.action:<7} {where:<19} {wp.label}".rstrip())
     return "\n".join(lines)
 
