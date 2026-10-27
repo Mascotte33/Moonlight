@@ -101,10 +101,10 @@ def test_players_are_never_chosen() -> None:
 
 def test_row_center_matches_the_reader_geometry() -> None:
     targeting = TargetingDecision(None, (100, 200, 170, 300), ui_scale=1.0)
-    assert targeting.row_center(0) == (100 + 23 + 57, 200 + 11 + 11)
-    assert targeting.row_center(3) == (180, 200 + 11 + 3 * 22 + 11)
+    assert targeting.row_center(0) == (100 + 23 + 66, 200 + 11 + 11)
+    assert targeting.row_center(3) == (189, 200 + 11 + 3 * 22 + 11)
     scaled = TargetingDecision(None, (0, 0, 340, 600), ui_scale=2.0)
-    assert scaled.row_center(1) == (46 + 115, 22 + 44 + 22)
+    assert scaled.row_center(1) == (46 + 133, 22 + 44 + 22)
 
 
 def test_row_center_without_a_region_raises() -> None:

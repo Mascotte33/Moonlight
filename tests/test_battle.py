@@ -63,7 +63,7 @@ def make_frame(
     """Build a synthetic frame containing a battle list at *offset*.
 
     Each row spec may set:
-        text: draw a synthetic word in the name area (x 25..44) and the
+        text: draw a synthetic word in the name area (x 24..43) and the
             black HP-bar outline under it (row 16, x 24..153)
         bar: HP bar on/off (defaults to *text*; False = another panel's
             text, True without text = a bar-only row)
@@ -92,7 +92,7 @@ def make_frame(
             slot[0:20, 1] = rgb
             slot[0:20, 20] = rgb
         if spec.get("text"):
-            for c in range(25, 45):
+            for c in range(24, 44):
                 if c % 2 == 0:
                     slot[7:15, c] = TEXT_RGB
         if spec.get("bar", spec.get("text")):
@@ -137,6 +137,13 @@ class TestEntryDetection:
         frame, region = make_frame([{"text": True, "bar": False}, {"text": True}])
         entries = read_default(frame, region)
         assert [e.index for e in entries] == [1]
+
+    @pytest.mark.parametrize("text_columns", [range(10, 45), range(60, 80, 2)])
+    def test_text_not_starting_at_the_name_is_another_window(self, text_columns: range) -> None:
+        # Live: a dialog's "Name" label crossing the icon gap, and the taskbar.
+        frame, region = make_frame([{"bar": True}])
+        paint_pixels(frame, (0, 0), 0, text_columns, range(7, 15), TEXT_RGB)
+        assert read_default(frame, region) == []
 
     def test_short_dark_run_is_not_an_hp_bar(self) -> None:
         frame, region = make_frame([{"text": True, "bar": False}])
@@ -519,7 +526,7 @@ class TestPerformance:
         frame[oy : oy + TOP_PAD + n * SLOT_H, ox : ox + CONTENT_W] = BG
         for i in range(n):
             top = oy + TOP_PAD + i * SLOT_H
-            for c in range(25, 45):
+            for c in range(24, 44):
                 if c % 2 == 0:
                     frame[top + 7 : top + 15, ox + c] = TEXT_RGB
             frame[top + 16, ox + 24 : ox + 154] = (0, 0, 0)

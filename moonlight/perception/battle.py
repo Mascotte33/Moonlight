@@ -11,7 +11,11 @@ PyTibia production bots):
   (:data:`MAX_SLOTS`);
 * content width 156 px (:data:`CONTENT_WIDTH`);
 * the first slot starts 11 px below the widget top (:data:`TOP_PADDING`);
-* the creature name starts at x=23 (:data:`NAME_START_X`) and spans ~115 px;
+* the creature name starts at x=23 (:data:`NAME_START_X`) and may run to the
+  slot's right edge (:data:`NAME_WIDTH`; "The Halloween Hare" needs ~125 px);
+* a creature name starts within 2 px of x=23, after an empty gap right of
+  the icon; text that crosses the gap or starts further right belongs to
+  another window drawn over the list (a dialog, the taskbar), not a creature;
 * text is bright pixels on a dark background: grayscale > 150 = text pixel
   (:data:`TEXT_THRESHOLD`; real text grays are ~192 / 247);
 * every creature row has an HP bar under its name whose black outline is a
@@ -97,8 +101,8 @@ TOP_PADDING = 11
 #: X offset of the creature name within a slot (ui_layout.md #3).
 NAME_START_X = 23
 
-#: Approximate name width in pixels within a slot (ui_layout.md #3).
-NAME_WIDTH = 115
+#: Name width in pixels within a slot: the rest of the slot.
+NAME_WIDTH = CONTENT_WIDTH - NAME_START_X
 
 #: Maximum rows the battle-list widget can show (156x440 / 22 ~ 20).
 #: T33: recalibrate on server -- moonlight_user.json's battle_list is only
@@ -324,6 +328,8 @@ class BattleReader:
             slot_rgb = crop[top:bottom, :cols]
             name_x1 = min(cols, self._name_x + self._name_w)
             outline_top = top + bar[0] - self._bar_offset
+            if not self._name_starts_after_icon_gap(slot_rgb[: bar[0], :name_x1]):
+                continue
             name_crop = slot_rgb[: bar[0], self._name_x : name_x1]
             name_hash = name_crop_hash(name_crop)
             if not name_hash:
@@ -357,6 +363,17 @@ class BattleReader:
         text = slot[:, x0:x1]
         pixels = int(np.count_nonzero(text > self._text_threshold))
         return pixels >= self._min_text_pixels
+
+    def _name_starts_after_icon_gap(self, slot_rgb_above_bar: np.ndarray) -> bool:
+        """True when the first name-text column right of the icon is the name's start.
+
+        Looks from 2 px left of the name: text right there crosses the gap
+        after the icon, text more than 2 px right of the name start does not
+        begin where a name does. Either way another window covers the list.
+        """
+        gap = self._name_x - 2 * self._line
+        columns = np.flatnonzero(name_text_mask(slot_rgb_above_bar[:, gap:]).any(axis=0))
+        return bool(columns.size) and 0 < int(columns[0]) <= 4 * self._line
 
     def _hp_bar(self, slot: np.ndarray) -> tuple[int, int, int] | None:
         """The HP-bar outline under the name as ``(row, x0, x1)``, or None.
