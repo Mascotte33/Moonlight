@@ -24,6 +24,7 @@ from pathlib import Path
 
 __all__ = [
     "REGIONS",
+    "OPTIONAL_REGIONS",
     "GAME_GRID_COLS",
     "GAME_GRID_ROWS",
     "CalibrationError",
@@ -50,6 +51,8 @@ REGIONS: tuple[str, ...] = (
     "game_grid",
     "chase_buttons",
 )
+#: Areas a profile may define; the extras that read them stay off without.
+OPTIONAL_REGIONS: tuple[str, ...] = ("player_list",)
 
 #: The game window is a 15x11 grid of slots; the player sits at (7, 5).
 GAME_GRID_COLS = 15
@@ -256,8 +259,10 @@ class CalibrationProfile:
 
     def set_region(self, name: str, region: Region) -> None:
         """Set or replace a region by name."""
-        if name not in REGIONS:
-            raise CalibrationError(f"Unknown region {name!r}; expected one of {REGIONS}")
+        if name not in REGIONS + OPTIONAL_REGIONS:
+            raise CalibrationError(
+                f"Unknown region {name!r}; expected one of {REGIONS + OPTIONAL_REGIONS}"
+            )
         self.regions[name] = region
 
     # -- accessors ----------------------------------------------------------
@@ -298,10 +303,7 @@ class CalibrationProfile:
         """Serialise to a JSON-ready dict matching the profile schema."""
         return {
             "landmark": [self.landmark[0], self.landmark[1]],
-            "regions": {
-                name: region.to_list
-                for name, region in self.regions.items()
-            },
+            "regions": {name: region.to_list for name, region in self.regions.items()},
             "window_size": None if self.window_size is None else list(self.window_size),
             "ui_scale": self.ui_scale,
         }

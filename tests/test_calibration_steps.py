@@ -1,6 +1,7 @@
 """Calibration steps: keep, redraw, back, review jump, saves."""
 
-from moonlight.calibration.calibrate import REGIONS, CalibrationProfile, Region
+from moonlight.calibration.calibrate import CalibrationProfile, Region
+from moonlight.calibration.calibration_steps import AREAS as REGIONS
 from moonlight.calibration.calibration_steps import CalibrationSteps
 
 FOUND = {n: (i, i, 10, 10) for i, n in enumerate(REGIONS)}
@@ -92,9 +93,11 @@ def test_next_prev_move_without_confirming() -> None:
     assert s.area == REGIONS[2] and not s.confirmed and s.boxes == FOUND
     s.prev()
     assert s.area == REGIONS[1]
-    for _ in REGIONS:
+    for _ in REGIONS[2:]:
         s.next()
-    assert s.area == REGIONS[-1] and not s.in_review
+    assert s.area == REGIONS[-1]
+    s.next()  # past the last area: the review
+    assert s.in_review
 
 
 def test_next_prev_do_nothing_in_review_or_review_jump() -> None:
