@@ -98,7 +98,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Cavebot (waypoint routing, route recorder) | ✅ | ✅ | ❌ |
 | Looting | ✅ | ✅ | ❌ |
 | Refill (check, say, key, drag waypoints) | ✅ | ✅ | ❌ |
-| User script runner | ✅ | ✅ | ❌ |
+| User scripts (script and wait waypoints, timers) | ✅ | ✅ | ❌ |
 | Arduino HID input | ✅ | ✅ | 🟡 |
 | Closed-loop clicking | ✅ | ✅ | 🟡 |
 | Kill switch + safety stops | ✅ | ✅ | ❌ |
@@ -132,6 +132,27 @@ button from one spot to the other, such as the loot backpack onto the depot
 stash). Edit route shows the cursor in client pixels for drag labels. End
 the town section with a `goto` back to the hunt. Drag needs the firmware's
 `H` / `R` mouse commands: reflash the Leonardo.
+
+A `wait` waypoint holds the route for its label in seconds. A `script`
+waypoint runs `scripts/<label>.py`; Cavebot > Scripts runs scripts on a timer
+too (`eat 60, rope 5`: name and seconds), while Scripts is on in Settings. A
+script is a Python generator `run(bot)` that yields commands one at a time,
+so the bot heals in between:
+
+```python
+def run(bot):
+    if bot.mana > 90:             # also bot.hp, bot.cap (used %)
+        yield bot.say("utevo lux")
+    yield 2                       # wait 2 seconds
+    spot = bot.find("rope.png")   # a picture in scripts/, None when not seen
+    if spot:
+        yield bot.click(*spot)    # client pixels, right=True for a right click
+    yield bot.press("f5")
+    yield bot.goto("town")        # walk on from route label town
+```
+
+A running script pauses walking and waits during a fight or looting; healing
+always goes first. An error in a script is logged and stops that script only.
 
 ## Getting started
 
