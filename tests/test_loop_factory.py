@@ -83,6 +83,12 @@ def _no_owner_anchors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterat
     autofind._anchor.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _no_display(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The clicker's screen size comes from mss, which needs a display CI lacks."""
+    monkeypatch.setattr("moonlight.core.wiring._absolute_screen", lambda: (0, 0, 1920, 1080))
+
+
 @pytest.fixture()
 def state() -> WorldState:
     return WorldState()
