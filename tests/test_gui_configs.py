@@ -106,3 +106,22 @@ def test_config_changed_reaches_the_app() -> None:
     ctx.config_changed()
     ctx.config_changed(restart=True)
     assert calls == [False, True]
+
+
+def test_bot_runs_the_cavebot_tabs_waypoint_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    from moonlight.cavebot.cavebot import RouteFileLoader, Waypoint
+    from moonlight.cavebot.recorder import save_route
+    from moonlight.core.config import CavebotConfig
+    from moonlight.gui import loop_factory
+
+    routes = Path("data/waypoints")
+    routes.mkdir(parents=True)
+    saved = RouteFileLoader.load(save_route(routes, "r", [Waypoint(1, 1, 7)]))
+    replace(BotConfig.default(), cavebot=CavebotConfig(route=saved)).save(picked_config())
+    shown = [Waypoint(1, 1, 7), Waypoint(2, 2, 7)]
+    monkeypatch.setattr(loop_factory, "editor_route", lambda: ("r", shown))
+    cavebot = loop_factory.gui_bot_config().cavebot
+    assert cavebot is not None and cavebot.route.waypoints == shown
+    monkeypatch.setattr(loop_factory, "editor_route", lambda: ("other", shown))
+    cavebot = loop_factory.gui_bot_config().cavebot
+    assert cavebot is not None and cavebot.route.waypoints == [Waypoint(1, 1, 7)]

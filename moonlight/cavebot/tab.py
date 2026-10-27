@@ -31,7 +31,7 @@ from moonlight.cavebot.recorder import (
 )
 from moonlight.core.config import BotConfig, ConfigError
 from moonlight.core.state import Position, WorldState
-from moonlight.gui import theme
+from moonlight.gui import loop_factory, theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.settings_tab import plain_reason
 from moonlight.gui.tab_base import Option, Tab, read_option, section, write_option
@@ -355,6 +355,8 @@ class CavebotTab(Tab):
         self._recording = False
         self._stand = StandTracker()
         self._stood_before: Position | None = None  # for the stairs walked over
+        # The cavebot runs this list, saved or not.
+        loop_factory.editor_route = lambda: (self._name, self._waypoints)
         self._reload()
 
     def _refresh_names(self) -> list[str]:
@@ -645,8 +647,6 @@ class CavebotTab(Tab):
         self._reload()
 
     def apply(self) -> BotConfig:
-        if self._dirty:
-            self._save()  # the cavebot runs the list shown, saved or not
         path = picked_config()
         values = {field: read() for field, read in self._readers.items()}
         cfg = apply_cavebot(load_real_config(path), values)
