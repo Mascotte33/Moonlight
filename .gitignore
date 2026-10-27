@@ -29,6 +29,8 @@ tools/arduino-cli/
 
 # Reference images for the calibration finders (cropped locally, C2.F1.K1)
 data/templates/anchors/
+data/templates/icons/
+screenshots/
 data/map/
 
 # Owner-local: only code, the root README, build config and test data are
