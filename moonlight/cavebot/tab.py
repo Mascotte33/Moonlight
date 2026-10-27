@@ -1,4 +1,5 @@
-"""Cavebot tab: Waypoints, and a Refill / Loot / Edit route switch (T3.F1.K1, T3.F7.K1, T3.F8.K1).
+"""Cavebot tab: Waypoints, and a Refill / Loot / Scripts / Edit route switch
+(T3.F1.K1, T3.F7.K1, T3.F8.K1).
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, read by
 :class:`RouteFileLoader`. ``cavebot.route`` is saved by
@@ -44,12 +45,14 @@ from moonlight.gui import loop_factory, theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.settings_tab import plain_reason
 from moonlight.gui.tab_base import Option, Tab, read_option, section, write_option
+from moonlight.scripts.scripts import ScriptRunner
 
 __all__ = [
     "LOOT_OPTIONS",
     "OPTIONS",
     "REFILL_OPTIONS",
     "ROUTE",
+    "SCRIPT_OPTIONS",
     "SWITCH",
     "CavebotTab",
     "apply_cavebot",
@@ -68,9 +71,9 @@ NO_ROUTES_HINT = "No routes yet. Press New, then add waypoints in Edit route."
 #: The cavebot's only on/off switch (Settings has none for it).
 SWITCH = Option("Cavebot on", "cavebot.enabled", "switch")
 ROUTE = Option("Route", "cavebot.route", "dropdown")
-#: Waypoint buttons, one row each: walking, changing floor, jumping, town.
+#: Waypoint buttons, one row each: walking, changing floor, jumping, town, scripts.
 #: Stairs are walked over like any tile, so they get no button.
-KIND_ROWS = (ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:11], ACTIONS[11:])
+KIND_ROWS = (ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:11], ACTIONS[11:14], ACTIONS[14:])
 #: Shown under the position while the minimap matches no map tile.
 LOST_HINT = "No map match. Use minimap zoom 1 or 2, or explore the area first."
 #: Direction pad: (arrow, dx, dy) in 3x3 order. Up is north, y - 1.
@@ -102,6 +105,9 @@ LOOT_OPTIONS = [
 ]
 REFILL_OPTIONS = [
     Option("Start refill at used cap %", "refill.trigger_cap", "entry"),
+]
+SCRIPT_OPTIONS = [
+    Option("Timed scripts (name seconds, ...)", "scripts.timers", "entry"),
 ]
 
 
@@ -158,7 +164,7 @@ def waypoint_line(current: int | None, total: int) -> str:
 
 
 def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
-    """*cfg* with the cavebot, loot and refill option *values*.
+    """*cfg* with the cavebot, loot, refill and script option *values*.
 
     The cavebot route is written first. With no route on disk picked the
     cavebot options are skipped, so Save still works for an off cavebot
@@ -181,7 +187,7 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
                 cfg = write_option(cfg, option, values[option.field])
     if SWITCH.field in values:
         cfg = write_option(cfg, SWITCH, values[SWITCH.field])
-    for option in LOOT_OPTIONS + REFILL_OPTIONS:
+    for option in LOOT_OPTIONS + REFILL_OPTIONS + SCRIPT_OPTIONS:
         if option.field in values:
             cfg = write_option(cfg, option, values[option.field])
     return cfg
@@ -233,10 +239,10 @@ def refill_now(cavebot: Any) -> str:
 
 
 class CavebotTab(Tab):
-    """Waypoints card beside one card switching Refill, Loot and Edit route."""
+    """Waypoints card beside one card switching Refill, Loot, Scripts and Edit route."""
 
     title = "Cavebot"
-    options = OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS
+    options = OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS + SCRIPT_OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
         root = ctk.CTkFrame(parent, fg_color="transparent")
@@ -280,11 +286,11 @@ class CavebotTab(Tab):
         self.lbl_msg = ctk.CTkLabel(box, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
-        side = section(root, "Refill / Loot / Edit route")
+        side = section(root, "Refill / Loot / Scripts / Edit route")
         side.grid(row=0, column=1, sticky="nsew")
         pages = {
             name: ctk.CTkFrame(side, fg_color="transparent")
-            for name in ("Refill", "Loot", "Edit route")
+            for name in ("Refill", "Loot", "Scripts", "Edit route")
         }
 
         def show(name: str) -> None:
@@ -318,6 +324,21 @@ class CavebotTab(Tab):
             anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0)
         )
         self.build_options(pages["Loot"], LOOT_OPTIONS)
+        # doc: docs/prs/scripts.md#script-api
+        ctk.CTkLabel(
+            pages["Scripts"],
+            text=(
+                "A script is a .py file in scripts/ with def run(bot). A 'script' waypoint"
+                " runs it by name (label 'example' runs scripts/example.py); timed scripts run"
+                " every N seconds while Scripts is on in Settings. Scripts: "
+                + (", ".join(ScriptRunner().names()) or "none yet")
+            ),
+            anchor="w",
+            justify="left",
+            wraplength=260,
+            text_color=theme.TEXT_DIM,
+        ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self.build_options(pages["Scripts"], SCRIPT_OPTIONS)
         show("Refill")
 
         edit = pages["Edit route"]

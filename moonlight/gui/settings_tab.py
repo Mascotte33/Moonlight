@@ -35,7 +35,7 @@ OPTIONS = [
 #: The only switch for each module (T2.F4.K2); cavebot and targeting have theirs on their tabs.
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
-    for name in ("healing", "looting", "refill", "buffs", "alarms")
+    for name in ("healing", "looting", "refill", "scripts", "buffs", "alarms")
 ]
 
 #: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
