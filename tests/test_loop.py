@@ -12,6 +12,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -25,6 +26,7 @@ from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
 from moonlight.healing.healing import HealingAction, HealingDecision
 from moonlight.looting.looting import Looting
+from moonlight.scripts.scripts import ScriptRunner
 from moonlight.targeting.attack_hotkeys import AttackHotkeys
 from moonlight.targeting.targeting import AreaRule, MonsterRow, TargetingConfig, TargetingDecision
 
@@ -394,6 +396,32 @@ class TestGameLoopStates:
         gl.tick()
         assert inp.sent_lines == ["K F2"]
         assert steps == []  # the heal skipped the step
+
+
+    # doc: docs/prs/scripts.md#script-priority
+    def test_script_pauses_walking_never_healing(self, tmp_path: Path) -> None:
+        (tmp_path / "s.py").write_text("def run(bot):\n    yield bot.press('f9')\n")
+        ws = make_state(hp=50.0)
+        inp = FakeInput()
+        steps: list[int] = []
+        c = FakeClock()
+        scripts = ScriptRunner(tmp_path, timers=[("s", 60.0)], clock=c)
+        modules = DecisionModules(healing=HealingDecision(clock=c), scripts=scripts)
+        gl, _ = make_loop(
+            ws, inp, clock=c, modules=modules,
+            move_provider=lambda s: True, move_action=lambda: steps.append(1),
+        )
+        gl.tick()
+        assert inp.sent_lines == ["K F2"]  # the heal first
+        with ws.lock():
+            ws.hp_percent = 100.0
+        for _ in range(3):
+            c.advance(1.0)
+            gl.tick()
+        assert inp.sent_lines == ["K F2", "K f9"] and steps == []
+        c.advance(1.0)
+        gl.tick()
+        assert steps == [1]  # the script ended: walking again
 
 
 class TestGameLoopRateLimit:

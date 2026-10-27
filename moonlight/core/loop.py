@@ -113,6 +113,7 @@ if TYPE_CHECKING:
     from moonlight.hardware.clicker import ClickController
     from moonlight.healing.healing import HealingDecision
     from moonlight.looting.looting import Looting
+    from moonlight.scripts.scripts import ScriptRunner
     from moonlight.targeting.attack_hotkeys import AttackHotkeys
     from moonlight.targeting.seen_monsters import SeenMonsters
     from moonlight.targeting.targeting import TargetingAction, TargetingDecision
@@ -208,6 +209,7 @@ class DecisionModules:
     looting: Looting | None = None
     #: The one mouse: targeting, cavebot and looting share it.
     clicker: ClickController | None = None
+    scripts: ScriptRunner | None = None
 
 
 class GameLoop:
@@ -338,7 +340,9 @@ class GameLoop:
         """The modules that run this tick (``all_modules`` minus the paused ones)."""
         if not self.paused:
             return self.all_modules
-        return replace(self.all_modules, cavebot=None, targeting=None, attack_hotkeys=None)
+        return replace(
+            self.all_modules, cavebot=None, targeting=None, attack_hotkeys=None, scripts=None
+        )
 
     @modules.setter
     def modules(self, value: DecisionModules) -> None:
@@ -679,9 +683,10 @@ class GameLoop:
             case BotState.LOOT:
                 self._act_loot(snap)
             case BotState.MOVE:
-                self._act_move(snap)
+                if not self._act_script(snap):
+                    self._act_move(snap)
             case BotState.IDLE:
-                pass
+                self._act_script(snap)
 
     def _send(self, snap: WorldState, action: Callable[[], object], *, heal: bool = False) -> bool:
         """Gate one input action; the wire limiter paces its commands.
@@ -829,6 +834,19 @@ class GameLoop:
         assert looting is not None
 
         self._send(snap, lambda: looting.step(snap))
+
+    # doc: docs/prs/scripts.md#script-priority
+    def _act_script(self, snap: WorldState) -> bool:
+        """A user script's step instead of walking; True while one runs."""
+        scripts = self.modules.scripts
+        if scripts is None or scripts.poll() is None:
+            return False
+        self._task = f"Script {scripts.running}"
+        scripts.cavebot = self.modules.cavebot  # for bot.goto
+        self._send(snap, lambda: scripts.step(snap, self.input))
+        if scripts.running is None and self.modules.cavebot is not None:
+            self.modules.cavebot.resume()  # script time is not "stuck"
+        return True
 
     def _act_move(self, snap: WorldState) -> None:
         """MOVE: hand control to the waypoint runner (T22).

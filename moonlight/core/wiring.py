@@ -60,6 +60,7 @@ MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "cavebot": ("minimap", "floor_indicator", "game_grid"),
     "looting": (),
     "refill": (),
+    "scripts": (),
     "buffs": ("status_icons",),
     "alarms": (),
 }
@@ -357,6 +358,7 @@ def build_loop(
     roi_provider: Callable[[Rect], np.ndarray] | None = None,
     window_origin: Callable[[], tuple[int, int]] | None = None,
     on_clicker: Callable[[ClickController], None] | None = None,
+    screen_grab: Callable[[], np.ndarray] | None = None,
 ) -> GameLoop:
     """Assemble the bot: perception + the enabled decision modules + loop.
 
@@ -365,6 +367,7 @@ def build_loop(
     clicker's small cursor-ROI grabs and open-loop mode (F-14); without
     them the clicker reads the cached tick frame. *on_clicker* receives
     the click controller once built (:class:`TickGrabber.attach`).
+    *screen_grab* is a full client-window grab for the scripts' ``bot.find``.
 
     Raises:
         ValueError: If an enabled module cannot be built from *profile*
@@ -381,6 +384,7 @@ def build_loop(
         return build_modules(
             cfg, profile, backend, state, frames, old=old, clock=clock,
             roi_provider=roi_provider, window_origin=window_origin, on_clicker=on_clicker,
+            screen_grab=screen_grab,
         )
 
     from moonlight.calibration.calibrate import default_profiles_dir
@@ -467,6 +471,7 @@ def build_modules(
     roi_provider: Callable[[Rect], np.ndarray] | None = None,
     window_origin: Callable[[], tuple[int, int]] | None = None,
     on_clicker: Callable[[ClickController], None] | None = None,
+    screen_grab: Callable[[], np.ndarray] | None = None,
 ) -> DecisionModules:
     """The enabled decision modules for *config*.
 
@@ -558,6 +563,15 @@ def build_modules(
         )
         if on_clicker is not None:
             on_clicker(m.clicker)
+    # One runner for the bot's life: a kept cavebot starts its scripts in it.
+    from moonlight.scripts.scripts import ScriptRunner, parse_timers
+
+    if prev is not None and prev.scripts is not None:
+        m.scripts = prev.scripts
+    else:
+        m.scripts = ScriptRunner(grab=screen_grab, clock=clock or time.monotonic)
+    m.scripts.clicker = m.clicker
+    m.scripts.timers = parse_timers(config.scripts.timers) if config.scripts else []
     walkers = config.cavebot is not None or config.looting is not None
     if walkers and m.cavebot is None and m.looting is None:
         assert m.clicker is not None
@@ -581,6 +595,7 @@ def build_modules(
                 frames=frames,
                 clock=clock,
                 refill_cap=config.refill.trigger_cap if config.refill else None,
+                scripts=m.scripts,
             )
             if prev is None or prev.cavebot is None:
                 m.cavebot.start()
@@ -612,4 +627,5 @@ def capture_providers(
         "roi_provider": grabber.roi,
         "window_origin": origin,
         "on_clicker": grabber.attach,
+        "screen_grab": capture.get_frame,
     }
