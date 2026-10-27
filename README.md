@@ -100,6 +100,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Refill (check, say, key, drag waypoints) | ✅ | ✅ | ❌ |
 | User scripts (script and wait waypoints, timers) | ✅ | ✅ | ❌ |
 | Extras (food, haste, buff, ring, amulet, player timer, PM alarm) | ✅ | ✅ | ❌ |
+| Account rotation (timed accounts, logout at the depot, next login) | ✅ | ✅ | ❌ |
 | Arduino HID input | ✅ | ✅ | 🟡 |
 | Closed-loop clicking | ✅ | ✅ | 🟡 |
 | Kill switch + safety stops | ✅ | ✅ | ❌ |
@@ -166,6 +167,19 @@ battle list set to players only. A player staying there longer than the set
 minutes sends the character to refill or sounds the alarm; with Extras on,
 players passing by no longer alarm. A private message tab sounds the alarm
 too. Every alarm saves a screenshot in `screenshots/` (the newest 20 stay).
+
+Account rotation plays accounts in turn (A, B, C, A...) in one client window.
+List them in the config file (`configs/<name>.json`, never published) under
+`modules.rotation.accounts`: `login`, `password` (letters and digits only),
+`character` (its place in the character list, 1 = the first) and `minutes`
+(clock time from its login). Put a `script` waypoint with label `rotate` at the
+depot of the town section. When an account's time is up the next `check`
+waypoint goes to town; at `rotate` the bot presses the logout hotkey (Settings
+> Account rotation, Ctrl+L by default), types the next account's login and
+password, picks the character and walks on. An account that does not log in
+within 30 s is skipped; when none does, the bot alarms and stops. Passwords
+show as `press (hidden)` in the command log. Every account plays the same
+route and settings. Scripts can type too: `bot.type("abc")`.
 
 ## Getting started
 
