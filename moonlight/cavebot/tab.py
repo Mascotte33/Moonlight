@@ -55,6 +55,7 @@ __all__ = [
     "apply_cavebot",
     "picked_route",
     "picked_waypoint",
+    "refill_now",
     "drop_route",
     "route_names",
     "waypoint_line",
@@ -223,6 +224,14 @@ def _button(parent: ctk.CTkFrame, text: str, command: Callable[[], None]) -> ctk
     )
 
 
+def refill_now(cavebot: Any) -> str:
+    """Send the running *cavebot* to town at its next ``check``; the message to show."""
+    if cavebot is None:
+        return "Start the bot with Cavebot on first"
+    cavebot.refill_now = True
+    return "Refill at the next check waypoint"
+
+
 class CavebotTab(Tab):
     """Waypoints card beside one card switching Refill, Loot and Edit route."""
 
@@ -296,8 +305,8 @@ class CavebotTab(Tab):
             refill,
             text=(
                 "A 'check' waypoint with label 'town' jumps to label 'town' when your used"
-                " capacity reaches the start %. Put the town trip there"
-                " and end it with a 'goto' back to the hunt."
+                " capacity reaches the start % or Refill now was pressed. Put the town trip"
+                " there and end it with a 'goto' back to the hunt."
             ),
             anchor="w",
             justify="left",
@@ -305,6 +314,9 @@ class CavebotTab(Tab):
             text_color=theme.TEXT_DIM,
         ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.build_options(refill, REFILL_OPTIONS)
+        _button(refill, "Refill now", self._refill_now).pack(
+            anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0)
+        )
         self.build_options(pages["Loot"], LOOT_OPTIONS)
         show("Refill")
 
@@ -474,6 +486,9 @@ class CavebotTab(Tab):
             self.wp_list.tag_add("current", f"{current + 2}.0", f"{current + 2}.end")
             self.wp_list.see(f"{current + 2}.0")
         self.wp_list.configure(state="disabled")
+
+    def _refill_now(self) -> None:
+        self.lbl_msg.configure(text=refill_now(self.ctx.live_cavebot()))
 
     def _cursor_text(self) -> str:
         from moonlight.perception.capture import ScreenCapture

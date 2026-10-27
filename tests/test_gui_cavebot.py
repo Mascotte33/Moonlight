@@ -14,6 +14,7 @@ from moonlight.cavebot.tab import (
     drop_route,
     picked_route,
     picked_waypoint,
+    refill_now,
     route_names,
     waypoint_line,
     waypoint_table,
@@ -159,3 +160,12 @@ def test_picked_waypoint_skips_the_header_and_blank_lines() -> None:
     assert picked_waypoint(2, 3) == 0
     assert picked_waypoint(4, 3) == 2
     assert picked_waypoint(5, 3) is None
+
+
+def test_refill_now_flags_the_running_cavebot() -> None:
+    from types import SimpleNamespace
+
+    cavebot = SimpleNamespace(refill_now=False)
+    assert refill_now(cavebot) == "Refill at the next check waypoint"
+    assert cavebot.refill_now is True
+    assert refill_now(None) == "Start the bot with Cavebot on first"
