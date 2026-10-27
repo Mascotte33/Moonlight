@@ -87,6 +87,16 @@ def test_refill_needs_the_cavebot_and_loads_old_route_file_keys(tmp_path: Path) 
     assert BotConfig.from_dict(data).refill == RefillConfig()
 
 
+def test_scripts_timers_load_and_a_config_without_scripts_still_loads() -> None:
+    cfg = BotConfig.from_dict(raw(scripts={"enabled": True, "timers": "eat 60"}))
+    assert cfg.scripts is not None and cfg.scripts.timers == "eat 60"
+    old = raw()
+    del old["modules"]["scripts"]
+    assert BotConfig.from_dict(old).scripts is None
+    with pytest.raises(ConfigError):
+        BotConfig.from_dict(raw(scripts={"enabled": True, "timers": "eat"}))
+
+
 def test_buffs_refused_without_icon_source() -> None:
     """F-10: buffs without buff-icon perception is refused."""
     data = raw(buffs={"enabled": True})

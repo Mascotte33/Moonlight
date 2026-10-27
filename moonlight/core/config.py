@@ -33,7 +33,8 @@ JSON format (``moonlight_config.json``)::
         "alarms":    {"enabled": true},
         "cavebot":   {"enabled": false, "route": "rotworms"},
         "looting":   {"enabled": false},
-        "refill":    {"enabled": false}
+        "refill":    {"enabled": false},
+        "scripts":   {"enabled": false, "timers": "eat 60"}
       }
     }
 
@@ -68,6 +69,7 @@ from moonlight.hardware.clicker import ClickerConfig
 from moonlight.healing.healing import HealingConfig, check_hotkey
 from moonlight.looting.looting import LootingConfig
 from moonlight.refill.refill import RefillConfig
+from moonlight.scripts.scripts import ScriptsConfig
 from moonlight.targeting.targeting import TargetingConfig
 
 __all__ = [
@@ -90,6 +92,7 @@ MODULES = (
     "cavebot",
     "looting",
     "refill",
+    "scripts",
 )
 
 _TOP_KEYS = {
@@ -158,6 +161,8 @@ class BotConfig:
     cavebot: CavebotConfig | None = None
     looting: LootingConfig | None = None
     refill: RefillConfig | None = None
+    #: Timed scripts; on or off, ``script`` waypoints always run.
+    scripts: ScriptsConfig | None = None
     #: Perception sources that are actually wired up (F-10). The buff-icon
     #: reader is deferred (T34), so buffs would run against *unpopulated*
     #: state; ``validate`` refuses to enable buffs without its source.
@@ -241,6 +246,8 @@ class BotConfig:
         _reject_unknown(modules, set(MODULES), "modules")
         routes_dir = kwargs.get("routes_dir", Path("data/waypoints"))
         for name in MODULES:
+            if name == "scripts" and name not in modules:
+                continue  # configs saved before scripts had a section
             if name not in modules:
                 raise ConfigError(f"modules: missing required section {name!r}")
             section = dict(_require_dict(modules[name], f"modules.{name}"))
@@ -314,7 +321,7 @@ class BotConfig:
                 raise ConfigError(f"off: {name!r} is not a module that is off")
         try:
             GameLoop._validate_config(self.loop)
-            for cfg in (self.healing, self.targeting, self.buffs, self.alarms):
+            for cfg in (self.healing, self.targeting, self.buffs, self.alarms, self.scripts):
                 if cfg is not None:
                     cfg.validate()
             for name, combo in (self.hotkeys or {}).items():
