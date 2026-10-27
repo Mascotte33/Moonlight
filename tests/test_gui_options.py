@@ -208,3 +208,17 @@ def test_extras_options_write_in_order() -> None:
     assert cfg.extras.player_minutes == 2.5
     with pytest.raises(ConfigError):
         write_option(cfg, Option("", "extras.haste", "switch"), True)
+
+
+def test_rotation_switch_is_refused_without_accounts() -> None:
+    from moonlight.gui.settings_tab import ROTATION_OPTIONS
+
+    with pytest.raises(ConfigError):
+        write_option(BotConfig.default(), _switch("rotation"), True)
+    from moonlight.scripts.rotation import Account, RotationConfig
+
+    (hotkey,) = ROTATION_OPTIONS
+    kept = RotationConfig(accounts=(Account("a", "p"), Account("b", "q")))
+    cfg = replace(BotConfig.default(), off={"rotation": kept})
+    cfg = write_option(cfg, hotkey, "ctrl+q")
+    assert cfg.off["rotation"].logout_hotkey == "ctrl+q"
