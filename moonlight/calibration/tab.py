@@ -74,6 +74,7 @@ AREA_HELP: dict[str, str] = {
     "floor_indicator": "The floor level control next to the minimap.",
     "status_icons": "The row of small condition icons (poisoned, hasted and so on).",
     "game_grid": "The whole game view, 15 x 11 tiles, corner to corner.",
+    "chase_buttons": "The Stand While Fighting and Chase Opponent buttons, one above the other.",
 }
 
 

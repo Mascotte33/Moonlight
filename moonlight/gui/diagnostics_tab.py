@@ -4,8 +4,7 @@ The Health card (T10.F1.K1) shows the same dots as the Dashboard, each with
 its last value. The module switches live in Settings.
 
 "Show what the bot sees" opens a window with the game grid, a red box on
-every creature the health-bar scan finds and an orange box on the square
-each is predicted to step to. It scans about 5 times a second only while
+every creature the health-bar scan finds. It scans about 5 times a second only while
 open, and never sends input.
 """
 
@@ -25,7 +24,7 @@ from moonlight.gui.loop_factory import load_profile, load_real_config
 from moonlight.gui.settings_tab import plain_reason
 from moonlight.gui.state_bridge import LogFeed
 from moonlight.gui.tab_base import Tab, dot_color, health, section, stat_label, stat_num
-from moonlight.perception.creatures import find_creatures, predict
+from moonlight.perception.creatures import find_creatures
 
 __all__ = ["DiagnosticsTab", "recent_errors", "seen_view"]
 
@@ -46,7 +45,6 @@ def seen_view(
     frame: np.ndarray,
     grid: tuple[int, int, int, int],
     creatures: list[tuple[int, int]],
-    predicted: set[tuple[int, int]],
 ) -> np.ndarray:
     """The game grid of *frame* (BGR) with tile lines and the scan's boxes.
 
@@ -61,11 +59,10 @@ def seen_view(
     for row in range(12):
         y = min(round(row * th), gh - 1)
         cv2.line(view, (0, y), (gw - 1, y), (90, 90, 90), 1)
-    for slots, color in ((predicted, (62, 155, 201)), (creatures, (81, 93, 229))):
-        for col, row in slots:
-            a = (round(col * tw) + 2, round(row * th) + 2)
-            b = (round((col + 1) * tw) - 3, round((row + 1) * th) - 3)
-            cv2.rectangle(view, a, b, color, 3)
+    for col, row in creatures:
+        a = (round(col * tw) + 2, round(row * th) + 2)
+        b = (round((col + 1) * tw) - 3, round((row + 1) * th) - 3)
+        cv2.rectangle(view, a, b, (81, 93, 229), 3)
     return view
 
 
@@ -161,7 +158,6 @@ class DiagnosticsTab(Tab):
         label = tk.Label(win, bg=theme.NIGHT, fg=theme.TEXT, text="Looking for Tibia...")
         label.pack()
         scale = SEES_W / grid[2]
-        prev: list[tuple[int, int]] = []
 
         def close() -> None:
             cap.close()
@@ -177,10 +173,9 @@ class DiagnosticsTab(Tab):
                 win.after(1000, tick)
                 return
             slots = find_creatures(frame, grid)
-            photo = _photo(seen_view(frame, grid, slots, predict(slots, prev)), scale)
+            photo = _photo(seen_view(frame, grid, slots), scale)
             label.configure(image=photo, text="")
             label.image = photo  # type: ignore[attr-defined]  # keep it alive
-            prev[:] = slots
             win.after(SEES_MS, tick)
 
         win.protocol("WM_DELETE_WINDOW", close)

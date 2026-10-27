@@ -57,7 +57,7 @@ def test_full_save() -> None:
     review(s)
     p = s.save()
     assert p.window_size == (100, 50) and p.ui_scale == 1.5 and p.landmark == (3, 4)
-    assert p.regions[REGIONS[1]] == Region(1, 1, 10, 10) and len(p.regions) == 7
+    assert p.regions[REGIONS[1]] == Region(1, 1, 10, 10) and len(p.regions) == len(REGIONS)
 
 
 def test_full_save_blocked_before_review_or_missing_box() -> None:

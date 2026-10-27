@@ -29,8 +29,17 @@ without it the loop keeps its built-in behaviour.
 * **alarms** -- ``AlarmDecision.decide`` every tick; a critical alarm -> ALARM.
   PM detection is *not* wired in production (no PM perception exists);
   ``pm_open_check`` stays injectable for when it does.
-* **targeting** -- ``TargetingDecision.decide`` every tick; attack/switch
-  -> ATTACK, flee (players on screen) -> ALARM (disengage).
+* **targeting** -- ``TargetingDecision.decide`` every tick; a ``select``
+  (or a selected target) -> ATTACK, which clicks the battle-list row
+  through the shared ``clicker``, one click in flight at a time.
+  # doc: docs/prs/targeting.md#target-choice
+  While the cavebot is stuck on creatures, ``stuck_targeting`` (the same
+  rows, "all others" attacking) decides instead, also with targeting off;
+  a kill clears the cavebot's flag so it looks for a way again.
+  # doc: docs/prs/targeting.md#stuck-targeting
+* **attack_hotkeys** -- ``AttackHotkeys.decide`` in ATTACK while the
+  selection matches targeting's choice and no click is in flight.
+  # doc: docs/prs/targeting.md#area-rules
 * **healing** -- ``HealingDecision.decide`` + ``send`` of each action
   first in every non-KILL state (healing continues through ALARM); a heal
   sent this tick skips the rest of the dispatch.
@@ -94,18 +103,21 @@ from enum import StrEnum
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from moonlight.cavebot.cavebot import WALK_KEYS
 from moonlight.core.safety import F12Monitor, RateLimitedInput
-from moonlight.core.state import Monster, WorldState
+from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
 
 if TYPE_CHECKING:
     from moonlight.alarms.alarms import AlarmAction, AlarmDecision
     from moonlight.cavebot.cavebot import Cavebot
     from moonlight.extras.buffs import BuffManager
+    from moonlight.hardware.clicker import ClickController
     from moonlight.healing.healing import HealingDecision
     from moonlight.looting.looting import Looting
     from moonlight.refill.refill import Refill
-    from moonlight.targeting.attack_spells import AttackSpells
+    from moonlight.targeting.attack_hotkeys import AttackHotkeys
+    from moonlight.targeting.seen_monsters import SeenMonsters
     from moonlight.targeting.targeting import TargetingAction, TargetingDecision
 
 __all__ = [
@@ -117,9 +129,15 @@ __all__ = [
 
 logger = logging.getLogger("moonlight.core.loop")
 
-# doc: docs/prs/keys-walking.md#frozen-hp
-_FROZEN_HP = 10.0  # seconds a target's HP may stay the same before switching
-_FROZEN_SKIP = 30.0  # seconds a frozen target is not attacked again
+#: How long a pressed chase toggle takes to show on the side panel.
+CHASE_TOGGLE_SETTLE_SECONDS = 0.5
+
+#: How often the tick timing line goes to the log.
+TIMING_LOG_SECONDS = 10.0
+
+# Seconds a sent select click waits for the row's red outline before a
+# retry (clicking the attacked row again would stop the attack).
+_SELECT_OUTLINE_WAIT = 1.0
 
 
 @dataclass(frozen=True)
@@ -138,9 +156,6 @@ class LoopConfig:
     hp_drop_alarm_window: float = 2.0
     """Time window (seconds) for the fast-HP-drop alarm check."""
 
-    attack_combo: str = "r"
-    """Tibia's default attack hotkey."""
-
     f12_poll_interval: float = 0.01
     """Seconds between F12 keyboard polls."""
 
@@ -155,8 +170,6 @@ class LoopConfig:
     """Consecutive tick exceptions (each one pauses) before the loop stops.
     5 ticks = 250 ms: rides out a one-off glitch, not a dead device."""
 
-    attack_repress_cooldown: float = 1.0
-    """Minimum seconds between two attack-key presses."""
 
 
 class BotState(StrEnum):
@@ -190,12 +203,16 @@ class DecisionModules:
 
     healing: HealingDecision | None = None
     targeting: TargetingDecision | None = None
-    attack_spells: AttackSpells | None = None
+    #: Decides while the cavebot is stuck on creatures: "all others" attack.
+    stuck_targeting: TargetingDecision | None = None
+    attack_hotkeys: AttackHotkeys | None = None
     buffs: BuffManager | None = None
     alarms: AlarmDecision | None = None
     cavebot: Cavebot | None = None
     looting: Looting | None = None
     refill: Refill | None = None
+    #: The one mouse: targeting, cavebot and looting share it.
+    clicker: ClickController | None = None
 
 
 class GameLoop:
@@ -267,6 +284,8 @@ class GameLoop:
         #: Takes a new BotConfig while running; False when it needs a rebuild
         #: (set by ``wiring.build_loop``).
         self.reconfigure: Callable[[Any], bool] | None = None
+        #: Monsters seen in the battle list, for the Targeting tab (set by ``build_loop``).
+        self.seen_monsters: SeenMonsters | None = None
         if move_provider is None and move_action is None:
             # Looked up every tick, so a cavebot swapped in by reconfigure is used.
             move_provider = self._cavebot_active
@@ -277,14 +296,12 @@ class GameLoop:
         self._alarm: AlarmAction | None = None
         self._target: TargetingAction | None = None
         self._last_target: str | None = None
-        # Attack-key bookkeeping: when and for which selection it was pressed.
-        self._attack_pressed_at: float | None = None
-        self._attack_pressed_for: str | None = None
-        # Frozen-HP bookkeeping: the selection's (name, HP), since when, and
-        # the (name, HP) of skipped targets with their expiry.
-        self._hp_seen: tuple[str, float] | None = None
-        self._hp_since = 0.0
-        self._hp_skip: dict[tuple[str, float], float] = {}
+        self._had_selection = False
+        # The select click: (battle-list row, when sent; None while in flight).
+        self._select_click: tuple[int, float | None] | None = None
+        # Until when a pressed chase toggle may not show on screen yet (no second press).
+        self._chase_toggle_settles_at = 0.0
+        self._warned_no_chase_toggle_key = False
         # Pause bookkeeping (reset by every healthy, exception-free tick).
         self._paused_since: float | None = None
         self._consecutive_errors = 0
@@ -310,18 +327,22 @@ class GameLoop:
         self._actions_dropped_unfocused = 0
         self._tick_time_total = 0.0
         self._tick_time_max = 0.0
+        # (start, ticks, total s, perceive s, max s) of the current timing-log window.
+        self._timing_window = (0.0, 0, 0.0, 0.0, 0.0)
+        self._perceive_time = 0.0
         self._state_transitions: dict[BotState, int] = {}
         self._start_time: float | None = None
 
         # (monotonic_time, hp) samples for the fast-HP-drop alarm.
         self._hp_history: deque[tuple[float, float]] = deque()
+        self._reported_module_alarm: str | None = None
 
     @property
     def modules(self) -> DecisionModules:
         """The modules that run this tick (``all_modules`` minus the paused ones)."""
         if not self.paused:
             return self.all_modules
-        return replace(self.all_modules, cavebot=None, targeting=None)
+        return replace(self.all_modules, cavebot=None, targeting=None, attack_hotkeys=None)
 
     @modules.setter
     def modules(self, value: DecisionModules) -> None:
@@ -420,8 +441,10 @@ class GameLoop:
             self._record_tick_time(t0)
             return
 
+        self._perceive_time = 0.0
         if self._perceive is not None:
             self._perceive()
+            self._perceive_time = self._clock() - t0
         snap = self.state.snapshot()
 
         # Pause gate: !screen_ok (unfocused / bad frame) pauses, fail-closed.
@@ -489,7 +512,13 @@ class GameLoop:
         alarm = m.alarms.decide(snap) if m.alarms is not None else None
         # Only critical alarms stop the bot; warnings are advisory.
         self._alarm = alarm if alarm is not None and alarm.severity == "critical" else None
-        self._target = m.targeting.decide(snap) if m.targeting is not None else None
+        self._report_module_alarm()
+        selected = snap.selected_target
+        if self._had_selection and selected is None and m.cavebot is not None:
+            m.cavebot.stuck_on_creatures = False  # a kill: the cavebot looks for a way again
+        self._had_selection = selected is not None
+        targeting = self._targeting()
+        self._target = targeting.decide(snap, self._clock()) if targeting is not None else None
         if m.looting is not None:
             # ponytail: "selected target vanished from the battle list" = kill
             # (a target lost out of range counts too); use the server-log OCR
@@ -500,6 +529,13 @@ class GameLoop:
             if prev and cur is None and all(mon.name != prev for mon in snap.monsters):
                 m.looting.on_target_died(prev)
 
+    def _targeting(self) -> TargetingDecision | None:
+        """``stuck_targeting`` while the cavebot is stuck on creatures, else ``targeting``."""
+        m = self.modules
+        if m.stuck_targeting and m.cavebot is not None and m.cavebot.stuck_on_creatures:
+            return m.stuck_targeting
+        return m.targeting
+
     def _decide_state(self, snap: WorldState) -> BotState:
         """Priority state machine: the first matching condition wins.
 
@@ -509,10 +545,14 @@ class GameLoop:
         if self._is_alarm(snap):
             return BotState.ALARM
         m = self.modules
+        targeting = self._targeting()
         if m.cavebot is not None and m.cavebot.luring():
             pass  # a lure waypoint walks past monsters
-        elif m.targeting is not None:
-            if self._target is not None:  # flee was already handled as ALARM
+        elif targeting is not None:
+            selected = snap.selected_target
+            if self._target is not None or (
+                selected is not None and not targeting.is_unreachable(selected)
+            ):
                 return BotState.ATTACK
         elif snap.selected_target is not None and snap.selected_target.name:
             # Perception only selects targets that are in range and attackable;
@@ -534,18 +574,23 @@ class GameLoop:
                 return f"{name} alarm: {alarm}"
         return None
 
+    def _report_module_alarm(self) -> None:
+        """Alert once when the cavebot or refill stops itself (stuck, lost).
+
+        The stopped module only stops walking; healing and targeting go on.
+        """
+        alarm = self._module_alarm()
+        if alarm is not None and alarm != self._reported_module_alarm:
+            self._alert(alarm)
+        self._reported_module_alarm = alarm
+
     def _is_alarm(self, snap: WorldState) -> bool:
-        """ALARM: player on screen, PM open, fast HP drop, critical/module alarm or flee."""
-        if snap.players_on_screen > 0 or self._alarm is not None or self._fleeing():
-            return True
-        if self._module_alarm() is not None:
+        """ALARM: player on screen, PM open, fast HP drop or a critical alarm."""
+        if snap.players_on_screen > 0 or self._alarm is not None:
             return True
         if self._pm_open_check is not None and self._pm_open_check(snap):
             return True
         return self._hp_drop_fast(snap)
-
-    def _fleeing(self) -> bool:
-        return self._target is not None and self._target.action == "flee"
 
     def _transition_reason(self, snap: WorldState, new_state: BotState) -> str:
         """Short human-readable reason for a transition (for logs)."""
@@ -553,19 +598,14 @@ class GameLoop:
             case BotState.ALARM:
                 if self._alarm is not None:
                     return f"alarm {self._alarm.type.value}: {self._alarm.message}"
-                if self._target is not None and self._fleeing():
-                    return f"targeting flee: {self._target.reason}"
                 if snap.players_on_screen > 0:
                     return f"players on screen: {snap.players_on_screen}"
-                module_alarm = self._module_alarm()
-                if module_alarm is not None:
-                    return module_alarm
                 if self._pm_open_check is not None and self._pm_open_check(snap):
                     return "PM window open"
                 return "fast HP drop"
             case BotState.ATTACK:
                 if self._target is not None:
-                    return f"target: {self._target.target_name} ({self._target.reason})"
+                    return f"select row {self._target.battle_list_row} ({self._target.reason})"
                 name = snap.selected_target.name if snap.selected_target is not None else "?"
                 return f"target: {name}"
             case BotState.LOOT:
@@ -588,6 +628,10 @@ class GameLoop:
             logger.info("resumed after pause")
         if new_state is BotState.ALARM:
             self._alert(f"ALARM: {reason}")
+        if new_state is BotState.ATTACK and self.modules.clicker is not None:
+            self.modules.clicker.cancel()  # drop a walk click; the select click goes first
+        if self.modules.cavebot is not None:
+            self.modules.cavebot.release_walk_key()  # only MOVE and REFILL walk
         if new_state is BotState.MOVE and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # fight/loot time is not "stuck" (F-06)
 
@@ -699,54 +743,88 @@ class GameLoop:
         return bool(actions) and self._send(snap, lambda: buffs.send(actions[0], self.input))
 
     def _act_attack(self, snap: WorldState) -> None:
-        """ATTACK: tap the attack key when nothing (or a new target) is selected.
+        """ATTACK: click the battle-list row targeting chose, one click at a time.
 
-        With targeting wired and nothing selected yet, the attack key is
-        what selects a target in the client. While the same target stays
-        selected the key is not pressed again (it would cycle targets),
-        and presses are at least ``attack_repress_cooldown`` apart.
+        A click is in flight while the clicker is busy, and after it is sent
+        until the row shows as selected or ``_SELECT_OUTLINE_WAIT`` passes.
+        A ``step_closer`` action presses one arrow key. Only once the
+        selection matches targeting's choice does an attack hotkey go out.
         """
-        # ponytail: the attack key takes the client's next target, not
-        # necessarily targeting's target_name; click the battle-list row
-        # once picking a specific monster matters.
-        spells = self.modules.attack_spells
-        if spells is not None and self._send(snap, lambda: spells.cast(snap, self.input)):
+        targeting, clicker = self._targeting(), self.modules.clicker
+        if targeting is None:
             return
-        selected = snap.selected_target
-        if selected is None and self._target is None:
-            return  # decided from a stale snapshot; skip this tick
-        key = selected.name if selected is not None else None
+        if clicker is None:
+            raise RuntimeError("targeting is wired without a clicker")
+        if self._target is not None and self._target.kind == "step_closer":
+            key = WALK_KEYS[self._target.step]
+            self._send(snap, lambda: self.input.press_combo(key))
+            return
         now = self._clock()
-        if selected is not None and self._frozen(selected, now):
-            key = None  # press again: the attack key moves on to the next target
-        elif selected is not None and key == self._attack_pressed_for:
-            return  # already attacking this target
-        last = self._attack_pressed_at
-        if last is not None and now - last < self.config.attack_repress_cooldown:
+        if clicker.busy:
+            self._send(snap, lambda: self._step_click(clicker, now))
             return
-        combo = self.config.attack_combo
-        if self._send(snap, lambda: self.input.press_combo(combo)):
-            self._attack_pressed_at = now
-            self._attack_pressed_for = key
-            logger.debug("attack combo=%s", combo)
+        if self._select_click is not None:
+            row, sent_at = self._select_click
+            selected = snap.selected_target
+            outline_shows = selected is not None and selected.battle_list_row == row
+            if sent_at is not None and not outline_shows and now - sent_at < _SELECT_OUTLINE_WAIT:
+                return
+            self._select_click = None
+        if self._target is None:
+            self._press_attack_hotkey(snap, targeting, now)
+            return
+        row = self._target.battle_list_row
+        point = targeting.row_center(row)
 
-    def _frozen(self, target: Monster, now: float) -> bool:
-        """True when *target* is skipped: its HP stood still for ``_FROZEN_HP``.
+        def click() -> bool | None:
+            clicker.request(point)
+            self._select_click = (row, None)
+            return self._step_click(clicker, now)
 
-        A monster that cannot be reached never loses HP. It is skipped for
-        ``_FROZEN_SKIP`` seconds, known by its name and HP (the battle list
-        gives no ids).
-        """
-        # ponytail: (name, HP) can't tell two untouched monsters of one kind
-        # apart; read battle-list rows if that skips the wrong one.
-        self._hp_skip = {k: end for k, end in self._hp_skip.items() if end > now}
-        seen = (target.name, target.hp_percent)
-        if seen != self._hp_seen:
-            self._hp_seen, self._hp_since = seen, now
-        elif now - self._hp_since >= _FROZEN_HP and seen not in self._hp_skip:
-            logger.info("target %r HP frozen for %.0f s, switching", target.name, _FROZEN_HP)
-            self._hp_skip[seen] = now + _FROZEN_SKIP
-        return seen in self._hp_skip
+        if self._send(snap, click):
+            logger.debug("select click row %d at %s", row, point)
+
+    def _press_attack_hotkey(
+        self, snap: WorldState, targeting: TargetingDecision, now: float
+    ) -> None:
+        """Press the attack hotkey for the selected target, once the screen shows its chase mode."""
+        # doc: docs/prs/targeting.md#chase-mode
+        attack_hotkeys = self.modules.attack_hotkeys
+        selected = snap.selected_target
+        if selected is None or selected.is_player:
+            return
+        row = targeting.row_for(selected)
+        if row.ignore or targeting.is_unreachable(selected):
+            return
+        toggle = targeting.config.toggle_chase_hotkey
+        if snap.chase_mode is not None and snap.chase_mode != row.movement:
+            if toggle:
+                # The attack key waits until the screen shows the toggled mode.
+                if now >= self._chase_toggle_settles_at and self._send(
+                    snap, lambda: self.input.press_combo(toggle)
+                ):
+                    self._chase_toggle_settles_at = now + CHASE_TOGGLE_SETTLE_SECONDS
+                return
+            if not self._warned_no_chase_toggle_key:
+                logger.warning(
+                    "chase mode is %r but %s's row wants %r: set the Toggle Chase Mode key",
+                    snap.chase_mode,
+                    selected.name,
+                    row.movement,
+                )
+                self._warned_no_chase_toggle_key = True
+        if attack_hotkeys is None:
+            return
+        hotkey = attack_hotkeys.decide(snap, row, now)
+        if hotkey is not None:
+            self._send(snap, lambda: attack_hotkeys.send(hotkey, self.input, now))
+
+    def _step_click(self, clicker: ClickController, now: float) -> bool | None:
+        """One clicker step; on the click, record what it did."""
+        result = clicker.step()
+        if result is True and self._select_click is not None:
+            self._select_click = (self._select_click[0], now)
+        return result
 
     def _act_loot(self, snap: WorldState) -> None:
         """LOOT: one looting step per tick (rate-limited: it presses keys)."""
@@ -796,6 +874,22 @@ class GameLoop:
         self._tick_time_total += elapsed
         if elapsed > self._tick_time_max:
             self._tick_time_max = elapsed
+        start, ticks, total, perceive, longest = self._timing_window
+        ticks, total = ticks + 1, total + elapsed
+        perceive, longest = perceive + self._perceive_time, max(longest, elapsed)
+        now = self._clock()
+        if now - start >= TIMING_LOG_SECONDS:
+            if start:
+                logger.info(
+                    "tick timing: %d ticks, avg %.1f ms (screen reading %.1f ms), max %.1f ms",
+                    ticks,
+                    total / ticks * 1000.0,
+                    perceive / ticks * 1000.0,
+                    longest * 1000.0,
+                )
+            self._timing_window = (now, 0, 0.0, 0.0, 0.0)
+        else:
+            self._timing_window = (start, ticks, total, perceive, longest)
 
     def _shutdown(self) -> None:
         if self._f12_monitor is not None:

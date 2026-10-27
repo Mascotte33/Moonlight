@@ -180,6 +180,50 @@ def section(parent: ctk.CTkFrame, title: str) -> ctk.CTkFrame:
     return box
 
 
+def row_entry(
+    parent: ctk.CTkFrame,
+    text: str,
+    width: int,
+    on_submit: Callable[[], None],
+    pack_left: bool = True,
+) -> ctk.CTkEntry:
+    """An entry in a rows editor; Return or leaving it calls *on_submit*.
+
+    It is packed left unless *pack_left* is False (the caller grids it).
+    """
+    entry = ctk.CTkEntry(parent, width=width, fg_color=theme.NIGHT, border_color=theme.RAISED)
+    entry.insert(0, text)
+    if pack_left:
+        entry.pack(side="left", padx=(theme.UNIT, 0))
+    for event in ("<Return>", "<FocusOut>"):
+        entry.bind(event, lambda _e: on_submit())
+    return entry
+
+
+def row_button(
+    parent: ctk.CTkFrame,
+    text: str,
+    command: Callable[[], None],
+    width: int = 28,
+    pack_left: bool = True,
+) -> ctk.CTkButton:
+    """A small button in a rows editor (move, delete, add).
+
+    It is packed left unless *pack_left* is False (the caller grids it).
+    """
+    button = ctk.CTkButton(
+        parent,
+        text=text,
+        width=width,
+        command=command,
+        fg_color=theme.RAISED,
+        hover_color=theme.HOVER,
+    )
+    if pack_left:
+        button.pack(side="left", padx=(theme.UNIT, 0))
+    return button
+
+
 def stat_label(parent: ctk.CTkFrame, title: str) -> ctk.CTkLabel:
     """A right-aligned stat label (value updated in on_poll)."""
     return ctk.CTkLabel(

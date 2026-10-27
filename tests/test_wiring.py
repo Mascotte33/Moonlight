@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import replace
 from pathlib import Path
 
@@ -20,6 +19,7 @@ from moonlight.extras.buffs import BuffManagerConfig
 from moonlight.hardware.input import FakeInput
 from moonlight.looting.looting import LootingConfig
 from moonlight.refill.refill import RefillConfig
+from moonlight.targeting.targeting import MonsterRow, TargetingConfig
 
 
 def make_profile() -> CalibrationProfile:
@@ -46,7 +46,7 @@ def test_check_module_regions_reports_missing() -> None:
     report = wiring.check_module_regions(profile, cfg)
     assert report["cavebot"] == ["game_grid"]
     assert report["healing"] == []
-    assert report["targeting"] == []
+    assert report["targeting"] == ["game_grid"]  # targeting scans it for creatures
     assert report["alarms"] == []
     # Only enabled modules appear in the report.
     assert set(report) == {"healing", "targeting", "cavebot", "alarms"}
@@ -137,7 +137,15 @@ def test_frame_cache_captures_once_per_refresh() -> None:
 def test_capture_regions_lists_tick_regions_or_falls_back_to_full() -> None:
     profile = make_profile()
     cfg = BotConfig.default()
-    names = ("battle_list", "floor_indicator", "hp_bar", "minimap", "mp_bar", "status_icons")
+    names = (
+        "battle_list",
+        "floor_indicator",
+        "game_grid",  # targeting scans it for creatures
+        "hp_bar",
+        "minimap",
+        "mp_bar",
+        "status_icons",
+    )
     assert wiring.capture_regions(profile, cfg) == [
         profile.get_region(n).to_tuple for n in names
     ]
@@ -148,39 +156,21 @@ def test_capture_regions_lists_tick_regions_or_falls_back_to_full() -> None:
     assert wiring.capture_regions(profile, cfg) is None  # uncalibrated: full grab
 
 
-# -- F-01: no auto-attack with unknown names (interim) -------------------------
+# -- targeting clicks through the shared clicker -----------------------------
 
 
-def test_targeting_without_resolver_warns(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """F-01: enabling targeting without a name resolver emits a visible warning.
-
-    The default config has targeting on and no name resolver is wired (T34),
-    so build_loop must emit an explicit, visible warning at start rather than
-    silently bypassing the no-nameless-attack rule.
-    """
+def test_targeting_gets_the_clicker_and_battle_list_region() -> None:
     cfg = BotConfig.default()
     assert cfg.targeting is not None  # targeting is on by default
-    state = WorldState()
     frame = np.zeros((600, 800, 3), dtype=np.uint8)
-
-    def frame_provider() -> np.ndarray:
-        return frame
-
-    with caplog.at_level(logging.WARNING, logger="moonlight.core.wiring"):
-        wiring.build_loop(
-            cfg,
-            make_profile(),
-            FakeInput(),
-            frame_provider=frame_provider,
-            state=state,
-        )
-    messages = [r.getMessage() for r in caplog.records]
-    assert any("name resolver" in m for m in messages), (
-        f"F-01 no-resolver warning did not fire; got: {messages!r}"
+    loop = wiring.build_loop(
+        cfg, make_profile(), FakeInput(), frame_provider=lambda: frame, state=WorldState()
     )
-
+    targeting = loop.all_modules.targeting
+    assert targeting is not None
+    assert loop.all_modules.clicker is not None
+    left, top, _, _ = make_profile().get_region("battle_list").to_tuple
+    assert targeting.row_center(0) == (left + 23 + 66, top + 11 + 11)
 
 
 # -- map matching wiring --------------------------------------------------------
@@ -299,6 +289,32 @@ def test_cavebot_starts_at_start_index() -> None:
     assert loop.modules.cavebot.route.current == 1
 
 
+@pytest.mark.parametrize("targeting_on", [True, False])
+def test_stuck_targeting_attacks_every_monster_even_with_targeting_off(targeting_on: bool) -> None:
+    route = Route("hunt", waypoints=[Waypoint(100, 100, 7)])
+    rows = TargetingConfig(
+        monsters=(MonsterRow("Rat", ignore=True, hotkey="F1"),),
+        default_monster=MonsterRow(ignore=True),
+    )
+    cfg = replace(
+        BotConfig.default(),
+        loop=LoopConfig(enable_f12_monitor=False),
+        cavebot=CavebotConfig(route),
+        walk_keys=True,
+        targeting=rows if targeting_on else None,
+        off={} if targeting_on else {"targeting": rows},
+    )
+    loop = wiring.build_loop(
+        cfg.validate(), make_profile(), FakeInput(),
+        frame_provider=lambda: np.zeros((600, 800, 3), np.uint8),
+    )
+    stuck = loop.modules.stuck_targeting
+    assert stuck is not None and not stuck.config.default_monster.ignore
+    assert stuck.config.monsters == (MonsterRow("Rat", hotkey="F1"),)  # never-attack blockers too
+    assert loop.modules.attack_hotkeys is not None  # spells and area rules while stuck
+    assert (loop.modules.targeting is not None) == targeting_on
+
+
 def test_start_index_past_the_end_is_refused() -> None:
     route = Route("hunt", waypoints=[Waypoint(100, 100, 7)])
     cfg = replace(BotConfig.default(), cavebot=CavebotConfig(route, start_index=1))
@@ -325,7 +341,20 @@ def test_reconfigure_swaps_only_changed_modules() -> None:
     assert loop.reconfigure(new)
     assert loop.modules.healing is not old.healing
     assert loop.modules.targeting is old.targeting
+    assert loop.modules.attack_hotkeys is old.attack_hotkeys
     assert loop.modules.alarms is old.alarms
+
+
+def test_attack_hotkeys_follow_the_targeting_section() -> None:
+    cfg = replace(BotConfig.default(), loop=LoopConfig(enable_f12_monitor=False))
+    loop = _live_loop(cfg)
+    old = loop.modules
+    assert cfg.targeting is not None and old.attack_hotkeys is not None
+    assert loop.reconfigure is not None
+    assert loop.reconfigure(replace(cfg, targeting=replace(cfg.targeting, attack_cooldown_ms=900)))
+    assert loop.modules.attack_hotkeys is not old.attack_hotkeys
+    assert loop.reconfigure(replace(cfg, targeting=None))
+    assert loop.modules.attack_hotkeys is None
 
 
 def test_reconfigure_refuses_what_needs_a_restart() -> None:
@@ -381,3 +410,41 @@ def test_perceive_writes_active_status_icons(monkeypatch: pytest.MonkeyPatch) ->
     wiring.make_perceive(state, make_profile(), lambda: frame)()
     assert state.screen_ok
     assert state.snapshot().active_status_icons == {"poison"}
+
+
+def test_perceive_fills_names_from_the_seen_monsters_store(tmp_path: Path) -> None:
+    from moonlight.targeting.seen_monsters import SeenMonsters
+    from tests.test_battle import make_frame
+
+    profile = make_profile()
+    frame, region = make_frame([{"text": True}])
+    full = np.zeros((600, 800, 3), dtype=np.uint8)
+    full[: frame.shape[0], : frame.shape[1]] = frame
+    profile.set_region("battle_list", Region(*region))
+    store = SeenMonsters(tmp_path / "p.seen_monsters.json")
+    state = WorldState()
+    wiring.make_perceive(state, profile, lambda: full, seen_monsters=store)()
+    (entry,) = store.entries()
+    store.rename(entry.name_hash, "wolf")
+    wiring.make_perceive(state, profile, lambda: full, seen_monsters=store)()
+    assert [m.name for m in state.snapshot().monsters] == ["wolf"]
+
+
+def test_targeting_keeps_game_grid_in_the_capture_regions() -> None:
+    """Targeting scans the game grid for creatures even without walk_keys."""
+    profile = make_profile()
+    grid = profile.get_region("game_grid").to_tuple
+    on = BotConfig.default()
+    assert on.targeting is not None
+    assert grid in (wiring.capture_regions(profile, on) or [])
+    off = replace(on, targeting=None)
+    assert grid not in (wiring.capture_regions(profile, off) or [])
+
+
+def test_perceive_writes_the_creature_slots() -> None:
+    """With a creature grid, perceive scans the health bars into creature_slots."""
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    state = WorldState()
+    wiring.make_perceive(state, make_profile(), lambda: frame, creature_grid=(0, 0, 150, 110))()
+    assert state.screen_ok
+    assert state.creature_slots == ()  # no health bar in a black frame

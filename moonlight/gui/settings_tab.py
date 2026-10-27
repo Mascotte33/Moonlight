@@ -14,7 +14,6 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from moonlight.core.config import ConfigError
-from moonlight.core.state import WorldState
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import (
     config_names,
@@ -33,12 +32,10 @@ OPTIONS = [
     Option("Game window", "window_title", "dropdown"),
     Option("Cavebot walks with arrow keys", "walk_keys", "switch"),
 ]
-#: The only switch for each module (T2.F4.K2); the cavebot's is on its own tab.
+#: The only switch for each module (T2.F4.K2); cavebot and targeting have theirs on their tabs.
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
-    for name in (
-        "healing", "targeting", "attack_spells", "looting", "refill", "buffs", "alarms"
-    )
+    for name in ("healing", "looting", "refill", "buffs", "alarms")
 ]
 
 #: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
@@ -48,7 +45,6 @@ REASONS = [
     ("capacity perception", "Refill needs a capacity reader, which the bot doesn't have yet."),
     ("buff-icon", "Buffs needs a buff-icon reader, which the bot doesn't have yet."),
     ("refill needs", "Refill needs Cavebot and Looting on."),
-    ("no hotkey", "Set a hotkey for each spell first ({spells})."),
 ]
 
 
@@ -56,7 +52,7 @@ def plain_reason(message: str) -> str:
     """The plain-words reason for a refused switch, or *message* itself."""
     for key, text in REASONS:
         if key in message:
-            return text.format(spells=message.partition(": ")[2].strip("[]").replace("'", ""))
+            return text
     return message
 
 
@@ -130,9 +126,6 @@ class SettingsTab(Tab):
                     reason = ctk.CTkLabel(row, text="", anchor="w", text_color=theme.BLOOD)
                     reason.pack(side="left", padx=theme.UNIT)
                     self._reasons[option.field] = reason
-
-    def on_poll(self, snap: WorldState) -> None:
-        self.show_paused(["targeting.enabled"], self.ctx.paused)
 
     def _refresh_windows(self) -> None:
         self.menu_window.configure(values=window_titles() or ["No windows found"])

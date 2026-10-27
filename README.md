@@ -49,7 +49,7 @@ flowchart LR
 moonlight/
 ├── core/         the engine: loop, safety, wiring, WorldState, config
 ├── healing/      heal and cure logic + its tab
-├── targeting/    target picking, attack spells + its tab
+├── targeting/    target picking, attack hotkeys + its tab
 ├── cavebot/      walking, pathing, route recorder + its tab
 ├── looting/      looting logic
 ├── refill/       depot and shop trips
@@ -92,7 +92,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Monster sprite detection | ✅ | ✅ | ❌ |
 | Server-log OCR | ✅ | ✅ | ❌ |
 | Healing + cures | ✅ | ✅ | 🟡 |
-| Targeting | ✅ | ✅ | ❌ |
+| Targeting | ✅ | ✅ | 🟡 |
 | Buffs | ✅ | ✅ | ❌ |
 | Alarms | ✅ | ✅ | ❌ |
 | Cavebot (waypoint routing, route recorder) | ✅ | ✅ | ❌ |
@@ -154,10 +154,85 @@ in the GUI's Healing tab, or in the `healing` section of your profile config:
   (default `shift+F1` to `shift+F5`, all off). A cure never replaces a needed
   heal spell.
 - Healing needs the `status_icons` region in the Calibration tab for cures.
+- Targeting reads the chase mode from the `chase_buttons` region (auto-find in the Calibration tab).
 
 Default rules: F2 spell below 50% HP, F1 spell below 85% HP, F3 potion below
 40% HP, F4 potion below 30% MP. Old configs with `emergency_spell` and similar
 keys are refused at load. Rewrite the section to the new shape.
+
+## Targeting
+
+Targeting clicks a monster's name in the battle list, then presses its
+attack hotkey. Turn it on with the **Targeting on** switch at the top of
+the Targeting tab (grayed while the bot is paused). Set it up in that tab,
+or in the `targeting` section of your profile config:
+
+- **Monster rows** match a battle-list name (ignoring case). Each has a
+  priority (1-5, higher first), `ignore` ("never attack" in the tab), an
+  attack `hotkey` (empty = melee only), a mana floor (`minimum_mana_percent`)
+  and a `movement`: `follow` (chase) or `none` (stand still). Players are
+  never targeted.
+- **`default_monster`** is the row for every monster without its own row, so
+  everything is attacked unless you ignore it. The tab shows it as "all others".
+  Default: priority 1, F6, 10% mana, follow.
+- The bot picks the highest priority, then the lowest HP, then the closest
+  row. It finishes the current target even when a higher priority monster
+  comes, and never clicks it twice (a second click untargets). A selected
+  "never attack" monster is left for the next one.
+- **Area rules** press a hotkey when at least `minimum_adjacent_monsters`
+  creatures stand next to you and MP is at least `minimum_mana_percent`.
+  Default: F5 at 3 monsters, 30% mana. A rule is used only while it is
+  ticked (`enabled`). A ticked rule is grayed in the tab so it isn't edited
+  by accident. All attack keys share `attack_cooldown_ms` (default 2000).
+- **Unreachable:** when the target's HP stands still for
+  `unreachable_after_seconds` (default 8), the bot takes one step toward it.
+  After the same time again, it skips that monster for 30 s.
+- **Chase mode:** each monster row is "chase" or "stand still". The bot reads
+  the active (red) chase button from the `chase_buttons` region (Calibration
+  tab) and, when it differs from the target's row, presses
+  `toggle_chase_hotkey` ("Client key: Toggle Chase Mode" in the tab) before
+  attacking. Bind the same key to Toggle Chase Mode in the client's hotkey
+  options. With an empty key the bot attacks in the current mode and logs
+  one warning ("set the Toggle Chase Mode key"). No `chase_buttons` region
+  leaves the mode as it is.
+- **Cavebot walking keys:** the cavebot holds the step key down while the
+  way goes on in the same direction, so the character walks without a pause
+  between tiles. A turn lets go and holds the new key; a fight, a stop, a
+  floor change or a pause lets go.
+- **Cavebot around monsters:** with walk keys on, the cavebot reads the
+  monsters' health bars in the game view before every step and walks around
+  them when that costs at most 8 more steps, instead of bumping into them.
+- **Cavebot when blocked:** a step key that does not move the player in
+  0.7 s is pressed once more (a lag looks the same); a second miss marks
+  that tile blocked for 12 s (freed early once the monster on it
+  walks off). The cavebot takes the cheapest way to the waypoint around
+  blocked tiles and monsters, diagonals included (Q/E/Z/C, the
+  client's WASD-mode diagonals; a diagonal costs 3 straight steps). **Stuck** means no way around,
+  or a way more than 8 steps longer, after a bump: with monsters in the battle list
+  targeting takes over with every monster attacking, never-attack rows
+  included (players never), even with targeting off. Attack spells and area rules work as
+  usual. After each kill the cavebot looks for a way again and walks on
+  once there is one, back to your own targeting. With nothing to fight it tries
+  every tile it has not bumped into yet. The route stops after 60 s without
+  moving. Diagonals need the client's chat off (WASD walking).
+- **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
+- **Seen monsters:** each new battle-list entry is saved with its picture
+  (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
+  The Targeting tab lists the ones with no monster row yet: the picture,
+  then the guessed name (filled in once tesseract reads it). Correct the
+  name, then click **Add to monsters** and the line leaves the list. The ✕
+  forgets a line and its picture (it is learned again on its next sighting). You name
+  each monster kind once. Without tesseract the guesses stay empty and you
+  type the names. Only gray name text counts, and new names are learned only
+  while the client is the foreground window, so other windows covering it
+  don't create fake monsters.
+- **Timing log:** every 10 s `logs/bot.log` gets a `tick timing:` line
+  (average, screen-reading share, max), and each restart logs its reason
+  (`bot restarts: ...`). The log rotates at 5 MB and keeps 3 old files, so a
+  restart doesn't wipe the last run.
+
+Client setup: the battle list must show monsters (players may be filtered
+out) and be sorted by distance. Actions are logged to `logs/bot.log`.
 
 ## Development
 

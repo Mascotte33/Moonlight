@@ -55,6 +55,8 @@ class Monster:
     name: str
     hp_percent: float = 100.0
     is_player: bool = False
+    name_hash: str = ""
+    battle_list_row: int = 0
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,8 @@ class WorldState:
     monsters: list[Monster] = field(default_factory=list)
     selected_target: Monster | None = None
     players_on_screen: int = 0
+    #: Game-grid slots ``(col, row)`` of the creatures on screen (health-bar scan).
+    creature_slots: tuple[tuple[int, int], ...] = ()
 
     # World.
     position: Position = field(default_factory=lambda: Position(0, 0, 0))
@@ -118,6 +122,9 @@ class WorldState:
 
     # Condition icons currently shown (``poison``, ``burn``, ...).
     active_status_icons: frozenset[str] = frozenset()
+
+    #: The client's chase mode, ``"follow"`` or ``"none"``; None = not read.
+    chase_mode: str | None = None
 
     # Last full update (``time.monotonic()``); 0.0 = never updated.
     last_update: float = 0.0
