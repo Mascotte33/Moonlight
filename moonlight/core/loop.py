@@ -110,6 +110,7 @@ if TYPE_CHECKING:
     from moonlight.alarms.alarms import AlarmAction, AlarmDecision
     from moonlight.cavebot.cavebot import Cavebot
     from moonlight.extras.buffs import BuffManager
+    from moonlight.extras.extras import Extras
     from moonlight.hardware.clicker import ClickController
     from moonlight.healing.healing import HealingDecision
     from moonlight.looting.looting import Looting
@@ -210,6 +211,7 @@ class DecisionModules:
     #: The one mouse: targeting, cavebot and looting share it.
     clicker: ClickController | None = None
     scripts: ScriptRunner | None = None
+    extras: Extras | None = None
 
 
 class GameLoop:
@@ -538,6 +540,10 @@ class GameLoop:
             elif self._had_monsters and not snap.monsters:
                 m.looting.on_target_died("")  # the battle list emptied: loot again
         self._had_monsters = bool(snap.monsters)
+        if m.extras is not None:
+            m.extras.observe(snap)
+            if m.extras.refill_due and m.cavebot is not None:
+                m.cavebot.refill_now = True  # a player stays: the next check goes to refill
 
     def _targeting(self) -> TargetingDecision | None:
         """``stuck_targeting`` while the cavebot is stuck on creatures, else ``targeting``."""
@@ -590,8 +596,14 @@ class GameLoop:
         self._reported_module_alarm = alarm
 
     def _is_alarm(self, snap: WorldState) -> bool:
-        """ALARM: player on screen, PM open, fast HP drop or a critical alarm."""
-        if snap.players_on_screen > 0 or self._alarm is not None:
+        """ALARM: player on screen, PM open, fast HP drop or a critical alarm.
+
+        With extras on, a player alarms only after staying (the player timer).
+        """
+        extras = self.modules.extras
+        if extras is not None and extras.alarm() is not None:
+            return True
+        if (extras is None and snap.players_on_screen > 0) or self._alarm is not None:
             return True
         if self._pm_open_check is not None and self._pm_open_check(snap):
             return True
@@ -603,6 +615,9 @@ class GameLoop:
             case BotState.ALARM:
                 if self._alarm is not None:
                     return f"alarm {self._alarm.type.value}: {self._alarm.message}"
+                extra = self.modules.extras.alarm() if self.modules.extras is not None else None
+                if extra is not None:
+                    return extra
                 if snap.players_on_screen > 0:
                     return f"players on screen: {snap.players_on_screen}"
                 if self._pm_open_check is not None and self._pm_open_check(snap):
@@ -631,6 +646,8 @@ class GameLoop:
             logger.info("resumed after pause")
         if new_state is BotState.ALARM:
             self._alert(f"ALARM: {reason}")
+            if self.modules.extras is not None:
+                self.modules.extras.screenshot()
         if new_state is BotState.ATTACK and self.modules.clicker is not None:
             self.modules.clicker.cancel()  # drop a walk click; the select click goes first
         if self.all_modules.cavebot is not None:
@@ -676,6 +693,8 @@ class GameLoop:
         if self._state is BotState.ALARM:
             return  # no attack/move/loot/buffs; healing already ran (alert sent on entry)
         if self.modules.buffs is not None and self._buff(snap):
+            return
+        if self.modules.extras is not None and self._extra(snap):
             return
         match self._state:
             case BotState.ATTACK:
@@ -743,6 +762,16 @@ class GameLoop:
         assert buffs is not None
         actions = buffs.track(snap)
         return bool(actions) and self._send(snap, lambda: buffs.send(actions[0], self.input))
+
+    def _extra(self, snap: WorldState) -> bool:
+        """Extras: press the due hotkey (food, ring, amulet, haste, buff); True when sent."""
+        extras = self.modules.extras
+        assert extras is not None
+        key = extras.due(snap, walking=self._state is BotState.MOVE)
+        if key is None or not self._send(snap, lambda: self.input.press_combo(key)):
+            return False
+        extras.pressed(key)
+        return True
 
     def _act_attack(self, snap: WorldState) -> None:
         """ATTACK: click the battle-list row targeting chose, one click at a time.

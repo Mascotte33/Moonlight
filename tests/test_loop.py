@@ -22,6 +22,7 @@ from moonlight.cavebot.cavebot import Cavebot
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import VK_F12, F12Monitor, RateLimiter
 from moonlight.core.state import Monster, WorldState
+from moonlight.extras.extras import Extras, ExtrasConfig
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
 from moonlight.healing.healing import HealingAction, HealingDecision
@@ -845,3 +846,58 @@ class TestCurrentTask:
         )
         modules = DecisionModules(cavebot=cast(Cavebot, cavebot))
         assert self._task(make_state(), modules=modules) == "Walking to waypoint 3"
+
+
+# doc: docs/prs/extras.md#extras
+class TestExtras:
+    @staticmethod
+    def extras(clock: FakeClock, config: ExtrasConfig, *icons: str) -> Extras:
+        names = ("hungry", "haste", "pz", "buff", "ring_empty", "amulet_empty", "pm")
+        e = Extras(config, clock=clock, pictures={n: None for n in names})  # type: ignore[misc]
+        e.icons = frozenset(icons)
+        return e
+
+    def test_food_idle_and_haste_only_while_walking(self) -> None:
+        clock = FakeClock()
+        config = ExtrasConfig(food=True, food_hotkey="F9", haste=True, haste_hotkey="F8")
+        extras = self.extras(clock, config, "hungry")
+        inp = FakeInput()
+        walking = {"on": False}
+        gl, _ = make_loop(
+            make_state(),
+            inp,
+            clock=clock,
+            modules=DecisionModules(extras=extras),
+            move_provider=lambda s: walking["on"],
+            move_action=lambda: None,
+        )
+        gl.tick()
+        assert gl.current_state is BotState.IDLE and inp.sent_lines == ["K F9"]
+        extras.icons = frozenset()
+        walking["on"] = True
+        clock.advance(1.0)
+        gl.tick()
+        assert gl.current_state is BotState.MOVE and inp.sent_lines == ["K F9", "K F8"]
+
+    def test_a_player_alarms_only_after_staying_and_sends_to_refill(self) -> None:
+        clock = FakeClock()
+        config = ExtrasConfig(player_minutes=1.0, player_alarm=True, player_refill=True)
+        cavebot = SimpleNamespace(
+            is_active=lambda: False,
+            luring=lambda: False,
+            resume=lambda: None,
+            release_walk_key=lambda: None,
+            alarm=None,
+            refill_now=False,
+        )
+        ws = make_state(players=1)
+        ws.players = ("abc",)
+        modules = DecisionModules(extras=self.extras(clock, config), cavebot=cast(Cavebot, cavebot))
+        alerts: list[str] = []
+        gl, _ = make_loop(ws, FakeInput(), clock=clock, modules=modules, alert=alerts.append)
+        gl.tick()
+        assert gl.current_state is not BotState.ALARM and not cavebot.refill_now
+        clock.advance(60.0)
+        gl.tick()
+        assert gl.current_state is BotState.ALARM and cavebot.refill_now
+        assert alerts == ["ALARM: player in sight over 1 min"]

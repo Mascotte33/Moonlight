@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from moonlight.calibration.calibrate import CalibrationProfile
+from moonlight.calibration.calibrate import OPTIONAL_REGIONS, CalibrationProfile
 from moonlight.core.config import MODULES, BotConfig
 from moonlight.core.loop import DecisionModules, GameLoop
 from moonlight.core.safety import RateLimitedInput, beep_alert
@@ -61,6 +61,7 @@ MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "looting": (),
     "refill": (),
     "scripts": (),
+    "extras": (),  # player_list is optional: without it no player is timed
     "buffs": ("status_icons",),
     "alarms": (),
 }
@@ -85,7 +86,7 @@ def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect
     keys) scans it for creatures; for clicks it is only geometry, and the
     clicker grabs its own small cursor ROI.
     """
-    names = set(_PERCEIVE_REGIONS)
+    names = set(_PERCEIVE_REGIONS) | {n for n in OPTIONAL_REGIONS if n in profile.regions}
     for module in _enabled_modules(config):
         names.update(MODULE_REGIONS.get(module, ()))
     if not config.walk_keys and config.targeting is None:
@@ -246,6 +247,12 @@ def make_perceive(
 
     vitals = VitalsReader(profile)
     battle = BattleReader(profile, seen_monsters=seen_monsters)
+    # doc: docs/prs/extras.md#player-timer
+    player_list = (
+        BattleReader(profile, battle_region=profile.get_region("player_list").to_tuple)
+        if "player_list" in profile.regions
+        else None
+    )
     floor = FloorReader(profile)
     status_icons: StatusIconReader | None = None
     if "status_icons" in profile.regions:
@@ -277,6 +284,7 @@ def make_perceive(
                 seen_monsters.learns_new_names = client_is_foreground()
             hp, mp = vitals.read_vitals(frame)
             monsters, selected, players = entries_to_state(battle.read_battle_list(frame))
+            names = player_list.read_battle_list(frame) if player_list is not None else []
             slots = tuple(find_creatures(frame, creature_grid)) if creature_grid else ()
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
@@ -297,6 +305,7 @@ def make_perceive(
             state.monsters = monsters
             state.selected_target = selected
             state.players_on_screen = players
+            state.players = tuple(entry.name_hash for entry in names)
             state.creature_slots = slots
             state.active_status_icons = conditions
             state.chase_mode = chase_mode
@@ -572,6 +581,13 @@ def build_modules(
         m.scripts = ScriptRunner(grab=screen_grab, clock=clock or time.monotonic)
     m.scripts.clicker = m.clicker
     m.scripts.timers = parse_timers(config.scripts.timers) if config.scripts else []
+    if config.extras is not None:
+        from moonlight.extras.extras import Extras
+
+        if prev is not None and prev.extras is not None and same("extras"):
+            m.extras = prev.extras  # keeps the player timers
+        else:
+            m.extras = Extras(config.extras, grab=screen_grab, clock=clock or time.monotonic)
     walkers = config.cavebot is not None or config.looting is not None
     if walkers and m.cavebot is None and m.looting is None:
         assert m.clicker is not None
