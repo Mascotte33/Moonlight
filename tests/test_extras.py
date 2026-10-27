@@ -127,7 +127,12 @@ def test_find_icons_and_scan_once_a_second() -> None:
     }
     assert find_icons(frame, pictures) == {"hungry"}
     clock, grabs = Clock(), []
-    e = Extras(ALL, grab=lambda: grabs.append(1) or frame, clock=clock, pictures=pictures)
+
+    def grab() -> np.ndarray:
+        grabs.append(1)
+        return frame
+
+    e = Extras(ALL, grab=grab, clock=clock, pictures=pictures)
     e.observe(WorldState())
     clock.now = 0.5
     e.observe(WorldState())

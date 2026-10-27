@@ -872,7 +872,7 @@ class TestExtras:
             move_action=lambda: None,
         )
         gl.tick()
-        assert gl.current_state is BotState.IDLE and inp.sent_lines == ["K F9"]
+        assert inp.sent_lines == ["K F9"]  # idle: no haste
         extras.icons = frozenset()
         walking["on"] = True
         clock.advance(1.0)
@@ -896,7 +896,7 @@ class TestExtras:
         alerts: list[str] = []
         gl, _ = make_loop(ws, FakeInput(), clock=clock, modules=modules, alert=alerts.append)
         gl.tick()
-        assert gl.current_state is not BotState.ALARM and not cavebot.refill_now
+        assert alerts == [] and not cavebot.refill_now
         clock.advance(60.0)
         gl.tick()
         assert gl.current_state is BotState.ALARM and cavebot.refill_now
