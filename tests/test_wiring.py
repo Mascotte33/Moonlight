@@ -170,7 +170,7 @@ def test_targeting_gets_the_clicker_and_battle_list_region() -> None:
     assert targeting is not None
     assert loop.all_modules.clicker is not None
     left, top, _, _ = make_profile().get_region("battle_list").to_tuple
-    assert targeting.row_center(0) == (left + 23 + 57, top + 11 + 11)
+    assert targeting.row_center(0) == (left + 23 + 66, top + 11 + 11)
 
 
 # -- map matching wiring --------------------------------------------------------
@@ -290,9 +290,12 @@ def test_cavebot_starts_at_start_index() -> None:
 
 
 @pytest.mark.parametrize("targeting_on", [True, False])
-def test_stuck_targeting_attacks_all_others_with_or_without_targeting(targeting_on: bool) -> None:
+def test_stuck_targeting_attacks_every_monster_even_with_targeting_off(targeting_on: bool) -> None:
     route = Route("hunt", waypoints=[Waypoint(100, 100, 7)])
-    rows = TargetingConfig(default_monster=MonsterRow(ignore=True))
+    rows = TargetingConfig(
+        monsters=(MonsterRow("Rat", ignore=True, hotkey="F1"),),
+        default_monster=MonsterRow(ignore=True),
+    )
     cfg = replace(
         BotConfig.default(),
         loop=LoopConfig(enable_f12_monitor=False),
@@ -307,6 +310,7 @@ def test_stuck_targeting_attacks_all_others_with_or_without_targeting(targeting_
     )
     stuck = loop.modules.stuck_targeting
     assert stuck is not None and not stuck.config.default_monster.ignore
+    assert stuck.config.monsters == (MonsterRow("Rat", hotkey="F1"),)  # never-attack blockers too
     assert loop.modules.attack_hotkeys is not None  # spells and area rules while stuck
     assert (loop.modules.targeting is not None) == targeting_on
 

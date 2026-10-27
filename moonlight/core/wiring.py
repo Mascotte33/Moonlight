@@ -512,11 +512,15 @@ def build_modules(
             profile.ui_scale,
         )
     # doc: docs/prs/targeting.md#stuck-targeting
-    # The owner's rows (kept while targeting is off) with "all others" attacking.
+    # The owner's rows (kept while targeting is off) with every row attacking.
     rows = config.targeting or config.off.get("targeting") or TargetingConfig()
     if config.walk_keys and config.cavebot is not None and m.stuck_targeting is None:
         m.stuck_targeting = TargetingDecision(
-            replace(rows, default_monster=replace(rows.default_monster, ignore=False)),
+            replace(
+                rows,
+                monsters=tuple(replace(row, ignore=False) for row in rows.monsters),
+                default_monster=replace(rows.default_monster, ignore=False),
+            ),
             profile.get_region("battle_list").to_tuple,
             profile.ui_scale,
         )
