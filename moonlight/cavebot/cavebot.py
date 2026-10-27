@@ -27,7 +27,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
 * **Creatures** (``walk_keys``): a blocked tile also opens a ``_SCAN_WINDOW``
   second window. In it, every arrow key is preceded by a health-bar scan of
   the game grid (:mod:`moonlight.perception.creatures`); creature tiles are
-  avoided too (no guess where a creature steps next: it closed 2-wide corridors). The path search
+  avoided too (no guess where a creature steps next: it closed 2-wide corridors).
+  Within ``_VIEW_SETTLE`` of a step the view still scrolls, so the last
+  settled scan is kept instead. The path search
   also steps diagonally (Q/E/Z/C) where that is the cheaper way past.
   **Stuck** means no way around the creatures and bumped tiles, or a way
   around over ``_DETOUR`` steps longer: the bot then presses
@@ -119,6 +121,8 @@ _KEY_RETRY = 0.7
 #: Outlasts bumping all 8 neighbours (2 presses each); a creature walking off frees its tile.
 _BLOCK_TTL = 12.0
 _SCAN_WINDOW = 5.0
+#: The game view scrolls a step after the position changed: a scan then sees creatures a tile off.
+_VIEW_SETTLE = 0.5
 _FIGHT_STALL = 5.0  # seconds the selected target's HP may stand still before the next one
 _ATTACK_WAIT = 3.0  # seconds between attack presses (a press toggles/cycles the target)
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
@@ -620,7 +624,10 @@ class Cavebot:
 
         Returns whether a frame was scanned.
         """
-        frame = self._frames() if self._frames is not None and now < self._scan_until else None
+        scanning = self._frames is not None and now < self._scan_until
+        if scanning and now - self._last_move < _VIEW_SETTLE:
+            return False  # mid-step: keep the last settled scan (its tiles are absolute)
+        frame = self._frames() if scanning and self._frames is not None else None
         if frame is None:
             self._creatures = set()
             return False

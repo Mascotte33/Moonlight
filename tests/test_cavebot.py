@@ -843,3 +843,25 @@ def test_walk_keys_stand_still_while_a_target_is_selected(monkeypatch: pytest.Mo
     sim.state.selected_target = None  # it died: walk on
     sim.step(1.0)
     assert sim.fake.sent_lines[n:] == ["K right"]  # the bumped tile below is still blocked
+
+
+def test_walk_keys_ignore_the_scrolling_view_right_after_a_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slots = [(6, 5)]  # a creature left of the player, the waypoint further left
+    monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: slots)
+    sim = Sim(
+        [walk(96, 100)],
+        Position(100, 100, 7),
+        walk_keys=True,
+        frames=lambda: np.zeros((1, 1, 3), np.uint8),
+    )
+    sim.bot.start()
+    sim.step()
+    for _ in range(_BLOCK_STEPS):
+        sim.step()
+    around = sim.fake.sent_lines[-1]
+    assert around in ("K down", "K up")
+    sim.pos = Position(100, 101 if around == "K down" else 99, 7)
+    sim.step()  # the view still shows the creature on its old screen slot: a tile off
+    assert sim.fake.sent_lines[-1] == "K left"  # not back to the blocked tile's row
