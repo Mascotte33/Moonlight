@@ -630,6 +630,8 @@ class GameLoop:
             self._alert(f"ALARM: {reason}")
         if new_state is BotState.ATTACK and self.modules.clicker is not None:
             self.modules.clicker.cancel()  # drop a walk click; the select click goes first
+        if self.modules.cavebot is not None:
+            self.modules.cavebot.release_walk_key()  # only MOVE and REFILL walk
         if new_state is BotState.MOVE and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # fight/loot time is not "stuck" (F-06)
 

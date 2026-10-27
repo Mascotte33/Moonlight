@@ -191,6 +191,10 @@ or in the `targeting` section of your profile config:
   options. With an empty key the bot attacks in the current mode and logs
   one warning ("set the Toggle Chase Mode key"). No `chase_buttons` region
   leaves the mode as it is.
+- **Cavebot walking keys:** the cavebot holds the step key down while the
+  way goes on in the same direction, so the character walks without a pause
+  between tiles. A turn lets go and holds the new key; a fight, a stop, a
+  floor change or a pause lets go.
 - **Cavebot when blocked:** a step key that does not move the player in
   0.7 s is pressed once more (a lag looks the same); a second miss marks
   that tile blocked for 12 s (freed early once the monster on it

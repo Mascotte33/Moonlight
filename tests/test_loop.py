@@ -292,6 +292,7 @@ class TestGameLoopStates:
             resume=lambda: None,
             luring=lambda: False,
             route=SimpleNamespace(current=0),
+            release_walk_key=lambda: None,
         )
         inp = FakeInput()
         clock = FakeClock()
@@ -418,7 +419,7 @@ class TestGameLoopRateLimit:
             ws.hp_percent = 50.0
         clock.advance(PERIOD)
         gl.tick()
-        assert inp.sent_lines == ["A 180 222", "K F2"]
+        assert inp.sent_lines == ["A 189 222", "K F2"]
 
     def test_non_heal_actions_still_paced_at_10_per_second(self) -> None:
         rl = RateLimiter(rate=10.0, capacity=2.0, clock=lambda: 0.0)
@@ -500,7 +501,7 @@ class TestSelectClick:
         gl, clock = make_targeting_loop(ws, inp)
         ticks(gl, clock, 3)  # jump, rate-limited tick, click
         assert gl.current_state is BotState.ATTACK
-        assert inp.sent_lines == ["A 180 222", "C L"]  # 100+23+57, 200+11+11
+        assert inp.sent_lines == ["A 189 222", "C L"]  # 100+23+66, 200+11+11
 
     def test_clicks_the_name_centre_of_row_3(self) -> None:
         ws = make_state()
@@ -510,7 +511,7 @@ class TestSelectClick:
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp)
         ticks(gl, clock, 3)
-        assert inp.sent_lines == ["A 180 288", "C L"]  # 200+11+3*22+11
+        assert inp.sent_lines == ["A 189 288", "C L"]  # 200+11+3*22+11
 
     def test_one_click_in_flight_until_the_outline_shows(self) -> None:
         ws = make_state()
@@ -520,13 +521,13 @@ class TestSelectClick:
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp)
         ticks(gl, clock, 3 + 18)  # sent at 0.10 s, no outline by 1.00 s
-        assert inp.sent_lines == ["A 180 222", "C L"]
+        assert inp.sent_lines == ["A 189 222", "C L"]
         ticks(gl, clock, 4)  # 1 s without the outline: click again
-        assert inp.sent_lines == ["A 180 222", "C L"] * 2
+        assert inp.sent_lines == ["A 189 222", "C L"] * 2
         with ws.lock():
             ws.selected_target = wolf  # the outline shows
         ticks(gl, clock, 40)
-        assert inp.sent_lines == ["A 180 222", "C L"] * 2  # no hotkey on the row
+        assert inp.sent_lines == ["A 189 222", "C L"] * 2  # no hotkey on the row
         assert gl.current_state is BotState.ATTACK
 
     def test_stuck_target_gets_one_arrow_step_then_the_next_target_is_clicked(self) -> None:
@@ -541,7 +542,7 @@ class TestSelectClick:
         ticks(gl, clock, 8 * 20 + 3)  # 8 s on a target whose HP never moves
         assert inp.sent_lines == ["K up"]
         ticks(gl, clock, 8 * 20 + 6)  # 8 s more, then the click on the next row
-        assert inp.sent_lines == ["K up", "A 180 244", "C L"]
+        assert inp.sent_lines == ["K up", "A 189 244", "C L"]
 
 
 F6_ROWS = TargetingConfig(
@@ -593,6 +594,7 @@ class TestAttackHotkeys:
             is_active=lambda: False,
             luring=lambda: True,
             route=SimpleNamespace(current=0),
+            release_walk_key=lambda: None,
             alarm=None,
         )
         inp = FakeInput()
@@ -606,6 +608,7 @@ class TestAttackHotkeys:
             is_active=lambda: False,
             luring=lambda: False,
             route=SimpleNamespace(current=0),
+            release_walk_key=lambda: None,
             alarm="stuck",
         )
         alerts: list[str] = []
@@ -793,6 +796,7 @@ class TestCurrentTask:
     def test_walking_to_waypoint(self) -> None:
         cavebot = SimpleNamespace(
             route=SimpleNamespace(current=2),
+            release_walk_key=lambda: None,
             is_active=lambda: True,
             luring=lambda: False,
             step=lambda: None,

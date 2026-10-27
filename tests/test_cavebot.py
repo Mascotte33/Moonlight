@@ -607,6 +607,11 @@ def test_stairs_walks_onto_the_tile_and_is_done_on_a_floor_change() -> None:
 
 # -- arrow-key walking ------------------------------------------------------
 
+def pressed(sim: Sim) -> list[str]:
+    """The walk keys pressed down, in order (a held key's release is left out)."""
+    return [line[2:] for line in sim.fake.sent_lines if line.startswith("D ")]
+
+
 #: Steps of 0.05 s for two presses of 0.7 s that did not move: blocked.
 _BLOCK_STEPS = 30
 
@@ -622,18 +627,36 @@ def test_walk_keys_presses_one_arrow_per_step() -> None:
     sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
     sim.bot.start()
     sim.step()
-    assert sim.fake.sent_lines == ["K down"] and sim.clicker.clicks == []
+    assert pressed(sim) == ["down"] and sim.clicker.clicks == []
     sim.step()  # still on the old tile: no second press yet
-    assert sim.fake.sent_lines == ["K down"]
+    assert pressed(sim) == ["down"]
     sim.pos = Position(100, 101, 7)
     sim.step()  # moved: next step at once
-    assert sim.fake.sent_lines == ["K down"] * 2
+    assert pressed(sim) == ["down"] * 2
     for _ in range(15):  # 0.7 s without moving: maybe a lag, press once more
         sim.step()
-    assert sim.fake.sent_lines[2] == "K down"
+    assert pressed(sim)[2] == "down"
     for _ in range(15):  # still not moved: blocked, press around it
         sim.step()
-    assert sim.fake.sent_lines[3] in ("K left", "K right")
+    assert pressed(sim)[3] in ("left", "right")
+
+
+def test_walk_keys_hold_the_key_until_the_way_turns_or_stops() -> None:
+    sim = Sim([walk(100, 103), walk(96, 102)], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(100, 101, 7)
+    sim.step()  # same way on: the key stays down
+    assert sim.fake.sent_lines == ["D down", "D down"]
+    sim.pos = Position(100, 102, 7)
+    sim.step()  # waypoint 0 reached
+    sim.step()  # waypoint 1 is left: let go of down, hold left
+    assert sim.fake.sent_lines[2:] == ["U down", "D left"]
+    sim.state.selected_target = Monster("Rat", 100.0)
+    sim.step()  # a fight: let go
+    assert sim.fake.sent_lines[-1] == "U left"
+    sim.bot.stop()
+    assert sim.fake.sent_lines[-1] == "U left"  # nothing held twice
 
 
 def test_walk_keys_follow_the_cost_map_around_a_wall(tmp_path: Path) -> None:
@@ -646,7 +669,7 @@ def test_walk_keys_follow_the_cost_map_around_a_wall(tmp_path: Path) -> None:
     sim = Sim([walk(6, 5)], Position(3, 5, 7), walk_keys=True, cost_map=costs)
     sim.bot.start()
     sim.step()
-    assert sim.fake.sent_lines == ["K down"]
+    assert pressed(sim) == ["down"]
 
 
 def test_cost_map_no_path_when_walled_in(tmp_path: Path) -> None:
@@ -661,19 +684,19 @@ def test_walk_keys_remember_every_blocked_tile() -> None:
     sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
     sim.bot.start()
     sim.step()
-    assert sim.fake.sent_lines == ["K down"]
+    assert pressed(sim) == ["down"]
     for _ in range(_BLOCK_STEPS):  # an NPC stands below: try around it
         sim.step()
-    assert sim.fake.sent_lines[-1] == "K left"
+    assert pressed(sim)[-1] == "left"
     sim.pos = Position(99, 100, 7)
     sim.step()
-    assert sim.fake.sent_lines[-1] == "K down"
+    assert pressed(sim)[-1] == "down"
     for _ in range(_BLOCK_STEPS):  # that way is blocked too: not down again, not back right
         sim.step()
-    assert sim.fake.sent_lines[-1] == "K left"
+    assert pressed(sim)[-1] == "left"
     sim.pos = Position(98, 100, 7)
     sim.step()
-    assert sim.fake.sent_lines[-1] == "K down"
+    assert pressed(sim)[-1] == "down"
 
 
 def test_walk_keys_forget_a_blocked_tile_after_a_while() -> None:
@@ -682,12 +705,12 @@ def test_walk_keys_forget_a_blocked_tile_after_a_while() -> None:
     sim.step()
     for _ in range(_BLOCK_STEPS):
         sim.step()
-    assert sim.fake.sent_lines[-1] == "K left"
+    assert pressed(sim)[-1] == "left"
     sim.pos = Position(99, 100, 7)
     sim.step(13.0)  # the NPC left meanwhile
     sim.pos = Position(100, 100, 7)
     sim.step()
-    assert sim.fake.sent_lines[-1] == "K down"  # straight through again
+    assert pressed(sim)[-1] == "down"  # straight through again
 
 
 #: Creatures on all 8 tiles around the player (slot (7, 5)).
@@ -705,7 +728,7 @@ def _creature_sim(monkeypatch: pytest.MonkeyPatch, slots: list[tuple[int, int]])
     )
     sim.bot.start()
     sim.step()
-    assert sim.fake.sent_lines == ["K down"]  # no scan before the first block
+    assert pressed(sim) == ["down"]  # no scan before the first block
     for _ in range(_BLOCK_STEPS):  # the step down did nothing: blocked
         sim.step()
     return sim
@@ -713,12 +736,12 @@ def _creature_sim(monkeypatch: pytest.MonkeyPatch, slots: list[tuple[int, int]])
 
 def test_walk_keys_avoid_creatures_after_a_block(monkeypatch: pytest.MonkeyPatch) -> None:
     sim = _creature_sim(monkeypatch, [(6, 5)])  # a creature left of the player
-    assert sim.fake.sent_lines[-1] == "K right"
+    assert pressed(sim)[-1] == "right"
 
 
 def test_walk_keys_step_diagonally_past_creatures(monkeypatch: pytest.MonkeyPatch) -> None:
     sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4), (7, 6)])  # only the free corners
-    assert sim.fake.sent_lines[-1] in ("K z", "K c")
+    assert pressed(sim)[-1] in ("z", "c")
 
 
 def test_walk_keys_stuck_without_seeing_creatures() -> None:
@@ -730,18 +753,18 @@ def test_walk_keys_stuck_without_seeing_creatures() -> None:
         if sim.bot.stuck_on_creatures:
             break
     assert sim.bot.stuck_on_creatures
-    assert len(set(sim.fake.sent_lines)) == 8  # tried all 8 tiles first
+    assert len(set(pressed(sim))) == 8  # tried all 8 tiles first
 
 
 def test_walk_keys_stuck_when_creatures_close_every_way(monkeypatch: pytest.MonkeyPatch) -> None:
     sim = _creature_sim(monkeypatch, _RING)
-    assert sim.fake.sent_lines[-1] in ("K left", "K right")  # nothing to fight: a tile not bumped
+    assert pressed(sim)[-1] in ("left", "right")  # nothing to fight: a tile not bumped
     assert not sim.bot.stuck_on_creatures
     sim.state.monsters = [Monster("Rat", 100.0)]
     for _ in range(_BLOCK_STEPS):
         sim.step()
     assert sim.bot.stuck_on_creatures  # the loop's targeting takes over
-    n = len(sim.fake.sent_lines)
+    n = len(pressed(sim))
     sim.state.selected_target = sim.state.monsters[0]
     for _ in range(_BLOCK_STEPS):  # fighting: no key
         sim.step()
@@ -750,23 +773,23 @@ def test_walk_keys_stuck_when_creatures_close_every_way(monkeypatch: pytest.Monk
     for _ in range(_BLOCK_STEPS):  # the way is still closed: stuck again, still no key
         sim.step()
     assert sim.bot.stuck_on_creatures
-    assert len(sim.fake.sent_lines) == n
+    assert len(pressed(sim)) == n
     slots = [(6, 5)]  # the others died: the tile below is free again
     monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: slots)
     for _ in range(_BLOCK_STEPS):
         sim.step()
     assert not sim.bot.stuck_on_creatures
-    assert sim.fake.sent_lines[n:][:1] == ["K down"]
+    assert pressed(sim)[n:][:1] == ["down"]
 
 
 def test_walk_keys_try_unbumped_tiles_with_an_empty_battle_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sim = _creature_sim(monkeypatch, _RING)  # the scan says creatures close every way
-    assert sim.fake.sent_lines[-1] in ("K left", "K right")  # not the bumped tile below
+    assert pressed(sim)[-1] in ("left", "right")  # not the bumped tile below
     for _ in range(_BLOCK_STEPS):  # that tile is blocked too: the other side next
         sim.step()
-    assert set(sim.fake.sent_lines[2:]) == {"K left", "K right"}  # [1] pressed down again
+    assert set(pressed(sim)[2:]) == {"left", "right"}  # [1] pressed down again
     assert not sim.bot.stuck_on_creatures
 
 
@@ -789,32 +812,32 @@ def test_walk_keys_fight_through_instead_of_a_long_detour(
     sim.bot.start()
     for _ in range(_BLOCK_STEPS + 1):  # the step down is blocked by the rat below
         sim.step()
-    assert sim.fake.sent_lines == ["K down", "K down"]  # a lag? pressed twice
+    assert pressed(sim) == ["down", "down"]  # a lag? pressed twice
     assert sim.bot.stuck_on_creatures
 
 
 def test_walk_keys_scan_only_inside_the_window(monkeypatch: pytest.MonkeyPatch) -> None:
     sim = _creature_sim(monkeypatch, [(6, 5), (8, 5), (7, 4)])
     sim.state.monsters = [Monster("Rat", 100.0)]
-    assert sim.fake.sent_lines[-1] == "K z"
+    assert pressed(sim)[-1] == "z"
     sim.step(5.0)  # window over: creatures forgotten, it walks instead of fighting
-    assert sim.fake.sent_lines[-1] == "K z"  # a lag? pressed once more
+    assert pressed(sim)[-1] == "z"  # a lag? pressed once more
     sim.step(1.0)
-    assert sim.fake.sent_lines[-1] == "K c"  # the corner it tried did not move it
+    assert pressed(sim)[-1] == "c"  # the corner it tried did not move it
 
 
 def test_walk_keys_stand_still_while_a_target_is_selected(monkeypatch: pytest.MonkeyPatch) -> None:
     sim = _creature_sim(monkeypatch, [(6, 5)])  # the way around on the right is open
     sim.state.monsters = [Monster("Rat", 100.0)]
     sim.state.selected_target = sim.state.monsters[0]
-    n = len(sim.fake.sent_lines)
+    n = len(pressed(sim))
     for hp in range(90, 0, -10):  # 9 s fight: no arrow, no stuck alarm
         sim.state.selected_target = Monster("Rat", float(hp))
         sim.step(1.0)
-    assert sim.fake.sent_lines[n:] == []
+    assert pressed(sim)[n:] == []
     sim.state.selected_target = None  # it died: walk on
     sim.step(1.0)
-    assert sim.fake.sent_lines[n:] == ["K right"]  # the bumped tile below is still blocked
+    assert pressed(sim)[n:] == ["right"]  # the bumped tile below is still blocked
 
 
 def test_walk_keys_ignore_the_scrolling_view_right_after_a_step(
@@ -832,8 +855,8 @@ def test_walk_keys_ignore_the_scrolling_view_right_after_a_step(
     sim.step()
     for _ in range(_BLOCK_STEPS):
         sim.step()
-    around = sim.fake.sent_lines[-1]
-    assert around in ("K down", "K up")
-    sim.pos = Position(100, 101 if around == "K down" else 99, 7)
+    around = pressed(sim)[-1]
+    assert around in ("down", "up")
+    sim.pos = Position(100, 101 if around == "down" else 99, 7)
     sim.step()  # the view still shows the creature on its old screen slot: a tile off
-    assert sim.fake.sent_lines[-1] == "K left"  # not back to the blocked tile's row
+    assert pressed(sim)[-1] == "left"  # not back to the blocked tile's row

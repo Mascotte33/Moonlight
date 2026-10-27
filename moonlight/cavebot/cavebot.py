@@ -15,10 +15,13 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   so the bot clicks the minimap at ``center + (dx, dy)`` (clamped to the
   radar) and lets the client's auto-walk path there. The click is re-issued
   only after the player has stood still for ``reclick_interval`` seconds.
-  With ``walk_keys`` on, the bot presses one arrow key per step instead:
+  With ``walk_keys`` on, the bot holds one arrow key per step instead:
   the first step of a shortest path on the walk-cost map
   (:mod:`moonlight.cavebot.pathing`), or straight at the waypoint without
-  map data. The next key goes once the position changed, or after
+  map data. The key stays down while the next step goes the same way, so
+  the client walks on without a pause; a turn lets go of it and holds the
+  new one, and standing still (a target, stuck, a floor change, stop)
+  lets go. The next key goes once the position changed, or after
   ``_KEY_RETRY`` seconds. A key that did not move the player is pressed
   once more (a lag looks the same); a second miss marks its target tile
   blocked (a player, an NPC, a creature) for ``_BLOCK_TTL``
@@ -307,6 +310,8 @@ class Cavebot:
         self._target: tuple[int, int, int] | None = None
         #: The target tile whose key was pressed a second time after not moving.
         self._retried_target: tuple[int, int, int] | None = None
+        #: The walk key held down, kept between steps so the client walks on.
+        self._held_walk_key: str | None = None
         self._frames = frames
         #: Creatures leave no way through: the loop targets them (cleared after each kill).
         self.stuck_on_creatures = False
@@ -368,6 +373,14 @@ class Cavebot:
         self._active = False
         self.stuck_on_creatures = False
         self._clicker.cancel()
+        self.release_walk_key()
+
+    def release_walk_key(self) -> None:
+        """Let go of the held walk key: the player stops after this step."""
+        if self._held_walk_key is not None:
+            assert self._input is not None  # a key is held only with walk_keys
+            self._input.release_combo(self._held_walk_key)
+            self._held_walk_key = None
 
     def is_active(self) -> bool:
         """True while the route is running."""
@@ -404,6 +417,7 @@ class Cavebot:
             self._halt("stuck")
             return
         if pos is None or not self._resolve_jumps():
+            self.release_walk_key()
             return
 
         wp = self.route.waypoints[self.route.current]
@@ -418,12 +432,14 @@ class Cavebot:
             self._advance()  # stepping on the stairs changed the floor
             return
         if pos.z != wp.z:
+            self.release_walk_key()
             self._resync_floor(pos.z)
             return
         if max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= _REACH.get(wp.action, 1):
             if wp.action not in _FLOOR_DELTA:
                 self._advance()
             else:
+                self.release_walk_key()
                 self._expected_z = wp.z + _FLOOR_DELTA[wp.action]
                 self._retry_if_idle(now, lambda: self._tile_action(wp, pos))
             return
@@ -439,13 +455,14 @@ class Cavebot:
             self._retry_if_idle(now, lambda: self._walk_toward(wp, pos))
         elif self._state.selected_target is not None and not self.luring():
             self._target = None  # stand still while a target is selected
+            self.release_walk_key()
             self._scan_until = now + _SCAN_WINDOW  # see the creatures when it walks on
         elif self._last_move > self._last_cmd or now - self._last_cmd >= _KEY_RETRY:
             target = self._target if self._last_move <= self._last_cmd else None
             step = None if target is None else (target[0] - pos.x, target[1] - pos.y)
             if step is not None and target != self._retried_target and step in WALK_KEYS:
                 self._retried_target = target  # a lag looks like a block: press once more
-                self._press_walk_key(step)
+                self._press_walk_key(step, again=True)
             else:
                 if target is not None:
                     logger.info("cavebot: tile %s,%s,%s blocked, walking around", *target)
@@ -471,6 +488,7 @@ class Cavebot:
         self._active = False
         self.stuck_on_creatures = False
         self._clicker.cancel()
+        self.release_walk_key()
 
     def _read_position(self) -> Position | None:
         pos = self._state.snapshot().position
@@ -588,6 +606,7 @@ class Cavebot:
                 logger.info("cavebot: creatures block the way, targeting takes over")
             self.stuck_on_creatures = True
             self._target = None
+            self.release_walk_key()
             self._scan_until = now + _SCAN_WINDOW  # keep scanning while it fights
             return
         self.stuck_on_creatures = False
@@ -637,9 +656,18 @@ class Cavebot:
         self._creatures = {(px + c, py + r) for c, r in find_creatures(frame, self._game_region)}
         return True
 
-    def _press_walk_key(self, step: tuple[int, int]) -> None:
+    def _press_walk_key(self, step: tuple[int, int], again: bool = False) -> None:
+        """Hold the key of *step*; *again* lets go first for a fresh key press.
+
+        A held key keeps the client walking, and the key for the next step is
+        down when the current step ends: a tap sent mid-step is dropped.
+        """
         assert self._input is not None  # checked in __init__
-        self._input.press_combo(WALK_KEYS[step])
+        key = WALK_KEYS[step]
+        if again or key != self._held_walk_key:
+            self.release_walk_key()
+        self._input.hold_combo(key)
+        self._held_walk_key = key
 
     def _sidestep(self, wp: Waypoint, pos: Position) -> None:
         """Step to the tile beside the walking direction: left first, then right."""
