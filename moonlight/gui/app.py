@@ -302,6 +302,8 @@ class GuiApp:
         self._held = self.ctx.paused = False
         ctrl = self.ctx.controller
         if ctrl is not None and self.ctx.bot_running():
+            self.apply_config()  # waypoints edited while paused take effect
+            ctrl = self.ctx.controller or ctrl
             ctrl.loop.paused = False
             self._update_topbar()
         else:
