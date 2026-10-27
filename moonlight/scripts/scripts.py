@@ -122,6 +122,13 @@ class _GuardedInput(InputBackend):
         if self._open:
             self._inner.click(side)
 
+    def mouse_down(self, side: ClickSide) -> None:
+        if self._open:
+            self._inner.mouse_down(side)
+
+    def mouse_up(self, side: ClickSide) -> None:
+        self._inner.mouse_up(side)
+
     def ping(self) -> bool:
         return self._inner.ping()
 

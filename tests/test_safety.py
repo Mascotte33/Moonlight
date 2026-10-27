@@ -13,7 +13,7 @@ from collections.abc import Callable
 import pytest
 
 from moonlight.core.safety import VK_F12, F12Monitor, RateLimitedInput, RateLimiter
-from moonlight.hardware.input import FakeInput
+from moonlight.hardware.input import ClickSide, FakeInput
 
 
 class FakeClock:
@@ -144,3 +144,13 @@ def test_keys_sent_and_dropped_are_logged(caplog: pytest.LogCaptureFixture) -> N
         "key up",
         "wire rate limit: dropped press_combo r",
     ]
+
+
+def test_mouse_release_is_never_dropped() -> None:
+    fake = FakeInput()
+    limited = RateLimitedInput(fake, RateLimiter(rate=1.0, capacity=2.0, clock=lambda: 0.0))
+    limited.mouse_down(ClickSide.LEFT)
+    limited.mouse_down(ClickSide.LEFT)
+    limited.mouse_up(ClickSide.LEFT)
+    assert fake.sent_lines == ["H L", "R L"]
+    assert limited.dropped == 1

@@ -114,6 +114,12 @@ class TestFakeInputWireLines:
         self.fake.click(ClickSide.RIGHT)
         assert self.fake.sent_lines == ["C L", "C R"]
 
+    def test_mouse_hold_sends_H_then_R(self) -> None:
+        self.fake.mouse_down(ClickSide.LEFT)
+        self.fake.mouse_up(ClickSide.LEFT)
+        assert self.fake.sent_lines == ["H L", "R L"]
+        assert self.fake.replies == ["OK", "OK"]
+
     def test_ping_sends_P(self) -> None:
         self.fake.ping()
         assert self.fake.sent_lines == ["P"]

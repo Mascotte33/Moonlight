@@ -224,6 +224,14 @@ class LoggedInput(InputBackend):
         self._log(f"input: click {side.name.lower()}")
         self.inner.click(side)
 
+    def mouse_down(self, side: ClickSide) -> None:
+        self._log(f"input: hold {side.name.lower()} button")
+        self.inner.mouse_down(side)
+
+    def mouse_up(self, side: ClickSide) -> None:
+        self._log(f"input: release {side.name.lower()} button")
+        self.inner.mouse_up(side)
+
     def ping(self) -> bool:
         return self.inner.ping()
 
