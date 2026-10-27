@@ -30,6 +30,7 @@ from moonlight.cavebot.recorder import (
     save_route,
     should_add,
     should_stop_recording,
+    stairs_waypoint,
 )
 from moonlight.core.config import BotConfig, ConfigError
 from moonlight.core.state import Position, WorldState
@@ -368,6 +369,7 @@ class CavebotTab(Tab):
         self._pressed: queue.Queue[str] = queue.Queue()
         self._hotkeys = Hotkeys(self._pressed)
         self._stand = StandTracker()
+        self._stood_before: Position | None = None  # for the stairs walked over
         self.btn_record.bind("<Destroy>", lambda _e: self._hotkeys.stop(), add="+")
         self._reload()
 
@@ -609,6 +611,7 @@ class CavebotTab(Tab):
             return
         self._recording = True
         self._stand = StandTracker()
+        self._stood_before = None
         self.btn_record.configure(text="Stop recording")
         self._hotkeys.start()
         if self._hotkeys.failed:
@@ -654,6 +657,11 @@ class CavebotTab(Tab):
                 tiles = max(1, int(self.ent_tiles.get()))
             except ValueError:
                 tiles = 5
+            if stood is not None and self._stood_before is not None:
+                stairs = stairs_waypoint(self._waypoints, self._stood_before, stood)
+                if stairs is not None:
+                    self._waypoints.append(stairs)
+            self._stood_before = stood or self._stood_before
             if stood is not None and should_add(self._waypoints, stood, tiles):
                 self._waypoints.append(Waypoint(stood.x, stood.y, stood.z))
                 self._changed()

@@ -30,6 +30,7 @@ __all__ = [
     "save_route",
     "should_add",
     "should_stop_recording",
+    "stairs_waypoint",
     "position_line",
     "vk_code",
 ]
@@ -178,14 +179,37 @@ def make_waypoint(
     return Waypoint(live.x, live.y, live.z, action)
 
 
+def _last_positioned(waypoints: list[Waypoint]) -> Waypoint | None:
+    return next((wp for wp in reversed(waypoints) if wp.action not in ("label", "goto")), None)
+
+
 def should_add(waypoints: list[Waypoint], pos: Position, min_tiles: int) -> bool:
     """True when *pos* is *min_tiles* from the last positioned waypoint or on a new floor."""
     if (pos.x, pos.y, pos.z) == (0, 0, 0):
         return False
-    last = next((wp for wp in reversed(waypoints) if wp.action not in ("label", "goto")), None)
+    last = _last_positioned(waypoints)
     if last is None or last.z != pos.z:
         return True
     return max(abs(pos.x - last.x), abs(pos.y - last.y)) >= min_tiles
+
+
+# doc: docs/prs/walking.md#recorded-stairs
+def stairs_waypoint(
+    waypoints: list[Waypoint], left: Position, arrived: Position
+) -> Waypoint | None:
+    """The stairs or hole tile walked over from *left* to *arrived* on another floor.
+
+    None on the same floor, after a rope, ladder or shovel waypoint (that
+    action changed the floor), or without a direction to step in.
+    """
+    last = _last_positioned(waypoints)
+    if left.z == arrived.z or (last is not None and last.action in ("rope", "ladder", "shovel")):
+        return None
+    dx = (arrived.x > left.x) - (arrived.x < left.x)
+    dy = (arrived.y > left.y) - (arrived.y < left.y)
+    if (dx, dy) == (0, 0):
+        return None
+    return Waypoint(left.x + dx, left.y + dy, left.z, "stairs")
 
 
 def should_stop_recording(recording: bool, cavebot_on: bool) -> bool:

@@ -16,6 +16,7 @@ from moonlight.cavebot.recorder import (
     save_route,
     should_add,
     should_stop_recording,
+    stairs_waypoint,
     vk_code,
 )
 from moonlight.core.state import Position
@@ -187,3 +188,14 @@ def test_recorded_waypoints_are_tiles_the_character_stood_on() -> None:
         # the character is on x only once it takes the next step
         assert all(wp.x < x for wp in waypoints[1:])
     assert [wp.x for wp in waypoints] == [100, 105, 110, 115, 120]
+
+
+def test_a_floor_change_by_walking_records_the_stairs_tile() -> None:
+    wps = [Waypoint(100, 105, 7)]
+    ramp_up = stairs_waypoint(wps, Position(100, 101, 7), Position(100, 99, 6))
+    assert ramp_up == Waypoint(100, 100, 7, "stairs")
+    hole = stairs_waypoint(wps, Position(99, 100, 7), Position(100, 100, 8))
+    assert hole == Waypoint(100, 100, 7, "stairs")
+    assert stairs_waypoint(wps, Position(100, 101, 7), Position(100, 100, 7)) is None
+    roped = [*wps, Waypoint(100, 101, 7, "rope")]
+    assert stairs_waypoint(roped, Position(100, 101, 7), Position(100, 100, 6)) is None
