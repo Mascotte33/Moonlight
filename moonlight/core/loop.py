@@ -441,6 +441,10 @@ class GameLoop:
             self._record_tick_time(t0)
             return
 
+        cavebot = self.all_modules.cavebot
+        if self.paused and cavebot is not None:
+            cavebot.release_walk_key()  # Pause hides the cavebot, so let go here
+
         self._perceive_time = 0.0
         if self._perceive is not None:
             self._perceive()
@@ -630,8 +634,8 @@ class GameLoop:
             self._alert(f"ALARM: {reason}")
         if new_state is BotState.ATTACK and self.modules.clicker is not None:
             self.modules.clicker.cancel()  # drop a walk click; the select click goes first
-        if self.modules.cavebot is not None:
-            self.modules.cavebot.release_walk_key()  # only MOVE and REFILL walk
+        if self.all_modules.cavebot is not None:
+            self.all_modules.cavebot.release_walk_key()  # only MOVE and REFILL walk
         if new_state is BotState.MOVE and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # fight/loot time is not "stuck" (F-06)
 
