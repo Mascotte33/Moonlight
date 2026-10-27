@@ -192,7 +192,8 @@ or in the `targeting` section of your profile config:
   one warning ("set the Toggle Chase Mode key"). No `chase_buttons` region
   leaves the mode as it is.
 - **Cavebot when blocked:** a step key that does not move the player in
-  0.7 s marks that tile blocked for 10 s (freed early once the monster on it
+  0.7 s is pressed once more (a lag looks the same); a second miss marks
+  that tile blocked for 12 s (freed early once the monster on it
   walks off). The cavebot takes the cheapest way to the waypoint around
   blocked tiles and monsters, diagonals included (Q/E/Z/C, the
   client's WASD-mode diagonals; a diagonal costs 3 straight steps). **Stuck** means no way around,

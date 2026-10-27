@@ -19,8 +19,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   the first step of a shortest path on the walk-cost map
   (:mod:`moonlight.cavebot.pathing`), or straight at the waypoint without
   map data. The next key goes once the position changed, or after
-  ``_KEY_RETRY`` seconds. A key that did not move the player marks its
-  target tile blocked (a player, an NPC, a creature) for ``_BLOCK_TTL``
+  ``_KEY_RETRY`` seconds. A key that did not move the player is pressed
+  once more (a lag looks the same); a second miss marks its target tile
+  blocked (a player, an NPC, a creature) for ``_BLOCK_TTL``
   seconds and the path is searched again around every blocked tile. The
   sidestep below is for minimap clicks only.
 * **Creatures** (``walk_keys``): a blocked tile also opens a ``_SCAN_WINDOW``
@@ -115,7 +116,8 @@ WALK_KEYS = {
 }  # fmt: skip
 #: Seconds without moving before an arrow key is pressed again.
 _KEY_RETRY = 0.7
-_BLOCK_TTL = 10.0  # outlasts bumping all 8 neighbours; a creature walking off frees its tile
+#: Outlasts bumping all 8 neighbours (2 presses each); a creature walking off frees its tile.
+_BLOCK_TTL = 12.0
 _SCAN_WINDOW = 5.0
 _FIGHT_STALL = 5.0  # seconds the selected target's HP may stand still before the next one
 _ATTACK_WAIT = 3.0  # seconds between attack presses (a press toggles/cycles the target)
@@ -302,6 +304,8 @@ class Cavebot:
         self._cost_map = cost_map
         self._blocked: dict[tuple[int, int, int], float] = {}  # tile -> expiry
         self._target: tuple[int, int, int] | None = None
+        #: The target tile whose key was pressed a second time after not moving.
+        self._retried_target: tuple[int, int, int] | None = None
         self._frames = frames
         #: Pressed when stuck (the client's "attack next"); None: never fight to get through.
         self.attack_combo_when_blocked = attack_combo
@@ -437,11 +441,19 @@ class Cavebot:
             self._scan_until = now + _SCAN_WINDOW  # see the creatures when it walks on
             self._attack(now)
         elif self._last_move > self._last_cmd or now - self._last_cmd >= _KEY_RETRY:
-            if self._last_move <= self._last_cmd and self._target is not None:
-                logger.info("cavebot: tile %s,%s,%s blocked, walking around", *self._target)
-                self._blocked[self._target] = now + _BLOCK_TTL
-                self._scan_until = now + _SCAN_WINDOW
-            self._step_toward(wp, pos, now)
+            did_not_move = self._last_move <= self._last_cmd and self._target is not None
+            target = self._target
+            step = None if target is None else (target[0] - pos.x, target[1] - pos.y)
+            if did_not_move and self._target != self._retried_target and step in WALK_KEYS:
+                self._retried_target = self._target  # a lag looks like a block: press once more
+                self._press_walk_key(step)
+            else:
+                if did_not_move:
+                    logger.info("cavebot: tile %s,%s,%s blocked, walking around", *self._target)
+                    self._blocked[self._target] = now + _BLOCK_TTL
+                    self._scan_until = now + _SCAN_WINDOW
+                self._retried_target = None
+                self._step_toward(wp, pos, now)
             self._last_cmd = now
 
     # -- internals ----------------------------------------------------------
