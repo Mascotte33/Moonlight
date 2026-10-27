@@ -10,9 +10,6 @@ bar. The bar's center sits over its creature's tile center, just above the
 tile, so the slot is the tile half a tile below the bar. The player's own
 slot (7, 5) is left out.
 
-:func:`predict` guesses where each creature steps next: the square one
-further in the direction it last moved.
-
 # doc: docs/prs/keys-walking.md#creature-scan
 """
 
@@ -21,7 +18,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-__all__ = ["BAR_W", "PLAYER_SLOT", "find_creatures", "predict"]
+__all__ = ["BAR_W", "PLAYER_SLOT", "find_creatures"]
 
 BAR_W = 31
 _BAR_H = 4
@@ -73,18 +70,3 @@ def find_creatures(frame: np.ndarray, grid: tuple[int, int, int, int]) -> list[t
             slots.add((col, row))
     slots.discard(PLAYER_SLOT)
     return sorted(slots)
-
-
-def predict(now: list[tuple[int, int]], before: list[tuple[int, int]]) -> set[tuple[int, int]]:
-    """The next square of each creature in *now* that moved one square.
-
-    Each creature is paired with the nearest one in *before* (the previous
-    scan, same coordinates). A creature that moved one square is assumed
-    to keep going the same way.
-    """
-    out = set()
-    for x, y in now:
-        near = min(before, key=lambda b: max(abs(b[0] - x), abs(b[1] - y)), default=None)
-        if near is not None and max(abs(near[0] - x), abs(near[1] - y)) == 1:
-            out.add((2 * x - near[0], 2 * y - near[1]))
-    return out

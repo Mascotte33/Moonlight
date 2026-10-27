@@ -25,9 +25,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   sidestep below is for minimap clicks only.
 * **Creatures** (``walk_keys``): a blocked tile also opens a ``_SCAN_WINDOW``
   second window. In it, every arrow key is preceded by a health-bar scan of
-  the game grid (:mod:`moonlight.perception.creatures`); creature tiles and
-  one predicted tile per moving creature are avoided too. The path search
-  also steps diagonally (numpad keys) where that is the cheaper way past.
+  the game grid (:mod:`moonlight.perception.creatures`); creature tiles are
+  avoided too (no guess where a creature steps next: it closed 2-wide corridors). The path search
+  also steps diagonally (Q/E/Z/C) where that is the cheaper way past.
   **Stuck** means no way around the creatures and bumped tiles, or a way
   around over ``_DETOUR`` steps longer: the bot then presses
   ``attack_combo`` (if the battle list has monsters and nothing is
@@ -78,7 +78,7 @@ from moonlight.cavebot.pathing import CostMap, next_step
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, InputBackend
-from moonlight.perception.creatures import PLAYER_SLOT, find_creatures, predict
+from moonlight.perception.creatures import PLAYER_SLOT, find_creatures
 from moonlight.perception.floor import MAX_FLOOR, MIN_FLOOR
 from moonlight.perception.minimap import Rect
 
@@ -96,9 +96,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 #: Valid waypoint actions.
-ACTIONS = (
-    "walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto"
-)
+ACTIONS = ("walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto")
 
 #: Actions that need no position (executed immediately).
 _JUMP_ACTIONS = ("label", "goto")
@@ -308,8 +306,7 @@ class Cavebot:
         #: Pressed when stuck (the client's "attack next"); None: never fight to get through.
         self.attack_combo_when_blocked = attack_combo
         self._scan_until = float("-inf")
-        self._seen: list[tuple[int, int]] = []  # creature tiles of the last scan
-        self._creatures: set[tuple[int, int]] = set()  # seen + predicted
+        self._creatures: set[tuple[int, int]] = set()  # tiles the last scan saw
         #: Bumped tiles a scan saw a creature on: free again once it walks off.
         self._bumped_into_creature: set[tuple[int, int, int]] = set()
         self._fight: tuple[str, float] | None = None  # (name, HP) of the target it waits on
@@ -614,12 +611,10 @@ class Cavebot:
         """
         frame = self._frames() if self._frames is not None and now < self._scan_until else None
         if frame is None:
-            self._seen, self._creatures = [], set()
+            self._creatures = set()
             return False
         px, py = pos.x - PLAYER_SLOT[0], pos.y - PLAYER_SLOT[1]
-        seen = [(px + c, py + r) for c, r in find_creatures(frame, self._game_region)]
-        self._creatures = set(seen) | predict(seen, self._seen)
-        self._seen = seen
+        self._creatures = {(px + c, py + r) for c, r in find_creatures(frame, self._game_region)}
         return True
 
     def _attack(self, now: float) -> None:

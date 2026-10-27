@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import pytest
 
-from moonlight.perception.creatures import BAR_W, find_creatures, predict
+from moonlight.perception.creatures import BAR_W, find_creatures
 
 GOLDEN = Path(__file__).resolve().parents[0] / "golden"
 GRID = (0, 0, 15 * 96, 11 * 96)
@@ -35,13 +35,6 @@ def test_player_slot_and_black_boxes_are_ignored() -> None:
     _bar(frame, 7 * 96 + 33, 5 * 96 - 9)
     frame[100:120, 100:200] = 0  # a black area is no bar
     assert find_creatures(frame, GRID) == []
-
-
-def test_predict_keeps_the_last_direction() -> None:
-    before = [(5, 5), (9, 9)]
-    now = [(6, 5), (9, 9), (1, 1)]  # moved right, stood still, new
-    assert predict(now, before) == {(7, 5)}
-    assert predict(now, []) == set()
 
 
 GOLDEN_SLOTS = {
