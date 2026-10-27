@@ -2,7 +2,7 @@
 
 :class:`BotConfig` aggregates everything needed to build the bot: the
 calibration profile name, the serial port, the loop parameters, the
-spell -> hotkey mapping and the per-module decision configs. The module
+buff -> hotkey mapping and the per-module decision configs. The module
 configs are the existing dataclasses from feature packages (and
 :class:`moonlight.core.loop.LoopConfig`); nothing is re-invented here.
 
@@ -22,14 +22,13 @@ JSON format (``moonlight_config.json``)::
       "routes_dir": "data/waypoints",
       "loop": {"tick_rate": 20.0},         # any LoopConfig field
       "clicker": {"open_loop": false},     # any ClickerConfig field (F-14)
-      "hotkeys": {"exori": "F5"},          # attack/buff spell -> combo
+      "hotkeys": {"utani hur": "F8"},      # buff -> combo
       "monster_name_source": false,        # F-09: looting needs this true (T34)
       "capacity_source": false,            # F-09: refill needs this true (T34)
       "buff_icon_source": false,           # F-10: buffs needs this true (T34)
       "modules": {
-        "healing":   {"enabled": true, "spell_cooldown_ms": 1000},
+        "healing":   {"enabled": true, "potion_cooldown_ms": 1000},
         "targeting": {"enabled": true},
-        "attack_spells": {"enabled": false},   # optional section, missing = off
         "buffs":     {"enabled": false},
         "alarms":    {"enabled": true},
         "cavebot":   {"enabled": false, "route": "rotworms"},
@@ -39,14 +38,14 @@ JSON format (``moonlight_config.json``)::
     }
 
 Fail closed: ``profile``, ``modules`` and every module's ``enabled`` flag
-are required; unknown keys, wrong types, invalid values, a spell without a
-hotkey, a missing cavebot route file, or refill without cavebot+looting
+are required; unknown keys, wrong types, invalid values, a bad hotkey
+combo, a missing cavebot route file, or refill without cavebot+looting
 all raise :class:`ConfigError`. Looting, refill and buffs additionally
 require their perception source (``monster_name_source`` /
 ``capacity_source`` / ``buff_icon_source``) to be true (F-09 / F-10).
 Fields left out of a module section take the dataclass defaults.
 
-A module that is off keeps its values: ``{"enabled": false, "spell_cooldown_ms":
+A module that is off keeps its values: ``{"enabled": false, "potion_cooldown_ms":
 800}`` is parsed into :attr:`BotConfig.off` and written back the same way, so
 turning the module on again restores them. The bot never reads ``off``.
 
@@ -67,10 +66,9 @@ from moonlight.cavebot.cavebot import Route, RouteError, RouteFileLoader
 from moonlight.core.loop import GameLoop, LoopConfig
 from moonlight.extras.buffs import BuffManagerConfig
 from moonlight.hardware.clicker import ClickerConfig
-from moonlight.healing.healing import HealingConfig
+from moonlight.healing.healing import HealingConfig, check_hotkey
 from moonlight.looting.looting import LootingConfig
 from moonlight.refill.refill import RefillConfig
-from moonlight.targeting.attack_spells import AttackSpellsConfig
 from moonlight.targeting.targeting import TargetingConfig
 
 __all__ = [
@@ -88,7 +86,6 @@ DEFAULT_CONFIG_FILE = "moonlight_config.json"
 MODULES = (
     "healing",
     "targeting",
-    "attack_spells",
     "buffs",
     "alarms",
     "cavebot",
@@ -157,7 +154,6 @@ class BotConfig:
     hotkeys: dict[str, str] | None = None
     healing: HealingConfig | None = None
     targeting: TargetingConfig | None = None
-    attack_spells: AttackSpellsConfig | None = None
     buffs: BuffManagerConfig | None = None
     alarms: AlarmConfig | None = None
     cavebot: CavebotConfig | None = None
@@ -173,11 +169,6 @@ class BotConfig:
     buff_icon_source: bool = False
     #: Kept values of modules that are off, by module name (T0.F1.K4).
     off: dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def spell_combos(self) -> dict[str, str]:
-        """Spell -> key combo mapping for attack spells and buffs."""
-        return dict(self.hotkeys or {})
 
     @classmethod
     def default(cls) -> BotConfig:
@@ -251,8 +242,6 @@ class BotConfig:
         routes_dir = kwargs.get("routes_dir", Path("data/waypoints"))
         for name in MODULES:
             if name not in modules:
-                if name == "attack_spells":
-                    continue  # added after the first config files were written
                 raise ConfigError(f"modules: missing required section {name!r}")
             section = dict(_require_dict(modules[name], f"modules.{name}"))
             enabled = section.pop("enabled", None)
@@ -317,24 +306,13 @@ class BotConfig:
                 raise ConfigError(f"off: {name!r} is not a module that is off")
         try:
             GameLoop._validate_config(self.loop)
-            for cfg in (self.healing, self.targeting, self.attack_spells, self.buffs, self.alarms):
+            for cfg in (self.healing, self.targeting, self.buffs, self.alarms):
                 if cfg is not None:
                     cfg.validate()
-            for spell, combo in self.spell_combos.items():
-                if not combo or any(ch.isspace() for ch in combo):
-                    raise ValueError(f"hotkey for {spell!r} must be a combo without spaces")
+            for name, combo in (self.hotkeys or {}).items():
+                check_hotkey(combo, f"hotkeys.{name}")
         except ValueError as exc:
             raise ConfigError(str(exc)) from exc
-        # An unmapped spell would be decided every tick but never cast.
-        spells: list[str] = []
-        if self.attack_spells is not None:
-            a = self.attack_spells
-            spells += [s for s in (a.single_spell, a.aoe_spell) if s]
-        if self.buffs is not None:
-            spells += [b.spell for b in self.buffs.buffs]
-        missing = sorted({s for s in spells if s not in self.spell_combos})
-        if missing:
-            raise ConfigError(f"no hotkey configured for spell(s): {missing}")
         if self.cavebot is not None:
             n = len(self.cavebot.route.waypoints)
             if not 0 <= self.cavebot.start_index < n:

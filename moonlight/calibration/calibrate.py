@@ -48,6 +48,7 @@ REGIONS: tuple[str, ...] = (
     "floor_indicator",
     "status_icons",
     "game_grid",
+    "chase_buttons",
 )
 
 #: The game window is a 15x11 grid of slots; the player sits at (7, 5).

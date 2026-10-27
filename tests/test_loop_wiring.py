@@ -77,22 +77,41 @@ def test_healing_decide_and_send_every_tick_even_in_alarm() -> None:
 
 
 def test_targeting_decide_feeds_attack() -> None:
-    inp = FakeInput()
-    action = SimpleNamespace(action="attack", target_name="Wolf", reason="lowest hp")
-    targeting = idle_module(**{"decide.return_value": action})
-    gl, _ = make_loop(make_state(monsters=1), inp, targeting=targeting)
+    action = SimpleNamespace(kind="select", battle_list_row=2, reason="lowest hp")
+    targeting = idle_module(**{"decide.return_value": action, "row_center.return_value": (5, 6)})
+    clicker = mock.Mock(busy=False, **{"step.return_value": None})
+    gl, _ = make_loop(make_state(monsters=3), FakeInput(), targeting=targeting, clicker=clicker)
     gl.tick()
     targeting.decide.assert_called_once()
     assert gl.current_state is BotState.ATTACK
-    assert "K r" in inp.sent_lines
+    targeting.row_center.assert_called_once_with(2)
+    clicker.request.assert_called_once_with((5, 6))
 
 
-def test_targeting_flee_enters_alarm() -> None:
-    action = SimpleNamespace(action="flee", target_name=None, reason="player")
-    targeting = idle_module(**{"decide.return_value": action})
-    gl, _ = make_loop(make_state(), FakeInput(), targeting=targeting)
+def test_stuck_cavebot_hands_over_to_stuck_targeting_until_a_kill() -> None:
+    action = SimpleNamespace(kind="select", battle_list_row=0, reason="all others")
+    stuck_targeting = idle_module(
+        **{"decide.return_value": action, "row_center.return_value": (5, 6)}
+    )
+    cavebot = idle_module(stuck_on_creatures=True, **{"luring.return_value": False})
+    clicker = mock.Mock(busy=False, **{"step.return_value": None})
+    ws = make_state(monsters=1)
+    gl, clock = make_loop(
+        ws, FakeInput(), stuck_targeting=stuck_targeting, cavebot=cavebot, clicker=clicker
+    )
+    gl.tick()  # targeting is off, the cavebot is stuck: the stuck rows decide
+    assert gl.current_state is BotState.ATTACK
+    with ws.lock():
+        ws.selected_target = Monster(name="m0")
+    clock.now += 1.0
     gl.tick()
-    assert gl.current_state is BotState.ALARM
+    assert cavebot.stuck_on_creatures
+    with ws.lock():
+        ws.selected_target = None  # killed
+    clock.now += 1.0
+    gl.tick()
+    assert not cavebot.stuck_on_creatures  # the cavebot looks for a way before the next fight
+    assert stuck_targeting.decide.call_count == 2
 
 
 def alarm(severity: str) -> SimpleNamespace:

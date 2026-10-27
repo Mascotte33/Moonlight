@@ -30,7 +30,7 @@ Conventions inherited from the rest of the pipeline:
   to send input without both), so this module does not check them.
 * The optional input-backend integration lives in :meth:`BuffManager.send`
   and :meth:`BuffManager.track_and_send`: a spell is mapped to a key combo
-  through the configurable *spell_combos* mapping and pressed through an
+  through the configurable *key_combos* mapping and pressed through an
   :class:`moonlight.hardware.input.InputBackend`.
 
 Everything timing-related is injectable, so the module is fully
@@ -164,7 +164,7 @@ class BuffManager:
 
         manager = BuffManager(
             BuffManagerConfig(),
-            spell_combos={"utemo": "f3", "exori flamatio": "f4"},
+            key_combos={"utemo": "f3", "exori flamatio": "f4"},
         )
         for action in manager.track(state.snapshot()):
             # loop sends one per tick (rate-limited, gated on focus):
@@ -183,14 +183,14 @@ class BuffManager:
         config: BuffManagerConfig | None = None,
         *,
         clock: Callable[[], float] | None = None,
-        spell_combos: Mapping[str, str] | None = None,
+        key_combos: Mapping[str, str] | None = None,
     ) -> None:
         """Create the buff manager.
 
         Args:
             config: Buff parameters; defaults to :class:`BuffManagerConfig`.
             clock: Monotonic-clock override (tests).
-            spell_combos: Spell -> key-combo mapping used by :meth:`send`.
+            key_combos: Spell -> key-combo mapping used by :meth:`send`.
                 Combos must be non-empty and contain no whitespace (wire
                 protocol is one command per line). An empty mapping is fine:
                 tracking still works, :meth:`send` just declines to cast.
@@ -202,7 +202,7 @@ class BuffManager:
         cfg.validate()
         self.config = cfg
         self._clock = clock if clock is not None else time.monotonic
-        self._spell_combos = dict(spell_combos) if spell_combos else {}
+        self._spell_combos = dict(key_combos) if key_combos else {}
         for spell, combo in self._spell_combos.items():
             if not combo or any(ch.isspace() for ch in combo):
                 raise ValueError(
@@ -299,7 +299,7 @@ class BuffManager:
     def send(self, action: BuffAction, backend: InputBackend) -> bool:
         """Send *action* through the input backend (spell -> combo -> press).
 
-        The spell is looked up in the *spell_combos* mapping and pressed
+        The spell is looked up in the *key_combos* mapping and pressed
         with ``backend.press_combo``. On success the buff's cooldown key is
         recorded.
 

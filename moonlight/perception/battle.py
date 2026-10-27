@@ -11,7 +11,11 @@ PyTibia production bots):
   (:data:`MAX_SLOTS`);
 * content width 156 px (:data:`CONTENT_WIDTH`);
 * the first slot starts 11 px below the widget top (:data:`TOP_PADDING`);
-* the creature name starts at x=23 (:data:`NAME_START_X`) and spans ~115 px;
+* the creature name starts at x=23 (:data:`NAME_START_X`) and may run to the
+  slot's right edge (:data:`NAME_WIDTH`; "The Halloween Hare" needs ~125 px);
+* a creature name starts within 2 px of x=23, after an empty gap right of
+  the icon; text that crosses the gap or starts further right belongs to
+  another window drawn over the list (a dialog, the taskbar), not a creature;
 * text is bright pixels on a dark background: grayscale > 150 = text pixel
   (:data:`TEXT_THRESHOLD`; real text grays are ~192 / 247);
 * every creature row has an HP bar under its name whose black outline is a
@@ -37,11 +41,11 @@ A row counts as a creature entry when its name area contains at least
 full read of a 20-row list is well under the 15 ms per-read budget (T30
 timing requirement; see ``perception/README.md``).
 
-Name resolution (template matching or OCR) is pluggable via
-:class:`NameResolver`. Until the golden dataset ships (T08) the default
-reader returns empty names and never fabricates OCR output. ``is_player``
-is derived from the resolved name when a monster-name set is provided
-(unknown name = likely a player; ui_layout.md section 8, technique 3).
+Each entry carries :func:`name_crop_hash`, a stable identity of its name
+pixels (no OCR). ``name`` comes from the optional ``SeenMonsters`` store, looked up by
+that hash (empty without one). ``is_player`` is derived from the name when a monster-name set is
+provided (unknown name = likely a player; ui_layout.md section 8,
+technique 3).
 
 Frames are RGB ``(H, W, 3)`` ``uint8`` arrays as produced by
 ``moonlight.perception.capture``.
@@ -49,15 +53,19 @@ Frames are RGB ``(H, W, 3)`` ``uint8`` arrays as produced by
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
 from moonlight.core.state import Monster
+
+if TYPE_CHECKING:
+    from moonlight.targeting.seen_monsters import SeenMonsters
 
 __all__ = [
     "Rect",
@@ -68,12 +76,14 @@ __all__ = [
     "NAME_WIDTH",
     "MAX_SLOTS",
     "TEXT_THRESHOLD",
+    "HOVERED_SELECTED_RGB",
     "SELECTED_RGB",
     "HP_BAR_ROWS",
     "BattleEntry",
-    "NameResolver",
     "BattleReader",
     "entries_to_state",
+    "name_crop_hash",
+    "name_text_mask",
 ]
 
 #: A rectangle as ``(x, y, width, height)`` (matches ``calibrate.Rect``).
@@ -91,8 +101,8 @@ TOP_PADDING = 11
 #: X offset of the creature name within a slot (ui_layout.md #3).
 NAME_START_X = 23
 
-#: Approximate name width in pixels within a slot (ui_layout.md #3).
-NAME_WIDTH = 115
+#: Name width in pixels within a slot: the rest of the slot.
+NAME_WIDTH = CONTENT_WIDTH - NAME_START_X
 
 #: Maximum rows the battle-list widget can show (156x440 / 22 ~ 20).
 #: T33: recalibrate on server -- moonlight_user.json's battle_list is only
@@ -115,8 +125,16 @@ HP_BAR_MIN_RUN = 80
 #: (green/yellow/red); the lost part shows the grey panel (spread ~0).
 HP_FILL_MIN_SPREAD = 60
 
+#: Largest channel spread of a name-text pixel: names are gray, icons and
+#: HP fill are coloured, so they never enter the name hash.
+NAME_TEXT_MAX_SPREAD = 40
+
 #: Attack-target outline color around the selected row's icon (T28).
 SELECTED_RGB: tuple[int, int, int] = (255, 0, 0)
+
+#: The same outline while the cursor is on the row (measured live, T1.F12.K1).
+#: The select click leaves the cursor there, so this is the usual case.
+HOVERED_SELECTED_RGB: tuple[int, int, int] = (255, 128, 128)
 
 #: Rows from the target outline's top edge down to the HP bar's outline
 #: (67 of 67 selected golden entries; the synthetic test frames use 16).
@@ -137,12 +155,13 @@ class BattleEntry:
     """One creature row of the battle list.
 
     Attributes:
-        name: Creature name (via :class:`NameResolver`); empty string when
-            no resolver is configured or the name is unknown.
+        name: Creature name; empty string until a later task fills it.
         index: 0-based row position in the battle list.
         is_player: True when the name is not a known monster name.
         is_selected: True when this row is the currently attacked target.
         hp_percent: Creature HP percent when visible; None otherwise.
+        name_hash: :func:`name_crop_hash` of the name pixels; empty when
+            the name area holds no text.
     """
 
     name: str
@@ -150,17 +169,35 @@ class BattleEntry:
     is_player: bool = False
     is_selected: bool = False
     hp_percent: float | None = None
+    name_hash: str = ""
 
 
-class NameResolver(Protocol):
-    """Resolves the creature name of one battle-list slot.
+def name_text_mask(slot_name_crop: np.ndarray) -> np.ndarray:
+    """True on the name's text pixels: brighter than :data:`TEXT_THRESHOLD` and gray."""
+    # doc: docs/prs/targeting.md#name-hash
+    if slot_name_crop.ndim == 2:
+        return np.asarray(slot_name_crop > TEXT_THRESHOLD)
+    rgb = slot_name_crop[..., :3].astype(np.int16)
+    spread = rgb.max(axis=2) - rgb.min(axis=2)
+    return np.asarray((rgb.max(axis=2) > TEXT_THRESHOLD) & (spread <= NAME_TEXT_MAX_SPREAD))
 
-    Implementations perform template matching or OCR on the slot's
-    grayscale crop. Return an empty string for unknown names.
+
+def name_crop_hash(slot_name_crop: np.ndarray) -> str:
+    """Stable identity of a slot's name pixels; ``""`` when there is no text.
+
+    Binarizes the crop with :func:`name_text_mask`, trims it to the bounding
+    box of the set pixels and hashes the bits with the shape, so the HP bar,
+    the selection outline, coloured icons and a slightly different background
+    do not change it.
     """
-
-    def resolve(self, row: int, slot_gray: np.ndarray) -> str:  # pragma: no cover
-        """Return the creature name for *row* (empty string if unknown)."""
+    # doc: docs/prs/targeting.md#name-hash
+    bits = name_text_mask(slot_name_crop)
+    rows, cols = np.flatnonzero(bits.any(axis=1)), np.flatnonzero(bits.any(axis=0))
+    if not rows.size:
+        return ""
+    bits = bits[rows[0] : rows[-1] + 1, cols[0] : cols[-1] + 1]
+    shape_bytes = np.array(bits.shape, dtype=np.int32).tobytes()
+    return hashlib.blake2b(bits.tobytes() + shape_bytes, digest_size=8).hexdigest()
 
 
 class BattleReader:
@@ -182,7 +219,6 @@ class BattleReader:
     def __init__(
         self,
         profile: object | None = None,
-        name_resolver: NameResolver | None = None,
         monster_names: set[str] | None = None,
         *,
         battle_region: Rect | None = None,
@@ -192,14 +228,14 @@ class BattleReader:
         text_threshold: int = TEXT_THRESHOLD,
         highlight_tolerance: int = DEFAULT_HIGHLIGHT_TOLERANCE,
         min_text_pixels: int = DEFAULT_MIN_TEXT_PIXELS,
+        seen_monsters: SeenMonsters | None = None,
     ) -> None:
         """Create a reader.
 
         Args:
             profile: Optional ``CalibrationProfile``. Its ``battle_list``
                 region is used as the default region.
-            name_resolver: Optional resolver for creature names.
-            monster_names: Known monster names; resolved names not in this
+            monster_names: Known monster names; names not in this
                 set are classified as players (None disables the check).
             battle_region: Explicit battle-list region; overrides the
                 profile.
@@ -210,6 +246,7 @@ class BattleReader:
             highlight_tolerance: Per-channel tolerance for the red
                 target outline.
             min_text_pixels: Minimum text pixels for a row to be an entry.
+            seen_monsters: Store that turns a name hash into a name.
 
         Raises:
             ValueError: If a region is not a 4-element tuple.
@@ -234,8 +271,8 @@ class BattleReader:
         self._text_threshold = int(text_threshold)
         self._highlight_tolerance = int(highlight_tolerance)
         self._min_text_pixels = int(min_text_pixels)
-        self._name_resolver = name_resolver
         self._monster_names = monster_names
+        self._seen_monsters = seen_monsters
         self._battle_region: Rect | None = None
 
         if profile is not None:
@@ -288,9 +325,20 @@ class BattleReader:
             bar = self._hp_bar(slot) if self._has_text(slot) else None
             if bar is None:
                 continue
-            name = self._resolve_name(row, slot)
             slot_rgb = crop[top:bottom, :cols]
+            name_x1 = min(cols, self._name_x + self._name_w)
             outline_top = top + bar[0] - self._bar_offset
+            if not self._name_starts_after_icon_gap(slot_rgb[: bar[0], :name_x1]):
+                continue
+            name_crop = slot_rgb[: bar[0], self._name_x : name_x1]
+            name_hash = name_crop_hash(name_crop)
+            if not name_hash:
+                continue  # bright but coloured pixels: not a creature name
+            name = ""
+            if self._seen_monsters is not None:
+                name = self._seen_monsters.name_for(
+                    name_hash, name_crop, slot_rgb[: bar[0], :name_x1]
+                )
             entries.append(
                 BattleEntry(
                     name=name,
@@ -298,6 +346,7 @@ class BattleReader:
                     is_player=self._is_player(name),
                     is_selected=self._is_selected(crop[:, :cols], outline_top),
                     hp_percent=self._hp_percent(slot_rgb, bar),
+                    name_hash=name_hash,
                 )
             )
         return entries
@@ -314,6 +363,17 @@ class BattleReader:
         text = slot[:, x0:x1]
         pixels = int(np.count_nonzero(text > self._text_threshold))
         return pixels >= self._min_text_pixels
+
+    def _name_starts_after_icon_gap(self, slot_rgb_above_bar: np.ndarray) -> bool:
+        """True when the first name-text column right of the icon is the name's start.
+
+        Looks from 2 px left of the name: text right there crosses the gap
+        after the icon, text more than 2 px right of the name start does not
+        begin where a name does. Either way another window covers the list.
+        """
+        gap = self._name_x - 2 * self._line
+        columns = np.flatnonzero(name_text_mask(slot_rgb_above_bar[:, gap:]).any(axis=0))
+        return bool(columns.size) and 0 < int(columns[0]) <= 4 * self._line
 
     def _hp_bar(self, slot: np.ndarray) -> tuple[int, int, int] | None:
         """The HP-bar outline under the name as ``(row, x0, x1)``, or None.
@@ -363,16 +423,13 @@ class BattleReader:
         if y0 < 0 or y1 > crop.shape[0]:
             return False
         icon = crop[y0:y1, : self._name_x, :3].astype(np.int16)
-        ref = np.array(SELECTED_RGB, dtype=np.int16)
-        red = (np.abs(icon - ref) <= self._highlight_tolerance).all(axis=2)
-        edge = red.sum(axis=1) >= self._edge_min
-        return bool(edge[: 2 * k + 1].any() and edge[-(2 * k + 1) :].any())
-
-    def _resolve_name(self, row: int, slot: np.ndarray) -> str:
-        """Resolve the slot's creature name via the configured resolver."""
-        if self._name_resolver is None:
-            return ""
-        return str(self._name_resolver.resolve(row, slot))
+        for outline_rgb in (SELECTED_RGB, HOVERED_SELECTED_RGB):
+            ref = np.array(outline_rgb, dtype=np.int16)
+            red = (np.abs(icon - ref) <= self._highlight_tolerance).all(axis=2)
+            edge = red.sum(axis=1) >= self._edge_min
+            if edge[: 2 * k + 1].any() and edge[-(2 * k + 1) :].any():
+                return True
+        return False
 
     def _is_player(self, name: str) -> bool:
         """Classify a resolved name as player when it is not a monster."""
@@ -430,9 +487,20 @@ def entries_to_state(
         if entry.is_player:
             players_on_screen += 1
             if entry.is_selected and selected is None:
-                selected = Monster(name=entry.name, hp_percent=hp, is_player=True)
+                selected = Monster(
+                    name=entry.name,
+                    hp_percent=hp,
+                    is_player=True,
+                    name_hash=entry.name_hash,
+                    battle_list_row=entry.index,
+                )
             continue
-        monster = Monster(name=entry.name, hp_percent=hp)
+        monster = Monster(
+            name=entry.name,
+            hp_percent=hp,
+            name_hash=entry.name_hash,
+            battle_list_row=entry.index,
+        )
         monsters.append(monster)
         if entry.is_selected and selected is None:
             selected = monster

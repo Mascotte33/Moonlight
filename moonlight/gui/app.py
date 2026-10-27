@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import logging
+import logging.handlers
 import sys
 import threading
 import time
@@ -28,7 +29,11 @@ from moonlight.core.state import WorldState
 from moonlight.gui import theme
 from moonlight.gui.dashboard_tab import DashboardTab
 from moonlight.gui.diagnostics_tab import DiagnosticsTab
-from moonlight.gui.loop_factory import build_gui_loop, build_position_reader, load_real_config
+from moonlight.gui.loop_factory import (
+    build_gui_loop,
+    build_position_reader,
+    gui_bot_config,
+)
 from moonlight.gui.settings_tab import SettingsTab
 from moonlight.gui.state_bridge import (
     BotController,
@@ -315,13 +320,13 @@ class GuiApp:
         if ctrl is None or not self.ctx.bot_running() or ctrl.loop.reconfigure is None:
             return
         try:
-            if not restart and ctrl.loop.reconfigure(load_real_config()):
+            if not restart and ctrl.loop.reconfigure(gui_bot_config()):
                 return
         except Exception as exc:  # noqa: BLE001 - keep the last good modules
             self.log.error(f"settings not applied: {exc!r}")
             return
         self.log.info("settings changed, restarting the bot")
-        ctrl.stop()
+        ctrl.stop("calibration saved" if restart else "settings need a restart")
         self.start_bot(resume=True)
 
     def start_bot(self, *, resume: bool = False) -> None:
@@ -468,11 +473,19 @@ def main(argv: list[str] | None = None) -> int:
     logging.getLogger().handlers[0].setLevel(logging.INFO)  # debug goes to the file only
     # Keys sent or dropped and why the cavebot attacks, for diagnosing in game.
     Path("logs").mkdir(exist_ok=True)
-    file = logging.FileHandler("logs/bot.log", mode="w", encoding="utf-8")
+    # Rotating, so the log of the run before a restart is still there.
+    file = logging.handlers.RotatingFileHandler(
+        "logs/bot.log", maxBytes=5_000_000, backupCount=3, encoding="utf-8"
+    )
     file.setFormatter(logging.Formatter("%(asctime)s %(name)s %(message)s"))
     logging.getLogger("moonlight").addHandler(file)
+    logging.getLogger("moonlight").setLevel(logging.INFO)  # state changes, restarts
     logging.getLogger("moonlight.core.safety").setLevel(logging.DEBUG)
     logging.getLogger("moonlight.cavebot.cavebot").setLevel(logging.DEBUG)
+    # The bot thread shares the GIL with the GUI. At the default 5 ms switch
+    # interval a busy GUI (a row redraw) made a numpy/cv2 tick 6.6x slower;
+    # at 0.5 ms 1.2x (measured).
+    sys.setswitchinterval(0.0005)
     app = GuiApp(start_bot=not args.no_bot)
     app.root.mainloop()
     return 0

@@ -1,266 +1,256 @@
-"""Targeting decisions (T20).
+"""Targeting: which battle-list row to click (monster rows, target choice).
 
-Decides which creature to attack, given :class:`moonlight.core.state.WorldState`:
+Every monster in the battle list gets a :class:`MonsterRow`: the row whose
+name matches (ignoring case), or ``default_monster`` for a monster with no
+row or no name yet. So every monster is attacked by default; ``ignore``
+drops it from target choice.
 
-* **ATTACK** (reasons: ``"already targeting ..."`` / ``"first monster ..."`` /
-  ``"weakest monster ..."``): a monster was chosen and is (or must become)
-  the attack target.
-* **SWITCH** (reason ``"switching from ..."``): the currently selected
-  target is not a usable monster (a player, or no longer in the battle
-  list) -> change the attack target.
-* **FLEE** (reason: players on screen): the situation is unsafe -> the
-  loop should disengage instead of fighting.
+:meth:`TargetingDecision.decide` returns a ``select`` action with the
+battle-list row to click, or ``None`` when the selection is already right.
+The loop clicks the row's name through the ``ClickController``
+(:meth:`TargetingDecision.row_center` gives the pixel); the attack key is
+never used. Players are never candidates; the alarms keep their own
+``players_on_screen`` path.
 
-``decide()`` returns ``None`` (idle) when the battle list holds no
-creatures at all.
+A selected target whose HP stands still for ``unreachable_after_seconds`` gets
+one ``step_closer`` action (a unit step toward the nearest creature slot that
+is not adjacent); after the same time again it is ignored for 30 s.
 
-Safety rules (hard, non-negotiable):
-
-* **Never target a player**: player entries are filtered out of the
-  candidate list even if perception mislabels them, and a player currently
-  selected as target is always abandoned in favour of a monster.
-* ``players_on_screen > 0`` with :attr:`TargetingConfig.player_protection`
-  enabled -> ``FLEE``.
-* **Never auto-attack an unknown creature**: an entry without a name
-  (no battle-list name resolver wired -- F-01) may be a player, so it is
-  not a candidate. Until a resolver exists, targeting stays idle.
-* More monsters in the battle list than
-  :attr:`TargetingConfig.max_monsters_to_engage` -> a logged warning; the
-  bot keeps attacking. Fleeing from a crowd needs a real flee route
-  (later work); until then FLEE would only stall the bot while being hit.
-
-Target selection order:
-
-1. The currently selected target, when it is still a monster (matches an
-   entry of ``WorldState.monsters`` case-insensitively).
-2. Otherwise, with :attr:`TargetingConfig.prefer_low_hp` enabled (default),
-   the monster with the lowest ``hp_percent`` (ties keep battle-list
-   order); without it, the first monster in the battle list.
-
-``client_focused`` / ``screen_ok`` gating is the loop's job (it refuses to
-send input without both), so this module does not check them. The module
-is pure with respect to the game: it only reads a (snapshot of)
-:class:`WorldState` and returns a decision. A single decision thread (the
-20 Hz loop) drives this class; there is no internal locking (same as
-GameLoop).
+``client_focused`` / ``screen_ok`` gating is the loop's job. The module only
+reads a snapshot and returns a decision; one decision thread drives it.
 """
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
-from enum import StrEnum
 
 from moonlight.core.state import Monster, WorldState
+from moonlight.healing.healing import check_hotkey
+from moonlight.perception.battle import NAME_START_X, NAME_WIDTH, SLOT_HEIGHT, TOP_PADDING
+from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
+    "MOVEMENTS",
+    "AreaRule",
+    "MonsterRow",
     "TargetingAction",
-    "TargetingActionKind",
     "TargetingConfig",
     "TargetingDecision",
 ]
 
-logger = logging.getLogger("moonlight.targeting.targeting")
+MOVEMENTS = ("follow", "none")
 
-MODES = ("all", "whitelist", "blacklist")
+Rect = tuple[int, int, int, int]
+
+#: Seconds an unreachable target is left alone.
+_IGNORE_SECONDS = 30.0
 
 
-class TargetingActionKind(StrEnum):
-    """Kind of a targeting action (the ``TargetingAction.action`` tokens)."""
+# doc: docs/prs/targeting.md#monster-rows
+@dataclass(frozen=True)
+class MonsterRow:
+    """How one monster kind is fought. ``hotkey`` ``""`` = melee only."""
 
-    ATTACK = "attack"
-    SWITCH = "switch"
-    FLEE = "flee"
+    name: str = ""
+    priority: int = 1
+    ignore: bool = False
+    hotkey: str = ""
+    minimum_mana_percent: float = 0.0
+    movement: str = "follow"
+
+    def validate(self) -> None:
+        """Raise ValueError on a bad priority, movement or hotkey."""
+        where = f"monster row {self.name!r}"
+        if isinstance(self.priority, bool) or self.priority not in range(1, 6):
+            raise ValueError(f"{where}: priority must be 1-5, got {self.priority!r}")
+        if self.movement not in MOVEMENTS:
+            raise ValueError(f"{where}: movement must be one of {MOVEMENTS}, got {self.movement!r}")
+        if self.hotkey:
+            check_hotkey(self.hotkey, where)
+        if not 0.0 <= self.minimum_mana_percent <= 100.0:
+            raise ValueError(f"{where}: minimum_mana_percent must be within 0..100")
+
+
+# doc: docs/prs/targeting.md#area-rules
+@dataclass(frozen=True)
+class AreaRule:
+    """Press ``hotkey`` when this many creature slots touch the player (only while ``enabled``)."""
+
+    hotkey: str
+    minimum_adjacent_monsters: int = 1
+    minimum_mana_percent: float = 0.0
+    enabled: bool = True
+
+    def validate(self) -> None:
+        """Raise ValueError on a bad hotkey, monster count or mana minimum."""
+        where = f"area rule {self.hotkey!r}"
+        check_hotkey(self.hotkey, where)
+        if isinstance(self.minimum_adjacent_monsters, bool) or self.minimum_adjacent_monsters < 1:
+            raise ValueError(f"{where}: minimum_adjacent_monsters must be >= 1")
+        if not 0.0 <= self.minimum_mana_percent <= 100.0:
+            raise ValueError(f"{where}: minimum_mana_percent must be within 0..100")
 
 
 @dataclass(frozen=True)
 class TargetingConfig:
-    """Tunable targeting parameters (defaults are the T20 spec values)."""
+    """Monster rows, the row for everything else, area rules and the delays."""
 
-    max_monsters_to_engage: int = 4
-    """Warn (once per crowd) when more monsters than this are in the battle list."""
+    monsters: tuple[MonsterRow, ...] = ()
+    default_monster: MonsterRow = MonsterRow()
+    area_rules: tuple[AreaRule, ...] = ()
+    attack_cooldown_ms: int = 2000
+    unreachable_after_seconds: float = 8.0
+    #: The client's "Toggle Chase Mode" key; "" = the bot leaves the owner's mode.
+    toggle_chase_hotkey: str = ""
 
-    prefer_low_hp: bool = True
-    """When picking a target, prefer the monster with the lowest HP percent."""
-
-    player_protection: bool = True
-    """Abort (flee) as soon as any player is on screen."""
-
-    mode: str = "all"
-    """``"all"``, ``"whitelist"`` (attack only *creatures*) or ``"blacklist"``
-    (never attack *creatures*)."""
-
-    creatures: tuple[str, ...] = ()
-    """Creature names for *mode*, matched without case."""
-
-    def validate(self) -> TargetingConfig:
-        """Check invariants and return self (fail fast, loop-style validation).
-
-        Raises:
-            ValueError: If ``max_monsters_to_engage`` is not a positive integer.
-        """
-        if not isinstance(self.max_monsters_to_engage, int) or isinstance(
-            self.max_monsters_to_engage, bool
-        ):
-            raise ValueError("max_monsters_to_engage must be an int")
-        if self.max_monsters_to_engage < 1:
-            raise ValueError("max_monsters_to_engage must be >= 1")
-        if self.mode not in MODES:
-            raise ValueError(f"mode must be one of {MODES}, got {self.mode!r}")
-        return self
+    def validate(self) -> None:
+        """Raise ValueError on a bad row or rule, a duplicate name or a bad delay."""
+        if self.default_monster.name:
+            raise ValueError("targeting.default_monster: name must be empty")
+        self.default_monster.validate()
+        seen: set[str] = set()
+        for row in self.monsters:
+            if not row.name.strip():
+                raise ValueError("targeting.monsters: every row needs a name")
+            if row.name.lower() in seen:
+                raise ValueError(f"targeting.monsters: duplicate name {row.name!r} (ignoring case)")
+            seen.add(row.name.lower())
+            row.validate()
+        for rule in self.area_rules:
+            rule.validate()
+        if isinstance(self.attack_cooldown_ms, bool) or self.attack_cooldown_ms < 0:
+            raise ValueError("targeting.attack_cooldown_ms must be >= 0")
+        if self.unreachable_after_seconds <= 0:
+            raise ValueError("targeting.unreachable_after_seconds must be > 0")
+        if self.toggle_chase_hotkey:
+            check_hotkey(self.toggle_chase_hotkey, "targeting.toggle_chase_hotkey")
 
 
 @dataclass(frozen=True)
 class TargetingAction:
-    """One targeting decision: what to do about the attack target and why.
+    """``"select"``: click battle-list row ``battle_list_row``.
 
-    Attributes:
-        target_name: Creature to act on; empty string for ``FLEE`` actions.
-        action: ``attack`` / ``switch`` / ``flee``.
-        reason: Human-readable justification (logging / UI).
+    ``"step_closer"``: press one arrow key for the unit step ``step``.
     """
 
-    target_name: str
-    action: TargetingActionKind
-    reason: str
+    kind: str
+    battle_list_row: int
+    step: tuple[int, int] = (0, 0)
+    reason: str = ""
 
 
+def _step_toward_creature(slots: tuple[tuple[int, int], ...]) -> tuple[int, int] | None:
+    """Unit arrow step toward the nearest slot not adjacent to the player, or None."""
+    px, py = PLAYER_SLOT
+    far = [(x - px, y - py) for x, y in slots if max(abs(x - px), abs(y - py)) > 1]
+    if not far:
+        return None
+    dx, dy = min(far, key=lambda d: (max(abs(d[0]), abs(d[1])), abs(d[0]) + abs(d[1])))
+    if abs(dx) >= abs(dy):
+        return (1 if dx > 0 else -1, 0)
+    return (0, 1 if dy > 0 else -1)
+
+
+# doc: docs/prs/targeting.md#target-choice
+# doc: docs/prs/targeting.md#unreachable-drop
 class TargetingDecision:
-    """Decides which creature to attack.
+    """Pick the battle-list row to attack; see the module docstring."""
 
-    Typical usage (wired into the loop)::
+    def __init__(
+        self,
+        config: TargetingConfig | None = None,
+        battle_list_region: Rect | None = None,
+        ui_scale: float = 1.0,
+    ) -> None:
+        self.config = config if config is not None else TargetingConfig()
+        self.config.validate()
+        self._rows = {row.name.lower(): row for row in self.config.monsters}
+        self._battle_list_region = battle_list_region
+        self._ui_scale = ui_scale
+        # HP watch on the selected target: its key, since when, and whether
+        # the step closer was already taken.
+        self._watched: tuple[str, float] | None = None
+        self._watched_since = 0.0
+        self._stepped = False
+        self._ignored_until: dict[tuple[str, float], float] = {}
 
-        targeting = TargetingDecision()   # or TargetingDecision(custom_config)
-        action = targeting.decide(state.snapshot())  # TargetingAction | None
-        # loop maps the action onto input: press/hold the attack key on
-        # target_name, or disengage on flee.
+    def row_for(self, monster: Monster) -> MonsterRow:
+        """The row for *monster*: its name's row, else ``default_monster``."""
+        return self._rows.get(monster.name.lower(), self.config.default_monster)
 
-    ``decide()`` is pure with respect to the game: it only reads the
-    (snapshot of) :class:`WorldState` and returns a decision.
-
-    Thread-safety contract: a single decision thread (the 20 Hz loop)
-    drives this class; there is no internal locking (same as GameLoop).
-    """
-
-    def __init__(self, config: TargetingConfig | None = None) -> None:
-        """Create the targeting decision engine.
-
-        Args:
-            config: Targeting parameters; defaults to :class:`TargetingConfig`.
-
-        Raises:
-            ValueError: If the config is invalid.
-        """
-        cfg = config if config is not None else TargetingConfig()
-        cfg.validate()
-        self.config = cfg
-        self._crowded = False  # warn once per "too many monsters" episode
-
-    # -- decision ------------------------------------------------------------
-
-    def decide(self, state: WorldState) -> TargetingAction | None:
-        """Decide what to do about the attack target, given the world state.
-
-        Returns:
-            A :class:`TargetingAction` for ``attack`` / ``switch`` /
-            ``flee``, or ``None`` when the battle list is empty (idle).
-
-        Safety rules are checked first and win over any selection logic:
-        players on screen (with protection enabled) -> ``flee``; a player
-        is never returned as ``target_name``. More monsters than
-        ``max_monsters_to_engage`` only logs a warning.
-        """
-        if self.config.player_protection and state.players_on_screen > 0:
-            logger.debug(
-                "fleeing: %d player(s) on screen", state.players_on_screen
-            )
-            return TargetingAction(
-                target_name="",
-                action=TargetingActionKind.FLEE,
-                reason=(
-                    f"{state.players_on_screen} player(s) on screen "
-                    f"(player protection active)"
-                ),
-            )
-
-        monsters = self._candidate_monsters(state)
-        if not monsters:
-            logger.debug("no monsters in battle list; idle")
-            return None
-
-        crowded = len(monsters) > self.config.max_monsters_to_engage
-        if crowded and not self._crowded:
-            logger.warning(
-                "%d monsters exceed max_monsters_to_engage=%d; still attacking "
-                "(no flee route)",
-                len(monsters),
-                self.config.max_monsters_to_engage,
-            )
-        self._crowded = crowded
-
-        selected = self._valid_selected(state.selected_target, monsters)
-        if selected is not None:
-            logger.debug("continuing on current target %r", selected.name)
-            return TargetingAction(
-                target_name=selected.name,
-                action=TargetingActionKind.ATTACK,
-                reason=f"already targeting {selected.name!r}",
-            )
-
-        target = self._choose_target(monsters)
-        if state.selected_target is None:
-            reason = self._selection_reason(target)
-            kind = TargetingActionKind.ATTACK
-        else:
-            reason = (
-                f"current selection {state.selected_target.name!r} is not a "
-                f"valid monster; switching to {target.name!r}"
-            )
-            kind = TargetingActionKind.SWITCH
-        logger.debug("targeting %r (%s)", target.name, kind.value)
-        return TargetingAction(target_name=target.name, action=kind, reason=reason)
-
-    # -- helpers ---------------------------------------------------------------
-
-    def _candidate_monsters(self, state: WorldState) -> list[Monster]:
-        """Monsters that may be targeted: never a player, never a nameless
-        entry, and only what the whitelist / blacklist allows."""
-        listed = {name.lower() for name in self.config.creatures}
-        keep = self.config.mode != "whitelist"
-        return [
-            m
-            for m in state.monsters
-            if m.name
-            and not m.is_player
-            and (self.config.mode == "all" or (m.name.lower() in listed) != keep)
-        ]
+    def is_unreachable(self, monster: Monster) -> bool:
+        """True while *monster* is on the 30 s ignore list."""
+        return self._key(monster) in self._ignored_until
 
     @staticmethod
-    def _valid_selected(
-        selected: Monster | None, monsters: list[Monster]
-    ) -> Monster | None:
-        """The current selection when it is a monster still in the battle list.
+    def _key(monster: Monster) -> tuple[str, float]:
+        # ponytail: two same-kind monsters at the same HP count as one; the
+        # battle list gives no ids.
+        return (monster.name_hash, monster.hp_percent)
 
-        A selection counts as valid when it is not flagged as a player and
-        matches one of *monsters* by name (case-insensitive).
-        """
-        if selected is None or selected.is_player:
+    def _watch_hp(self, state: WorldState, now: float) -> TargetingAction | None:
+        """Step closer once when the selected target's HP stands still, then ignore it."""
+        selected = state.selected_target
+        if selected is None or self.is_unreachable(selected):
+            self._watched = None
             return None
-        for monster in monsters:
-            if monster.name.lower() == selected.name.lower():
-                return monster
+        key = self._key(selected)
+        if key != self._watched:
+            self._watched, self._watched_since, self._stepped = key, now, False
+            return None
+        if now - self._watched_since < self.config.unreachable_after_seconds:
+            return None
+        self._watched_since = now
+        if not self._stepped:
+            self._stepped = True
+            step = _step_toward_creature(state.creature_slots)
+            if step is None:
+                return None
+            reason = f"{selected.name or '?'} hp stuck at {selected.hp_percent:.0f}, step closer"
+            return TargetingAction("step_closer", selected.battle_list_row, step, reason)
+        self._ignored_until[key] = now + _IGNORE_SECONDS
+        self._watched = None
         return None
 
-    def _choose_target(self, monsters: list[Monster]) -> Monster:
-        """Pick the monster to engage from the candidate list."""
-        if self.config.prefer_low_hp:
-            return min(monsters, key=lambda monster: monster.hp_percent)
-        return monsters[0]
+    def decide(self, state: WorldState, now: float) -> TargetingAction | None:
+        """The action to take, or None when the selection is already right."""
+        self._ignored_until = {k: end for k, end in self._ignored_until.items() if end > now}
+        step_closer = self._watch_hp(state, now)
+        if step_closer is not None:
+            return step_closer
+        candidates = [
+            m
+            for m in state.monsters
+            if not m.is_player and not self.row_for(m).ignore and not self.is_unreachable(m)
+        ]
+        if not candidates:
+            return None
+        if state.selected_target in candidates:
+            return None  # finish the current target, even when a higher priority one comes
+        best = min(
+            candidates,
+            key=lambda m: (-self.row_for(m).priority, m.hp_percent, m.battle_list_row),
+        )
+        priority = self.row_for(best).priority
+        reason = f"{best.name or '?'} priority {priority}, hp {best.hp_percent:.0f}"
+        return TargetingAction("select", best.battle_list_row, reason=reason)
 
-    def _selection_reason(self, target: Monster) -> str:
-        """Reason for a freshly chosen (not pre-selected) target."""
-        if self.config.prefer_low_hp:
-            return (
-                f"weakest monster: {target.name!r} at {target.hp_percent:.0f}% HP"
-            )
-        return f"first monster in battle list: {target.name!r}"
+    def row_center(self, battle_list_row: int) -> tuple[int, int]:
+        """Frame pixel at the middle of *battle_list_row*'s name.
+
+        Scales the slot geometry as :class:`BattleReader` does.
+
+        Raises:
+            ValueError: If no ``battle_list`` region was given.
+        """
+        if self._battle_list_region is None:
+            raise ValueError("targeting has no battle_list region to click in")
+        left, top, _, _ = self._battle_list_region
+
+        def px(value: int) -> int:
+            return round(value * self._ui_scale)
+
+        slot = px(SLOT_HEIGHT)
+        x = left + px(NAME_START_X) + px(NAME_WIDTH) // 2
+        y = top + px(TOP_PADDING) + battle_list_row * slot + slot // 2
+        return x, y

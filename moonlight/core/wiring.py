@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from moonlight.hardware.clicker import ClickController
     from moonlight.perception.capture import ScreenCapture
     from moonlight.perception.worldmap import WorldMap
+    from moonlight.targeting.seen_monsters import SeenMonsters
 
 __all__ = [
     "MODULE_REGIONS",
@@ -57,8 +58,7 @@ logger = logging.getLogger(__name__)
 #: report as MISSING until those are calibrated.
 MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "healing": ("hp_bar", "mp_bar", "status_icons"),
-    "targeting": ("battle_list",),
-    "attack_spells": ("battle_list", "mp_bar"),
+    "targeting": ("battle_list", "game_grid"),
     "cavebot": ("minimap", "floor_indicator", "game_grid"),
     "looting": ("loot_window",),
     "refill": ("capacity",),
@@ -82,14 +82,14 @@ def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect
     """The window regions a tick reads, for ``ScreenCapture.get_frame`` (P2).
 
     ``None`` (grab the full window) when any of them is not calibrated.
-    ``game_grid`` is left out unless the cavebot walks with keys and scans
-    it for creatures; for clicks it is only geometry, and the clicker grabs
-    its own small cursor ROI.
+    ``game_grid`` is left out unless targeting or the cavebot (walking with
+    keys) scans it for creatures; for clicks it is only geometry, and the
+    clicker grabs its own small cursor ROI.
     """
     names = set(_PERCEIVE_REGIONS)
     for module in _enabled_modules(config):
         names.update(MODULE_REGIONS.get(module, ()))
-    if not config.walk_keys:
+    if not config.walk_keys and config.targeting is None:
         names.discard("game_grid")
     if any(name not in profile.regions for name in names):
         return None
@@ -221,6 +221,9 @@ def make_perceive(
     start: Position | None = None,
     map_dir: Path = MAP_DIR,
     conditions_dir: Path = CONDITION_TEMPLATES_DIR,
+    seen_monsters: SeenMonsters | None = None,
+    creature_grid: Rect | None = None,
+    client_is_foreground: Callable[[], bool] | None = None,
 ) -> Callable[[], None]:
     """Return a callback doing one capture -> perception -> WorldState pass.
 
@@ -228,22 +231,33 @@ def make_perceive(
     ``screen_ok = False``, which gates every input in the loop.
 
     The position comes from matching the radar on the map in *map_dir*;
-    *start* is the last known position, searched first.
+    *start* is the last known position, searched first. *seen_monsters*
+    fills the battle entries' names from their name hashes. With
+    *creature_grid* (the ``game_grid`` region) the creature slots are scanned
+    into ``creature_slots``. While *client_is_foreground* is False no new name
+    hash is learned (another window may cover the battle list).
     """
     from moonlight.perception.battle import BattleReader, entries_to_state
+    from moonlight.perception.chase_mode import read_chase_mode
+    from moonlight.perception.creatures import find_creatures
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
     from moonlight.perception.status_icons import StatusIconReader
     from moonlight.perception.vitals import VitalsReader
 
     vitals = VitalsReader(profile)
-    battle = BattleReader(profile)
+    battle = BattleReader(profile, seen_monsters=seen_monsters)
     floor = FloorReader(profile)
     status_icons: StatusIconReader | None = None
     if "status_icons" in profile.regions:
         status_icons = StatusIconReader(profile, conditions_dir)
     else:
         logger.warning("no status_icons region: condition icons are not read")
+    chase_buttons: Rect | None = None
+    if "chase_buttons" in profile.regions:
+        chase_buttons = profile.get_region("chase_buttons").to_tuple
+    else:
+        logger.warning("no chase_buttons region: the chase mode is not set")
     # At 100% the radar draws 1 or 2 px per tile, by the player's minimap zoom.
     unit = max(1, round(profile.ui_scale))
     minimap = MinimapReader(
@@ -260,10 +274,14 @@ def make_perceive(
             if not focused:
                 raise RuntimeError("client not focused")
             frame = frame_provider()
+            if seen_monsters is not None and client_is_foreground is not None:
+                seen_monsters.learns_new_names = client_is_foreground()
             hp, mp = vitals.read_vitals(frame)
             monsters, selected, players = entries_to_state(battle.read_battle_list(frame))
+            slots = tuple(find_creatures(frame, creature_grid)) if creature_grid else ()
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
+            chase_mode = read_chase_mode(frame, chase_buttons) if chase_buttons else None
             conditions = (
                 status_icons.read_active_conditions(frame) if status_icons else frozenset()
             )
@@ -280,7 +298,9 @@ def make_perceive(
             state.monsters = monsters
             state.selected_target = selected
             state.players_on_screen = players
+            state.creature_slots = slots
             state.active_status_icons = conditions
+            state.chase_mode = chase_mode
             state.position_status = (
                 "lost" if minimap.lost else "estimated" if minimap.estimated else ""
             )
@@ -331,6 +351,7 @@ def build_loop(
     *,
     frame_provider: FrameProvider,
     focus_check: Callable[[], bool] | None = None,
+    client_is_foreground: Callable[[], bool] | None = None,
     state: WorldState | None = None,
     clock: Callable[[], float] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
@@ -364,6 +385,11 @@ def build_loop(
             roi_provider=roi_provider, window_origin=window_origin, on_clicker=on_clicker,
         )
 
+    from moonlight.calibration.calibrate import default_profiles_dir
+    from moonlight.targeting.seen_monsters import SeenMonsters
+
+    profiles_dir = config.profiles_dir or default_profiles_dir()
+    seen_monsters = SeenMonsters(profiles_dir / f"{config.profile}.seen_monsters.json")
     current = config
     m = modules(config, None)
     loop = GameLoop(
@@ -378,6 +404,13 @@ def build_loop(
             focus_check,
             # Search near where the last loop or the stopped-bot reader was.
             start=state.position,
+            seen_monsters=seen_monsters,
+            creature_grid=(
+                profile.get_region("game_grid").to_tuple
+                if config.targeting is not None or config.walk_keys
+                else None
+            ),
+            client_is_foreground=client_is_foreground,
         ),
         clock=clock,
         sleep_fn=sleep_fn,
@@ -393,6 +426,7 @@ def build_loop(
         return True
 
     loop.reconfigure = reconfigure
+    loop.seen_monsters = seen_monsters
     return loop
 
 
@@ -409,13 +443,18 @@ def needs_restart(old: BotConfig, new: BotConfig) -> bool:
     """
     # doc: docs/prs/gui-calibration.md#live-apply
     names = [f.name for f in fields(old) if f.name not in LIVE_FIELDS]
-    if any(getattr(old, n) != getattr(new, n) for n in names):
+    changed = [n for n in names if getattr(old, n) != getattr(new, n)]
+    if changed:
+        logger.info("bot restarts: changed %s", ", ".join(changed))
         return True
 
     def regions(cfg: BotConfig) -> set[str]:
         return {r for m in _enabled_modules(cfg) for r in MODULE_REGIONS[m]}
 
-    return not regions(new) <= regions(old) | set(_PERCEIVE_REGIONS) | {"game_grid"}
+    missing = regions(new) - regions(old) - set(_PERCEIVE_REGIONS) - {"game_grid"}
+    if missing:
+        logger.info("bot restarts: a module now reads %s", ", ".join(sorted(missing)))
+    return bool(missing)
 
 
 def build_modules(
@@ -440,10 +479,9 @@ def build_modules(
     from moonlight.alarms.alarms import AlarmDecision
     from moonlight.extras.buffs import BuffManager
     from moonlight.healing.healing import HealingDecision
-    from moonlight.targeting.attack_spells import AttackSpells
-    from moonlight.targeting.targeting import TargetingDecision
+    from moonlight.targeting.attack_hotkeys import AttackHotkeys
+    from moonlight.targeting.targeting import TargetingConfig, TargetingDecision
 
-    combos = config.spell_combos
     m = DecisionModules()
     prev_cfg, prev = old if old is not None else (None, None)
 
@@ -456,7 +494,8 @@ def build_modules(
         for name, keys in (
             ("healing", ("healing",)),
             ("targeting", ("targeting",)),
-            ("attack_spells", ("attack_spells", "hotkeys")),
+            ("stuck_targeting", ("targeting", "off", "walk_keys", "cavebot")),
+            ("attack_hotkeys", ("targeting", "off")),
             ("buffs", ("buffs", "hotkeys")),
             ("alarms", ("alarms",)),
         ):
@@ -467,25 +506,36 @@ def build_modules(
     if config.healing is not None and m.healing is None:
         m.healing = HealingDecision(config.healing, clock=clock)
     if config.targeting is not None and m.targeting is None:
-        m.targeting = TargetingDecision(config.targeting)
-        # F-01 (interim): no name resolver is wired yet (T34), so every
-        # battle entry is a nameless/UNKNOWN creature. Targeting treats
-        # unknown entries as UNKNOWN and never auto-attacks them; say so
-        # explicitly at start rather than failing silently.
-        logger.warning(
-            "targeting is enabled but no name resolver is wired (T34); "
-            "unknown-named battle entries are treated as UNKNOWN and will "
-            "NOT be auto-attacked"
+        m.targeting = TargetingDecision(
+            config.targeting,
+            profile.get_region("battle_list").to_tuple,
+            profile.ui_scale,
         )
-    if config.attack_spells is not None and m.attack_spells is None:
-        m.attack_spells = AttackSpells(config.attack_spells, combos, clock=clock)
+    # doc: docs/prs/targeting.md#stuck-targeting
+    # The owner's rows (kept while targeting is off) with every row attacking.
+    rows = config.targeting or config.off.get("targeting") or TargetingConfig()
+    if config.walk_keys and config.cavebot is not None and m.stuck_targeting is None:
+        m.stuck_targeting = TargetingDecision(
+            replace(
+                rows,
+                monsters=tuple(replace(row, ignore=False) for row in rows.monsters),
+                default_monster=replace(rows.default_monster, ignore=False),
+            ),
+            profile.get_region("battle_list").to_tuple,
+            profile.ui_scale,
+        )
+    if (config.targeting is not None or m.stuck_targeting) and m.attack_hotkeys is None:
+        m.attack_hotkeys = AttackHotkeys(rows)
     if config.buffs is not None and m.buffs is None:
-        m.buffs = BuffManager(config.buffs, spell_combos=combos, clock=clock)
+        m.buffs = BuffManager(config.buffs, key_combos=config.hotkeys or {}, clock=clock)
     if config.alarms is not None and m.alarms is None:
         m.alarms = AlarmDecision(config.alarms, clock=clock)
 
-    walkers = config.cavebot is not None or config.looting is not None
-    if walkers and m.cavebot is None and m.looting is None:
+    # One clicker (one mouse) for every module that clicks.
+    clicks = any(c is not None for c in (config.cavebot, config.looting, config.targeting))
+    if clicks and prev is not None and same("clicker", "templates_dir"):
+        m.clicker = prev.clicker
+    if clicks and m.clicker is None:
         from moonlight.hardware.clicker import ClickController
         from moonlight.perception.cursor import CursorReader, OsCursorReader
 
@@ -496,7 +546,7 @@ def build_modules(
             if not cursor and window_origin is not None
             else CursorReader(profile, cursor_templates=cursor or None)
         )
-        clicker = ClickController(
+        m.clicker = ClickController(
             backend,
             cursor_reader,
             frames,
@@ -509,7 +559,11 @@ def build_modules(
             ),
         )
         if on_clicker is not None:
-            on_clicker(clicker)
+            on_clicker(m.clicker)
+    walkers = config.cavebot is not None or config.looting is not None
+    if walkers and m.cavebot is None and m.looting is None:
+        assert m.clicker is not None
+        clicker = m.clicker
         if config.cavebot is not None:
             from moonlight.cavebot.cavebot import Cavebot
             from moonlight.cavebot.pathing import CostMap
@@ -527,7 +581,6 @@ def build_modules(
                 walk_keys=config.walk_keys,
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
                 frames=frames,
-                attack_combo=config.loop.attack_combo,
                 clock=clock,
             )
             if prev is None or prev.cavebot is None:

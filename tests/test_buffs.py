@@ -58,13 +58,13 @@ def make_state(buffs: dict[str, float] | None = None) -> WorldState:
 def make_manager(
     config: BuffManagerConfig | None = None,
     clock: FakeClock | None = None,
-    spell_combos: dict[str, str] | None = None,
+    key_combos: dict[str, str] | None = None,
 ) -> tuple[BuffManager, FakeClock]:
     clk = clock if clock is not None else FakeClock()
     manager = BuffManager(
         config,
         clock=clk,
-        spell_combos=spell_combos if spell_combos is not None else {},
+        key_combos=key_combos if key_combos is not None else {},
     )
     return manager, clk
 
@@ -128,9 +128,9 @@ class TestConfigValidation:
 
     def test_invalid_spell_combo_rejected(self) -> None:
         with pytest.raises(ValueError):
-            BuffManager(spell_combos={"utego": "ctrl alt"})
+            BuffManager(key_combos={"utego": "ctrl alt"})
         with pytest.raises(ValueError):
-            BuffManager(spell_combos={"utego": ""})
+            BuffManager(key_combos={"utego": ""})
 
 
 # -- track(): missing buffs ------------------------------------------------------
@@ -326,7 +326,7 @@ class TestCooldowns:
 
     def test_cooldown_blocks_immediate_repeat(self) -> None:
         combos = {"utego": "f3", "exori flamatio": "f4"}
-        manager, _ = make_manager(standard_config(), spell_combos=combos)
+        manager, _ = make_manager(standard_config(), key_combos=combos)
         backend = FakeInput()
         # First tick: speed cast sent.
         assert manager.track_and_send(make_state(buffs={}), backend) is not None
@@ -341,7 +341,7 @@ class TestCooldowns:
         manager = BuffManager(
             BuffManagerConfig(buffs=[SPEED], cast_cooldown_ms=500),
             clock=clk,
-            spell_combos=combos,
+            key_combos=combos,
         )
         backend = FakeInput()
         manager.track_and_send(make_state(buffs={}), backend)
@@ -355,7 +355,7 @@ class TestCooldowns:
 
     def test_cooldown_keys_are_independent(self) -> None:
         combos = {"utego": "f3", "exori flamatio": "f4"}
-        manager, _ = make_manager(standard_config(), spell_combos=combos)
+        manager, _ = make_manager(standard_config(), key_combos=combos)
         backend = FakeInput()
         manager.track_and_send(make_state(buffs={}), backend)  # speed sent
         # Speed is on cooldown, but fire protection's own key is free ->
@@ -371,7 +371,7 @@ class TestCooldowns:
         manager = BuffManager(
             BuffManagerConfig(buffs=[SPEED], cast_cooldown_ms=1000),
             clock=clk,
-            spell_combos=combos,
+            key_combos=combos,
         )
         backend = FakeInput()
         action = manager.track(make_state(buffs={}))[0]
@@ -398,7 +398,7 @@ class TestCooldowns:
 class TestSend:
     def test_send_with_combo_mapping(self) -> None:
         combos = {"exori flamatio": "f4"}
-        manager, _ = make_manager(BuffManagerConfig(buffs=[FIRE]), spell_combos=combos)
+        manager, _ = make_manager(BuffManagerConfig(buffs=[FIRE]), key_combos=combos)
         backend = FakeInput()
         action = manager.track(make_state(buffs={}))[0]
         assert manager.send(action, backend) is True
@@ -406,7 +406,7 @@ class TestSend:
         assert backend.last_reply == "OK"
 
     def test_send_without_combo_mapping_declines(self) -> None:
-        manager, _ = make_manager(BuffManagerConfig(buffs=[SPEED]), spell_combos={})
+        manager, _ = make_manager(BuffManagerConfig(buffs=[SPEED]), key_combos={})
         backend = FakeInput()
         action = manager.track(make_state(buffs={}))[0]
         assert manager.send(action, backend) is False
@@ -414,7 +414,7 @@ class TestSend:
 
     def test_send_refuses_while_on_cooldown(self) -> None:
         combos = {"utego": "f3"}
-        manager, _ = make_manager(BuffManagerConfig(buffs=[SPEED]), spell_combos=combos)
+        manager, _ = make_manager(BuffManagerConfig(buffs=[SPEED]), key_combos=combos)
         backend = FakeInput()
         action = manager.track(make_state(buffs={}))[0]
         assert manager.send(action, backend) is True
@@ -424,7 +424,7 @@ class TestSend:
 
     def test_track_and_send_end_to_end(self) -> None:
         combos = {"utego": "f3", "exori flamatio": "f4"}
-        manager, _ = make_manager(standard_config(), spell_combos=combos)
+        manager, _ = make_manager(standard_config(), key_combos=combos)
         backend = FakeInput()
         action = manager.track_and_send(make_state(buffs={}), backend)
         assert action is not None
@@ -437,7 +437,7 @@ class TestSend:
 
     def test_track_and_send_sends_highest_priority_only(self) -> None:
         combos = {"utego": "f3", "exori flamatio": "f4", "anemo": "f5"}
-        manager, _ = make_manager(standard_config(), spell_combos=combos)
+        manager, _ = make_manager(standard_config(), key_combos=combos)
         backend = FakeInput()
         manager.track_and_send(make_state(buffs={}), backend)
         assert backend.sent_lines == ["K f3"]  # speed, not fire/luck
@@ -473,7 +473,7 @@ class TestIntegrationScenarios:
         manager = BuffManager(
             BuffManagerConfig(buffs=[SPEED], cast_cooldown_ms=1000),
             clock=clk,
-            spell_combos=combos,
+            key_combos=combos,
         )
         backend = FakeInput()
 

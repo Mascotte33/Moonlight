@@ -115,7 +115,7 @@ def test_2_fail_closed_when_window_unfocused() -> None:
     for _ in range(5):
         gl.tick()
     assert inp.sent_lines == []  # wanted to heal, but sent nothing
-    assert gl.get_stats()["actions_dropped_unfocused"] == 15  # spell, potion, attack per tick
+    assert gl.get_stats()["actions_dropped_unfocused"] == 10  # spell and potion per tick
 
 
 def test_3_fail_closed_when_screen_not_ok() -> None:

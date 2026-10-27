@@ -83,6 +83,12 @@ def _no_owner_anchors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterat
     autofind._anchor.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _no_display(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The clicker's screen size comes from mss, which needs a display CI lacks."""
+    monkeypatch.setattr("moonlight.core.wiring._absolute_screen", lambda: (0, 0, 1920, 1080))
+
+
 @pytest.fixture()
 def state() -> WorldState:
     return WorldState()
@@ -194,7 +200,9 @@ def test_start_passes_window_title_to_capture(
     seen: list[str] = []
 
     class SpyCapture(capture.ScreenCapture):
-        def __init__(self, window_title: str = capture.TIBIA_WINDOW_TITLE) -> None:
+        def __init__(
+            self, backend: str = "mss", window_title: str = capture.TIBIA_WINDOW_TITLE
+        ) -> None:
             seen.append(window_title)
             super().__init__(window_title=window_title)
 

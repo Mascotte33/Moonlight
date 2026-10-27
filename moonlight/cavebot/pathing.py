@@ -5,9 +5,11 @@
 (BGR 0, 255, 255) are blocked or unexplored; every other pixel is walkable.
 A missing tile counts as blocked.
 
-:func:`next_step` runs a 4-way breadth-first search in a window around the
-player and the goal and returns the first step and the path length. Arrow keys walk
-only in 4 directions, so diagonals are not searched.
+:func:`next_step` runs a shortest-path search in a window around the
+player and the goal and returns the first step and the path cost. A
+straight step costs 1, a diagonal step ``DIAGONAL_STEP_COST`` (Tibia walks
+a diagonal about three times slower), so a diagonal is taken only where it
+saves time, such as past a monster in a one-tile corridor.
 
 # doc: docs/prs/keys-walking.md#walk-cost-map
 # doc: docs/prs/keys-walking.md#pathfinder
@@ -15,20 +17,25 @@ only in 4 directions, so diagonals are not searched.
 
 from __future__ import annotations
 
+import heapq
 import re
-from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-__all__ = ["CostMap", "next_step"]
+__all__ = ["DIAGONAL_STEP_COST", "CostMap", "next_step"]
 
 _TILE = 256
 _NAME = re.compile(r"^(\d+)_(\d+)_(\d+)$")
 _YELLOW = (0, 255, 255)
-_STEPS = ((0, -1), (0, 1), (-1, 0), (1, 0))
+DIAGONAL_STEP_COST = 3
+_STEPS = (
+    ((0, -1), 1), ((0, 1), 1), ((-1, 0), 1), ((1, 0), 1),
+    ((-1, -1), DIAGONAL_STEP_COST), ((1, -1), DIAGONAL_STEP_COST),
+    ((-1, 1), DIAGONAL_STEP_COST), ((1, 1), DIAGONAL_STEP_COST),
+)  # fmt: skip
 
 
 class CostMap:
@@ -65,7 +72,7 @@ def next_step(
     *,
     margin: int = 30,
 ) -> tuple[tuple[int, int], int] | None:
-    """``((dx, dy), length)`` of a shortest path on *start*'s floor, or ``None``.
+    """``((dx, dy), cost)`` of a cheapest path on *start*'s floor, or ``None``.
 
     The goal tile counts as walkable (a waypoint may sit on an unexplored
     tile). ``None`` when there is no path inside the search window.
@@ -76,21 +83,27 @@ def next_step(
     m = margin
     x0, x1 = min(sx, gx) - m, max(sx, gx) + m
     y0, y1 = min(sy, gy) - m, max(sy, gy) + m
-    # ponytail: BFS ignores the gray walk costs; Dijkstra on them if
-    # routes cut through slow ground.
-    first: dict[tuple[int, int], tuple[int, int] | None] = {(sx, sy): None}
-    queue = deque([(sx, sy, 0)])
+    best_cost = {(sx, sy): 0}
+    first_step: dict[tuple[int, int], tuple[int, int] | None] = {(sx, sy): None}
+    queue: list[tuple[int, int, int]] = [(0, sx, sy)]
     while queue:
-        x, y, n = queue.popleft()
-        for dx, dy in _STEPS:
+        cost, x, y = heapq.heappop(queue)
+        if (x, y) == (gx, gy):
+            step = first_step[(x, y)]
+            assert step is not None  # start != goal
+            return step, cost
+        if cost > best_cost[(x, y)]:
+            continue  # a cheaper way here was already expanded
+        for (dx, dy), step_cost in _STEPS:
             nx, ny = x + dx, y + dy
-            if (nx, ny) in first or not (x0 <= nx <= x1 and y0 <= ny <= y1):
+            new_cost = cost + step_cost
+            if new_cost >= best_cost.get((nx, ny), new_cost + 1):
+                continue
+            if not (x0 <= nx <= x1 and y0 <= ny <= y1):
                 continue
             if (nx, ny) != (gx, gy) and not walkable(nx, ny, z):
                 continue
-            step = first[(x, y)] or (dx, dy)
-            if (nx, ny) == (gx, gy):
-                return step, n + 1
-            first[(nx, ny)] = step
-            queue.append((nx, ny, n + 1))
+            best_cost[(nx, ny)] = new_cost
+            first_step[(nx, ny)] = first_step[(x, y)] or (dx, dy)
+            heapq.heappush(queue, (new_cost, nx, ny))
     return None
