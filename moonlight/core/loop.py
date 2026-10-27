@@ -10,14 +10,14 @@ state the bot is in, using a strict priority order (highest wins):
                    loop keeps ticking (perceive only) and resumes on its own
                    once perception is healthy again.
 3. ALARM           Player on screen, PM open, fast HP drop, a critical
-                   alarm, or a cavebot/refill alarm: stop attack/loot/walk;
+                   alarm, or a cavebot alarm: stop attack/loot/walk;
                    healing continues. Entering ALARM alerts the operator.
 4. ATTACK          A target is selected (or, with targeting wired, the
                    targeting module chose one).
 5. LOOT            A kill is waiting to be looted (looting wired).
-6. REFILL          Cap is full or a refill trip is running (refill wired).
-7. MOVE            A waypoint route is active (cavebot / move_provider).
-8. IDLE            Nothing to do.
+6. MOVE            A waypoint route is active (cavebot / move_provider);
+                   the town trip is part of the route (refill).
+7. IDLE            Nothing to do.
 
 Healing is not a state: the healing module runs first in every non-KILL
 tick (see below). When healing is off, nothing heals.
@@ -45,12 +45,10 @@ without it the loop keeps its built-in behaviour.
   sent this tick skips the rest of the dispatch.
   # doc: docs/prs/healing.md#healing-rules
 * **buffs** -- ``BuffManager.track`` + ``send`` of the top cast in the
-  ATTACK/LOOT/REFILL/MOVE/IDLE states.
+  ATTACK/LOOT/MOVE/IDLE states.
 * **looting** -- a selected target that vanishes from the battle list is
   reported via ``Looting.on_target_died``; ``should_loot`` -> LOOT,
   which runs ``Looting.step``.
-* **refill** -- ``should_refill`` / ``start`` / ``step``; when the trip
-  is done the cavebot route is resumed.
 * **cavebot** -- default ``move_provider``/``move_action``
   (``is_active`` / ``step``).
 
@@ -73,7 +71,7 @@ Safety invariants (re-checked on every tick, never just at startup):
 * **Rate limit** -- at most ``max_actions_per_second`` serial commands
   (default 10/s sustained), counted at the wire by
   :class:`~moonlight.core.safety.RateLimitedInput`, so multi-command actions (clicker moves,
-  rope hotkey + click, MOVE/REFILL steps) cannot exceed it. Heals have
+  rope hotkey + click, MOVE steps) cannot exceed it. Heals have
   priority: non-heal commands leave one token in reserve, so a heal never
   waits behind an attack (worst case 12 commands in the first second,
   10/s after). Releases are never rate-limited.
@@ -115,7 +113,6 @@ if TYPE_CHECKING:
     from moonlight.hardware.clicker import ClickController
     from moonlight.healing.healing import HealingDecision
     from moonlight.looting.looting import Looting
-    from moonlight.refill.refill import Refill
     from moonlight.targeting.attack_hotkeys import AttackHotkeys
     from moonlight.targeting.seen_monsters import SeenMonsters
     from moonlight.targeting.targeting import TargetingAction, TargetingDecision
@@ -180,7 +177,6 @@ class BotState(StrEnum):
     ALARM = "alarm"
     ATTACK = "attack"
     LOOT = "loot"
-    REFILL = "refill"
     MOVE = "move"
     IDLE = "idle"
 
@@ -210,7 +206,6 @@ class DecisionModules:
     alarms: AlarmDecision | None = None
     cavebot: Cavebot | None = None
     looting: Looting | None = None
-    refill: Refill | None = None
     #: The one mouse: targeting, cavebot and looting share it.
     clicker: ClickController | None = None
 
@@ -277,7 +272,7 @@ class GameLoop:
         self._sleep_fn = sleep_fn if sleep_fn is not None else time.sleep
         self._pm_open_check = pm_open_check
         self.all_modules = modules if modules is not None else DecisionModules()
-        #: GUI Pause: cavebot, targeting and refill sit out, the rest keeps running.
+        #: GUI Pause: cavebot and targeting sit out, the rest keeps running.
         self.paused = False
         self._perceive = perceive
         self._alert_sink = alert
@@ -571,22 +566,17 @@ class GameLoop:
             return BotState.ATTACK
         if m.looting is not None and m.looting.should_loot(snap):
             return BotState.LOOT
-        if m.refill is not None and (m.refill.is_active() or m.refill.should_refill(snap)):
-            return BotState.REFILL
         if self._move_provider is not None and self._move_provider(snap):
             return BotState.MOVE
         return BotState.IDLE
 
     def _module_alarm(self) -> str | None:
-        """A cavebot/refill alarm (``"stuck"``, ``"lost"``, ...), or None."""
-        for name, module in (("cavebot", self.modules.cavebot), ("refill", self.modules.refill)):
-            alarm = getattr(module, "alarm", None)
-            if alarm:
-                return f"{name} alarm: {alarm}"
-        return None
+        """A cavebot alarm (``"stuck"``, ``"lost"``, ...), or None."""
+        alarm = getattr(self.modules.cavebot, "alarm", None)
+        return f"cavebot alarm: {alarm}" if alarm else None
 
     def _report_module_alarm(self) -> None:
-        """Alert once when the cavebot or refill stops itself (stuck, lost).
+        """Alert once when the cavebot stops itself (stuck, lost).
 
         The stopped module only stops walking; healing and targeting go on.
         """
@@ -621,8 +611,6 @@ class GameLoop:
                 return f"target: {name}"
             case BotState.LOOT:
                 return "loot pending"
-            case BotState.REFILL:
-                return "cap full / refill trip running"
             case BotState.MOVE:
                 return "waypoint route active"
             case BotState.IDLE:
@@ -642,7 +630,7 @@ class GameLoop:
         if new_state is BotState.ATTACK and self.modules.clicker is not None:
             self.modules.clicker.cancel()  # drop a walk click; the select click goes first
         if self.all_modules.cavebot is not None:
-            self.all_modules.cavebot.release_walk_key()  # only MOVE and REFILL walk
+            self.all_modules.cavebot.release_walk_key()  # only MOVE walks
         if new_state is BotState.MOVE and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # fight/loot time is not "stuck" (F-06)
 
@@ -690,8 +678,6 @@ class GameLoop:
                 self._act_attack(snap)
             case BotState.LOOT:
                 self._act_loot(snap)
-            case BotState.REFILL:
-                self._act_refill(snap)
             case BotState.MOVE:
                 self._act_move(snap)
             case BotState.IDLE:
@@ -843,25 +829,6 @@ class GameLoop:
         assert looting is not None
 
         self._send(snap, lambda: looting.step(snap))
-
-    def _act_refill(self, snap: WorldState) -> None:
-        """REFILL: start the trip, then one step per tick (gated like MOVE).
-
-        When the trip is done, the cavebot's farming route is resumed at
-        the nearest waypoint; a
-        refill alarm leaves the route stopped (fail closed).
-        """
-        refill = self.modules.refill
-        assert refill is not None
-        cavebot = self.modules.cavebot
-
-        def step() -> None:
-            if not refill.is_active():
-                refill.start()
-            if not refill.step(snap) and refill.phase == "done" and cavebot is not None:
-                cavebot.start(nearest=True)
-
-        self._send(snap, step)
 
     def _act_move(self, snap: WorldState) -> None:
         """MOVE: hand control to the waypoint runner (T22).

@@ -9,7 +9,6 @@ Tests 13-18 (T32a / F-19) run the production wiring instead: ``wiring.build_loop
 
 from __future__ import annotations
 
-import json
 import threading
 from dataclasses import replace
 from pathlib import Path
@@ -21,7 +20,7 @@ import numpy as np
 import pytest
 
 from moonlight.calibration.calibrate import CalibrationProfile
-from moonlight.cavebot.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
+from moonlight.cavebot.cavebot import Cavebot, Route, Waypoint
 from moonlight.core.config import BotConfig
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import F12Monitor
@@ -31,7 +30,6 @@ from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.healing.healing import HealingConfig, HealingDecision, HealingRule
 from moonlight.looting.looting import Looting, LootingConfig
-from moonlight.refill.refill import Refill, RefillConfig
 
 pytestmark = pytest.mark.safety
 
@@ -79,7 +77,6 @@ def idle_module(**overrides: Any) -> mock.Mock:
     m.decide.return_value = None
     m.track.return_value = []
     m.should_loot.return_value = False
-    m.should_refill.return_value = False
     m.is_active.return_value = False
     m.send.return_value = True
     m.alarm = None
@@ -272,42 +269,20 @@ def test_11_loot_key_only_when_focused() -> None:
     assert inp.sent_lines == ["K alt+q"]
 
 
-def test_12_refill_only_starts_above_cap_threshold(tmp_path: Path) -> None:
-    route = {
-        "name": "refill",
-        "waypoints": [
-            {"x": 100, "y": 100, "z": 7},
-            {"action": "label", "label": "storage"},
-            {"x": 100, "y": 100, "z": 7},
-            {"action": "label", "label": "farming"},
-        ],
-    }
-    (tmp_path / "refill.json").write_text(json.dumps(route))
-    cavebot = mock.Mock()
-    cavebot.is_active.return_value = False
-    cavebot.alarm = None
-    looting = mock.Mock()
-    looting.pending = None
-    refill = Refill(
-        RefillConfig(trigger_cap=90.0, routes_dir=tmp_path),
-        cavebot,
-        RouteFileLoader(),
-        looting,
-        make_state(),
-        FakeInput(),
-    )
-    below = make_state(capacity=Capacity(weight=50.0, max_weight=100.0))
-    above = make_state(capacity=Capacity(weight=95.0, max_weight=100.0))
-    assert not refill.should_refill(below)
-    assert refill.should_refill(above)
-
-    # Through the loop: REFILL state only when cap is high.
-    gl, _ = make_loop(below, FakeInput(), refill=refill, cavebot=cavebot)
-    gl.tick()
-    assert gl.current_state is BotState.IDLE
-    gl, _ = make_loop(above, FakeInput(), refill=refill, cavebot=cavebot)
-    gl.tick()
-    assert gl.current_state is BotState.REFILL
+def test_12_refill_only_starts_above_cap_threshold() -> None:
+    wps = [
+        Waypoint(100, 100, 7),
+        Waypoint(0, 0, 0, "check", "town"),
+        Waypoint(101, 100, 7),
+        Waypoint(0, 0, 0, "label", "town"),
+        Waypoint(120, 100, 7),
+    ]
+    for weight, nxt in ((50.0, 2), (95.0, 4)):
+        bot, state = make_cavebot(Clock(), wps, (100, 100), 7)
+        bot.refill_cap = 90.0
+        state.capacity = Capacity(weight=weight, max_weight=100.0)
+        bot.step()  # on waypoint 0: reached, past the check
+        assert bot.route.current == nxt
 
 
 # -- F-19: the production wiring (wiring.build_loop + make_perceive + focus) ---------

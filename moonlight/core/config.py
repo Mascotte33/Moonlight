@@ -24,7 +24,7 @@ JSON format (``moonlight_config.json``)::
       "clicker": {"open_loop": false},     # any ClickerConfig field (F-14)
       "hotkeys": {"utani hur": "F8"},      # buff -> combo
       "monster_name_source": false,        # unused
-      "capacity_source": false,            # F-09: refill needs this true (T34)
+      "capacity_source": false,            # unused
       "buff_icon_source": false,           # F-10: buffs needs this true (T34)
       "modules": {
         "healing":   {"enabled": true, "potion_cooldown_ms": 1000},
@@ -39,10 +39,9 @@ JSON format (``moonlight_config.json``)::
 
 Fail closed: ``profile``, ``modules`` and every module's ``enabled`` flag
 are required; unknown keys, wrong types, invalid values, a bad hotkey
-combo, a missing cavebot route file, or refill without cavebot+looting
-all raise :class:`ConfigError`. Refill and buffs additionally require
-their perception source (``capacity_source`` / ``buff_icon_source``) to be
-true (F-09 / F-10).
+combo, a missing cavebot route file, or refill without the cavebot
+all raise :class:`ConfigError`. Buffs additionally require its perception
+source (``buff_icon_source``) to be true (F-10).
 Fields left out of a module section take the dataclass defaults.
 
 A module that is off keeps its values: ``{"enabled": false, "potion_cooldown_ms":
@@ -159,12 +158,12 @@ class BotConfig:
     cavebot: CavebotConfig | None = None
     looting: LootingConfig | None = None
     refill: RefillConfig | None = None
-    #: Perception sources that are actually wired up (F-09 / F-10). The
-    #: capacity reader and the monster-name resolver are deferred (T34), so
-    #: the corresponding modules would run against *unpopulated* state. Set
-    #: these to true only once a real reader populates the state; ``validate``
-    #: refuses to enable refill / buffs without their source.
-    #: ``monster_name_source`` is unused; kept so saved configs still load.
+    #: Perception sources that are actually wired up (F-10). The buff-icon
+    #: reader is deferred (T34), so buffs would run against *unpopulated*
+    #: state; ``validate`` refuses to enable buffs without its source.
+    #: ``monster_name_source`` and ``capacity_source`` are unused; kept so
+    #: saved configs still load (refill without a capacity reader triggers
+    #: on Refill now only).
     monster_name_source: bool = False
     capacity_source: bool = False
     buff_icon_source: bool = False
@@ -259,6 +258,11 @@ class BotConfig:
                 if name == "looting":  # the loot-window keys, gone with the window
                     section.pop("move_all_hotkey", None)
                     section.pop("max_items_per_loot", None)
+                if name == "refill":  # the refill route file's keys, gone with it
+                    for key in (
+                        "stop_cap", "route_name", "storage_hotkey", "deposit_hotkey", "routes_dir"
+                    ):
+                        section.pop(key, None)
                 value = _coerce(section, hints[name], f"modules.{name}")
             if enabled:
                 kwargs[name] = value
@@ -323,16 +327,8 @@ class BotConfig:
                 raise ConfigError(
                     f"cavebot start waypoint {self.cavebot.start_index + 1} is outside 1..{n}"
                 )
-        if self.refill is not None and (self.cavebot is None or self.looting is None):
-            raise ConfigError("refill needs the cavebot and looting modules enabled")
-        # F-09: unreachable gates must be honest. Refill reads capacity, which
-        # no reader populates yet. Refuse to enable it until one is wired (T34).
-        if self.refill is not None and not self.capacity_source:
-            raise ConfigError(
-                "refill is enabled but no capacity perception source is "
-                "configured: set 'capacity_source' to true once a capacity "
-                "reader is wired (T34), or disable the refill module"
-            )
+        if self.refill is not None and self.cavebot is None:
+            raise ConfigError("refill needs the cavebot module enabled")
         # F-10: the buffs module reads buff-icon state that no reader
         # populates yet; refuse to enable it until one is wired.
         if self.buffs is not None and not self.buff_icon_source:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -70,9 +69,6 @@ def test_check_module_regions_all_present() -> None:
 
 def test_headless_smoke_all_modules(tmp_path: Path) -> None:
     """Real build_loop wiring: FakeInput + synthetic frames, a few ticks."""
-    (tmp_path / "refill.json").write_text(
-        json.dumps({"name": "refill", "waypoints": [{"x": 1, "y": 1, "z": 7}]})
-    )
     cfg = replace(
         BotConfig.default(),
         loop=LoopConfig(enable_f12_monitor=False),
@@ -80,7 +76,7 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
         buffs=BuffManagerConfig(),
         cavebot=CavebotConfig(Route("hunt", waypoints=[Waypoint(100, 100, 7)])),
         looting=LootingConfig(),
-        refill=RefillConfig(routes_dir=tmp_path),
+        refill=RefillConfig(trigger_cap=80.0),
         templates_dir=tmp_path / "templates",
         # F-09 / F-10: enable the perception sources these modules require.
         monster_name_source=True,
@@ -109,12 +105,11 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
         loop.tick()
         now[0] += 0.05
     assert next(calls) == 5  # P1: exactly one capture per tick, shared by all
-    assert loop.modules.cavebot is not None and loop.modules.refill is not None
+    assert loop.modules.cavebot is not None and loop.modules.cavebot.refill_cap == 80.0
     # F-20: every module that sends shares the loop's wire limiter.
     m = loop.modules
-    assert m.cavebot is not None and m.looting is not None and m.refill is not None
-    for backend in (m.cavebot._input, m.cavebot._clicker._input, m.looting._input,
-                    m.refill._input):
+    assert m.cavebot is not None and m.looting is not None
+    for backend in (m.cavebot._input, m.cavebot._clicker._input, m.looting._input):
         assert backend is loop.input
     snap = state.snapshot()
     assert snap.screen_ok and snap.last_update > 0  # perception wrote WorldState

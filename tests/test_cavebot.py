@@ -261,6 +261,37 @@ def test_label_goto_loops_route() -> None:
     assert sim.bot.is_active() and sim.route.current == 1 and sim.reached == [1]
 
 
+# doc: docs/prs/refill.md#check-waypoint
+def test_check_jumps_to_town_once_on_refill_now() -> None:
+    wps = [
+        Waypoint(0, 0, 0, "label", "hunt"),
+        walk(100, 100),
+        Waypoint(0, 0, 0, "check", "town"),
+        walk(110, 100),
+        Waypoint(0, 0, 0, "goto", "hunt"),
+        Waypoint(0, 0, 0, "label", "town"),
+        walk(120, 100),
+        Waypoint(0, 0, 0, "goto", "hunt"),
+    ]
+    sim = Sim(wps, Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    assert sim.route.current == 3  # not due: past the check
+    sim.route.current = 1
+    sim.bot.refill_now = True
+    sim.step()
+    assert sim.route.current == 6 and not sim.bot.refill_now
+    sim.route.current = 1
+    sim.step()
+    assert sim.route.current == 3  # the jump used it up
+
+
+def test_check_needs_an_existing_label() -> None:
+    raw = {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7}, {"action": "check", "label": "x"}]}
+    with pytest.raises(RouteError, match="check target"):
+        RouteFileLoader.parse(raw)
+
+
 # -- tile actions ------------------------------------------------------------
 
 

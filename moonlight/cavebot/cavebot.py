@@ -1,6 +1,6 @@
 """Cavebot movement (T22).
 
-Waypoint execution: walk/rope/shovel/ladder/stairs/label/goto, stuck detection.
+Waypoint execution: walk/rope/shovel/ladder/stairs/label/goto/check, stuck detection.
 Waypoint format: ``data/waypoints/README.md``.
 
 How a route is executed (one :meth:`Cavebot.step` per 20 Hz loop tick,
@@ -58,8 +58,12 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   exact tile and is done when the floor changes, up or down.
 * **label / goto**: positionless. ``label`` is a jump target; ``goto``
   jumps to the waypoint after the named label (route loops).
+* **check**: positionless. Jumps like ``goto`` when refill is due (used cap
+  at or over ``refill_cap``, or :attr:`Cavebot.refill_now` set, which the
+  jump clears); otherwise falls through. The town trip is a section behind
+  a label that ends in a ``goto`` back to the hunt.
 * **End of route**: a hunting route starts over at waypoint 0; a route
-  with ``loop`` off (the refill legs) completes and the cavebot stops.
+  with ``loop`` off completes and the cavebot stops.
 * **Blocked** (an NPC in the way): after ``sidestep_after`` seconds without
   moving, the bot clicks (or with ``walk_keys`` steps onto) the tile left of
   its walking direction, then
@@ -110,10 +114,12 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 #: Valid waypoint actions.
-ACTIONS = ("walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto")
+ACTIONS = (
+    "walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto", "check",
+)
 
 #: Actions that need no position (executed immediately).
-_JUMP_ACTIONS = ("label", "goto")
+_JUMP_ACTIONS = ("label", "goto", "check")
 
 #: Floor change each tile action causes (0 = sky, 15 = deepest).
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
@@ -211,8 +217,8 @@ class RouteFileLoader:
         if len(labels) != len(set(labels)):
             raise RouteError("duplicate label names")
         for i, wp in enumerate(waypoints):
-            if wp.action == "goto" and wp.label not in labels:
-                raise RouteError(f"waypoint {i}: goto target {wp.label!r} has no label")
+            if wp.action in ("goto", "check") and wp.label not in labels:
+                raise RouteError(f"waypoint {i}: {wp.action} target {wp.label!r} has no label")
         return Route(name=name, description=description, waypoints=waypoints)
 
     @staticmethod
@@ -261,6 +267,7 @@ class Cavebot:
         frames: Callable[[], np.ndarray] | None = None,
         clock: Callable[[], float] | None = None,
         on_waypoint_reached: Callable[[int], None] | None = None,
+        refill_cap: float | None = None,
     ) -> None:
         """Create the runner.
 
@@ -289,6 +296,8 @@ class Cavebot:
             clock: Monotonic-clock override (tests).
             on_waypoint_reached: Called with the index of each reached
                 positional waypoint.
+            refill_cap: Used capacity % at which a ``check`` jumps; None
+                (Refill off) jumps only on :attr:`refill_now`.
 
         Raises:
             ValueError: On bad timings, or rope/shovel waypoints or
@@ -329,6 +338,9 @@ class Cavebot:
         self._bumped_into_creature: set[tuple[int, int, int]] = set()
         self._clock = clock if clock is not None else time.monotonic
         self._callback = on_waypoint_reached
+        self.refill_cap = refill_cap
+        #: Refill now: the next ``check`` jumps to town (cleared by the jump).
+        self.refill_now = False
 
         #: Why the route stopped on its own ("stuck", "lost", "goto_loop"),
         #: or None.
@@ -541,14 +553,27 @@ class Cavebot:
             wp = wps[index]
             if wp.action == "label":
                 index += 1
-            elif wp.action == "goto":
+            elif wp.action == "goto" or (wp.action == "check" and self._refill_due()):
+                if wp.action == "check":
+                    # ponytail: _skip_unreachable's lookahead also lands here and
+                    # can use up refill_now; press Refill now again if it does.
+                    logger.info("cavebot: refill due, jump to %r", wp.label)
+                    self.refill_now = False
                 index = next(
                     i + 1 for i, w in enumerate(wps) if w.action == "label" and w.label == wp.label
                 )
+            elif wp.action == "check":
+                index += 1
             else:
                 return index
         self._halt("goto_loop")
         return None
+
+    # doc: docs/prs/refill.md#check-waypoint
+    def _refill_due(self) -> bool:
+        cap = self._state.snapshot().capacity
+        full = self.refill_cap is not None and cap.max_weight > 0 and cap.percent >= self.refill_cap
+        return self.refill_now or full
 
     # doc: docs/prs/walking.md#skip-unreachable
     def _skip_unreachable(self, pos: Position, walkable: Callable[[int, int, int], bool]) -> None:

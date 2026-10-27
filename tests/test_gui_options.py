@@ -126,7 +126,7 @@ def test_no_field_is_shown_by_two_tabs() -> None:
     [
         (BotConfig.default(), "cavebot", "Cavebot needs a route"),
         (BotConfig.default(), "buffs", "Buffs needs a buff-icon reader"),
-        (BotConfig.default(), "refill", "Refill needs Cavebot and Looting on"),
+        (BotConfig.default(), "refill", "Refill needs Cavebot on"),
     ],
 )
 def test_refused_switch_has_a_plain_reason(cfg: BotConfig, name: str, reason: str) -> None:
@@ -135,14 +135,6 @@ def test_refused_switch_has_a_plain_reason(cfg: BotConfig, name: str, reason: st
     with pytest.raises(ConfigError) as exc:
         write_option(cfg, _switch(name), True)
     assert plain_reason(str(exc.value)).startswith(reason)
-
-
-def test_refill_without_capacity_reader_has_a_plain_reason() -> None:
-    from moonlight.gui.settings_tab import plain_reason
-
-    msg = "refill is enabled but no capacity perception source is configured"
-    assert plain_reason(msg).startswith("Refill needs a capacity reader")
-    assert plain_reason("something else") == "something else"
 
 
 @pytest.mark.parametrize(

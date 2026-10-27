@@ -123,7 +123,6 @@ class TestBotStatePriority:
             BotState.ALARM,
             BotState.ATTACK,
             BotState.LOOT,
-            BotState.REFILL,
             BotState.MOVE,
             BotState.IDLE,
         ]
@@ -132,7 +131,7 @@ class TestBotStatePriority:
     def test_priority_ranks(self) -> None:
         assert BotState.KILL.priority == 0
         assert BotState.PAUSED.priority == 1
-        assert BotState.IDLE.priority == 7
+        assert BotState.IDLE.priority == 6
 
 
 class TestGameLoopSafety:

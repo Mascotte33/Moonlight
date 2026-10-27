@@ -1,8 +1,8 @@
 """Cavebot tab: Waypoints, and a Refill / Loot / Edit route switch (T3.F1.K1, T3.F7.K1, T3.F8.K1).
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, read by
-:class:`RouteFileLoader`. ``cavebot.route`` and ``refill.route_name`` are
-saved by name, so their dropdowns hold names. Picking a route loads it into
+:class:`RouteFileLoader`. ``cavebot.route`` is saved by
+name, so its dropdown holds names. Picking a route loads it into
 the editor; waypoints are added by hand or recorded while walking (T3.F9.K1)
 and reach the route file only on Save.
 """
@@ -18,7 +18,14 @@ from tkinter import messagebox
 
 import customtkinter as ctk
 
-from moonlight.cavebot.cavebot import ACTIONS, Route, RouteError, RouteFileLoader, Waypoint
+from moonlight.cavebot.cavebot import (
+    _JUMP_ACTIONS,
+    ACTIONS,
+    Route,
+    RouteError,
+    RouteFileLoader,
+    Waypoint,
+)
 from moonlight.cavebot.recorder import (
     StandTracker,
     make_waypoint,
@@ -90,13 +97,8 @@ LOOT_OPTIONS = [
     Option("Skip looting below HP %", "looting.min_hp_to_loot", "entry"),
     Option("Min free cap to loot (%)", "looting.min_cap_to_loot", "entry"),
 ]
-REFILL_ROUTE = Option("Refill route", "refill.route_name", "dropdown")
 REFILL_OPTIONS = [
     Option("Start refill at used cap %", "refill.trigger_cap", "entry"),
-    Option("Stop at used cap %", "refill.stop_cap", "entry"),
-    REFILL_ROUTE,
-    Option("Storage hotkey", "refill.storage_hotkey", "hotkey"),
-    Option("Deposit hotkey (blank = none)", "refill.deposit_hotkey", "hotkey"),
 ]
 
 
@@ -142,7 +144,7 @@ def waypoint_table(route: Route | None, current: int | None = None) -> str:
     lines = [f" {'#':>3}  {'Type':<7} {'Coordinates':<19} Label"]
     for i, wp in enumerate(route.waypoints):
         mark = ">" if i == current else " "
-        where = "" if wp.action in ("label", "goto") else f"({wp.x}, {wp.y}, {wp.z})"
+        where = "" if wp.action in _JUMP_ACTIONS else f"({wp.x}, {wp.y}, {wp.z})"
         lines.append(f"{mark}{i + 1:>3}  {wp.action:<7} {where:<19} {wp.label}".rstrip())
     return "\n".join(lines)
 
@@ -157,9 +159,8 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
 
     The cavebot route is written first. With no route on disk picked the
     cavebot options are skipped, so Save still works for an off cavebot
-    without routes. A blank cavebot hotkey keeps its default; a blank
-    deposit hotkey means none. The start waypoint is given
-    1-based. Loot goes before refill, which needs looting on. The switch
+    without routes. A blank cavebot hotkey keeps its default. The start
+    waypoint is given 1-based. The switch
     goes after the route, so turning the cavebot on with no route is refused.
 
     Raises:
@@ -292,9 +293,9 @@ class CavebotTab(Tab):
         ctk.CTkLabel(
             refill,
             text=(
-                "When your used capacity reaches the start %, the bot walks the refill route"
-                " to its 'storage' label. It deposits until used capacity is down to the stop %,"
-                " then walks to the 'farming' label and hunts again."
+                "A 'check' waypoint with label 'town' jumps to label 'town' when your used"
+                " capacity reaches the start %. Put the town trip there"
+                " and end it with a 'goto' back to the hunt."
             ),
             anchor="w",
             justify="left",
@@ -302,7 +303,6 @@ class CavebotTab(Tab):
             text_color=theme.TEXT_DIM,
         ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.build_options(refill, REFILL_OPTIONS)
-        self.menu_refill_route = _menu(refill, REFILL_OPTIONS, REFILL_ROUTE)
         self.build_options(pages["Loot"], LOOT_OPTIONS)
         show("Refill")
 
@@ -365,7 +365,6 @@ class CavebotTab(Tab):
         names = route_names(self._routes_dir)
         listed = names if not self._name or self._name in names else [*names, self._name]
         self.menu_route.configure(values=listed or [NO_ROUTES])
-        self.menu_refill_route.configure(values=names or [NO_ROUTES])
         return names
 
     def _reload(self) -> None:

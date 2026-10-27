@@ -53,15 +53,13 @@ logger = logging.getLogger(__name__)
 #: perception readers in :func:`make_perceive` / :func:`build_loop`.
 #: ``tools/check_setup.py`` uses this to report per-module readiness (F-11): a
 #: module is MISSING when any of its required regions is absent from the
-#: profile. ``refill`` references a region that is not part of the standard
-#: calibration set (it needs a dedicated reader, T34), so it reports as
-#: MISSING until that is calibrated.
+#: profile.
 MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "healing": ("hp_bar", "mp_bar", "status_icons"),
     "targeting": ("battle_list", "game_grid"),
     "cavebot": ("minimap", "floor_indicator", "game_grid"),
     "looting": (),
-    "refill": ("capacity",),
+    "refill": (),
     "buffs": ("status_icons",),
     "alarms": (),
 }
@@ -502,7 +500,7 @@ def build_modules(
             if same(*keys):
                 setattr(m, name, getattr(prev, name))
         if same("cavebot", "looting", "refill", "clicker", "templates_dir", "routes_dir"):
-            m.cavebot, m.looting, m.refill = prev.cavebot, prev.looting, prev.refill
+            m.cavebot, m.looting = prev.cavebot, prev.looting
     if config.healing is not None and m.healing is None:
         m.healing = HealingDecision(config.healing, clock=clock)
     if config.targeting is not None and m.targeting is None:
@@ -582,6 +580,7 @@ def build_modules(
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
                 frames=frames,
                 clock=clock,
+                refill_cap=config.refill.trigger_cap if config.refill else None,
             )
             if prev is None or prev.cavebot is None:
                 m.cavebot.start()
@@ -592,13 +591,6 @@ def build_modules(
             from moonlight.looting.looting import Looting
 
             m.looting = Looting(backend, config.looting, clock=clock or time.monotonic)
-    if config.refill is not None and m.refill is None:
-        from moonlight.cavebot.cavebot import RouteFileLoader
-        from moonlight.refill.refill import Refill
-
-        assert m.cavebot is not None and m.looting is not None  # BotConfig.validate
-        m.refill = Refill(config.refill, m.cavebot, RouteFileLoader(), m.looting, state, backend)
-
     return m
 
 

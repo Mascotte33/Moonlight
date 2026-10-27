@@ -95,14 +95,6 @@ def test_start_waypoint_is_given_one_based(tmp_path: Path) -> None:
     assert cfg.off["cavebot"].start_index == 1
 
 
-def test_blank_deposit_hotkey_writes_none(tmp_path: Path) -> None:
-    cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
-    cfg = apply_cavebot(cfg, {"refill.deposit_hotkey": "F5"})
-    assert cfg.off["refill"].deposit_hotkey == "F5"
-    cfg = apply_cavebot(cfg, {"refill.deposit_hotkey": ""})
-    assert cfg.off["refill"].deposit_hotkey is None
-
-
 def test_loot_values_are_written(tmp_path: Path) -> None:
     cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
     cfg = apply_cavebot(cfg, {"looting.wait_ms": "600", "looting.min_cap_to_loot": "5"})

@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from moonlight.cavebot.cavebot import RouteError, RouteFileLoader, Waypoint
+from moonlight.cavebot.cavebot import _JUMP_ACTIONS, RouteError, RouteFileLoader, Waypoint
 from moonlight.core.state import Position
 
 __all__ = [
@@ -66,7 +66,7 @@ def make_waypoint(
     Raises:
         RouteError: For a missing label, bad numbers or an unknown position.
     """
-    if action in ("label", "goto"):
+    if action in _JUMP_ACTIONS:
         if not label.strip():
             raise RouteError(f"{action} needs a label")
         return Waypoint(0, 0, 0, action, label.strip())
@@ -82,7 +82,7 @@ def make_waypoint(
 
 
 def _last_positioned(waypoints: list[Waypoint]) -> Waypoint | None:
-    return next((wp for wp in reversed(waypoints) if wp.action not in ("label", "goto")), None)
+    return next((wp for wp in reversed(waypoints) if wp.action not in _JUMP_ACTIONS), None)
 
 
 def should_add(waypoints: list[Waypoint], pos: Position, min_tiles: int) -> bool:
@@ -149,7 +149,7 @@ def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
         "name": name,
         "waypoints": [
             {"action": wp.action, "label": wp.label}
-            if wp.action in ("label", "goto")
+            if wp.action in _JUMP_ACTIONS
             else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action}
             for wp in waypoints
         ],

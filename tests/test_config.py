@@ -11,6 +11,7 @@ import pytest
 
 from moonlight.core.config import MODULES, BotConfig, ConfigError
 from moonlight.healing.healing import CureRule, HealingConfig, HealingRule
+from moonlight.refill.refill import RefillConfig
 from moonlight.targeting.targeting import AreaRule
 
 
@@ -76,21 +77,14 @@ def test_looting_loads_a_config_saved_with_the_loot_window_keys() -> None:
     assert BotConfig.from_dict(data).looting is not None
 
 
-def test_refill_refused_without_capacity_source(tmp_path: Path) -> None:
-    """F-09: refill without a capacity perception source is refused."""
+def test_refill_needs_the_cavebot_and_loads_old_route_file_keys(tmp_path: Path) -> None:
     route_file(tmp_path / "routes")
-    data = raw(
-        cavebot={"enabled": True, "route": "hunt"},
-        looting={"enabled": True},
-        refill={"enabled": True},
-    )
+    old = {"enabled": True, "route_name": "refill", "stop_cap": 50.0, "deposit_hotkey": "F5"}
+    with pytest.raises(ConfigError, match="refill needs the cavebot"):
+        BotConfig.from_dict(raw(refill=old))
+    data = raw(cavebot={"enabled": True, "route": "hunt"}, refill=old)
     data["routes_dir"] = str(tmp_path / "routes")
-    # Let the looting guard pass so the capacity guard is what fires.
-    data["monster_name_source"] = True
-    with pytest.raises(ConfigError, match="capacity perception source"):
-        BotConfig.from_dict(data)
-    data["capacity_source"] = True
-    assert BotConfig.from_dict(data).refill is not None
+    assert BotConfig.from_dict(data).refill == RefillConfig()
 
 
 def test_buffs_refused_without_icon_source() -> None:
