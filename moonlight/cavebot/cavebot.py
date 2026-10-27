@@ -52,8 +52,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   ``walk``/``node``/``stand``/``lure`` are then done (``lure`` walks with
   attacking off, see :meth:`Cavebot.luring`); ``rope``/``shovel``/``ladder`` click
   the waypoint's tile in the game grid (15x11 tiles, player at slot (7, 5))
-  and wait for the expected floor change (rope/ladder: z - 1, shovel:
-  z + 1), retrying every ``reclick_interval``. ``stairs`` walks onto the
+  and wait for the expected floor change (rope: z - 1, shovel: z + 1,
+  ladder: up or down, so a sewer grate is a ``ladder`` too), retrying
+  every ``reclick_interval``. ``stairs`` walks onto the
   exact tile and is done when the floor changes, up or down.
 * **label / goto**: positionless. ``label`` is a jump target; ``goto``
   jumps to the waypoint after the named label (route loops).
@@ -435,8 +436,8 @@ class Cavebot:
         if self._expected_z is not None and pos.z == self._expected_z:
             self._advance()  # the rope/shovel/ladder action worked
             return
-        if pos.z != wp.z and wp.action == "stairs":
-            self._advance()  # stepping on the stairs changed the floor
+        if pos.z != wp.z and wp.action in ("stairs", "ladder"):
+            self._advance()  # the stairs, ladder or sewer grate changed the floor
             return
         if pos.z != wp.z:
             self.release_walk_key()

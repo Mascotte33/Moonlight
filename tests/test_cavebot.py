@@ -299,6 +299,16 @@ def test_shovel_digs_then_steps_in_and_expects_floor_down() -> None:
     assert sim.reached == [0]
 
 
+def test_ladder_down_a_sewer_grate_is_done() -> None:
+    sim = Sim([Waypoint(100, 100, 7, "ladder"), walk(105, 100, 8)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    assert sim.clicker.clicks[0][1] is ClickSide.RIGHT
+    sim.pos = Position(100, 100, 8)
+    sim.step()
+    assert sim.reached == [0] and sim.bot.route.current == 1
+
+
 def test_action_retried_when_floor_does_not_change() -> None:
     sim = Sim([Waypoint(100, 100, 7, "ladder")], Position(100, 100, 7))
     sim.bot.start()
