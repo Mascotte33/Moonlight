@@ -100,6 +100,9 @@ class TargetingConfig:
     area_rules: tuple[AreaRule, ...] = ()
     attack_cooldown_ms: int = 2000
     unreachable_after_seconds: float = 8.0
+    #: The client's Chase Opponent / Stand While Fighting keys; "" = the bot leaves that mode.
+    chase_hotkey: str = ""
+    stand_still_hotkey: str = ""
 
     def validate(self) -> None:
         """Raise ValueError on a bad row or rule, a duplicate name or a bad delay."""
@@ -120,6 +123,10 @@ class TargetingConfig:
             raise ValueError("targeting.attack_cooldown_ms must be >= 0")
         if self.unreachable_after_seconds <= 0:
             raise ValueError("targeting.unreachable_after_seconds must be > 0")
+        if self.chase_hotkey:
+            check_hotkey(self.chase_hotkey, "targeting.chase_hotkey")
+        if self.stand_still_hotkey:
+            check_hotkey(self.stand_still_hotkey, "targeting.stand_still_hotkey")
 
 
 @dataclass(frozen=True)
@@ -157,14 +164,12 @@ class TargetingDecision:
         config: TargetingConfig | None = None,
         battle_list_region: Rect | None = None,
         ui_scale: float = 1.0,
-        chase_buttons_region: Rect | None = None,
     ) -> None:
         self.config = config if config is not None else TargetingConfig()
         self.config.validate()
         self._rows = {row.name.lower(): row for row in self.config.monsters}
         self._battle_list_region = battle_list_region
         self._ui_scale = ui_scale
-        self._chase_buttons_region = chase_buttons_region
         # HP watch on the selected target: its key, since when, and whether
         # the step closer was already taken.
         self._watched: tuple[str, float] | None = None
@@ -223,14 +228,8 @@ class TargetingDecision:
         ]
         if not candidates:
             return None
-        top_priority = max(self.row_for(m).priority for m in candidates)
-        selected = state.selected_target
-        if (
-            selected is not None
-            and selected in candidates
-            and self.row_for(selected).priority == top_priority
-        ):
-            return None  # stay on a valid target
+        if state.selected_target in candidates:
+            return None  # finish the current target, even when a higher priority one comes
         best = min(
             candidates,
             key=lambda m: (-self.row_for(m).priority, m.hp_percent, m.battle_list_row),
@@ -260,17 +259,8 @@ class TargetingDecision:
         return x, y
 
     # doc: docs/prs/targeting.md#chase-mode
-    def chase_button_center(self, movement: str) -> tuple[int, int]:
-        """Frame pixel of the side-panel button that sets *movement*'s chase mode.
-
-        ``follow`` is Chase Opponent, the lower half of the ``chase_buttons``
-        region. Every other movement is Stand While Fighting, the upper half.
-
-        Raises:
-            ValueError: If no ``chase_buttons`` region was given.
-        """
-        if self._chase_buttons_region is None:
-            raise ValueError("targeting has no chase_buttons region to click in")
-        left, top, width, height = self._chase_buttons_region
-        quarter = 3 if movement == "follow" else 1
-        return left + width // 2, top + height * quarter // 4
+    def movement_hotkey(self, movement: str) -> str:
+        """The key that sets *movement*'s chase mode; ``""`` when the owner set none."""
+        if movement == "follow":
+            return self.config.chase_hotkey
+        return self.config.stand_still_hotkey

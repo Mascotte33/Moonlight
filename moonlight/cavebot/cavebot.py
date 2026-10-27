@@ -29,7 +29,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   one predicted tile per moving creature are avoided too. When they leave
   no way through, or the way around is over ``_DETOUR`` steps longer, the
   bot presses ``attack_combo`` (if the battle list has
-  monsters and nothing is selected) instead of an arrow. While a target is
+  monsters and nothing is selected) instead of an arrow. With targeting on
+  it never presses it: the client's "attack next" ignores the never-attack
+  list, so targeting picks the fights and the cavebot waits. While a target is
   selected it stands still, whatever selected it, and walks on once
   nothing is.
 * **Arrival**: within 1 tile (Chebyshev distance) of the waypoint on the
@@ -300,7 +302,8 @@ class Cavebot:
         self._blocked: dict[tuple[int, int, int], float] = {}  # tile -> expiry
         self._target: tuple[int, int, int] | None = None
         self._frames = frames
-        self._attack_combo = attack_combo
+        #: Pressed when creatures block the way; None while targeting picks the fights.
+        self.attack_combo_when_blocked = attack_combo
         self._scan_until = float("-inf")
         self._seen: list[tuple[int, int]] = []  # creature tiles of the last scan
         self._creatures: set[tuple[int, int]] = set()  # seen + predicted
@@ -595,7 +598,7 @@ class Cavebot:
             None if sel is None else f"{sel.hp_percent:.0f}%",
             now - self._attack_at,
         )
-        if self._attack_combo is None or not self._state.monsters:
+        if self.attack_combo_when_blocked is None or not self._state.monsters:
             return  # nothing to fight: wait, the stuck timeout decides
         if now - self._attack_at < _ATTACK_WAIT:
             return  # give the last press time to show a selection
@@ -613,7 +616,7 @@ class Cavebot:
             logger.info("cavebot: creatures block the way, attacking")
         self._fight, self._fight_since, self._attack_at = None, now, now
         assert self._input is not None  # checked in __init__
-        self._input.press_combo(self._attack_combo)
+        self._input.press_combo(self.attack_combo_when_blocked)
 
     def _press_arrow(self, step: tuple[int, int]) -> None:
         assert self._input is not None  # checked in __init__

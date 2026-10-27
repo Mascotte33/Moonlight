@@ -56,6 +56,9 @@ class SeenMonsters:
         self._crops: queue.Queue[tuple[str, np.ndarray]] = queue.Queue()
         self._worker: threading.Thread | None = None
         self._guessing_stopped = False
+        #: False while another window may cover the client: an unknown hash is then
+        #: not recorded, so window title bars do not become "monsters".
+        self.learns_new_names = True
         if self._path.exists():
             self._load()
 
@@ -64,6 +67,9 @@ class SeenMonsters:
 
         *clue_crop* (icon and name) is saved once per hash as its picture.
         """
+        with self._lock:
+            if name_hash not in self._monsters and not self.learns_new_names:
+                return ""
         if name_hash not in self._hashes_with_image:
             self._save_image(name_hash, clue_crop)
         with self._lock:

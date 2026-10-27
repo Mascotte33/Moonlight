@@ -60,12 +60,18 @@ def test_stays_on_a_valid_target() -> None:
     assert picked(rows(), state([weak, selected], selected)) is None
 
 
-def test_switches_when_a_higher_priority_appears() -> None:
+def test_finishes_the_current_target_when_a_higher_priority_appears() -> None:
     selected = Monster("Rat", 10.0, battle_list_row=0)
     boss = Monster("Cyclops", 100.0, battle_list_row=1)
     targeting = rows(MonsterRow("Cyclops", priority=5))
-    assert picked(targeting, state([selected], selected)) is None
-    assert picked(targeting, state([selected, boss], selected)) == 1
+    assert picked(targeting, state([selected, boss], selected)) is None
+    assert picked(targeting, state([boss], None)) == 1
+
+
+def test_leaves_a_selected_never_attack_monster() -> None:
+    rat = Monster("Rat", 50.0, battle_list_row=0)
+    wolf = Monster("Wolf", 50.0, battle_list_row=1)
+    assert picked(rows(MonsterRow("rat", ignore=True)), state([rat, wolf], rat)) == 1
 
 
 def test_selected_target_that_left_is_replaced() -> None:
@@ -219,13 +225,12 @@ def test_no_creature_slot_means_no_step() -> None:
         assert targeting.decide(s, 8.0) is None
 
 
-def test_chase_button_center_is_the_lower_half_for_follow_else_the_upper() -> None:
-    targeting = TargetingDecision(None, chase_buttons_region=(2510, 119, 20, 43))
-    assert targeting.chase_button_center("follow") == (2520, 151)
-    assert targeting.chase_button_center("none") == (2520, 129)
-    assert targeting.chase_button_center("none") == (2520, 129)
+def test_movement_hotkey_is_the_chase_key_for_follow_else_the_stand_still_key() -> None:
+    targeting = TargetingDecision(TargetingConfig(chase_hotkey="F9", stand_still_hotkey="F10"))
+    assert targeting.movement_hotkey("follow") == "F9"
+    assert targeting.movement_hotkey("none") == "F10"
 
 
-def test_chase_button_center_without_a_region_raises() -> None:
-    with pytest.raises(ValueError, match="chase_buttons"):
-        TargetingDecision().chase_button_center("follow")
+def test_a_bad_chase_hotkey_is_refused() -> None:
+    with pytest.raises(ValueError, match="chase_hotkey"):
+        TargetingDecision(TargetingConfig(chase_hotkey="not a key"))

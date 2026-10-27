@@ -223,6 +223,7 @@ def make_perceive(
     conditions_dir: Path = CONDITION_TEMPLATES_DIR,
     seen_monsters: SeenMonsters | None = None,
     creature_grid: Rect | None = None,
+    client_is_foreground: Callable[[], bool] | None = None,
 ) -> Callable[[], None]:
     """Return a callback doing one capture -> perception -> WorldState pass.
 
@@ -233,7 +234,8 @@ def make_perceive(
     *start* is the last known position, searched first. *seen_monsters*
     fills the battle entries' names from their name hashes. With
     *creature_grid* (the ``game_grid`` region) the creature slots are scanned
-    into ``creature_slots``.
+    into ``creature_slots``. While *client_is_foreground* is False no new name
+    hash is learned (another window may cover the battle list).
     """
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.creatures import find_creatures
@@ -266,6 +268,8 @@ def make_perceive(
             if not focused:
                 raise RuntimeError("client not focused")
             frame = frame_provider()
+            if seen_monsters is not None and client_is_foreground is not None:
+                seen_monsters.learns_new_names = client_is_foreground()
             hp, mp = vitals.read_vitals(frame)
             monsters, selected, players = entries_to_state(battle.read_battle_list(frame))
             slots = tuple(find_creatures(frame, creature_grid)) if creature_grid else ()
@@ -339,6 +343,7 @@ def build_loop(
     *,
     frame_provider: FrameProvider,
     focus_check: Callable[[], bool] | None = None,
+    client_is_foreground: Callable[[], bool] | None = None,
     state: WorldState | None = None,
     clock: Callable[[], float] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
@@ -395,6 +400,7 @@ def build_loop(
             creature_grid=(
                 profile.get_region("game_grid").to_tuple if config.targeting is not None else None
             ),
+            client_is_foreground=client_is_foreground,
         ),
         clock=clock,
         sleep_fn=sleep_fn,
@@ -493,7 +499,6 @@ def build_modules(
             config.targeting,
             profile.get_region("battle_list").to_tuple,
             profile.ui_scale,
-            profile.get_region("chase_buttons").to_tuple,
         )
     if config.targeting is not None and m.attack_hotkeys is None:
         m.attack_hotkeys = AttackHotkeys(config.targeting)
@@ -552,7 +557,6 @@ def build_modules(
                 walk_keys=config.walk_keys,
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
                 frames=frames,
-                attack_combo=config.loop.attack_combo,
                 clock=clock,
             )
             if prev is None or prev.cavebot is None:
@@ -568,6 +572,11 @@ def build_modules(
             m.looting = Looting(
                 reader, clicker, backend, state, config.looting, frame_provider=frames
             )
+    if m.cavebot is not None:
+        # The client's "attack next" key ignores never-attack rows (set on every rebuild).
+        m.cavebot.attack_combo_when_blocked = (
+            None if config.targeting is not None else config.loop.attack_combo
+        )
     if config.refill is not None and m.refill is None:
         from moonlight.cavebot.cavebot import RouteFileLoader
         from moonlight.refill.refill import Refill

@@ -292,11 +292,9 @@ class GameLoop:
         self._last_target: str | None = None
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
-        # The movement whose chase button was last clicked; None clicks the next one for sure.
+        # The movement whose chase mode key was last pressed; None presses the next one for sure.
         self._chase_movement_set: str | None = None
         self._chase_set_for_target: tuple[str, int] | None = None
-        # The movement whose chase button click is in flight.
-        self._chase_click: str | None = None
         # Pause bookkeeping (reset by every healthy, exception-free tick).
         self._paused_since: float | None = None
         self._consecutive_errors = 0
@@ -750,7 +748,6 @@ class GameLoop:
         if clicker.busy:
             self._send(snap, lambda: self._step_click(clicker, now))
             return
-        self._chase_click = None  # nothing in flight: a cancelled chase click is gone
         if self._select_click is not None:
             row, sent_at = self._select_click
             selected = snap.selected_target
@@ -759,7 +756,7 @@ class GameLoop:
                 return
             self._select_click = None
         if self._target is None:
-            self._press_attack_hotkey(snap, targeting, clicker, now)
+            self._press_attack_hotkey(snap, targeting, now)
             return
         row = self._target.battle_list_row
         point = targeting.row_center(row)
@@ -773,9 +770,10 @@ class GameLoop:
             logger.debug("select click row %d at %s", row, point)
 
     def _press_attack_hotkey(
-        self, snap: WorldState, targeting: TargetingDecision, clicker: ClickController, now: float
+        self, snap: WorldState, targeting: TargetingDecision, now: float
     ) -> None:
         """Press the attack hotkey for the selected target, once its chase mode is set."""
+        # doc: docs/prs/targeting.md#chase-mode
         attack_hotkeys = self.modules.attack_hotkeys
         selected = snap.selected_target
         if attack_hotkeys is None or selected is None or selected.is_player:
@@ -789,41 +787,22 @@ class GameLoop:
             self._chase_movement_set = None
             self._chase_set_for_target = attacked
         if row.movement != self._chase_movement_set:
-            self._click_chase_button(snap, targeting, clicker, row.movement, now)
-            return
+            key = targeting.movement_hotkey(row.movement)
+            if key:
+                # The attack key waits for the next tick, after the mode key.
+                if self._send(snap, lambda: self.input.press_combo(key)):
+                    self._chase_movement_set = row.movement
+                return
+            self._chase_movement_set = row.movement  # no key set: the owner's mode stays
         hotkey = attack_hotkeys.decide(snap, row, now)
         if hotkey is not None:
             self._send(snap, lambda: attack_hotkeys.send(hotkey, self.input, now))
 
-    # doc: docs/prs/targeting.md#chase-mode
-    def _click_chase_button(
-        self,
-        snap: WorldState,
-        targeting: TargetingDecision,
-        clicker: ClickController,
-        movement: str,
-        now: float,
-    ) -> None:
-        """Start the click on the side-panel button that sets *movement*'s chase mode."""
-        point = targeting.chase_button_center(movement)
-
-        def click() -> bool | None:
-            clicker.request(point)
-            self._chase_click = movement
-            return self._step_click(clicker, now)
-
-        self._send(snap, click)
-
     def _step_click(self, clicker: ClickController, now: float) -> bool | None:
         """One clicker step; on the click, record what it did."""
         result = clicker.step()
-        if result is True:
-            if self._chase_click is not None:
-                self._chase_movement_set = self._chase_click
-            elif self._select_click is not None:
-                self._select_click = (self._select_click[0], now)
-        if result is not None:
-            self._chase_click = None
+        if result is True and self._select_click is not None:
+            self._select_click = (self._select_click[0], now)
         return result
 
     def _act_loot(self, snap: WorldState) -> None:

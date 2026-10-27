@@ -50,6 +50,7 @@ __all__ = [
     "config_names",
     "config_path",
     "delete_config",
+    "gui_bot_config",
     "load_profile",
     "load_real_config",
     "make_backend",
@@ -323,6 +324,13 @@ def watch_layout(
     return check
 
 
+def gui_bot_config(config_path: str | Path | None = None) -> BotConfig:
+    """The real config as the GUI's bot runs it; live apply compares against this."""
+    real_config = load_real_config(config_path)
+    # F12 is the GUI's Start/Pause key, so the loop's F12 kill switch stays off.
+    return replace(real_config, loop=replace(real_config.loop, enable_f12_monitor=False))
+
+
 def build_gui_loop(
     *,
     hardware: HardwareController,
@@ -351,9 +359,7 @@ def build_gui_loop(
         RuntimeError: When a calibration region is missing for an enabled
             module (raised by :func:`moonlight.core.wiring.build_loop`).
     """
-    real_config = load_real_config(config_path)
-    # F12 is the GUI's Start/Pause key, so the loop's F12 kill switch stays off.
-    real_config = replace(real_config, loop=replace(real_config.loop, enable_f12_monitor=False))
+    real_config = gui_bot_config(config_path)
     profile = load_profile(real_config.profile, profiles_dir or real_config.profiles_dir)
     # Real screen capture: frame provider + focus check (F-13). Imported at
     # call time so importing this module never pulls in mss.
@@ -366,7 +372,10 @@ def build_gui_loop(
     backend = make_backend(real_config, hardware)
     providers = capture_providers(capture, profile, real_config)
     providers["focus_check"] = watch_layout(profile, capture.get_frame, log)
-    return build_loop(real_config, profile, backend, state=state, **providers)
+    return build_loop(
+        real_config, profile, backend, state=state, client_is_foreground=capture.is_focused,
+        **providers,
+    )
 
 
 def build_position_reader(

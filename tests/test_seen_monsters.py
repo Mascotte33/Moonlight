@@ -46,6 +46,19 @@ def test_new_hash_is_empty_then_guessed_once(tmp_path: Path) -> None:
     assert len(calls) == 1
 
 
+def test_no_new_hash_is_learned_while_another_window_may_cover_the_client(
+    tmp_path: Path,
+) -> None:
+    store, calls = make_store(tmp_path / "p.seen_monsters.json")
+    store.rename("known", "Rat")
+    store.learns_new_names = False
+    assert store.name_for("title bar", CROP, CROP) == ""
+    assert store.name_for("known", CROP, CROP) == "Rat"
+    assert [m.name_hash for m in store.entries()] == ["known"]
+    assert not store.image_path("title bar").exists()
+    assert calls == []
+
+
 def test_rename_wins_and_survives_reload(tmp_path: Path) -> None:
     path = tmp_path / "p.seen_monsters.json"
     store, _ = make_store(path)

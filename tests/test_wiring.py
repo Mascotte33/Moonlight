@@ -288,6 +288,26 @@ def test_cavebot_starts_at_start_index() -> None:
     assert loop.modules.cavebot.route.current == 1
 
 
+@pytest.mark.parametrize("targeting_on", [True, False])
+def test_cavebot_presses_attack_when_blocked_only_without_targeting(targeting_on: bool) -> None:
+    route = Route("hunt", waypoints=[Waypoint(100, 100, 7)])
+    cfg = replace(
+        BotConfig.default(),
+        loop=LoopConfig(enable_f12_monitor=False, attack_combo="r"),
+        cavebot=CavebotConfig(route),
+    )
+    if not targeting_on:
+        cfg = replace(cfg, targeting=None)
+    loop = wiring.build_loop(
+        cfg.validate(), make_profile(), FakeInput(),
+        frame_provider=lambda: np.zeros((600, 800, 3), np.uint8),
+    )
+    assert loop.modules.cavebot is not None
+    # The client's attack key ignores never-attack rows, so targeting does the fighting.
+    expected = None if targeting_on else "r"
+    assert loop.modules.cavebot.attack_combo_when_blocked == expected
+
+
 def test_start_index_past_the_end_is_refused() -> None:
     route = Route("hunt", waypoints=[Waypoint(100, 100, 7)])
     cfg = replace(BotConfig.default(), cavebot=CavebotConfig(route, start_index=1))

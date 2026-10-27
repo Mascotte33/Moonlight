@@ -46,6 +46,13 @@ def test_rows_become_default_monster_named_rows_and_area_rules() -> None:
     assert (targeting.attack_cooldown_ms, targeting.unreachable_after_seconds) == (1500, 6.0)
 
 
+def test_chase_keys_are_saved() -> None:
+    settings = TargetingSettings("1500", "6", " F9 ", "F10")
+    cfg = apply_targeting(BotConfig.default(), [DEFAULT_ROW], [], settings)
+    assert cfg.targeting is not None
+    assert (cfg.targeting.chase_hotkey, cfg.targeting.stand_still_hotkey) == ("F9", "F10")
+
+
 def test_a_turned_off_targeting_module_stays_off() -> None:
     cfg = write_option(BotConfig.default(), Option("on", "targeting.enabled", "switch"), False)
     cfg = apply_targeting(cfg, [DEFAULT_ROW], [AreaRuleFields("F7", "2", "")], SETTINGS)

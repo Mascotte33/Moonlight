@@ -171,8 +171,9 @@ or in the `targeting` section of your profile config:
   everything is attacked unless you ignore it. The tab shows it as "all others".
   Default: priority 1, F6, 10% mana, follow.
 - The bot picks the highest priority, then the lowest HP, then the closest
-  row. It stays on a valid target and never clicks it twice (a second click
-  untargets).
+  row. It finishes the current target even when a higher priority monster
+  comes, and never clicks it twice (a second click untargets). A selected
+  "never attack" monster is left for the next one.
 - **Area rules** press a hotkey when at least `minimum_adjacent_monsters`
   creatures stand next to you and MP is at least `minimum_mana_percent`.
   Default: F5 at 3 monsters, 30% mana. A rule is used only while it is
@@ -181,18 +182,27 @@ or in the `targeting` section of your profile config:
 - **Unreachable:** when the target's HP stands still for
   `unreachable_after_seconds` (default 8), the bot takes one step toward it.
   After the same time again, it skips that monster for 30 s.
-- **Chase mode:** on every new target, the bot clicks the side panel's Chase
-  Opponent button for a `follow` row and Stand While Fighting otherwise.
-  Calibrate the `chase_buttons` region in the Calibration tab.
+- **Chase mode:** on every new target, the bot presses `chase_hotkey` for a
+  `follow` row and `stand_still_hotkey` otherwise ("Client keys" in the tab).
+  Bind the same keys to Chase Opponent and Stand While Fighting in the
+  client's hotkey options. An empty key leaves that mode as it is.
+- **Cavebot when blocked:** with targeting on, the cavebot never presses the
+  attack key (the client's "attack next" ignores never-attack rows);
+  targeting does the fighting. With targeting off it presses
+  `loop.attack_combo`.
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
-  The Targeting tab shows the picture next to the name. Type or correct the
-  name, then click **Add to monsters**. You name each monster kind once.
-  Without tesseract the guesses stay empty and you type the names. Only gray
-  name text counts, so icons and other panels don't create fake monsters.
+  The Targeting tab lists the ones with no monster row yet: the picture,
+  then the guessed name (filled in once tesseract reads it). Correct the
+  name, then click **Add to monsters** and the line leaves the list. You name
+  each monster kind once. Without tesseract the guesses stay empty and you
+  type the names. Only gray name text counts, and new names are learned only
+  while the client is the foreground window, so other windows covering it
+  don't create fake monsters.
 - **Timing log:** every 10 s `logs/bot.log` gets a `tick timing:` line
   (average, screen-reading share, max), and each restart logs its reason
-  (`bot restarts: ...`).
+  (`bot restarts: ...`). The log rotates at 5 MB and keeps 3 old files, so a
+  restart doesn't wipe the last run.
 
 Client setup: the battle list must show monsters (players may be filtered
 out) and be sorted by distance. Actions are logged to `logs/bot.log`.

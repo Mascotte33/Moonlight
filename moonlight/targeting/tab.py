@@ -50,7 +50,7 @@ __all__ = [
 
 OPTIONS = [
     Option("Targeting on", "targeting.enabled", "switch"),
-    Option("Attack hotkey (cavebot)", "loop.attack_combo", "hotkey"),
+    Option("Attack hotkey (cavebot, targeting off)", "loop.attack_combo", "hotkey"),
 ]
 
 #: Movement menu text for each config value.
@@ -82,6 +82,8 @@ class TargetingSettings(NamedTuple):
 
     attack_cooldown_ms: str
     unreachable_after_seconds: str
+    chase_hotkey: str = ""
+    stand_still_hotkey: str = ""
 
 
 def _number(text: str, cast: Callable[[str], float], where: str) -> float:
@@ -147,6 +149,8 @@ def apply_targeting(
         unreachable_after_seconds=_number(
             settings.unreachable_after_seconds, float, "unreachable time"
         ),
+        chase_hotkey=settings.chase_hotkey.strip(),
+        stand_still_hotkey=settings.stand_still_hotkey.strip(),
     )
     return BotConfig.from_dict(data)
 
@@ -254,6 +258,18 @@ class TargetingTab(Tab):
             line, text="Give up on a target after (s)", text_color=theme.TEXT_DIM
         ).pack(side="left", padx=(theme.PAD, 0))
         self._unreachable_entry = row_entry(line, "", 48, self._save)
+        chase_line = ctk.CTkFrame(settings_box, fg_color="transparent")
+        chase_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
+        ctk.CTkLabel(
+            chase_line, text="Client keys: Chase Opponent", text_color=theme.TEXT_DIM
+        ).pack(side="left")
+        self._chase_hotkey = HotkeyBox(chase_line, self._save)
+        self._chase_hotkey.pack(side="left", padx=(theme.UNIT, 0))
+        ctk.CTkLabel(
+            chase_line, text="Stand While Fighting", text_color=theme.TEXT_DIM
+        ).pack(side="left", padx=(theme.PAD, 0))
+        self._stand_still_hotkey = HotkeyBox(chase_line, self._save)
+        self._stand_still_hotkey.pack(side="left", padx=(theme.UNIT, 0))
 
         monsters_box, self._monsters_frame = _card(
             parent,
@@ -279,13 +295,17 @@ class TargetingTab(Tab):
         _seen_box, self._seen_frame = _card(
             parent,
             "Seen monsters",
-            "Every monster the battle list showed. Type its name, then add it to Monsters.",
+            "Monsters the battle list showed that have no row yet. Check the name, then add it.",
         )
         self._seen_empty = ctk.CTkLabel(
-            self._seen_frame, text="none yet (start the bot)", text_color=theme.TEXT_DIM
+            self._seen_frame,
+            text="nothing new (the running bot adds what it sees)",
+            text_color=theme.TEXT_DIM,
         )
         self._seen_empty.grid(row=0, column=0, sticky="w")
-        self._seen_drawn: set[str] = set()
+        #: Name hash -> (name box, the line's widgets) of each shown seen monster.
+        self._seen_lines: dict[str, tuple[ctk.CTkEntry, list[Any]]] = {}
+        self._seen_last_grid_row = 0
 
         self.lbl_msg = ctk.CTkLabel(parent, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=10)
@@ -336,6 +356,8 @@ class TargetingTab(Tab):
         ):
             entry.delete(0, "end")
             entry.insert(0, value)
+        self._chase_hotkey.set(targeting.chase_hotkey)
+        self._stand_still_hotkey.set(targeting.stand_still_hotkey)
 
     def _next_grid_row(self) -> int:
         self._last_grid_row += 1
@@ -434,7 +456,12 @@ class TargetingTab(Tab):
         self._save()
 
     def _settings(self) -> TargetingSettings:
-        return TargetingSettings(self._cooldown_entry.get(), self._unreachable_entry.get())
+        return TargetingSettings(
+            self._cooldown_entry.get(),
+            self._unreachable_entry.get(),
+            self._chase_hotkey.get(),
+            self._stand_still_hotkey.get(),
+        )
 
     def _save(self) -> None:
         """Save everything; a refused value shows its reason and nothing is saved."""
@@ -475,7 +502,6 @@ class TargetingTab(Tab):
     def _add_seen_line(self, monster: SeenMonster, store: SeenMonsters) -> None:
         """One seen monster: its battle-list picture, a name box and an add button."""
         rows = self._seen_frame
-        self._seen_empty.grid_forget()
         picture_path = store.image_path(monster.name_hash)
         picture_widget: Any
         if picture_path.exists():
@@ -490,20 +516,55 @@ class TargetingTab(Tab):
         for event in ("<Return>", "<FocusOut>"):
             entry.bind(event, lambda _e, rename=rename: rename())
         add = row_button(
-            rows, "Add to monsters", partial(self._add_seen_to_monsters, entry), 130, False
+            rows,
+            "Add to monsters",
+            partial(self._add_seen_to_monsters, store, monster.name_hash, entry),
+            130,
+            False,
         )
-        _place([picture_widget, entry, add], len(self._seen_drawn) + 1)
+        widgets = [picture_widget, entry, add]
+        self._seen_last_grid_row += 1
+        _place(widgets, self._seen_last_grid_row)
+        self._seen_lines[monster.name_hash] = (entry, widgets)
 
     @staticmethod
     def _rename_seen(store: SeenMonsters, name_hash: str, entry: ctk.CTkEntry) -> None:
         store.rename(name_hash, entry.get().strip())
 
-    def _add_seen_to_monsters(self, entry: ctk.CTkEntry) -> None:
+    def _add_seen_to_monsters(
+        self, store: SeenMonsters, name_hash: str, entry: ctk.CTkEntry
+    ) -> None:
         name = entry.get().strip()
         if not name:
             self.lbl_msg.configure(text="type the monster's name first")
             return
+        store.rename(name_hash, name)
         self._add_monster(name)
+
+    def _show_seen_monsters(self, store: SeenMonsters) -> None:
+        """A line per seen monster that has no monster row yet."""
+        names_with_a_row = {
+            line.name.get().strip().lower()
+            for line in self._monster_lines
+            if line.name is not None
+        }
+        for monster in store.entries():
+            name = monster.display_name.lower()
+            line = self._seen_lines.get(monster.name_hash)
+            if name and name in names_with_a_row:
+                if line is not None:
+                    for widget in line[1]:
+                        widget.destroy()
+                    del self._seen_lines[monster.name_hash]
+            elif line is None:
+                self._add_seen_line(monster, store)
+            elif monster.display_name and not line[0].get():
+                # The guess came after the line was drawn; a typed name is never replaced.
+                line[0].insert(0, monster.display_name)
+        if self._seen_lines:
+            self._seen_empty.grid_forget()
+        else:
+            self._seen_empty.grid(row=0, column=0, sticky="w")
 
     def on_poll(self, snap: WorldState) -> None:
         self.show_paused(["targeting.enabled"], self.ctx.paused)
@@ -512,10 +573,5 @@ class TargetingTab(Tab):
         if self.lbl_live.cget("text") != text:
             self.lbl_live.configure(text=text)
         store = self._seen_monsters()
-        if store is None:
-            return
-        for monster in store.entries():
-            # Only a new hash gets a row, so a half-typed name survives the poll.
-            if monster.name_hash not in self._seen_drawn:
-                self._add_seen_line(monster, store)
-                self._seen_drawn.add(monster.name_hash)
+        if store is not None:
+            self._show_seen_monsters(store)
