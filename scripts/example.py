@@ -1,10 +1,12 @@
-"""Tiny example user script: taps F1 once per tick while it is running."""
+"""Example script: run it from a 'script' waypoint with label 'example',
+or on a timer with "example 60" in Cavebot > Scripts.
 
-from moonlight.core.state import WorldState
-from moonlight.hardware.input import InputBackend
-from moonlight.scripts.scripts import BotScript
+Each ``yield`` hands the tick back to the bot, so healing never waits.
+"""
 
 
-class Example(BotScript):
-    def tick(self, state: WorldState, input: InputBackend) -> None:  # noqa: A002
-        input.press_combo("f1")
+def run(bot):
+    if bot.mana > 90:
+        yield bot.say("utevo lux")  # a light spell burns spare mana
+    yield 1  # wait 1 second
+    yield bot.press("f11")  # bind F11 to something harmless in the client

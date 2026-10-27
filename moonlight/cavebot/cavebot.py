@@ -66,6 +66,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   label into the chat and presses Enter; ``key`` presses its label as a
   hotkey. One key per tick (a key the wire limiter drops is sent again),
   then the route holds 1 s so NPC answers and windows land.
+* **wait**: positionless; holds the route for its label's seconds.
+* **script**: positionless; runs the user script named by its label
+  (:mod:`moonlight.scripts.scripts`); the route holds until it ends.
 * **End of route**: a hunting route starts over at waypoint 0; a route
   with ``loop`` off completes and the cavebot stops.
 * **Blocked** (an NPC in the way): after ``sidestep_after`` seconds without
@@ -95,6 +98,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -105,6 +109,9 @@ from moonlight.hardware.input import ClickSide, InputBackend
 from moonlight.perception.creatures import PLAYER_SLOT, find_creatures
 from moonlight.perception.floor import MAX_FLOOR, MIN_FLOOR
 from moonlight.perception.minimap import Rect
+
+if TYPE_CHECKING:
+    from moonlight.scripts.scripts import ScriptRunner
 
 __all__ = [
     "ACTIONS",
@@ -124,17 +131,17 @@ logger = logging.getLogger(__name__)
 #: Valid waypoint actions.
 ACTIONS = (
     "walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto", "check",
-    "say", "key", "drag",
+    "say", "key", "drag", "script", "wait",
 )
 
 #: Actions that need no position (executed immediately).
 _JUMP_ACTIONS = ("label", "goto", "check")
 #: Actions done where the bot stands (one command per tick, then a hold).
-_HAND_ACTIONS = ("say", "key", "drag")
+_HAND_ACTIONS = ("say", "key", "drag", "script", "wait")
 #: Actions without a tile (their x, y, z are 0).
 NO_TILE = _JUMP_ACTIONS + _HAND_ACTIONS
-#: Seconds the route holds after a hand action.
-_HAND_HOLD = 1.0
+#: Seconds the route holds after a hand action (a wait: its label).
+_HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0}
 
 #: Floor change each tile action causes (0 = sky, 15 = deepest).
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
@@ -263,17 +270,21 @@ class RouteFileLoader:
 
 
 def label_error(action: str, label: str) -> str | None:
-    """Why *label* cannot be the label of a ``say`` / ``key`` / ``drag``, or None."""
+    """Why *label* cannot be the label of a hand action (``say``, ``wait``...), or None."""
     if action == "say" and not re.fullmatch(r"[A-Za-z0-9 ]+", label):
         return "say text is letters, digits and spaces"
     if action == "drag" and not re.fullmatch(r"\d+ \d+ \d+ \d+", label):
         return "drag label is four numbers: x1 y1 x2 y2"
     if action == "key" and any(ch.isspace() for ch in label):
         return f"key {label!r} has a space"
+    if action == "wait" and not re.fullmatch(r"\d+(\.\d+)?", label):
+        return "wait label is seconds"
+    if action == "script" and not re.fullmatch(r"\w+", label):
+        return "script label is a file name in scripts/ without .py"
     return None
 
 
-def _say_keys(text: str) -> list[str]:
+def say_keys(text: str) -> list[str]:
     """The key presses that type *text* into the chat and send it."""
     return [ch if ch != " " else "space" for ch in text.lower()] + ["enter"]
 
@@ -301,6 +312,7 @@ class Cavebot:
         clock: Callable[[], float] | None = None,
         on_waypoint_reached: Callable[[int], None] | None = None,
         refill_cap: float | None = None,
+        scripts: ScriptRunner | None = None,
     ) -> None:
         """Create the runner.
 
@@ -331,6 +343,7 @@ class Cavebot:
                 positional waypoint.
             refill_cap: Used capacity % at which a ``check`` jumps; None
                 (Refill off) jumps only on :attr:`refill_now`.
+            scripts: Starts the user scripts of ``script`` waypoints.
 
         Raises:
             ValueError: On bad timings, or rope/shovel waypoints or
@@ -339,7 +352,8 @@ class Cavebot:
         self._minimap_region: Rect = minimap_region
         if stuck_timeout <= 0 or reclick_interval <= 0:
             raise ValueError("stuck_timeout and reclick_interval must be > 0")
-        needs_keys = any(wp.action in ("rope", "shovel", *_HAND_ACTIONS) for wp in route.waypoints)
+        keyed = ("rope", "shovel", "say", "key", "drag")
+        needs_keys = any(wp.action in keyed for wp in route.waypoints)
         if needs_keys and input_backend is None:
             raise ValueError("rope/shovel/say/key/drag waypoints need an input_backend")
         if any(wp.action == "drag" for wp in route.waypoints) and not clicker.absolute:
@@ -376,6 +390,7 @@ class Cavebot:
         self.refill_cap = refill_cap
         #: Refill now: the next ``check`` jumps to town (cleared by the jump).
         self.refill_now = False
+        self._scripts = scripts
         self._sends_done = 0  # of the current hand action
         self._hand_done_at: float | None = None
 
@@ -417,6 +432,15 @@ class Cavebot:
         self._clicker.cancel()  # the pending click targeted the old waypoint
         self._reset_tracking()
         self._resolve_jumps()
+
+    def goto(self, label: str) -> None:
+        """Walk on from label *label* (a script's ``bot.goto``); an unknown one is logged."""
+        wps = self.route.waypoints
+        at = next((i for i, w in enumerate(wps) if w.action == "label" and w.label == label), None)
+        if at is None:
+            logger.warning("cavebot: goto %r: no such label", label)
+        else:
+            self.go_to(at)
 
     def resume(self) -> None:
         """MOVE (re)entered: restart the stuck timer and re-click at once."""
@@ -542,6 +566,7 @@ class Cavebot:
         self._expected_z = None
         self._sidesteps = 0
         self.stuck_on_creatures = False
+        self._sends_done, self._hand_done_at = 0, None
 
     def _halt(self, alarm: str) -> None:
         logger.warning("cavebot: route %r stopped: %s", self.route.name, alarm)
@@ -617,8 +642,13 @@ class Cavebot:
         return self.refill_now or full
 
     # doc: docs/prs/refill.md#drag-waypoint
-    def _hand_sends(self, wp: Waypoint) -> list[Callable[[], None]]:
+    def _hand_sends(self, wp: Waypoint) -> list[Callable[[], object]]:
         """The wire commands of a ``say`` / ``key`` / ``drag``, in order."""
+        if wp.action == "wait":
+            return []
+        if wp.action == "script":
+            scripts = self._scripts
+            return [] if scripts is None else [lambda: scripts.start(wp.label)]
         send = self._input
         assert send is not None  # __init__: hand actions need it
         if wp.action == "drag":
@@ -630,12 +660,13 @@ class Cavebot:
                 lambda: send.mouse_to(*b),
                 lambda: send.mouse_up(ClickSide.LEFT),
             ]
-        keys = [wp.label] if wp.action == "key" else _say_keys(wp.label)
+        keys = [wp.label] if wp.action == "key" else say_keys(wp.label)
         return [functools.partial(send.press_combo, k) for k in keys]
 
     # doc: docs/prs/refill.md#say-key-waypoints
     def _hand_action(self, wp: Waypoint, now: float) -> None:
         """Send the next command of a hand action, then hold before moving on."""
+        self._last_move = now  # standing still here is not being stuck
         if self._hand_done_at is None:
             sends = self._hand_sends(wp)
             if self._sends_done < len(sends):
@@ -645,9 +676,9 @@ class Cavebot:
                     self._sends_done += 1
                 return
             self._hand_done_at = now
-        if now - self._hand_done_at >= _HAND_HOLD:
+        hold = float(wp.label) if wp.action == "wait" else _HAND_HOLD[wp.action]
+        if now - self._hand_done_at >= hold:
             self._sends_done, self._hand_done_at = 0, None
-            self._last_move = now  # standing still here is not being stuck
             self._advance()
 
     # doc: docs/prs/walking.md#skip-unreachable

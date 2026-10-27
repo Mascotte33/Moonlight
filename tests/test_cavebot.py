@@ -23,6 +23,7 @@ from moonlight.core.safety import RateLimitedInput, RateLimiter
 from moonlight.core.state import Monster, Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
+from moonlight.scripts.scripts import ScriptRunner
 
 MINIMAP = (10, 10, 120, 120)
 GAME = (200, 0, 480, 352)  # 32 px tiles; player tile center = (440, 176)
@@ -339,8 +340,34 @@ def test_drag_needs_the_absolute_clicker() -> None:
         Sim([Waypoint(0, 0, 0, "drag", "1 2 3 4")], Position(100, 100, 7), clicker=clicker)
 
 
+# doc: docs/prs/scripts.md#script-priority
+def test_wait_holds_the_route_for_its_seconds() -> None:
+    sim = Sim([Waypoint(0, 0, 0, "wait", "2"), walk(110, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    sim.step(1.5)
+    assert sim.route.current == 0
+    sim.step(1.0)
+    assert sim.route.current == 1 and sim.fake.sent_lines == []
+
+
+def test_script_waypoint_starts_the_script_then_moves_on(tmp_path: Path) -> None:
+    (tmp_path / "s.py").write_text("def run(bot):\n    yield bot.goto('back')\n")
+    runner = ScriptRunner(tmp_path)
+    wps = [Waypoint(0, 0, 0, "script", "s"), walk(110, 100), Waypoint(0, 0, 0, "label", "back")]
+    sim = Sim(wps, Position(100, 100, 7), scripts=runner)
+    sim.bot.start()
+    sim.step()
+    assert runner.running == "s"
+    runner.cavebot = sim.bot
+    while runner.running:
+        runner.step(sim.state, sim.fake)
+    assert sim.route.current == 2  # bot.goto jumped the route
+
+
 @pytest.mark.parametrize(
-    ("action", "label"), [("say", "hi!"), ("key", "ctrl 1"), ("drag", "1 2 3")]
+    ("action", "label"),
+    [("say", "hi!"), ("key", "ctrl 1"), ("drag", "1 2 3"), ("wait", "soon"), ("script", "a b")],
 )
 def test_bad_say_or_key_label_refused(action: str, label: str) -> None:
     raw = {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7}, {"action": action, "label": label}]}
