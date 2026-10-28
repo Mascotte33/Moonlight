@@ -85,10 +85,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   its walking direction, then
   ``sidestep_after`` later the tile right of it. Once it moves again after a
   sidestep, a ``walk`` waypoint is skipped; any other waypoint is retried.
-* **Stuck**: position unchanged for ``stuck_timeout`` seconds -> the route
-  stops and :attr:`Cavebot.alarm` is set to ``"stuck"``; while waiting on
-  blocked tiles the alarm is set but the route keeps retrying, and the
-  alarm clears once it moves. The loop calls
+* **Stuck**: position unchanged for ``stuck_timeout`` seconds ->
+  :attr:`Cavebot.alarm` is set to ``"stuck"`` (the operator is alerted) but
+  the route keeps trying; the alarm clears once it moves. The loop calls
   :meth:`Cavebot.resume` whenever MOVE is (re)entered, so time spent in a
   fight/loot/pause never counts as "stuck" (F-06).
 * **Unexpected floor change** (z differs from what the route expects): the
@@ -530,12 +529,12 @@ class Cavebot:
             if self._blocked_wait:
                 logger.info("cavebot: the way is free again")
                 self._blocked_wait = False
+            if self.alarm == "stuck":
+                logger.info("cavebot: moving again")
                 self.alarm = None
-        elif now - self._last_move > self._stuck_timeout:
-            if not self._blocked_wait:
-                self._halt("stuck")
-                return
-            self.alarm = "stuck"  # a player on the only path: alarm, keep trying
+        elif now - self._last_move > self._stuck_timeout and self.alarm != "stuck":
+            logger.warning("cavebot: route %r stuck, still trying", self.route.name)
+            self.alarm = "stuck"  # alert the operator, keep trying
         if pos is None or not self._resolve_jumps():
             self.release_walk_key()
             return

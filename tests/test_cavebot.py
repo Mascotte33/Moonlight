@@ -462,18 +462,21 @@ def test_action_retried_when_floor_does_not_change() -> None:
 # -- stuck / floor change / stop -----------------------------------------------
 
 
-def test_stuck_same_position_raises_alarm_and_stops() -> None:
+def test_stuck_same_position_raises_alarm_and_keeps_trying() -> None:
     sim = Sim([walk(120, 100)], Position(100, 100, 7))
     sim.bot.start()
     for _ in range(1190):  # 59.5 s standing still
         sim.step()
-    assert sim.bot.is_active()
+    assert sim.bot.alarm is None
     for _ in range(20):
         sim.step()
-    assert not sim.bot.is_active() and sim.bot.alarm == "stuck"
+    assert sim.bot.is_active() and sim.bot.alarm == "stuck"
     clicks = len(sim.clicker.clicks)
+    run_until(sim, sim.now + 10)
+    assert len(sim.clicker.clicks) > clicks  # still clicking the waypoint
+    sim.pos = Position(101, 100, 7)
     sim.step()
-    assert len(sim.clicker.clicks) == clicks
+    assert sim.bot.alarm is None  # moving again
 
 
 def run_until(sim: Sim, seconds: float) -> None:
@@ -619,7 +622,7 @@ def test_resume_resets_stuck_timer_on_move_reentry() -> None:
     assert sim.bot.is_active()
 
 
-def test_stuck_still_halts_without_resume_after_long_idle() -> None:
+def test_stuck_still_alarms_without_resume_after_long_idle() -> None:
     """Contrast for F-06: without resume() a long idle WOULD halt as stuck.
 
     Proves the resume() call on MOVE re-entry (not the passage of time alone)
@@ -633,7 +636,7 @@ def test_stuck_still_halts_without_resume_after_long_idle() -> None:
     sim.now += 61.0
     sim.step()
     assert sim.bot.alarm == "stuck"
-    assert not sim.bot.is_active()
+    assert sim.bot.is_active()  # alarm only, still trying
 
 
 def test_loop_calls_cavebot_resume_on_move_entry(

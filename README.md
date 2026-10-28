@@ -305,7 +305,8 @@ or in the `targeting` section of your profile config:
   the only path), it stands still and tries the blocked tiles again every
   2 s, walking on as soon as one is free; after 60 s it raises the stuck
   alarm and keeps trying. A route that goes 60 s without moving for any
-  other reason stops with the stuck alarm. Diagonals need the client's chat off (WASD walking).
+  other reason also raises the stuck alarm and keeps trying; it never stops by itself
+  for being stuck (`cavebot: moving again` clears the alarm). Diagonals need the client's chat off (WASD walking).
 - **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
