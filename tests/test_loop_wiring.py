@@ -162,6 +162,20 @@ def test_kill_detection_and_loot_state() -> None:
     looting.step.assert_called_once()
 
 
+def test_kill_detected_while_a_same_named_monster_remains() -> None:
+    ws = make_state(target="Wolf")
+    with ws.lock():
+        ws.monsters = [Monster(name="Wolf"), Monster(name="Wolf")]
+    looting = idle_module()
+    gl, clock = make_loop(ws, FakeInput(), looting=looting)
+    gl.tick()
+    with ws.lock():
+        ws.monsters = [Monster(name="Wolf")]  # one died, the client selects the other
+    clock.now += 1.0
+    gl.tick()
+    looting.on_target_died.assert_called_once_with("Wolf")
+
+
 def test_kill_mid_fight_loots_before_next_target() -> None:
     ws = make_state(target="Wolf", monsters=2)
     looting = idle_module(**{"loot_first.return_value": True, "should_loot.return_value": True})
