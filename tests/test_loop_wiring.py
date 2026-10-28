@@ -161,6 +161,17 @@ def test_kill_detection_and_loot_state() -> None:
     looting.step.assert_called_once()
 
 
+def test_alarm_still_loots() -> None:
+    ws = make_state()
+    with ws.lock():
+        ws.players_on_screen = 1  # ALARM
+    looting = idle_module(**{"should_loot.return_value": True})
+    gl, _ = make_loop(ws, FakeInput(), looting=looting)
+    gl.tick()
+    assert gl.current_state is BotState.ALARM
+    looting.step.assert_called_once()
+
+
 def test_emptied_battle_list_queues_a_loot() -> None:
     ws = make_state(monsters=2)
     looting = idle_module()
