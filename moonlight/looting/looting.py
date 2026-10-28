@@ -1,7 +1,9 @@
 """Looting: one press of the client's loot-all hotkey after a kill.
 
 The OTS loots every nearby corpse on one hotkey (Alt+Q). A kill or the
-battle list going empty queues a press; the bot presses it once, then holds
+battle list going empty queues a press; the bot holds still ``PRESS_DELAY``
+(the corpse is not lootable the instant the monster leaves the battle list),
+presses it once, then holds
 still for ``wait_ms`` so the loot lands and late monsters show up before it
 walks on. Below ``min_hp_to_loot`` the press waits (the bot holds still and
 heals) until HP is back up.
@@ -18,7 +20,10 @@ from dataclasses import dataclass
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
 
-__all__ = ["LootingConfig", "Looting"]
+__all__ = ["LootingConfig", "Looting", "PRESS_DELAY"]
+
+#: Seconds between the kill and the press; a press on the kill tick is ignored.
+PRESS_DELAY = 0.3
 
 
 @dataclass(frozen=True)
@@ -43,6 +48,7 @@ class Looting:
         self._clock = clock
         self._pending: str | None = None
         self._pressed_at: float | None = None
+        self._died_at = 0.0
 
     @property
     def pending(self) -> str | None:
@@ -55,6 +61,7 @@ class Looting:
         # share it, since the hotkey loots every corpse around.
         self._pending = target_name
         self._pressed_at = None
+        self._died_at = self._clock()
 
     def should_loot(self, snap: WorldState) -> bool:
         """True when a press is queued."""
@@ -66,6 +73,8 @@ class Looting:
             return False
         now = self._clock()
         if self._pressed_at is None:
+            if now - self._died_at < PRESS_DELAY:
+                return True
             if 0 < snap.hp_percent < self._config.min_hp_to_loot:
                 return True  # low HP: hold still and heal, loot after
             self._input.press_combo(self._config.loot_hotkey)

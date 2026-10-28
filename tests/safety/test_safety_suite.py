@@ -30,7 +30,7 @@ from moonlight.core.wiring import build_loop
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.healing.healing import HealingConfig, HealingDecision, HealingRule
-from moonlight.looting.looting import Looting, LootingConfig
+from moonlight.looting.looting import PRESS_DELAY, Looting, LootingConfig
 from moonlight.refill.refill import Refill, RefillConfig
 
 pytestmark = pytest.mark.safety
@@ -262,8 +262,10 @@ def test_10_no_input_while_idle() -> None:
 def test_11_loot_key_only_when_focused() -> None:
     inp = FakeInput()
     ws = make_state()
-    looting = Looting(inp, LootingConfig(loot_hotkey="alt+q"), clock=lambda: 0.0)
+    now = [0.0]
+    looting = Looting(inp, LootingConfig(loot_hotkey="alt+q"), clock=lambda: now[0])
     looting.on_target_died("Wolf")
+    now[0] = PRESS_DELAY
     ws.client_focused = False
     assert looting.step(ws) is False
     assert inp.sent_lines == []

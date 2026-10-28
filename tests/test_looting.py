@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import FakeInput
-from moonlight.looting.looting import Looting, LootingConfig
+from moonlight.looting.looting import PRESS_DELAY, Looting, LootingConfig
 
 
 class Clock:
@@ -26,25 +26,30 @@ def test_press_once_then_hold_for_wait_ms() -> None:
     looting, inp, clock, ws = make(wait_ms=400)
     looting.on_target_died("Wolf")
     assert looting.should_loot(ws)
+    assert looting.step(ws) is True  # too soon after the kill: no press yet
+    assert inp.sent_lines == []
+    clock.t = PRESS_DELAY
     assert looting.step(ws) is True
-    clock.t = 0.3
+    clock.t = PRESS_DELAY + 0.3
     assert looting.step(ws) is True
-    clock.t = 0.41
+    clock.t = PRESS_DELAY + 0.41
     assert looting.step(ws) is False
     assert inp.sent_lines == ["K alt+q"] and looting.pending is None
 
 
 def test_battle_list_emptied_queues_a_press() -> None:
-    looting, inp, _, ws = make()
+    looting, inp, clock, ws = make()
     looting.on_target_died("")
+    clock.t = PRESS_DELAY
     looting.step(ws)
     assert inp.sent_lines == ["K alt+q"]
 
 
 def test_low_hp_waits_for_hp_then_loots() -> None:
-    looting, inp, _, ws = make(min_hp_to_loot=70.0)
+    looting, inp, clock, ws = make(min_hp_to_loot=70.0)
     ws.hp_percent = 50.0
     looting.on_target_died("Wolf")
+    clock.t = PRESS_DELAY
     assert looting.step(ws) is True  # holds the bot while it heals
     assert inp.sent_lines == [] and looting.pending == "Wolf"
     ws.hp_percent = 70.0

@@ -81,7 +81,7 @@
 #define HID_F1        0xC2   // HID_F1 .. HID_F12 (0xC2..0xCD)
 #define HID_F13       0xF0   // HID_F13 .. HID_F24 (0xF0..0xFB)
 
-#define KEY_TAP_HOLD_MS       5UL      // min press duration for K taps
+#define KEY_TAP_HOLD_MS       30UL     // K tap hold; 5 ms was too short for the client
 #define MOUSE_CLICK_HOLD_MS   5UL      // min press duration for C clicks
 
 #define CMD_BLINK_DURATION_MS 120UL    // LED pulse per valid command
