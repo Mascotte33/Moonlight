@@ -101,6 +101,8 @@ def test_loot_values_are_written(tmp_path: Path) -> None:
     cfg = apply_cavebot(cfg, {"looting.wait_ms": "600", "looting.min_hp_to_loot": "50"})
     kept = cfg.off["looting"]
     assert (kept.wait_ms, kept.min_hp_to_loot) == (600, 50.0)
+    with pytest.raises(ConfigError, match="outside 0..100"):
+        apply_cavebot(cfg, {"looting.min_hp_to_loot": "301"})
 
 
 def test_loot_tab_has_no_unused_max_items() -> None:
