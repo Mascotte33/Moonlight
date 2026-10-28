@@ -85,7 +85,7 @@ OPTIONS = [
     Option("Shovel hotkey", "cavebot.shovel_hotkey", "hotkey"),
 ]
 LOOT_OPTIONS = [
-    Option("Loot hotkey (loots every corpse around)", "looting.loot_hotkey", "hotkey"),
+    Option("Loot hotkey", "looting.loot_hotkey", "hotkey"),
     Option("Wait after looting (ms)", "looting.wait_ms", "entry"),
     Option("Skip looting below HP %", "looting.min_hp_to_loot", "entry"),
     Option("Min free cap to loot (%)", "looting.min_cap_to_loot", "entry"),
