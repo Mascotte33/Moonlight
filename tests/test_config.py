@@ -73,7 +73,14 @@ def test_load_roundtrip(tmp_path: Path) -> None:
 
 
 def test_looting_loads_a_config_saved_with_the_loot_window_keys() -> None:
-    data = raw(looting={"enabled": True, "move_all_hotkey": None, "max_items_per_loot": 25})
+    data = raw(
+        looting={
+            "enabled": True,
+            "move_all_hotkey": None,
+            "max_items_per_loot": 25,
+            "min_cap_to_loot": 10.0,
+        }
+    )
     assert BotConfig.from_dict(data).looting is not None
 
 

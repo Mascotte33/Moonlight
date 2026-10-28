@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from moonlight.core.state import Capacity, WorldState
+from moonlight.core.state import WorldState
 from moonlight.hardware.input import FakeInput
 from moonlight.looting.looting import Looting, LootingConfig
 
@@ -41,19 +41,15 @@ def test_battle_list_emptied_queues_a_press() -> None:
     assert inp.sent_lines == ["K alt+q"]
 
 
-def test_low_hp_skips_the_loot() -> None:
-    looting, inp, _, ws = make(min_hp_to_loot=40.0)
-    ws.hp_percent = 30.0
+def test_low_hp_waits_for_hp_then_loots() -> None:
+    looting, inp, _, ws = make(min_hp_to_loot=70.0)
+    ws.hp_percent = 50.0
     looting.on_target_died("Wolf")
-    assert looting.step(ws) is False
-    assert inp.sent_lines == [] and looting.pending is None
-
-
-def test_low_free_cap_does_not_loot() -> None:
-    looting, _, _, ws = make(min_cap_to_loot=10.0)
-    looting.on_target_died("Wolf")
-    ws.capacity = Capacity(weight=950.0, max_weight=1000.0)
-    assert not looting.should_loot(ws)
+    assert looting.step(ws) is True  # holds the bot while it heals
+    assert inp.sent_lines == [] and looting.pending == "Wolf"
+    ws.hp_percent = 70.0
+    assert looting.step(ws) is True
+    assert inp.sent_lines == ["K alt+q"]
 
 
 def test_nothing_queued_does_nothing() -> None:
