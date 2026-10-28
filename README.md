@@ -137,7 +137,8 @@ passed on the route get looted too, also ones the bot did not kill; after a
 ring press the cavebot stands for the set wait so the loot lands. With only
 this switch on, the cavebot stands still for up to 1 s after a kill
 (attacking goes on) until the ring press. bot.log shows `loot triggered`
-when a ring is found and `looting` at each loot press.
+when a ring is found and `looting` at each loot press. A ring
+whose press could not go out at once is pressed on the next free slot.
 
 ## Getting started
 

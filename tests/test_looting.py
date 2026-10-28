@@ -139,3 +139,26 @@ def test_ring_press_while_walking_stops_for_wait_ms() -> None:
     assert looting.should_loot(ws) and looting.step(ws) is True
     clock.t = 5.41
     assert not looting.should_loot(ws)
+
+
+def test_seen_ring_stays_due_until_its_press_goes_out() -> None:
+    clock = Clock()
+    frames = [np.zeros((1056, 1440, 3), np.uint8) for _ in range(2)]
+    frames[0][500:505, 800:808] = frames[1][520:525, 820:828] = (255, 230, 200)
+    frames.append(frames[1])  # then the ring stands still for a look
+    tick = iter(range(100))
+    config = LootingConfig(ringed_corpses=True)
+    looting = Looting(
+        FakeInput(),
+        config,
+        clock=clock,
+        frames=lambda: frames[min(next(tick), 2)],
+        game_region=GRID,
+    )
+    assert not looting.ring_due()
+    clock.t = 0.1
+    assert looting.ring_due()  # the input limit drops this press
+    clock.t = 0.2
+    assert looting.ring_due()  # still due, though this look sees no change
+    looting.press_ring()
+    assert not looting.ring_due()

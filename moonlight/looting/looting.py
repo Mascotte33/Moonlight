@@ -73,6 +73,8 @@ class Looting:
         self._frames = frames
         self._rings = RingWatch(game_region) if game_region is not None else None
         self._ring_pressed_at: float | None = None
+        #: A ring was seen and its press has not gone out yet (the input limit dropped it).
+        self._ring_seen = False
         self._pending: str | None = None
         self._pressed_at: float | None = None
         self._died_at = 0.0
@@ -110,17 +112,22 @@ class Looting:
 
         Presses are ``wait_ms`` (at least ``RING_GAP``) apart, so the ring has
         time to go away and a ring that stays does not take every input slot.
+        A seen ring stays due until :meth:`press_ring` runs.
         """
         if not self._config.ringed_corpses or self._frames is None or self._rings is None:
             return False
+        if self._ring_seen:
+            return True
         now, last = self._clock(), self._ring_pressed_at
         if last is not None and now - last < max(self._config.wait_ms / 1000, RING_GAP):
             return False
-        return self._rings.seen(self._frames(), now)
+        self._ring_seen = self._rings.seen(self._frames(), now)
+        return self._ring_seen
 
     def press_ring(self) -> None:
         """Press the loot hotkey for a ring, then stand ``wait_ms`` so the loot lands."""
         log.info("looting")
+        self._ring_seen = False
         self._input.press_combo(self._config.loot_hotkey)
         now = self._ring_pressed_at = self._clock()
         # also ends a kill's ring wait early: the loot lands, then walk
