@@ -101,11 +101,12 @@ def stairs_waypoint(
 ) -> Waypoint | None:
     """The stairs or hole tile walked over from *left* to *arrived* on another floor.
 
-    None on the same floor, after a rope, ladder or shovel waypoint (that
-    action changed the floor), or without a direction to step in.
+    None on the same floor, after a rope, ladder, shovel or step waypoint
+    (that action changed the floor), or without a direction to step in.
     """
     last = _last_positioned(waypoints)
-    if left.z == arrived.z or (last is not None and last.action in ("rope", "ladder", "shovel")):
+    tools = ("rope", "ladder", "shovel", "step")
+    if left.z == arrived.z or (last is not None and last.action in tools):
         return None
     dx = (arrived.x > left.x) - (arrived.x < left.x)
     dy = (arrived.y > left.y) - (arrived.y < left.y)
@@ -150,6 +151,8 @@ def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
         "waypoints": [
             {"action": wp.action, "label": wp.label}
             if wp.action in ("label", "goto")
+            else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action, "label": wp.label}
+            if wp.action == "step"
             else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action}
             for wp in waypoints
         ],

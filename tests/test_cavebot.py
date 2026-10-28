@@ -309,6 +309,31 @@ def test_ladder_down_a_sewer_grate_is_done() -> None:
     assert sim.reached == [0] and sim.bot.route.current == 1
 
 
+def test_step_presses_its_key_once_on_its_tile_then_moves_on() -> None:
+    # doc: docs/prs/steps.md#step-waypoint
+    wps = [Waypoint(100, 101, 7, "step", "down"), walk(110, 100, 8)]
+    sim = Sim(wps, Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    assert sim.fake.sent_lines == ["D down"]  # walks onto the step tile
+    sim.pos = Position(100, 101, 7)
+    for _ in range(10):
+        sim.step()  # the step did not move the player: still one press
+    assert sim.fake.sent_lines == ["D down", "U down", "K down"]
+    sim.pos = Position(100, 102, 8)  # fell through the hole
+    sim.step(1.0)
+    assert sim.reached == [0] and sim.route.current == 1
+    assert sim.fake.sent_lines.count("K down") == 1
+
+
+def test_step_label_is_a_walk_key() -> None:
+    raw = {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7, "action": "step", "label": "up"}]}
+    assert RouteFileLoader.parse(raw).waypoints[0].label == "up"
+    raw["waypoints"][0]["label"] = "F5"  # type: ignore[index]
+    with pytest.raises(RouteError, match="step label"):
+        RouteFileLoader.parse(raw)
+
+
 def test_action_retried_when_floor_does_not_change() -> None:
     sim = Sim([Waypoint(100, 100, 7, "ladder")], Position(100, 100, 7))
     sim.bot.start()

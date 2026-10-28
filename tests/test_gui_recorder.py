@@ -34,7 +34,7 @@ def test_saved_route_loads_with_the_bot_loader(tmp_path: Path) -> None:
 
 
 def test_negative_coordinates_save(tmp_path: Path) -> None:
-    wps = [Waypoint(-5, -12, 7, "stand")]
+    wps = [Waypoint(-5, -12, 7, "stand"), Waypoint(1, 2, 7, "step", "q")]
     assert RouteFileLoader.load(save_route(tmp_path, "minus", wps)).waypoints == wps
 
 
