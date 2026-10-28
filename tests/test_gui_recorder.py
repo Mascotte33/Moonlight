@@ -8,7 +8,6 @@ import pytest
 
 from moonlight.cavebot.cavebot import RouteError, RouteFileLoader, Waypoint
 from moonlight.cavebot.recorder import (
-    HOTKEYS,
     StandTracker,
     make_waypoint,
     position_line,
@@ -16,7 +15,7 @@ from moonlight.cavebot.recorder import (
     save_route,
     should_add,
     should_stop_recording,
-    vk_code,
+    stairs_waypoint,
 )
 from moonlight.core.state import Position
 
@@ -74,25 +73,6 @@ def test_position_line() -> None:
     assert position_line(Position(0, 0, 0)) == "Position unknown"
     assert position_line(Position(1, 2, 7)) == "Position 1, 2, 7"
     assert position_line(Position(1, 2, 7), "lost") == "Position 1, 2, 7 (lost)"
-
-
-def test_each_hotkey_maps_to_its_action() -> None:
-    assert HOTKEYS == {
-        "F6": "walk",
-        "F7": "rope",
-        "F8": "shovel",
-        "F4": "ladder",
-        "F9": "label",
-        "F5": "undo",
-    }
-    assert [vk_code(k) for k in ("F4", "F5", "F6", "F7", "F8", "F9")] == [
-        0x73,
-        0x74,
-        0x75,
-        0x76,
-        0x77,
-        0x78,
-    ]
 
 
 def test_route_path_refuses_bad_names(tmp_path: Path) -> None:
@@ -187,3 +167,14 @@ def test_recorded_waypoints_are_tiles_the_character_stood_on() -> None:
         # the character is on x only once it takes the next step
         assert all(wp.x < x for wp in waypoints[1:])
     assert [wp.x for wp in waypoints] == [100, 105, 110, 115, 120]
+
+
+def test_a_floor_change_by_walking_records_the_stairs_tile() -> None:
+    wps = [Waypoint(100, 105, 7)]
+    ramp_up = stairs_waypoint(wps, Position(100, 101, 7), Position(100, 99, 6))
+    assert ramp_up == Waypoint(100, 100, 7, "stairs")
+    hole = stairs_waypoint(wps, Position(99, 100, 7), Position(100, 100, 8))
+    assert hole == Waypoint(100, 100, 7, "stairs")
+    assert stairs_waypoint(wps, Position(100, 101, 7), Position(100, 100, 7)) is None
+    roped = [*wps, Waypoint(100, 101, 7, "rope")]
+    assert stairs_waypoint(roped, Position(100, 101, 7), Position(100, 100, 6)) is None

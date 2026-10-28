@@ -286,13 +286,14 @@ class TestGameLoopStates:
     def test_pause_drops_cavebot_and_targeting_keeps_healing(self) -> None:
         ws = make_state(hp=50.0)
         steps: list[int] = []
+        released: list[int] = []
         cavebot = SimpleNamespace(
             is_active=lambda: True,
             step=lambda: steps.append(1),
             resume=lambda: None,
             luring=lambda: False,
             route=SimpleNamespace(current=0),
-            release_walk_key=lambda: None,
+            release_walk_key=lambda: released.append(1),
         )
         inp = FakeInput()
         clock = FakeClock()
@@ -309,10 +310,22 @@ class TestGameLoopStates:
         ws.hp_percent = 100.0
         gl.tick()
         assert steps == []
+        assert released  # a walk key held when Pause was pressed is let go
         gl.paused = False
         clock.sleep(1.0)  # let the rate limiter refill after the heal
         gl.tick()
         assert steps == [1]
+
+    def test_replacing_the_cavebot_lets_go_of_its_walk_key(self) -> None:
+        released: list[int] = []
+        cavebot = SimpleNamespace(release_walk_key=lambda: released.append(1))
+        gl, _ = make_loop(
+            make_state(), FakeInput(), modules=DecisionModules(cavebot=cast(Cavebot, cavebot))
+        )
+        gl.modules = DecisionModules(cavebot=gl.all_modules.cavebot)
+        assert released == []
+        gl.modules = DecisionModules()  # the cavebot switched off
+        assert released == [1]
 
     def test_idle_when_nothing_to_do(self) -> None:
         ws = make_state(hp=100.0)

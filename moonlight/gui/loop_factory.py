@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 from moonlight import x11
 from moonlight.calibration import autofind
 from moonlight.calibration.profile import ProfileManager
+from moonlight.cavebot.cavebot import Waypoint
 from moonlight.core.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
 from moonlight.core.state import WorldState
 from moonlight.core.wiring import build_loop, capture_providers, make_perceive
@@ -324,9 +325,23 @@ def watch_layout(
     return check
 
 
+def editor_route() -> tuple[str, list[Waypoint]] | None:
+    """(route name, waypoint list) of the Cavebot tab, saved or not; the tab replaces this."""
+    return None
+
+
 def gui_bot_config(config_path: str | Path | None = None) -> BotConfig:
-    """The real config as the GUI's bot runs it; live apply compares against this."""
+    """The real config as the GUI's bot runs it; live apply compares against this.
+
+    The cavebot runs the Cavebot tab's waypoint list when it shows the
+    picked route, not the route file.
+    """
     real_config = load_real_config(config_path)
+    shown = editor_route()
+    cavebot = real_config.cavebot
+    if cavebot is not None and shown is not None and shown[0] == cavebot.route.name and shown[1]:
+        route = replace(cavebot.route, waypoints=list(shown[1]))
+        real_config = replace(real_config, cavebot=replace(cavebot, route=route))
     # F12 is the GUI's Start/Pause key, so the loop's F12 kill switch stays off.
     return replace(real_config, loop=replace(real_config.loop, enable_f12_monitor=False))
 

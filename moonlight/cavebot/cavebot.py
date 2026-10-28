@@ -43,14 +43,18 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   targets with every monster attacking (spells and area rules included)
   and clears the flag after each kill, so the cavebot looks for a way again.
   While a target is selected it stands still, whatever selected it, and
-  walks on once nothing is.
+  walks on once nothing is. Stuck after a bump with nothing to fight and no
+  way over tiles not bumped yet: the waypoint is skipped, and the next ones
+  in route order, until one on this floor has such a way; none: alarm
+  ``"stuck"``.
 * **Arrival**: within 1 tile (Chebyshev distance) of the waypoint on the
   same floor; ``node`` within 3 tiles, ``stand`` only on the exact tile.
   ``walk``/``node``/``stand``/``lure`` are then done (``lure`` walks with
   attacking off, see :meth:`Cavebot.luring`); ``rope``/``shovel``/``ladder`` click
   the waypoint's tile in the game grid (15x11 tiles, player at slot (7, 5))
-  and wait for the expected floor change (rope/ladder: z - 1, shovel:
-  z + 1), retrying every ``reclick_interval``. ``stairs`` walks onto the
+  and wait for the expected floor change (rope: z - 1, shovel: z + 1,
+  ladder: up or down, so a sewer grate is a ``ladder`` too), retrying
+  every ``reclick_interval``. ``stairs`` walks onto the
   exact tile and is done when the floor changes, up or down.
 * **label / goto**: positionless. ``label`` is a jump target; ``goto``
   jumps to the waypoint after the named label (route loops).
@@ -432,8 +436,8 @@ class Cavebot:
         if self._expected_z is not None and pos.z == self._expected_z:
             self._advance()  # the rope/shovel/ladder action worked
             return
-        if pos.z != wp.z and wp.action == "stairs":
-            self._advance()  # stepping on the stairs changed the floor
+        if pos.z != wp.z and wp.action in ("stairs", "ladder"):
+            self._advance()  # the stairs, ladder or sewer grate changed the floor
             return
         if pos.z != wp.z:
             self.release_walk_key()
@@ -512,26 +516,58 @@ class Cavebot:
 
     def _resolve_jumps(self) -> bool:
         """Skip labels / follow gotos; False when the route ended or looped."""
-        wps = self.route.waypoints
-        for _ in range(len(wps) + 1):
-            if self.route.current >= len(wps):
-                if self.route.loop:
-                    self.route.current = 0
-                    continue
+        index = self._positional_from(self.route.current)
+        if index is None:
+            if self._active:
                 logger.info("cavebot: route %r complete", self.route.name)
                 self._active = False
-                return False
-            wp = wps[self.route.current]
+            return False
+        self.route.current = index
+        return True
+
+    def _positional_from(self, index: int) -> int | None:
+        """The first positional waypoint from *index* on, following labels and gotos.
+
+        None at the end of a route with ``loop`` off, or after a goto loop
+        (which halts the route).
+        """
+        wps = self.route.waypoints
+        for _ in range(len(wps) + 1):
+            if index >= len(wps):
+                if not self.route.loop:
+                    return None
+                index = 0
+                continue
+            wp = wps[index]
             if wp.action == "label":
-                self.route.current += 1
+                index += 1
             elif wp.action == "goto":
-                self.route.current = next(
+                index = next(
                     i + 1 for i, w in enumerate(wps) if w.action == "label" and w.label == wp.label
                 )
             else:
-                return True
+                return index
         self._halt("goto_loop")
-        return False
+        return None
+
+    # doc: docs/prs/walking.md#skip-unreachable
+    def _skip_unreachable(self, pos: Position, walkable: Callable[[int, int, int], bool]) -> None:
+        """Move on to the next waypoint with a path over *walkable*; none: alarm "stuck"."""
+        start, index = (pos.x, pos.y, pos.z), self.route.current
+        for _ in range(len(self.route.waypoints)):
+            logger.info("cavebot: waypoint %d unreachable, skipping", index)
+            following = self._positional_from(index + 1)
+            if following is None or following == self.route.current:
+                break
+            index = following
+            wp = self.route.waypoints[index]
+            goal = (wp.x, wp.y, wp.z)
+            if wp.z == pos.z and (goal == start or next_step(start, goal, walkable) is not None):
+                self.route.current = index
+                self._target = self._retried_target = None
+                return
+        if self._active:  # a goto loop already halted it
+            self._halt("stuck")
 
     def _advance(self) -> None:
         self.on_waypoint_reached(self.route.current)
@@ -580,7 +616,7 @@ class Cavebot:
         Stuck (no way around the creatures and bumped tiles, or the way
         around costs over ``_DETOUR`` more) with monsters in the battle list:
         it sets :attr:`stuck_on_creatures` and waits. Otherwise it tries
-        tiles not bumped yet.
+        tiles not bumped yet, and with no way over them skips the waypoint.
         """
         self._blocked = {t: end for t, end in self._blocked.items() if end > now}
         cost = self._cost_map if self._cost_map is not None and not self._cost_map.empty else None
@@ -619,6 +655,10 @@ class Cavebot:
         elif stuck:
             # Nothing to fight: the scan can be a tile off, so try every tile not bumped yet.
             path = next_step(start, goal, not_bumped)
+            if path is None:
+                self.release_walk_key()
+                self._skip_unreachable(pos, not_bumped)
+                return
         if path is None:
             step = self._best_unbumped_step(wp, pos)
         else:
