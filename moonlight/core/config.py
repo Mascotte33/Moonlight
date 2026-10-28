@@ -256,9 +256,9 @@ class BotConfig:
                     kwargs.setdefault("walk_keys", old)
                 value = _cavebot(section, routes_dir)
             else:
-                if name == "looting":  # the loot-window keys, gone with the window
-                    section.pop("move_all_hotkey", None)
-                    section.pop("max_items_per_loot", None)
+                if name == "looting":  # keys of removed loot rules
+                    for key in ("move_all_hotkey", "max_items_per_loot", "min_cap_to_loot"):
+                        section.pop(key, None)
                 value = _coerce(section, hints[name], f"modules.{name}")
             if enabled:
                 kwargs[name] = value

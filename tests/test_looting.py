@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from moonlight.core.state import Capacity, WorldState
+from moonlight.core.state import WorldState
 from moonlight.hardware.input import FakeInput
 from moonlight.looting.looting import Looting, LootingConfig
 
@@ -47,13 +47,6 @@ def test_low_hp_skips_the_loot() -> None:
     looting.on_target_died("Wolf")
     assert looting.step(ws) is False
     assert inp.sent_lines == [] and looting.pending is None
-
-
-def test_low_free_cap_does_not_loot() -> None:
-    looting, _, _, ws = make(min_cap_to_loot=10.0)
-    looting.on_target_died("Wolf")
-    ws.capacity = Capacity(weight=950.0, max_weight=1000.0)
-    assert not looting.should_loot(ws)
 
 
 def test_nothing_queued_does_nothing() -> None:
