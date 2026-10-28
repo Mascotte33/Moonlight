@@ -120,13 +120,15 @@ waypoint button adds a waypoint on the character's tile.
 
 The arrow pad in Cavebot > Edit route adds a `step` waypoint on the
 character's tile (or the typed X, Y, Z): the bot walks onto that tile,
-presses that arrow key exactly once (diagonals: Q, E, Z, C), waits 1 s and
+presses that arrow key exactly once (diagonals: Q, E, Z, C), waits 0.5 s and
 goes on to the next waypoint, wherever the step led. It never presses it
 again, so use it for holes, teleports, stairs and other one-tile moves. The
 middle button adds a `stand` on the tile. A `rope` waypoint walks onto its
 exact tile and stands still there 0.2 s before using the rope. With arrow-key
 walking, paths go around stairs, shovel holes, step targets and any tile that
-moved the character elsewhere when it walked onto it.
+moved the character elsewhere when it walked onto it. Minimap-click walking
+lets the client pick the path and can cross them: turn on arrow-key walking
+for routes next to holes or teleports.
 
 ## Getting started
 
