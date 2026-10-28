@@ -123,7 +123,8 @@ character's tile (or the typed X, Y, Z): the bot walks onto that tile,
 presses that arrow key exactly once (diagonals: Q, E, Z, C), waits 1 s and
 goes on to the next waypoint, wherever the step led. It never presses it
 again, so use it for holes, teleports, stairs and other one-tile moves. The
-middle button adds a `stand` on the tile.
+middle button adds a `stand` on the tile. A `rope` waypoint walks onto its
+exact tile and stands still there 0.2 s before using the rope.
 
 ## Getting started
 
