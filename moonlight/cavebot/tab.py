@@ -100,7 +100,7 @@ OPTIONS = [
 LOOT_OPTIONS = [
     Option("Loot hotkey", "looting.loot_hotkey", "hotkey"),
     Option("Wait after looting (ms)", "looting.wait_ms", "entry"),
-    Option("Loot only at HP % or above", "looting.min_hp_to_loot", "entry"),
+    Option("Loot only at HP % or above", "looting.min_hp_to_loot", "entry", min=0, max=100),
 ]
 REFILL_OPTIONS = [
     Option("Start refill at used cap %", "refill.trigger_cap", "entry"),
