@@ -96,7 +96,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Buffs | ✅ | ✅ | ❌ |
 | Alarms | ✅ | ✅ | ❌ |
 | Cavebot (waypoint routing, route recorder) | ✅ | ✅ | ❌ |
-| Looting | ✅ | ✅ | ❌ |
+| Looting | ✅ | ✅ | ✅ |
 | Refill route | ✅ | ✅ | ❌ |
 | User script runner | ✅ | ✅ | ❌ |
 | Arduino HID input | ✅ | ✅ | 🟡 |
@@ -107,7 +107,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 **Tested** — covered by passing automated tests. **Working** — ✅ verified in a
 full live game session; 🟡 partial: verified on real hardware or real
 screenshots, but not yet in a full session; ❌ not yet verified live. The first
-full live session has not happened yet.
+full live session (2026-10-28) verified looting.
 
 The route recorder saves the tile the character stood on, never the one it is
 walking to: a position counts after it held for 0.6 s, or once the character
