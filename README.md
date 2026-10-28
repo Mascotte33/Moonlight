@@ -121,7 +121,9 @@ Looting presses the loot hotkey (the OTS loots every corpse around on
 Alt+Q) after each kill and again when the battle list empties, then stands
 still for the set wait (400 ms by default) before walking on. Below the set
 HP (70 % by default) it holds still and heals first, then loots. It also
-loots while an alarm is up. Set it in Cavebot > Loot.
+loots while an alarm is up. Set it in Cavebot > Loot. Combo hotkeys
+(Alt+Q, Shift+F1, ...) hold every key down together; reflash the Leonardo
+firmware after updating.
 
 ## Getting started
 
