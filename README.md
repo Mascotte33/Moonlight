@@ -99,6 +99,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Looting | ✅ | ✅ | ❌ |
 | Refill route | ✅ | ✅ | ❌ |
 | User script runner | ✅ | ✅ | ❌ |
+| Step waypoints (one walk key from a tile: holes, teleports, stairs) | ✅ | ✅ | ❌ |
 | Arduino HID input | ✅ | ✅ | 🟡 |
 | Closed-loop clicking | ✅ | ✅ | 🟡 |
 | Kill switch + safety stops | ✅ | ✅ | ❌ |
@@ -116,6 +117,13 @@ over stairs or into a hole records a `stairs` waypoint on that tile, so the
 route plays back across floors; for a ladder (or a sewer grate: Ladder too),
 rope or shovel click its button while standing on the tile you use it from. While recording, every
 waypoint button adds a waypoint on the character's tile.
+
+The arrow pad in Cavebot > Edit route adds a `step` waypoint on the
+character's tile (or the typed X, Y, Z): the bot walks onto that tile,
+presses that arrow key exactly once (diagonals: Q, E, Z, C), waits 1 s and
+goes on to the next waypoint, wherever the step led. It never presses it
+again, so use it for holes, teleports, stairs and other one-tile moves. The
+middle button adds a `stand` on the tile.
 
 ## Getting started
 
