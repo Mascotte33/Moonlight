@@ -10,8 +10,9 @@ state the bot is in, using a strict priority order (highest wins):
                    loop keeps ticking (perceive only) and resumes on its own
                    once perception is healthy again.
 3. ALARM           Player on screen, PM open, fast HP drop, a critical
-                   alarm, or a cavebot alarm: stop attack/loot/walk;
-                   healing continues. Entering ALARM alerts the operator.
+                   alarm, or a cavebot alarm: stop attack/walk; healing
+                   and a queued loot continue. Entering ALARM alerts the
+                   operator.
 4. ATTACK          A target is selected (or, with targeting wired, the
                    targeting module chose one).
 5. LOOT            A kill is waiting to be looted (looting wired).
@@ -691,7 +692,10 @@ class GameLoop:
             self._task = "Healing"
             return
         if self._state is BotState.ALARM:
-            return  # no attack/move/loot/buffs; healing already ran (alert sent on entry)
+            # No attack/move/buffs; healing already ran (alert sent on entry).
+            if self.modules.looting is not None and self.modules.looting.should_loot(snap):
+                self._act_loot(snap)  # the corpse is still there
+            return
         if self.modules.buffs is not None and self._buff(snap):
             return
         if self.modules.extras is not None and self._extra(snap):
