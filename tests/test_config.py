@@ -320,3 +320,8 @@ def test_rotation_accounts_load_round_trip_and_need_the_cavebot(tmp_path: Path) 
     old = raw()
     del old["modules"]["rotation"]
     assert BotConfig.from_dict(old).rotation is None
+    data["modules"]["rotation"] = {"enabled": True, "accounts": accounts[:1]}
+    with pytest.raises(ConfigError, match="needs at least 2 accounts"):
+        BotConfig.from_dict(data)
+    off = BotConfig.from_dict(raw(rotation={"enabled": False, "logout_hotkey": "ctrl+l"}))
+    assert off.off["rotation"].accounts == ()  # no accounts yet is fine while off

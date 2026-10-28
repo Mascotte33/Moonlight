@@ -47,7 +47,6 @@ def play(r: ScriptRunner, inp: object, clock: Clock, in_game: bool, seconds: flo
 def test_validate() -> None:
     RotationConfig(accounts=(A, B)).validate()
     for bad in (
-        RotationConfig(accounts=(A,)),
         RotationConfig(accounts=(A, Account("a.b", "x"))),
         RotationConfig(accounts=(A, Account("ab", ""))),
         RotationConfig(accounts=(A, Account("ab", "x", character=0))),

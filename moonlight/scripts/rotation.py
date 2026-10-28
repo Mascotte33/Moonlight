@@ -55,8 +55,6 @@ class RotationConfig:
 
     def validate(self) -> RotationConfig:
         check_hotkey(self.logout_hotkey, "rotation.logout_hotkey")
-        if len(self.accounts) < 2:
-            raise ValueError("rotation needs at least 2 accounts")
         for i, acc in enumerate(self.accounts, 1):
             for name in ("login", "password"):
                 if not re.fullmatch(r"[A-Za-z0-9]+", getattr(acc, name)):

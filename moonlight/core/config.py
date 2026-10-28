@@ -359,6 +359,9 @@ class BotConfig:
             raise ConfigError("refill needs the cavebot module enabled")
         if self.rotation is not None and self.cavebot is None:
             raise ConfigError("rotation needs the cavebot module enabled")
+        if self.rotation is not None and len(self.rotation.accounts) < 2:
+            # checked only when on, so the Settings tab can save the logout hotkey
+            raise ConfigError("rotation needs at least 2 accounts")
         # F-10: the buffs module reads buff-icon state that no reader
         # populates yet; refuse to enable it until one is wired.
         if self.buffs is not None and not self.buff_icon_source:
