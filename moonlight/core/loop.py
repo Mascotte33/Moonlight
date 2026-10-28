@@ -684,6 +684,9 @@ class GameLoop:
         if self.modules.healing is not None and self._heal(snap):
             self._task = "Healing"
             return
+        looting = self.modules.looting
+        if looting is not None and looting.ring_due():
+            self._send(snap, looting.press_ring)  # then carry on with this tick
         if self._state is BotState.ALARM:
             # No attack/move/buffs; healing already ran (alert sent on entry).
             if self.modules.looting is not None and self.modules.looting.should_loot(snap):

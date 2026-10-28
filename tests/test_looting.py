@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import FakeInput
 from moonlight.looting.looting import PRESS_DELAY, Looting, LootingConfig
@@ -70,3 +72,39 @@ def test_loot_first_unless_hp_low() -> None:
     assert looting.loot_first(ws)
     ws.hp_percent = 50.0
     assert not looting.loot_first(ws)  # keep fighting; loot after
+
+
+def test_after_kill_off_ignores_kills() -> None:
+    looting, inp, _, ws = make(after_kill=False)
+    looting.on_target_died("Wolf")
+    assert not looting.should_loot(ws) and looting.step(ws) is False
+    assert inp.sent_lines == []
+
+
+GRID = (0, 0, 1440, 1056)  # 96 px tiles; the player's tile is x 672-767, y 480-575
+
+
+def test_ring_press_is_wait_ms_apart_and_only_when_switched_on() -> None:
+    inp, clock = FakeInput(), Clock()
+    frames = [np.zeros((1056, 1440, 3), np.uint8) for _ in range(2)]
+    frames[0][500:505, 800:808] = frames[1][520:525, 820:828] = (255, 230, 200)  # a ring turning
+    tick = iter(range(100))
+
+    def frame() -> np.ndarray:
+        return frames[next(tick) % 2]
+
+    def make_ring(**cfg: object) -> Looting:
+        config = LootingConfig(wait_ms=400, **cfg)  # type: ignore[arg-type]
+        return Looting(inp, config, clock=clock, frames=frame, game_region=GRID)
+
+    assert not make_ring().ring_due()  # off by default
+    looting = make_ring(ringed_corpses=True)
+    assert not looting.ring_due()  # the first look
+    clock.t = 0.1
+    assert looting.ring_due()
+    looting.press_ring()
+    assert inp.sent_lines == ["K alt+q"]
+    clock.t = 0.3
+    assert not looting.ring_due()  # wait_ms after the press
+    clock.t = 0.5
+    assert looting.ring_due()

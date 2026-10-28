@@ -126,6 +126,13 @@ loots while an alarm is up. Set it in Cavebot > Loot. Every key tap and
 mouse click holds 60 ms, like a real press; combo hotkeys (Alt+Q, Shift+F1)
 hold all their keys down together. Reflash the Leonardo after updating.
 
+Cavebot > Loot has a switch for each loot trigger. **Loot after every kill**
+(on by default) is the above. **Loot ringed corpses next to me** (off by
+default) presses the loot hotkey whenever a corpse's turning loot ring shows
+on the character's tile or the 8 around it, mid-fight too, without stopping;
+presses are the set wait apart. The ring is found by its dots moving, so it
+is not seen while the character walks.
+
 ## Getting started
 
 Requirements: Windows, Python 3.12+, an Arduino Leonardo for real input
