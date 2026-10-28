@@ -59,7 +59,10 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   exact tile and is done when the floor changes, up or down. ``step``
   (docs/prs/steps.md#step-waypoint) walks onto the exact tile, presses its
   label's walk key once, never again, holds 1 s and is done, wherever that
-  step led (a hole, a teleport, stairs).
+  step led (a hole, a teleport, stairs). Arrow-key paths never cross the
+  tiles of ``stairs`` and ``shovel`` waypoints, the tile a ``step`` presses
+  into, or a tile that moved the player elsewhere when walked onto
+  (docs/prs/steps.md#floor-change-tiles); such a tile is only ever the goal.
 * **label / goto**: positionless. ``label`` is a jump target; ``goto``
   jumps to the waypoint after the named label (route loops).
 * **End of route**: a hunting route starts over at waypoint 0; a route
@@ -131,6 +134,11 @@ _REACH = {"node": 3, "stand": 0, "stairs": 0, "step": 0, "rope": 0}
 # doc: docs/prs/steps.md#rope-settle
 #: Seconds a rope waits standing on its tile before the rope is used.
 _ROPE_SETTLE = 0.2
+# doc: docs/prs/steps.md#floor-change-tiles
+#: Waypoint actions whose tile moves the player when walked onto.
+_DANGER_ACTIONS = ("stairs", "shovel")
+#: Tiles moved in one position change that count as a teleport, not a step.
+_JUMP_TILES = 2
 # doc: docs/prs/keys-walking.md#arrow-steps
 # doc: docs/prs/keys-walking.md#learned-blocks
 #: Walk key per one-tile step (y grows downward, up is north); numpad keys walk diagonally.
@@ -330,6 +338,8 @@ class Cavebot:
         self._walk_keys = walk_keys
         self._cost_map = cost_map
         self._blocked: dict[tuple[int, int, int], float] = {}  # tile -> expiry
+        #: Tiles a walk key stepped onto that moved the player elsewhere (a hole, a teleport).
+        self._jumped: set[tuple[int, int, int]] = set()
         self._target: tuple[int, int, int] | None = None
         #: The target tile whose key was pressed a second time after not moving.
         self._retried_target: tuple[int, int, int] | None = None
@@ -439,6 +449,7 @@ class Cavebot:
             self._sidesteps = 0
             self._previous_pos, self._last_pos = self._last_pos, pos
             self._last_move = self._moved_at = now
+            self._learn_jump(pos)
         elif now - self._last_move > self._stuck_timeout:
             self._halt("stuck")
             return
@@ -601,6 +612,28 @@ class Cavebot:
             return True
         return started
 
+    # doc: docs/prs/steps.md#floor-change-tiles
+    def _learn_jump(self, pos: Position) -> None:
+        """Remember the key's target tile when walking onto it moved the player elsewhere."""
+        old, target = self._previous_pos, self._target
+        wp = self.route.waypoints[self.route.current]
+        if old is None or target is None or wp.action in ("step", *_DANGER_ACTIONS, *_FLOOR_DELTA):
+            return
+        if pos.z != old.z or max(abs(pos.x - old.x), abs(pos.y - old.y)) > _JUMP_TILES:
+            logger.info("cavebot: tile %s,%s,%s moved the player, avoiding it", *target)
+            self._jumped.add(target)
+
+    def _danger_tiles(self) -> set[tuple[int, int, int]]:
+        """Tiles that change the floor or teleport: stairs, holes, step targets, learned jumps."""
+        tiles = set(self._jumped)
+        for wp in self.route.waypoints:
+            if wp.action in _DANGER_ACTIONS:
+                tiles.add((wp.x, wp.y, wp.z))
+            elif wp.action == "step":
+                dx, dy = next(d for d, key in WALK_KEYS.items() if key == wp.label)
+                tiles.add((wp.x + dx, wp.y + dy, wp.z))
+        return tiles
+
     # doc: docs/prs/walking.md#skip-unreachable
     def _skip_unreachable(self, pos: Position, walkable: Callable[[int, int, int], bool]) -> None:
         """Move on to the next waypoint with a path over *walkable*; none: alarm "stuck"."""
@@ -673,17 +706,24 @@ class Cavebot:
         cost = self._cost_map if self._cost_map is not None and not self._cost_map.empty else None
         if self._scan(pos, now):
             self._release_tiles_creatures_left()
+        danger = self._danger_tiles()  # never walked over, only onto as the goal
 
         def free(x: int, y: int, z: int) -> bool:  # a creature on a bumped tile can be killed
-            return ((x, y, z) not in self._blocked or (x, y) in self._creatures) and (
-                cost is None or cost.walkable(x, y, z)
+            return (
+                ((x, y, z) not in self._blocked or (x, y) in self._creatures)
+                and (x, y, z) not in danger
+                and (cost is None or cost.walkable(x, y, z))
             )
 
         def walkable(x: int, y: int, z: int) -> bool:
             return (x, y) not in self._creatures and free(x, y, z)
 
         def not_bumped(x: int, y: int, z: int) -> bool:
-            return (x, y, z) not in self._blocked and (cost is None or cost.walkable(x, y, z))
+            return (
+                (x, y, z) not in self._blocked
+                and (x, y, z) not in danger
+                and (cost is None or cost.walkable(x, y, z))
+            )
 
         start, goal = (pos.x, pos.y, pos.z), (wp.x, wp.y, wp.z)
         path = next_step(start, goal, walkable)
@@ -711,7 +751,7 @@ class Cavebot:
                 self._skip_unreachable(pos, not_bumped)
                 return
         if path is None:
-            step = self._best_unbumped_step(wp, pos)
+            step = self._best_unbumped_step(wp, pos, danger)
         else:
             step = path[0]
         self._target = (pos.x + step[0], pos.y + step[1], pos.z)
@@ -727,13 +767,16 @@ class Cavebot:
                 del self._blocked[tile]
                 self._bumped_into_creature.discard(tile)
 
-    def _best_unbumped_step(self, wp: Waypoint, pos: Position) -> tuple[int, int]:
-        """No path: the step nearest *wp*, unbumped tiles first (map data can be wrong)."""
+    def _best_unbumped_step(
+        self, wp: Waypoint, pos: Position, danger: set[tuple[int, int, int]]
+    ) -> tuple[int, int]:
+        """No path: the step nearest *wp*, safe unbumped tiles first (map data can be wrong)."""
 
-        def rank(step: tuple[int, int]) -> tuple[bool, int, int]:
+        def rank(step: tuple[int, int]) -> tuple[bool, bool, int, int]:
             x, y = pos.x + step[0], pos.y + step[1]
             dx, dy = abs(wp.x - x), abs(wp.y - y)
-            return (x, y, pos.z) in self._blocked, max(dx, dy), dx + dy
+            unsafe = (x, y, pos.z) in danger and (x, y) != (wp.x, wp.y)
+            return unsafe, (x, y, pos.z) in self._blocked, max(dx, dy), dx + dy
 
         return min(WALK_KEYS, key=rank)
 
