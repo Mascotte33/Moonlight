@@ -267,6 +267,9 @@ def test_label_goto_loops_route() -> None:
 def test_rope_presses_hotkey_clicks_tile_and_waits_for_floor_up() -> None:
     sim = Sim([Waypoint(100, 100, 7, "rope"), walk(100, 100, 6)], Position(100, 100, 7))
     sim.bot.start()
+    for _ in range(4):
+        sim.step()  # arrived: stands 0.2 s first
+    assert sim.fake.sent_lines == []
     sim.step()
     assert sim.fake.sent_lines == ["K F9"]
     assert sim.clicker.clicks == [((440, 176), ClickSide.LEFT)]

@@ -48,7 +48,8 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   in route order, until one on this floor has such a way; none: alarm
   ``"stuck"``.
 * **Arrival**: within 1 tile (Chebyshev distance) of the waypoint on the
-  same floor; ``node`` within 3 tiles, ``stand`` only on the exact tile.
+  same floor; ``node`` within 3 tiles, ``stand`` and ``rope`` only on the
+  exact tile (a rope after standing still there ``_ROPE_SETTLE`` s).
   ``walk``/``node``/``stand``/``lure`` are then done (``lure`` walks with
   attacking off, see :meth:`Cavebot.luring`); ``rope``/``shovel``/``ladder`` click
   the waypoint's tile in the game grid (15x11 tiles, player at slot (7, 5))
@@ -126,7 +127,10 @@ _HAND_HOLD = {"step": 1.0}
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
 
 #: Arrival distance in tiles; every other positional action uses 1.
-_REACH = {"node": 3, "stand": 0, "stairs": 0, "step": 0}
+_REACH = {"node": 3, "stand": 0, "stairs": 0, "step": 0, "rope": 0}
+# doc: docs/prs/steps.md#rope-settle
+#: Seconds a rope waits standing on its tile before the rope is used.
+_ROPE_SETTLE = 0.2
 # doc: docs/prs/keys-walking.md#arrow-steps
 # doc: docs/prs/keys-walking.md#learned-blocks
 #: Walk key per one-tile step (y grows downward, up is north); numpad keys walk diagonally.
@@ -466,6 +470,8 @@ class Cavebot:
                 self._advance()
             else:
                 self.release_walk_key()
+                if wp.action == "rope" and now - self._moved_at < _ROPE_SETTLE:
+                    return  # stop on the rope spot first
                 self._expected_z = wp.z + _FLOOR_DELTA[wp.action]
                 self._retry_if_idle(now, lambda: self._tile_action(wp, pos))
             return
