@@ -136,7 +136,8 @@ while the character walks (the scroll is undone first), so ringed corpses
 passed on the route get looted too, also ones the bot did not kill; after a
 ring press the cavebot stands for the set wait so the loot lands. With only
 this switch on, the cavebot stands still for up to 1 s after a kill
-(attacking goes on) until the ring press.
+(attacking goes on) until the ring press. bot.log notes each ring seen and
+what triggered each loot press (ring or kill).
 
 ## Getting started
 

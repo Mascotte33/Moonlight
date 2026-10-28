@@ -14,12 +14,16 @@ correlation), so a ring passed on the way is seen too.
 
 from __future__ import annotations
 
+import logging
+
 import cv2
 import numpy as np
 
 from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = ["GAP", "MOVED", "RING_PIXELS", "RingWatch"]
+
+log = logging.getLogger(__name__)
 
 _COLS, _ROWS = 15, 11
 #: Seconds between the two looks; the ring turns visibly in that time.
@@ -77,10 +81,15 @@ class RingWatch:
         ref, self._ref, self._ref_at = self._ref, block, now
         if ref is None or ref.shape != block.shape:
             return False
-        if float(np.abs(block - ref).mean()) > MOVED:
+        walking = float(np.abs(block - ref).mean()) > MOVED
+        if walking:
             block, ref = _unscrolled(block, ref)  # the view scrolled
             if block.size == 0 or float(np.abs(block - ref).mean()) > MOVED:
                 return False  # scrolled too far, or not a plain scroll
         # ponytail: a white spell flash on these tiles counts too; it only
         # costs one extra loot press.
-        return int((_bright(block) & ~_bright(ref)).sum()) >= RING_PIXELS
+        dots = int((_bright(block) & ~_bright(ref)).sum())
+        if dots < RING_PIXELS:
+            return False
+        log.info("loot ring seen: %d new dots%s", dots, " (walking)" if walking else "")
+        return True

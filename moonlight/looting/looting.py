@@ -21,6 +21,7 @@ view scrolls.
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -39,6 +40,8 @@ PRESS_DELAY = 0.3
 RING_WAIT = 1.0
 #: Least seconds between ring presses: the ring stays until the loot lands.
 RING_GAP = 0.5
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,7 @@ class Looting:
 
     def press_ring(self) -> None:
         """Press the loot hotkey for a ring, then stand ``wait_ms`` so the loot lands."""
+        log.info("loot trigger: ring")
         self._input.press_combo(self._config.loot_hotkey)
         now = self._ring_pressed_at = self._clock()
         # also ends a kill's ring wait early: the loot lands, then walk
@@ -134,6 +138,7 @@ class Looting:
                 return True
             if 0 < snap.hp_percent < self._config.min_hp_to_loot:
                 return True  # low HP: hold still and heal, loot after
+            log.info("loot trigger: kill (%s)", self._pending or "last monster")
             self._input.press_combo(self._config.loot_hotkey)
             self._pressed_at = now
             return True
