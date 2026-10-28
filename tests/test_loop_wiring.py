@@ -56,6 +56,7 @@ def idle_module(**overrides: object) -> mock.Mock:
     m.decide.return_value = None
     m.track.return_value = []
     m.should_loot.return_value = False
+    m.ring_due.return_value = False
     m.loot_first.return_value = False
     m.should_refill.return_value = False
     m.is_active.return_value = False
@@ -183,6 +184,20 @@ def test_kill_mid_fight_loots_before_next_target() -> None:
     gl.tick()
     assert gl.current_state is BotState.LOOT  # not ATTACK on the next wolf
     looting.step.assert_called_once()
+
+
+def test_ring_press_does_not_stop_the_attack() -> None:
+    action = SimpleNamespace(kind="select", battle_list_row=0, reason="r")
+    targeting = idle_module(**{"decide.return_value": action, "row_center.return_value": (5, 6)})
+    looting = idle_module(**{"ring_due.return_value": True})
+    clicker = mock.Mock(busy=False, **{"step.return_value": None})
+    gl, _ = make_loop(
+        make_state(monsters=1), FakeInput(), targeting=targeting, looting=looting, clicker=clicker
+    )
+    gl.tick()
+    looting.press_ring.assert_called_once()
+    assert gl.current_state is BotState.ATTACK
+    clicker.request.assert_called_once_with((5, 6))
 
 
 def test_alarm_still_loots() -> None:
