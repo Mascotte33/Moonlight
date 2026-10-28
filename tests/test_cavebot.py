@@ -793,6 +793,28 @@ def test_walk_keys_presses_one_arrow_per_step() -> None:
     assert pressed(sim)[3] in ("left", "right")
 
 
+def test_walk_keys_go_around_stairs_and_step_tiles() -> None:
+    # doc: docs/prs/steps.md#floor-change-tiles
+    wps = [walk(100, 104), Waypoint(100, 101, 7, "stairs"), Waypoint(101, 99, 7, "step", "up")]
+    sim = Sim(wps, Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    assert pressed(sim)[0] in ("left", "right", "z", "c")  # not down onto the stairs
+
+
+def test_walk_keys_avoid_a_tile_that_moved_the_player() -> None:
+    # doc: docs/prs/steps.md#floor-change-tiles
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    assert pressed(sim) == ["down"]
+    sim.pos = Position(130, 130, 7)  # the tile below was a teleport
+    sim.step()
+    sim.pos = Position(100, 100, 7)  # back again
+    sim.step(1.0)
+    assert pressed(sim)[-1] != "down"
+
+
 def test_walk_keys_hold_the_key_until_the_way_turns_or_stops() -> None:
     sim = Sim([walk(100, 103), walk(96, 102)], Position(100, 100, 7), walk_keys=True)
     sim.bot.start()
