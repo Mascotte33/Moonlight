@@ -97,7 +97,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -297,7 +297,7 @@ class GameLoop:
         self._alarm: AlarmAction | None = None
         self._target: TargetingAction | None = None
         self._last_target: str | None = None
-        self._had_monsters = False
+        self._last_names: Counter[str] = Counter()
         self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
@@ -528,18 +528,22 @@ class GameLoop:
         self._had_selection = selected is not None
         targeting = self._targeting()
         self._target = targeting.decide(snap, self._clock()) if targeting is not None else None
+        names = Counter(mon.name for mon in snap.monsters)
         if m.looting is not None:
-            # ponytail: "selected target vanished from the battle list" = kill
-            # (a target lost out of range counts too); use the server-log OCR
-            # (perception/logocr.py) if false loot attempts matter.
+            # ponytail: one fewer monster named like the target = kill (the
+            # client may select the next one at once; one walking off screen
+            # counts too); use the server-log OCR (perception/logocr.py) if
+            # false loot attempts matter.
             prev = self._last_target
             cur = snap.selected_target
             self._last_target = cur.name if cur is not None else None
-            if prev and cur is None and all(mon.name != prev for mon in snap.monsters):
+            if prev and (
+                names[prev] < self._last_names[prev] or (cur is None and not names[prev])
+            ):
                 m.looting.on_target_died(prev)
-            elif self._had_monsters and not snap.monsters:
+            elif self._last_names and not names:
                 m.looting.on_target_died("")  # the battle list emptied: loot again
-        self._had_monsters = bool(snap.monsters)
+        self._last_names = names
 
     def _targeting(self) -> TargetingDecision | None:
         """``stuck_targeting`` while the cavebot is stuck on creatures, else ``targeting``."""
