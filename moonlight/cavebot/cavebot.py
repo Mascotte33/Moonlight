@@ -55,7 +55,10 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   and wait for the expected floor change (rope: z - 1, shovel: z + 1,
   ladder: up or down, so a sewer grate is a ``ladder`` too), retrying
   every ``reclick_interval``. ``stairs`` walks onto the
-  exact tile and is done when the floor changes, up or down.
+  exact tile and is done when the floor changes, up or down. ``step``
+  (docs/prs/steps.md#step-waypoint) walks onto the exact tile, presses its
+  label's walk key once, never again, holds 1 s and is done, wherever that
+  step led (a hole, a teleport, stairs).
 * **label / goto**: positionless. ``label`` is a jump target; ``goto``
   jumps to the waypoint after the named label (route loops).
 * **check**: positionless. Jumps like ``goto`` when refill is due (used cap
@@ -131,7 +134,7 @@ logger = logging.getLogger(__name__)
 #: Valid waypoint actions.
 ACTIONS = (
     "walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto", "check",
-    "say", "key", "drag", "script", "wait",
+    "say", "key", "drag", "script", "wait", "step",
 )
 
 #: Actions that need no position (executed immediately).
@@ -141,13 +144,13 @@ _HAND_ACTIONS = ("say", "key", "drag", "script", "wait")
 #: Actions without a tile (their x, y, z are 0).
 NO_TILE = _JUMP_ACTIONS + _HAND_ACTIONS
 #: Seconds the route holds after a hand action (a wait: its label).
-_HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0}
+_HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0, "step": 1.0}
 
 #: Floor change each tile action causes (0 = sky, 15 = deepest).
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
 
 #: Arrival distance in tiles; every other positional action uses 1.
-_REACH = {"node": 3, "stand": 0, "stairs": 0}
+_REACH = {"node": 3, "stand": 0, "stairs": 0, "step": 0}
 # doc: docs/prs/keys-walking.md#arrow-steps
 # doc: docs/prs/keys-walking.md#learned-blocks
 #: Walk key per one-tile step (y grows downward, up is north); numpad keys walk diagonally.
@@ -266,7 +269,12 @@ class RouteFileLoader:
             coords.append(value)
         if not MIN_FLOOR <= coords[2] <= MAX_FLOOR:
             raise RouteError(f"waypoint {index}: z must be {MIN_FLOOR}..{MAX_FLOOR}")
-        return Waypoint(coords[0], coords[1], coords[2], action, "")
+        if action != "step":
+            label = ""
+        elif label not in WALK_KEYS.values():
+            keys = list(WALK_KEYS.values())
+            raise RouteError(f"waypoint {index}: step label must be one of {keys}")
+        return Waypoint(coords[0], coords[1], coords[2], action, label)
 
 
 def label_error(action: str, label: str) -> str | None:
@@ -352,10 +360,10 @@ class Cavebot:
         self._minimap_region: Rect = minimap_region
         if stuck_timeout <= 0 or reclick_interval <= 0:
             raise ValueError("stuck_timeout and reclick_interval must be > 0")
-        keyed = ("rope", "shovel", "say", "key", "drag")
+        keyed = ("rope", "shovel", "say", "key", "drag", "step")
         needs_keys = any(wp.action in keyed for wp in route.waypoints)
         if needs_keys and input_backend is None:
-            raise ValueError("rope/shovel/say/key/drag waypoints need an input_backend")
+            raise ValueError("rope/shovel/say/key/drag/step waypoints need an input_backend")
         if any(wp.action == "drag" for wp in route.waypoints) and not clicker.absolute:
             raise ValueError("drag waypoints need the absolute clicker")
         if walk_keys and input_backend is None:
@@ -502,7 +510,7 @@ class Cavebot:
             return
 
         wp = self.route.waypoints[self.route.current]
-        if wp.action in _HAND_ACTIONS:
+        if wp.action in _HAND_ACTIONS or (wp.action == "step" and self._stepped(wp, pos)):
             self.release_walk_key()
             self._hand_action(wp, now)
             return
@@ -660,7 +668,7 @@ class Cavebot:
                 lambda: send.mouse_to(*b),
                 lambda: send.mouse_up(ClickSide.LEFT),
             ]
-        keys = [wp.label] if wp.action == "key" else say_keys(wp.label)
+        keys = [wp.label] if wp.action in ("key", "step") else say_keys(wp.label)
         return [functools.partial(send.press_combo, k) for k in keys]
 
     # doc: docs/prs/refill.md#say-key-waypoints
@@ -680,6 +688,15 @@ class Cavebot:
         if now - self._hand_done_at >= hold:
             self._sends_done, self._hand_done_at = 0, None
             self._advance()
+
+    # doc: docs/prs/steps.md#step-waypoint
+    def _stepped(self, wp: Waypoint, pos: Position) -> bool:
+        """True once a ``step`` is on its tile: from then on it runs as a hand action."""
+        started = self._sends_done > 0 or self._hand_done_at is not None
+        if not started and (pos.x, pos.y, pos.z) == (wp.x, wp.y, wp.z):
+            self._clicker.cancel()  # no walk click after the key
+            return True
+        return started
 
     # doc: docs/prs/walking.md#skip-unreachable
     def _skip_unreachable(self, pos: Position, walkable: Callable[[int, int, int], bool]) -> None:

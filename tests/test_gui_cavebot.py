@@ -125,7 +125,8 @@ def test_every_waypoint_type_has_a_button() -> None:
     from moonlight.cavebot.cavebot import ACTIONS
     from moonlight.cavebot.tab import KIND_ROWS
 
-    assert sum(KIND_ROWS, ()) == tuple(a for a in ACTIONS if a != "stairs")
+    # stairs is recorded, step comes from the direction pad
+    assert sum(KIND_ROWS, ()) == tuple(a for a in ACTIONS if a not in ("stairs", "step"))
 
 
 def test_direction_pad_is_every_neighbour_and_the_middle() -> None:

@@ -23,6 +23,7 @@ import customtkinter as ctk
 from moonlight.cavebot.cavebot import (
     ACTIONS,
     NO_TILE,
+    WALK_KEYS,
     Route,
     RouteError,
     RouteFileLoader,
@@ -73,7 +74,7 @@ SWITCH = Option("Cavebot on", "cavebot.enabled", "switch")
 ROUTE = Option("Route", "cavebot.route", "dropdown")
 #: Waypoint buttons, one row each: walking, changing floor, jumping, town, scripts.
 #: Stairs are walked over like any tile, so they get no button.
-KIND_ROWS = (ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:11], ACTIONS[11:14], ACTIONS[14:])
+KIND_ROWS = (ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:11], ACTIONS[11:14], ACTIONS[14:16])
 #: Shown under the position while the minimap matches no map tile.
 LOST_HINT = "No map match. Use minimap zoom 1 or 2, or explore the area first."
 #: Direction pad: (arrow, dx, dy) in 3x3 order. Up is north, y - 1.
@@ -364,7 +365,8 @@ class CavebotTab(Tab):
                 button = _button(kinds, action.capitalize(), partial(self._add_action, action))
                 button.configure(width=64)
                 button.grid(row=row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
-        # A stand waypoint one sqm away from X, Y, Z or the bot; the middle one is that sqm.
+        # doc: docs/prs/steps.md#step-waypoint
+        # A step waypoint on X, Y, Z or the bot's sqm: one key press that way; the middle stands.
         pad = ctk.CTkFrame(edit, fg_color="transparent")
         pad.pack(anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0))
         for i, (arrow, dx, dy) in enumerate(DIRECTIONS):
@@ -581,16 +583,14 @@ class CavebotTab(Tab):
         self._changed()
 
     def _add_step(self, dx: int, dy: int) -> None:
-        """Add a stand waypoint *dx*, *dy* sqm from X, Y, Z or the bot."""
-        manual = (self.ent_x.get(), self.ent_y.get(), self.ent_z.get())
-        try:
-            wp = make_waypoint("stand", "", manual, self._pos)
-        except RouteError as exc:
-            self.lbl_msg.configure(text=str(exc))
-            return
-        self._waypoints.append(replace(wp, x=wp.x + dx, y=wp.y + dy))
-        self.lbl_msg.configure(text=f"Added stand ({len(self._waypoints)} waypoints)")
-        self._changed()
+        """Add a step (one walk key *dx*, *dy*) on X, Y, Z or the bot's sqm; 0, 0: a stand."""
+        count = len(self._waypoints)
+        self._add_action("stand")
+        if (dx, dy) != (0, 0) and len(self._waypoints) > count:
+            wp = replace(self._waypoints[-1], action="step", label=WALK_KEYS[dx, dy])
+            self._waypoints[-1] = wp
+            self.lbl_msg.configure(text=f"Added step {wp.label} ({len(self._waypoints)} waypoints)")
+            self._changed()
 
     def _undo(self) -> None:
         if self._waypoints:
