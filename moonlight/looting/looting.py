@@ -3,7 +3,8 @@
 The OTS loots every nearby corpse on one hotkey (Alt+Q). A kill or the
 battle list going empty queues a press; the bot presses it once, then holds
 still for ``wait_ms`` so the loot lands and late monsters show up before it
-walks on. Skipped (not delayed) while HP is below ``min_hp_to_loot``.
+walks on. Below ``min_hp_to_loot`` the press waits (the bot holds still and
+heals) until HP is back up.
 """
 
 # doc: docs/prs/looting.md#loot-hotkey
@@ -24,7 +25,7 @@ __all__ = ["LootingConfig", "Looting"]
 class LootingConfig:
     loot_hotkey: str = "alt+q"
     wait_ms: int = 400
-    min_hp_to_loot: float = 30.0
+    min_hp_to_loot: float = 70.0
 
 
 class Looting:
@@ -66,8 +67,7 @@ class Looting:
         now = self._clock()
         if self._pressed_at is None:
             if 0 < snap.hp_percent < self._config.min_hp_to_loot:
-                self._pending = None  # low HP: skip, healing comes first
-                return False
+                return True  # low HP: hold still and heal, loot after
             self._input.press_combo(self._config.loot_hotkey)
             self._pressed_at = now
             return True
