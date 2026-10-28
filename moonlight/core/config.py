@@ -255,9 +255,9 @@ class BotConfig:
                     kwargs.setdefault("walk_keys", old)
                 value = _cavebot(section, routes_dir)
             else:
-                if name == "looting":  # the loot-window keys, gone with the window
-                    section.pop("move_all_hotkey", None)
-                    section.pop("max_items_per_loot", None)
+                if name == "looting":  # keys of removed loot rules
+                    for key in ("move_all_hotkey", "max_items_per_loot", "min_cap_to_loot"):
+                        section.pop(key, None)
                 if name == "refill":  # the refill route file's keys, gone with it
                     for key in (
                         "stop_cap", "route_name", "storage_hotkey", "deposit_hotkey", "routes_dir"
