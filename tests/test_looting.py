@@ -130,3 +130,12 @@ def test_ring_only_kill_without_a_ring_walks_on_after_ring_wait() -> None:
     looting.on_target_died("Wolf")
     clock.t = RING_WAIT
     assert not looting.should_loot(ws) and looting.step(ws) is False
+
+
+def test_ring_press_while_walking_stops_for_wait_ms() -> None:
+    looting, _, clock, ws = make(ringed_corpses=True, wait_ms=400)
+    clock.t = 5.0
+    looting.press_ring()  # a ring passed on the way, no kill
+    assert looting.should_loot(ws) and looting.step(ws) is True
+    clock.t = 5.41
+    assert not looting.should_loot(ws)

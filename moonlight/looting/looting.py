@@ -116,11 +116,11 @@ class Looting:
         return self._rings.seen(self._frames(), now)
 
     def press_ring(self) -> None:
-        """Press the loot hotkey for a ring; the bot carries on."""
+        """Press the loot hotkey for a ring, then stand ``wait_ms`` so the loot lands."""
         self._input.press_combo(self._config.loot_hotkey)
         now = self._ring_pressed_at = self._clock()
-        # a kill's ring wait ends ``wait_ms`` after the press: the loot lands, then walk
-        self._ring_wait_until = min(self._ring_wait_until, now + self._config.wait_ms / 1000)
+        # also ends a kill's ring wait early: the loot lands, then walk
+        self._ring_wait_until = now + self._config.wait_ms / 1000
 
     def step(self, snap: WorldState) -> bool:
         """Press once, then hold for ``wait_ms``; True while looting holds the bot."""

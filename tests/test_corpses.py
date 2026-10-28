@@ -45,3 +45,14 @@ def test_looks_are_gap_apart() -> None:
     assert not watch.seen(frame((600, 400)), 0.0)
     assert not watch.seen(frame((620, 420)), 0.05)  # too soon: no look
     assert watch.seen(frame((620, 420)), 0.1)
+
+
+def test_ring_passed_while_walking() -> None:
+    rng = np.random.default_rng(0)
+    floor = rng.integers(0, 120, (1056, 1600, 3)).astype(np.uint8)
+    floor = np.repeat(np.repeat(floor[::8, ::8], 8, 0), 8, 1)[:1056]  # coarse stone
+    before, after = floor[:, :1440].copy(), floor[:, 40:1480].copy()  # walked east 40 px
+    before[400:405, 600:608] = BLUE
+    after[420:425, 580:588] = BLUE  # the ring turned on the floor that scrolled by
+    assert looks(before, after) == [False, True]
+    assert looks(before, floor[:, 40:1480].copy()) == [False, False]  # just walking
