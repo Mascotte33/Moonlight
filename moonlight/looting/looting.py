@@ -120,7 +120,7 @@ class Looting:
 
     def press_ring(self) -> None:
         """Press the loot hotkey for a ring, then stand ``wait_ms`` so the loot lands."""
-        log.info("loot trigger: ring")
+        log.info("looting")
         self._input.press_combo(self._config.loot_hotkey)
         now = self._ring_pressed_at = self._clock()
         # also ends a kill's ring wait early: the loot lands, then walk
@@ -138,7 +138,7 @@ class Looting:
                 return True
             if 0 < snap.hp_percent < self._config.min_hp_to_loot:
                 return True  # low HP: hold still and heal, loot after
-            log.info("loot trigger: kill (%s)", self._pending or "last monster")
+            log.info("looting")
             self._input.press_combo(self._config.loot_hotkey)
             self._pressed_at = now
             return True

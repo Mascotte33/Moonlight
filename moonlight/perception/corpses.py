@@ -81,15 +81,13 @@ class RingWatch:
         ref, self._ref, self._ref_at = self._ref, block, now
         if ref is None or ref.shape != block.shape:
             return False
-        walking = float(np.abs(block - ref).mean()) > MOVED
-        if walking:
+        if float(np.abs(block - ref).mean()) > MOVED:
             block, ref = _unscrolled(block, ref)  # the view scrolled
             if block.size == 0 or float(np.abs(block - ref).mean()) > MOVED:
                 return False  # scrolled too far, or not a plain scroll
         # ponytail: a white spell flash on these tiles counts too; it only
         # costs one extra loot press.
-        dots = int((_bright(block) & ~_bright(ref)).sum())
-        if dots < RING_PIXELS:
+        if int((_bright(block) & ~_bright(ref)).sum()) < RING_PIXELS:
             return False
-        log.info("loot ring seen: %d new dots%s", dots, " (walking)" if walking else "")
+        log.info("loot triggered")
         return True
