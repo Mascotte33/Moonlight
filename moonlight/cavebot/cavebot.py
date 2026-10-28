@@ -58,7 +58,7 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   every ``reclick_interval``. ``stairs`` walks onto the
   exact tile and is done when the floor changes, up or down. ``step``
   (docs/prs/steps.md#step-waypoint) walks onto the exact tile, presses its
-  label's walk key once, never again, holds 1 s and is done, wherever that
+  label's walk key once, never again, holds 0.5 s and is done, wherever that
   step led (a hole, a teleport, stairs). Arrow-key paths never cross the
   tiles of ``stairs`` and ``shovel`` waypoints, the tile a ``step`` presses
   into, or a tile that moved the player elsewhere when walked onto
@@ -124,7 +124,7 @@ ACTIONS = (
 #: Actions that need no position (executed immediately).
 _JUMP_ACTIONS = ("label", "goto")
 #: Seconds the route holds after a step's key press.
-_HAND_HOLD = {"step": 1.0}
+_HAND_HOLD = {"step": 0.5}
 
 #: Floor change each tile action causes (0 = sky, 15 = deepest).
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}

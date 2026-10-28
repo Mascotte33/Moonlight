@@ -324,7 +324,7 @@ def test_step_presses_its_key_once_on_its_tile_then_moves_on() -> None:
         sim.step()  # the step did not move the player: still one press
     assert sim.fake.sent_lines == ["D down", "U down", "K down"]
     sim.pos = Position(100, 102, 8)  # fell through the hole
-    sim.step(1.0)
+    sim.step(0.4)  # over 0.5 s after the press, under 1 s: the hold is over
     assert sim.reached == [0] and sim.route.current == 1
     assert sim.fake.sent_lines.count("K down") == 1
 
