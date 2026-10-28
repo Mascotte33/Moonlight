@@ -6,7 +6,7 @@ import numpy as np
 
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import FakeInput
-from moonlight.looting.looting import PRESS_DELAY, Looting, LootingConfig
+from moonlight.looting.looting import PRESS_DELAY, RING_WAIT, Looting, LootingConfig
 
 
 class Clock:
@@ -107,4 +107,26 @@ def test_ring_press_is_wait_ms_apart_and_only_when_switched_on() -> None:
     clock.t = 0.3
     assert not looting.ring_due()  # wait_ms after the press
     clock.t = 0.5
+    assert not looting.ring_due()  # and at least RING_GAP
+    clock.t = 0.6
     assert looting.ring_due()
+
+
+def test_ring_only_kill_holds_still_until_the_ring_press_lands() -> None:
+    looting, inp, clock, ws = make(after_kill=False, ringed_corpses=True, wait_ms=400)
+    looting.on_target_died("Wolf")
+    assert looting.should_loot(ws) and not looting.loot_first(ws)  # attacking goes on
+    assert looting.step(ws) is True and inp.sent_lines == []  # stands still, no kill press
+    clock.t = 0.2
+    looting.press_ring()
+    clock.t = 0.59
+    assert looting.step(ws) is True  # the loot lands
+    clock.t = 0.61
+    assert not looting.should_loot(ws) and looting.step(ws) is False
+
+
+def test_ring_only_kill_without_a_ring_walks_on_after_ring_wait() -> None:
+    looting, _, clock, ws = make(after_kill=False, ringed_corpses=True)
+    looting.on_target_died("Wolf")
+    clock.t = RING_WAIT
+    assert not looting.should_loot(ws) and looting.step(ws) is False
