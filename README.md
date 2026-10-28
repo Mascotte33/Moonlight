@@ -126,7 +126,9 @@ presses that arrow key exactly once (diagonals: Q, E, Z, C), waits 1 s and
 goes on to the next waypoint, wherever the step led. It never presses it
 again, so use it for holes, teleports, stairs and other one-tile moves. The
 middle button adds a `stand` on the tile. A `rope` waypoint walks onto its
-exact tile and stands still there 0.2 s before using the rope.
+exact tile and stands still there 0.2 s before using the rope. With arrow-key
+walking, paths go around stairs, shovel holes, step targets and any tile that
+moved the character elsewhere when it walked onto it.
 
 Looting presses the loot hotkey (the OTS loots every corpse around on
 Alt+Q) after each kill and again when the battle list empties, then stands
