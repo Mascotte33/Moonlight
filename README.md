@@ -134,8 +134,9 @@ for routes next to holes or teleports.
 
 Looting presses the loot hotkey (the OTS loots every corpse around on
 Alt+Q) after each kill and again when the battle list empties, then stands
-still for the set wait (400 ms by default) before walking on. It is skipped
-while HP is below the set percent. Set it in Cavebot > Loot.
+still for the set wait (400 ms by default) before walking on. Below the set
+HP (70 % by default) it holds still and heals first, then loots. It also
+loots while an alarm is up. Set it in Cavebot > Loot.
 
 Refill is part of the waypoint list. A `check` waypoint with label `town`
 jumps to label `town` when used capacity reaches the start % (Cavebot >
