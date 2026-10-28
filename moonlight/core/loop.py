@@ -95,6 +95,7 @@ unit-testable without hardware, Windows, or a running client.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from collections import deque
@@ -108,6 +109,7 @@ from moonlight.cavebot.cavebot import WALK_KEYS
 from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
+from moonlight.targeting.targeting import PAUSE_SECONDS
 
 if TYPE_CHECKING:
     from moonlight.alarms.alarms import AlarmAction, AlarmDecision
@@ -297,6 +299,7 @@ class GameLoop:
         # Per-tick module decisions (refreshed by _observe each tick).
         self._alarm: AlarmAction | None = None
         self._target: TargetingAction | None = None
+        self._targeting_paused_until = 0.0  # a lone unreachable target: walk on
         self._last_target: str | None = None
         self._had_monsters = False
         self._had_selection = False
@@ -550,7 +553,16 @@ class GameLoop:
             m.cavebot.stuck_on_creatures = False  # a kill: the cavebot looks for a way again
         self._had_selection = selected is not None
         targeting = self._targeting()
-        self._target = targeting.decide(snap, self._clock()) if targeting is not None else None
+        now = self._clock()
+        self._target = None
+        if targeting is not None and not self._targeting_paused(now):
+            self._target = targeting.decide(snap, now)
+        if self._target is not None and self._target.kind == "pause":
+            logger.info("%s: targeting paused %g s", self._target.reason, PAUSE_SECONDS)
+            self._targeting_paused_until = now + PAUSE_SECONDS
+            self._target = None
+        if m.cavebot is not None:
+            m.cavebot.targeting_paused = self._targeting_paused(now)
         if m.looting is not None:
             # ponytail: "selected target vanished from the battle list" = kill
             # (a target lost out of range counts too); use the server-log OCR
@@ -571,6 +583,9 @@ class GameLoop:
         if rotation is not None and m.cavebot is not None and rotation.refill_due():
             m.cavebot.refill_now = True  # the account's time is up: to the depot's rotate
 
+    def _targeting_paused(self, now: float) -> bool:
+        return now < self._targeting_paused_until
+
     def _targeting(self) -> TargetingDecision | None:
         """``stuck_targeting`` while the cavebot is stuck on creatures, else ``targeting``."""
         m = self.modules
@@ -590,6 +605,8 @@ class GameLoop:
         targeting = self._targeting()
         if m.cavebot is not None and m.cavebot.luring():
             pass  # a lure waypoint walks past monsters
+        elif self._targeting_paused(self._clock()):
+            pass  # a lone unreachable target: walk on
         elif targeting is not None:
             selected = snap.selected_target
             if self._target is not None or (
@@ -993,7 +1010,7 @@ class GameLoop:
         return {
             "state": self._state.value,
             "tick_count": ticks,
-            "current_task": self._task,
+            "current_task": self._task_text(),
             "uptime_seconds": round(uptime, 3),
             "avg_tick_time_ms": (
                 round(self._tick_time_total / ticks * 1000.0, 3) if ticks else 0.0
@@ -1006,6 +1023,12 @@ class GameLoop:
             "kill_switch_active": self.kill_switch_active,
             "stop_requested": self.stop_requested,
         }
+
+    def _task_text(self) -> str:
+        left = self._targeting_paused_until - self._clock()
+        if left > 0:
+            return f"{self._task} (targeting paused {math.ceil(left)} s)"
+        return self._task
 
     def reset_stats(self) -> None:
         """Zero all counters (tests, UI reset button)."""

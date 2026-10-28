@@ -1084,18 +1084,29 @@ def test_walk_keys_skip_unreachable_waypoints_until_one_has_a_way(
     for _ in range(_BLOCK_STEPS // 2):
         sim.step()
     assert sim.route.current == 2  # waypoint 1 is on another floor: skipped too
-    assert "waypoint 0 unreachable, skipping" in caplog.text
-    assert "waypoint 1 unreachable, skipping" in caplog.text
+    assert "waypoint 0 unreachable, skipping to 2" in caplog.text
     assert pressed(sim)[0] == "right" and pressed(sim)[-1] == "down"
     assert sim.bot.is_active()
 
 
-def test_walk_keys_stuck_alarm_when_no_waypoint_is_reachable() -> None:
+def test_walk_keys_blocked_waits_and_alarms_after_stuck_timeout() -> None:
     sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
     sim.bot.start()
-    for _ in range(400):  # every tile around bumped, nothing to fight
+    while sim.now < 55:  # every tile around bumped, nothing to fight
         sim.step()
-        if not sim.bot.is_active():
-            break
-    assert sim.bot.alarm == "stuck" and sim.now < 20
+    assert sim.bot.is_active() and sim.bot.alarm is None  # keeps retrying
     assert len(set(pressed(sim))) == 8
+    while sim.now < 65:
+        sim.step()
+    assert sim.bot.is_active() and sim.bot.alarm == "stuck"  # alarm, still trying
+
+
+def test_walk_keys_blocked_alarm_clears_when_the_way_is_free() -> None:
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    while sim.now < 65:
+        sim.step()
+    assert sim.bot.alarm == "stuck"
+    sim.pos = Position(100, 101, 7)  # the player stepped aside
+    sim.step()
+    assert sim.bot.is_active() and sim.bot.alarm is None
