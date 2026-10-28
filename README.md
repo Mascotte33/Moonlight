@@ -118,7 +118,8 @@ rope or shovel click its button while standing on the tile you use it from. Whil
 waypoint button adds a waypoint on the character's tile.
 
 Looting presses the loot hotkey (the OTS loots every corpse around on
-Alt+Q) 0.3 s after each kill and again when the battle list empties, then stands
+Alt+Q) 0.3 s after each kill, before attacking the next monster, and again
+when the battle list empties, then stands
 still for the set wait (400 ms by default) before walking on. Below the set
 HP (70 % by default) it holds still and heals first, then loots. It also
 loots while an alarm is up. Set it in Cavebot > Loot. Every key tap and

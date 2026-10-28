@@ -557,6 +557,8 @@ class GameLoop:
         if self._is_alarm(snap):
             return BotState.ALARM
         m = self.modules
+        if m.looting is not None and m.looting.loot_first(snap):
+            return BotState.LOOT  # loot each kill before the next target
         targeting = self._targeting()
         if m.cavebot is not None and m.cavebot.luring():
             pass  # a lure waypoint walks past monsters

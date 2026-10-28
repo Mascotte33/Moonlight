@@ -67,6 +67,12 @@ class Looting:
         """True when a press is queued."""
         return self._pending is not None
 
+    def loot_first(self, snap: WorldState) -> bool:
+        """True when a press is queued and HP allows it: loot before the next attack."""
+        return self._pending is not None and not (
+            0 < snap.hp_percent < self._config.min_hp_to_loot
+        )
+
     def step(self, snap: WorldState) -> bool:
         """Press once, then hold for ``wait_ms``; True while looting holds the bot."""
         if self._pending is None or not (snap.client_focused and snap.screen_ok):

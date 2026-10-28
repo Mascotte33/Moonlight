@@ -56,6 +56,7 @@ def idle_module(**overrides: object) -> mock.Mock:
     m.decide.return_value = None
     m.track.return_value = []
     m.should_loot.return_value = False
+    m.loot_first.return_value = False
     m.should_refill.return_value = False
     m.is_active.return_value = False
     m.send.return_value = True
@@ -158,6 +159,15 @@ def test_kill_detection_and_loot_state() -> None:
     gl.tick()
     looting.on_target_died.assert_called_once_with("Wolf")
     assert gl.current_state is BotState.LOOT
+    looting.step.assert_called_once()
+
+
+def test_kill_mid_fight_loots_before_next_target() -> None:
+    ws = make_state(target="Wolf", monsters=2)
+    looting = idle_module(**{"loot_first.return_value": True, "should_loot.return_value": True})
+    gl, _ = make_loop(ws, FakeInput(), looting=looting)
+    gl.tick()
+    assert gl.current_state is BotState.LOOT  # not ATTACK on the next wolf
     looting.step.assert_called_once()
 
 

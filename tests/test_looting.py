@@ -61,3 +61,12 @@ def test_nothing_queued_does_nothing() -> None:
     looting, inp, _, ws = make()
     assert not looting.should_loot(ws) and looting.step(ws) is False
     assert inp.sent_lines == []
+
+
+def test_loot_first_unless_hp_low() -> None:
+    looting, _, _, ws = make(min_hp_to_loot=70.0)
+    assert not looting.loot_first(ws)
+    looting.on_target_died("Wolf")
+    assert looting.loot_first(ws)
+    ws.hp_percent = 50.0
+    assert not looting.loot_first(ws)  # keep fighting; loot after
