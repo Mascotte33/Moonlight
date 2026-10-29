@@ -63,6 +63,7 @@ __all__ = [
     "drop_route",
     "route_names",
     "waypoint_line",
+    "move_waypoint",
     "waypoint_table",
 ]
 
@@ -146,6 +147,16 @@ def drop_route(cfg: BotConfig, name: str) -> BotConfig:
 def picked_waypoint(line: int, count: int) -> int | None:
     """The waypoint (0-based) on *line* of :func:`waypoint_table`; line 1 is the header."""
     return line - 2 if 2 <= line < count + 2 else None
+
+
+# doc: docs/prs/potion-count.md#waypoint-order
+def move_waypoint(waypoints: list[Waypoint], index: int, by: int) -> int:
+    """Swap waypoint *index* with its neighbour *by* (-1 up, +1 down); its new index."""
+    to = index + by
+    if not 0 <= to < len(waypoints):
+        return index
+    waypoints[index], waypoints[to] = waypoints[to], waypoints[index]
+    return to
 
 
 def waypoint_table(route: Route | None, current: int | None = None) -> str:
@@ -282,7 +293,15 @@ class CavebotTab(Tab):
         )
         self.wp_list.pack(fill="both", expand=True, padx=theme.PAD, pady=(theme.UNIT, 0))
         self.wp_list.tag_config("current", foreground=theme.LIFE)
+        self.wp_list.tag_config("selected", background=theme.HOVER)
+        self.wp_list.bind("<Button-1>", self._select_waypoint)
         self.wp_list.bind("<Double-Button-1>", self._pick_waypoint)
+        moves = ctk.CTkFrame(box, fg_color="transparent")
+        moves.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        for arrow, by in (("▲", -1), ("▼", 1)):
+            button = _button(moves, arrow, partial(self._move, by))
+            button.configure(width=32)
+            button.pack(side="left", padx=(0, theme.UNIT))
         self.lbl_current = ctk.CTkLabel(box, text="Not running", anchor="w")
         self.lbl_current.pack(fill="x", padx=theme.PAD)
         self.lbl_msg = ctk.CTkLabel(box, text="", anchor="w", text_color=theme.AMBER)
@@ -397,6 +416,8 @@ class CavebotTab(Tab):
         self._dirty = False
         self._error = ""
         self._text = ""
+        #: The waypoint clicked once (highlighted; the arrows move it).
+        self._selected: int | None = None
         self._recording = False
         self._stand = StandTracker()
         self._stood_before: Position | None = None  # for the stairs walked over
@@ -449,6 +470,7 @@ class CavebotTab(Tab):
     def _show_route(self, name: str) -> None:
         """Load route *name* into the editor; unsaved edits are dropped."""
         self._waypoints = []
+        self._selected = None
         self._error = ""
         self._name = ""
         if name not in (NO_ROUTES, PICK):
@@ -500,16 +522,44 @@ class CavebotTab(Tab):
         ):
             if label.cget("text") != value:
                 label.configure(text=value)
+        if self._selected is not None and self._selected >= len(self._waypoints):
+            self._selected = None
         if text == self._text:
             return
         self._text = text
+        top = self.wp_list.yview()[0]
         self.wp_list.configure(state="normal")
         self.wp_list.delete("1.0", "end")
         self.wp_list.insert("1.0", text)
+        self.wp_list.yview_moveto(top)  # keep the scroll where it was
         if current is not None and not self._error:  # line 1 is the header
             self.wp_list.tag_add("current", f"{current + 2}.0", f"{current + 2}.end")
             self.wp_list.see(f"{current + 2}.0")
+        self._mark_selected()
         self.wp_list.configure(state="disabled")
+
+    def _mark_selected(self) -> None:
+        self.wp_list.tag_remove("selected", "1.0", "end")
+        if self._selected is not None and not self._error:
+            line = self._selected + 2
+            self.wp_list.tag_add("selected", f"{line}.0", f"{line}.end+1c")
+
+    def _select_waypoint(self, event: tk.Event) -> None:
+        """One click: highlight that waypoint for the arrows."""
+        line = int(str(self.wp_list.index(f"@{event.x},{event.y}")).split(".")[0])
+        self._selected = None if self._error else picked_waypoint(line, len(self._waypoints))
+        self._mark_selected()
+
+    def _move(self, by: int) -> None:
+        """Move the selected waypoint one row up (-1) or down (+1)."""
+        if self._selected is None:
+            self.lbl_msg.configure(text="Click a waypoint first")
+            return
+        to = move_waypoint(self._waypoints, self._selected, by)
+        if to != self._selected:
+            self._selected = to
+            self._changed()
+            self.wp_list.see(f"{to + 2}.0")
 
     def _refill_now(self) -> None:
         self.lbl_msg.configure(text=refill_now(self.ctx.live_cavebot()))
@@ -579,6 +629,7 @@ class CavebotTab(Tab):
         self._waypoints.append(wp)
         self.lbl_msg.configure(text=f"Added {wp.action} ({len(self._waypoints)} waypoints)")
         self._changed()
+        self.wp_list.see("end")
 
     def _add_step(self, dx: int, dy: int) -> None:
         """Add a step (one walk key *dx*, *dy*) on the bot's sqm; 0, 0: a stand."""

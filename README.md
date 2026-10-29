@@ -144,7 +144,9 @@ Every waypoint button in Edit route adds the waypoint on the character's
 tile; there are no typed X, Y, Z fields. The bot walks onto that tile before
 it does the waypoint: a `label`, `goto`, `say`, `key`, `drag`, `script` or
 `wait` too. Those from older routes have no tile and happen where the bot
-stands.
+stands. One click on a row in the waypoint list highlights it; the ▲ and ▼
+buttons under the list move it one row up or down. The list keeps its
+scroll position when it changes.
 
 Refill is part of the waypoint list. A `check` waypoint with label `town`
 is added on the character's tile and the bot walks there. On it, the bot
