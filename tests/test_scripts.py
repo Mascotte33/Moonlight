@@ -50,7 +50,7 @@ def test_one_command_per_tick_and_a_wait(tmp_path: Path) -> None:
     assert inp.sent_lines == ["K f2"]  # waiting
     clock.now = 1.0
     ticks(r, inp, 5)
-    assert inp.sent_lines == ["K f2", "K h", "K i", "K enter"]
+    assert inp.sent_lines == ["K f2", "K enter", "K h", "K i", "K enter"]
     assert r.running is None
 
 

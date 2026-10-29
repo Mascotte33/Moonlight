@@ -62,8 +62,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   at or over ``refill_cap``, or :attr:`Cavebot.refill_now` set, which the
   jump clears); otherwise falls through. The town trip is a section behind
   a label that ends in a ``goto`` back to the hunt.
-* **say / key**: positionless, done where the bot stands. ``say`` types its
-  label into the chat and presses Enter; ``key`` presses its label as a
+* **say / key**: positionless, done where the bot stands. ``say`` presses Enter
+  (opens the chat box), types its label, presses Enter (sends it, closes the
+  box), so the chat stays off for WASD; ``key`` presses its label as a
   hotkey. One key per tick (a key the wire limiter drops is sent again),
   then the route holds 1 s so NPC answers and windows land.
 * **wait**: positionless; holds the route for its label's seconds.
@@ -285,8 +286,8 @@ def label_error(action: str, label: str) -> str | None:
 
 
 def say_keys(text: str) -> list[str]:
-    """The key presses that type *text* into the chat and send it."""
-    return [ch if ch != " " else "space" for ch in text.lower()] + ["enter"]
+    """Enter opens the chat box, *text* is typed, Enter sends it and closes the box."""
+    return ["enter"] + [ch if ch != " " else "space" for ch in text.lower()] + ["enter"]
 
 
 class Cavebot:
