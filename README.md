@@ -147,9 +147,10 @@ Cavebot > Loot has a switch for each loot trigger. **Loot after every kill**
 (on by default) is the above. **Loot ringed corpses next to me** (off by
 default) presses the loot hotkey whenever a corpse's turning loot ring shows
 on the character's tile or the 8 around it, mid-fight too, without stopping;
-presses are the set wait apart, and at least 0.5 s. The ring is also seen
-while the character walks (the scroll is undone first), so ringed corpses
-passed on the route get looted too, also ones the bot did not kill; after a
+presses are the set wait apart, and at least 0.5 s. A ring counts only within
+3 s of a monster leaving the battle list: monsters hitting the character
+flash the same way and kept the cavebot from walking. The ring is also seen
+while the character walks (the scroll is undone first); after a
 ring press the cavebot stands for the set wait so the loot lands. With only
 this switch on, the cavebot stands still for up to 1 s after a kill
 (attacking goes on) until the ring press. bot.log shows `loot triggered`

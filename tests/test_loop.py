@@ -883,6 +883,26 @@ class TestCurrentTask:
         assert self._task(make_state(), modules=modules) == "Walking to waypoint 3"
 
 
+
+def test_a_loot_ring_counts_only_after_a_monster_left_the_battle_list() -> None:
+    ws = make_state()
+    with ws.lock():
+        ws.monsters = [Monster("Rat"), Monster("Rat", battle_list_row=1)]
+    checks: list[int] = []
+    looting = SimpleNamespace(
+        should_loot=lambda s: False,
+        loot_first=lambda s: False,
+        ring_due=lambda: checks.append(1) or False,
+        on_target_died=lambda name: None,
+    )
+    gl, _ = make_loop(ws, FakeInput(), modules=DecisionModules(looting=cast(Looting, looting)))
+    gl.tick()
+    assert checks == []  # rats hitting the player flash like a ring
+    with ws.lock():
+        ws.monsters = [Monster("Rat")]  # one died
+    gl.tick()
+    assert checks == [1]
+
 # doc: docs/prs/extras.md#extras
 class TestExtras:
     @staticmethod
