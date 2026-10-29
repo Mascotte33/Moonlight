@@ -24,7 +24,7 @@ from moonlight.cavebot.cavebot import Cavebot, Route, Waypoint
 from moonlight.core.config import BotConfig
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import F12Monitor
-from moonlight.core.state import Capacity, Monster, Position, WorldState
+from moonlight.core.state import Monster, Position, WorldState
 from moonlight.core.wiring import build_loop
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
@@ -269,7 +269,7 @@ def test_11_loot_key_only_when_focused() -> None:
     assert inp.sent_lines == ["K alt+q"]
 
 
-def test_12_refill_only_starts_above_cap_threshold() -> None:
+def test_12_refill_only_starts_under_free_cap() -> None:
     wps = [
         Waypoint(100, 100, 7),
         Waypoint(0, 0, 0, "check", "town"),
@@ -277,10 +277,9 @@ def test_12_refill_only_starts_above_cap_threshold() -> None:
         Waypoint(0, 0, 0, "label", "town"),
         Waypoint(120, 100, 7),
     ]
-    for weight, nxt in ((50.0, 2), (95.0, 4)):
-        bot, state = make_cavebot(Clock(), wps, (100, 100), 7)
-        bot.refill_cap = 90.0
-        state.capacity = Capacity(weight=weight, max_weight=100.0)
+    for low, nxt in ((False, 2), (True, 4)):
+        bot, _ = make_cavebot(Clock(), wps, (100, 100), 7)
+        bot._supplies_low = lambda low=low: low
         bot.step()  # on waypoint 0: reached, past the check
         assert bot.route.current == nxt
 

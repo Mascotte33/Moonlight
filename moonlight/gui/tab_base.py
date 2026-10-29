@@ -63,7 +63,8 @@ class Option:
 
     *field* is a dotted path into :class:`BotConfig`, e.g.
     ``"healing.normal_hp_percent"``. ``"<module>.enabled"`` turns a module
-    on or off; writing any other field never changes that.
+    on or off; writing any other field never changes that. An entry with
+    *off_at_zero* shows a grayed "off" while it holds 0.
     """
 
     label: str
@@ -72,6 +73,7 @@ class Option:
     min: float | None = None
     max: float | None = None
     choices: list[str] | None = None
+    off_at_zero: bool = False
 
 
 def _unwrap(hint: Any) -> Any:
@@ -552,14 +554,33 @@ def _control(
             for event in ("<Return>", "<FocusOut>"):
                 box.bind(event, lambda _e: on_submit())
         return get_slider, put_slider
-    entry = ctk.CTkEntry(row, fg_color=theme.NIGHT, border_color=theme.RAISED)
-    entry.pack(side="right")
+    if option.off_at_zero:  # short number box right after the label
+        entry = ctk.CTkEntry(row, width=60, fg_color=theme.NIGHT, border_color=theme.RAISED)
+        entry.pack(side="left", padx=(theme.UNIT, 0))
+    else:
+        entry = ctk.CTkEntry(row, fg_color=theme.NIGHT, border_color=theme.RAISED)
+        entry.pack(side="right")
+    off = ctk.CTkLabel(row, text="off", text_color=theme.TEXT_MUTED)
+
+    def shade(_e: object = None) -> None:
+        # doc: docs/prs/potion-count.md#off-at-zero
+        if not option.off_at_zero:
+            return
+        zero = entry.get().strip() in ("0", "")
+        entry.configure(text_color=theme.TEXT_MUTED if zero else theme.TEXT)
+        if zero:
+            off.pack(side="left", after=entry, padx=(theme.UNIT, 0))
+        else:
+            off.pack_forget()
+
+    entry.bind("<KeyRelease>", shade, add="+")
     if on_submit is not None:
         for event in ("<Return>", "<FocusOut>"):
-            entry.bind(event, lambda _e: on_submit())
+            entry.bind(event, lambda _e: on_submit(), add="+")
 
     def put_entry(value: object) -> None:
         entry.delete(0, "end")
         entry.insert(0, "" if value is None else str(value))
+        shade()
 
     return lambda: entry.get(), put_entry

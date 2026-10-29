@@ -12,7 +12,14 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from moonlight.cavebot.cavebot import NO_TILE, RouteError, RouteFileLoader, Waypoint, label_error
+from moonlight.cavebot.cavebot import (
+    NO_TILE,
+    RouteError,
+    RouteFileLoader,
+    Waypoint,
+    has_tile,
+    label_error,
+)
 from moonlight.core.state import Position
 
 __all__ = [
@@ -59,33 +66,25 @@ class StandTracker:
         return self._previous
 
 
-def make_waypoint(
-    action: str, label: str, manual: tuple[str, str, str], live: Position
-) -> Waypoint:
-    """A waypoint for *action*: at the *manual* x, y, z when all are given, else at *live*.
+def make_waypoint(action: str, label: str, live: Position) -> Waypoint:
+    """A waypoint for *action* on the character's tile *live*; the bot walks there first.
 
     Raises:
-        RouteError: For a missing label, bad numbers or an unknown position.
+        RouteError: For a missing label or an unknown position.
     """
+    label = label.strip()
     if action in NO_TILE:
-        if not label.strip():
+        if not label:
             raise RouteError(f"{action} needs a label")
-        if bad := label_error(action, label.strip()):
+        if bad := label_error(action, label):
             raise RouteError(bad)
-        return Waypoint(0, 0, 0, action, label.strip())
-    if all(v.strip() for v in manual):
-        try:
-            x, y, z = (int(v) for v in manual)
-        except ValueError:
-            raise RouteError("X, Y and Z must be whole numbers") from None
-        return Waypoint(x, y, z, action)
     if (live.x, live.y, live.z) == (0, 0, 0):
-        raise RouteError("Position unknown. Type X, Y and Z, or start the bot.")
-    return Waypoint(live.x, live.y, live.z, action)
+        raise RouteError("Position unknown. Start the bot first.")
+    return Waypoint(live.x, live.y, live.z, action, label if action in NO_TILE else "")
 
 
 def _last_positioned(waypoints: list[Waypoint]) -> Waypoint | None:
-    return next((wp for wp in reversed(waypoints) if wp.action not in NO_TILE), None)
+    return next((wp for wp in reversed(waypoints) if has_tile(wp)), None)
 
 
 def should_add(waypoints: list[Waypoint], pos: Position, min_tiles: int) -> bool:
@@ -165,9 +164,9 @@ def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
         "name": name,
         "waypoints": [
             {"action": wp.action, "label": wp.label}
-            if wp.action in NO_TILE
+            if not has_tile(wp)
             else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action, "label": wp.label}
-            if wp.action == "step"
+            if wp.action in (*NO_TILE, "step")
             else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action}
             for wp in waypoints
         ],

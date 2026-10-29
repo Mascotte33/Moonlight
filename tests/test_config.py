@@ -51,7 +51,7 @@ def test_load_roundtrip(tmp_path: Path) -> None:
         healing={"enabled": True, "spell_cooldown_ms": 800},
         cavebot={"enabled": True, "route": "hunt", "rope_hotkey": "F5"},
         looting={"enabled": True},
-        refill={"enabled": True, "trigger_cap": 80.0},
+        refill={"enabled": True, "trigger_cap": 80.0, "cap_below": 300},
     )
     data["routes_dir"] = str(tmp_path / "routes")
     data["loop"] = {"tick_rate": 10.0, "enable_f12_monitor": False}
@@ -66,7 +66,7 @@ def test_load_roundtrip(tmp_path: Path) -> None:
     assert cfg.healing == HealingConfig(spell_cooldown_ms=800)
     assert cfg.cavebot is not None and cfg.cavebot.route.name == "hunt"
     assert cfg.cavebot.rope_hotkey == "F5" and cfg.walk_keys is True
-    assert cfg.refill is not None and cfg.refill.trigger_cap == 80.0
+    assert cfg.refill is not None and cfg.refill.cap_below == 300  # the old used cap % is dropped
     assert cfg.loop.tick_rate == 10.0 and cfg.serial_port == "COM7"
     assert cfg.targeting is None
     assert cfg.monster_name_source is True and cfg.capacity_source is True
@@ -84,11 +84,10 @@ def test_looting_loads_a_config_saved_with_the_loot_window_keys() -> None:
     assert BotConfig.from_dict(data).looting is not None
 
 
-def test_refill_needs_the_cavebot_and_loads_old_route_file_keys(tmp_path: Path) -> None:
+def test_refill_follows_the_cavebot_and_loads_old_route_file_keys(tmp_path: Path) -> None:
     route_file(tmp_path / "routes")
-    old = {"enabled": True, "route_name": "refill", "stop_cap": 50.0, "deposit_hotkey": "F5"}
-    with pytest.raises(ConfigError, match="refill needs the cavebot"):
-        BotConfig.from_dict(raw(refill=old))
+    old = {"enabled": False, "route_name": "refill", "stop_cap": 50.0, "deposit_hotkey": "F5"}
+    assert BotConfig.from_dict(raw(refill={**old, "enabled": True})).refill is None
     data = raw(cavebot={"enabled": True, "route": "hunt"}, refill=old)
     data["routes_dir"] = str(tmp_path / "routes")
     assert BotConfig.from_dict(data).refill == RefillConfig()
@@ -137,7 +136,6 @@ def test_buffs_refused_without_icon_source() -> None:
         lambda d: d.update(profile=""),
         lambda d: d["modules"].update(cavebot={"enabled": True}),
         lambda d: d["modules"].update(cavebot={"enabled": True, "route": "missing"}),
-        lambda d: d["modules"].update(refill={"enabled": True}),
     ],
 )
 def test_fail_closed(mutate: Any) -> None:
@@ -251,7 +249,7 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
         alarms={"enabled": True},
         cavebot={"enabled": True, "route": "hunt", "rope_hotkey": "F5"},
         looting={"enabled": True},
-        refill={"enabled": True, "trigger_cap": 80.0},
+        refill={"enabled": True, "cap_below": 300},
     )
     data["hotkeys"]["utani hur"] = "F3"
     data.update(

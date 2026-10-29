@@ -52,7 +52,7 @@ moonlight/
 ├── targeting/    target picking, attack hotkeys + its tab
 ├── cavebot/      walking, pathing, route recorder + its tab
 ├── looting/      looting logic
-├── refill/       refill trigger (start %)
+├── refill/       refill trigger (free cap, potions)
 ├── scripts/      user scripts
 ├── extras/       buffs
 ├── alarms/       danger alarms
@@ -103,6 +103,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Account rotation (timed accounts, logout at the depot, next login) | ✅ | ✅ | ❌ |
 | Step waypoints (one walk key from a tile: holes, teleports, stairs) | ✅ | ✅ | ❌ |
 | Cavebot fixes (lone unreachable target pause, blocked path retry) | ✅ | ✅ | ❌ |
+| Potion count refill trigger (action bar digits) | ✅ | ✅ | ❌ |
 | Arduino HID input | ✅ | ✅ | 🟡 |
 | Closed-loop clicking | ✅ | ✅ | 🟡 |
 | Kill switch + safety stops | ✅ | ✅ | ❌ |
@@ -122,7 +123,7 @@ rope or shovel click its button while standing on the tile you use it from. Whil
 waypoint button adds a waypoint on the character's tile.
 
 The arrow pad in Cavebot > Edit route adds a `step` waypoint on the
-character's tile (or the typed X, Y, Z): the bot walks onto that tile,
+character's tile: the bot walks onto that tile,
 presses that arrow key exactly once (diagonals: Q, E, Z, C), waits 0.5 s and
 goes on to the next waypoint, wherever the step led. It never presses it
 again, so use it for holes, teleports, stairs and other one-tile moves. The
@@ -139,9 +140,27 @@ still for the set wait (400 ms by default) before walking on. Below the set
 HP (70 % by default) it holds still and heals first, then loots. It also
 loots while an alarm is up. Set it in Cavebot > Loot.
 
+Every waypoint button in Edit route adds the waypoint on the character's
+tile; there are no typed X, Y, Z fields. The bot walks onto that tile before
+it does the waypoint: a `label`, `goto`, `say`, `key`, `drag`, `script` or
+`wait` too. Those from older routes have no tile and happen where the bot
+stands. One click on a row in the waypoint list highlights it; the ▲ and ▼
+buttons under the list move it one row up or down. The list keeps its
+scroll position when it changes.
+
 Refill is part of the waypoint list. A `check` waypoint with label `town`
-jumps to label `town` when used capacity reaches the start % (Cavebot >
-Refill) or after **Refill now** is pressed; otherwise the bot walks past it.
+is added on the character's tile and the bot walks there. On it, the bot
+jumps to label `town` when the free cap in the side panel's Cap box is under
+the set number (Cavebot > Refill > `cap <`, 0 = off: the number shows gray with `off`; there is no Refill switch, it is on with the cavebot), when the action bar shows fewer
+health or mana potions than set there (0 = off; spirit potions count for
+both), or after **Refill now** is pressed; otherwise it goes on to the next
+waypoint. The potions are found on the action bar by their
+picture (`data/templates/potions/<health|mana|spirit>/`), the Cap box by
+`data/templates/cap_label.png`; their digits must match known shapes
+(learned from the golden screenshots), or be twice as close to one digit as to any other. A cap or count that does not read never
+sends the bot to town. Each `check` logs one line per number that is on, such
+as `check: MP pots 230 >= 200 | continue`, and the Refill rows show the last
+read number and the picture it was read from.
 The town section uses `say` (presses Enter to open the chat box, types its label, Enter sends it; chat stays off for WASD; for
 NPC talk like `hi`, `deposit all`, `yes`), `key` (presses its label as a
 hotkey) and `drag` (label `x1 y1 x2 y2` in client pixels: drags the left

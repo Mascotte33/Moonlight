@@ -8,10 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.cavebot.cavebot import RouteFileLoader
+from moonlight.cavebot.cavebot import RouteFileLoader, Waypoint
 from moonlight.cavebot.tab import (
     apply_cavebot,
     drop_route,
+    move_waypoint,
     picked_route,
     picked_waypoint,
     refill_now,
@@ -172,3 +173,15 @@ def test_refill_now_flags_the_running_cavebot() -> None:
     assert refill_now(cavebot) == "Refill at the next check waypoint"
     assert cavebot.refill_now is True
     assert refill_now(None) == "Start the bot with Cavebot on first"
+
+
+# doc: docs/prs/potion-count.md#waypoint-order
+def test_move_waypoint_swaps_with_its_neighbour_and_stops_at_the_ends() -> None:
+    a, b, c = Waypoint(1, 1, 7), Waypoint(2, 2, 7), Waypoint(3, 3, 7)
+    wps = [a, b, c]
+    assert move_waypoint(wps, 1, -1) == 0
+    assert wps == [b, a, c]
+    assert move_waypoint(wps, 0, -1) == 0  # already on top
+    assert move_waypoint(wps, 2, 1) == 2  # already at the bottom
+    assert move_waypoint(wps, 1, 1) == 2
+    assert wps == [b, c, a]

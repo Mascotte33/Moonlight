@@ -26,6 +26,7 @@ from moonlight.core.safety import RateLimitedInput, beep_alert
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.input import InputBackend
 from moonlight.perception.status_icons import CONDITION_TEMPLATES_DIR
+from moonlight.refill.refill import supplies_low
 
 if TYPE_CHECKING:
     from moonlight.hardware.clicker import ClickController
@@ -617,8 +618,8 @@ def build_modules(
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
                 frames=frames,
                 clock=clock,
-                refill_cap=config.refill.trigger_cap if config.refill else None,
                 scripts=m.scripts,
+                supplies_low=supplies_low(config.refill, screen_grab),
             )
             if prev is None or prev.cavebot is None:
                 m.cavebot.start()

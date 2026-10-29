@@ -43,7 +43,7 @@ OPTIONS = [
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
     for name in (
-        "healing", "looting", "refill", "scripts", "extras", "rotation", "buffs", "alarms"
+        "healing", "looting", "scripts", "extras", "rotation", "buffs", "alarms"
     )
 ]
 #: One switch and hotkey per extra, then the player limits (docs/prs/extras.md#extras).
@@ -75,7 +75,6 @@ ROTATION_OPTIONS = [Option("Logout hotkey", "rotation.logout_hotkey", "hotkey")]
 REASONS = [
     ("cavebot.route", "Cavebot needs a route. Pick one in the Route dropdown or record one below."),
     ("buff-icon", "Buffs needs a buff-icon reader, which the bot doesn't have yet."),
-    ("refill needs", "Refill needs Cavebot on."),
     ("rotation needs the cavebot", "Rotation needs Cavebot on."),
     ("rotation needs at least", "Rotation needs 2 or more accounts in the config file."),
 ]

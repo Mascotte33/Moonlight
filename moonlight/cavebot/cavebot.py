@@ -65,19 +65,24 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   tiles of ``stairs`` and ``shovel`` waypoints, the tile a ``step`` presses
   into, or a tile that moved the player elsewhere when walked onto
   (docs/prs/steps.md#floor-change-tiles); such a tile is only ever the goal.
-* **label / goto**: positionless. ``label`` is a jump target; ``goto``
-  jumps to the waypoint after the named label (route loops).
-* **check**: positionless. Jumps like ``goto`` when refill is due (used cap
-  at or over ``refill_cap``, or :attr:`Cavebot.refill_now` set, which the
-  jump clears); otherwise falls through. The town trip is a section behind
-  a label that ends in a ``goto`` back to the hunt.
-* **say / key**: positionless, done where the bot stands. ``say`` presses Enter
+* **Tiles of label, goto, check and hand actions**: added in Edit route they
+  have the tile the character stood on; the bot walks onto it first, then
+  does the action. Old routes have them positionless (x, y, z 0): done
+  where the bot stands.
+* **label / goto**: ``label`` is a jump target; ``goto`` jumps to the
+  waypoint after the named label (route loops).
+* **check**: jumps like ``goto`` when refill is due (``supplies_low``: free
+  cap or potions under their settings, or :attr:`Cavebot.refill_now` set,
+  which the jump clears); otherwise it goes on to the next waypoint. The
+  town trip is a section behind a label that ends in a ``goto`` back to
+  the hunt.
+* **say / key**: ``say`` presses Enter
   (opens the chat box), types its label, presses Enter (sends it, closes the
   box), so the chat stays off for WASD; ``key`` presses its label as a
   hotkey. One key per tick (a key the wire limiter drops is sent again),
   then the route holds 1 s so NPC answers and windows land.
-* **wait**: positionless; holds the route for its label's seconds.
-* **script**: positionless; runs the user script named by its label
+* **wait**: holds the route for its label's seconds.
+* **script**: runs the user script named by its label
   (:mod:`moonlight.scripts.scripts`); the route holds until it ends.
 * **End of route**: a hunting route starts over at waypoint 0; a route
   with ``loop`` off completes and the cavebot stops.
@@ -129,6 +134,7 @@ __all__ = [
     "GAME_GRID_COLS",
     "GAME_GRID_ROWS",
     "NO_TILE",
+    "has_tile",
     "Cavebot",
     "Route",
     "RouteError",
@@ -149,8 +155,15 @@ ACTIONS = (
 _JUMP_ACTIONS = ("label", "goto", "check")
 #: Actions done where the bot stands (one command per tick, then a hold).
 _HAND_ACTIONS = ("say", "key", "drag", "script", "wait")
-#: Actions without a tile (their x, y, z are 0).
+#: Actions that may have no tile (x, y, z 0: old routes); added in Edit route they have one.
 NO_TILE = _JUMP_ACTIONS + _HAND_ACTIONS
+
+
+def has_tile(wp: Waypoint) -> bool:
+    """True when the bot walks to *wp*'s tile before doing it."""
+    return wp.action not in NO_TILE or (wp.x, wp.y, wp.z) != (0, 0, 0)
+
+
 #: Seconds the route holds after a hand action (a wait: its label).
 _HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0, "step": 0.5}
 
@@ -158,7 +171,7 @@ _HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0, "step": 0.5}
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
 
 #: Arrival distance in tiles; every other positional action uses 1.
-_REACH = {"node": 3, "stand": 0, "stairs": 0, "step": 0, "rope": 0}
+_REACH = {"node": 3, "stand": 0, "stairs": 0, "step": 0, "rope": 0, **dict.fromkeys(NO_TILE, 0)}
 # doc: docs/prs/steps.md#rope-settle
 #: Seconds a rope waits standing on its tile before the rope is used.
 _ROPE_SETTLE = 0.2
@@ -255,7 +268,7 @@ class RouteFileLoader:
             raise RouteError("route 'waypoints' must be a non-empty list")
 
         waypoints = [RouteFileLoader._waypoint(i, item) for i, item in enumerate(items)]
-        if all(wp.action in NO_TILE for wp in waypoints):
+        if not any(has_tile(wp) for wp in waypoints):
             raise RouteError("route needs at least one positional waypoint")
         labels = [wp.label for wp in waypoints if wp.action == "label"]
         if len(labels) != len(set(labels)):
@@ -278,7 +291,8 @@ class RouteFileLoader:
                 raise RouteError(f"waypoint {index}: {action} needs a non-empty 'label'")
             if bad := label_error(action, label):
                 raise RouteError(f"waypoint {index}: {bad}")
-            return Waypoint(0, 0, 0, action, label)
+            if "x" not in item:
+                return Waypoint(0, 0, 0, action, label)
         coords = []
         for key in ("x", "y", "z"):
             value = item.get(key)
@@ -288,9 +302,9 @@ class RouteFileLoader:
             coords.append(value)
         if not MIN_FLOOR <= coords[2] <= MAX_FLOOR:
             raise RouteError(f"waypoint {index}: z must be {MIN_FLOOR}..{MAX_FLOOR}")
-        if action != "step":
+        if action not in (*NO_TILE, "step"):
             label = ""
-        elif label not in WALK_KEYS.values():
+        elif action == "step" and label not in WALK_KEYS.values():
             keys = list(WALK_KEYS.values())
             raise RouteError(f"waypoint {index}: step label must be one of {keys}")
         return Waypoint(coords[0], coords[1], coords[2], action, label)
@@ -338,8 +352,8 @@ class Cavebot:
         frames: Callable[[], np.ndarray] | None = None,
         clock: Callable[[], float] | None = None,
         on_waypoint_reached: Callable[[int], None] | None = None,
-        refill_cap: float | None = None,
         scripts: ScriptRunner | None = None,
+        supplies_low: Callable[[], bool] | None = None,
     ) -> None:
         """Create the runner.
 
@@ -368,9 +382,9 @@ class Cavebot:
             clock: Monotonic-clock override (tests).
             on_waypoint_reached: Called with the index of each reached
                 positional waypoint.
-            refill_cap: Used capacity % at which a ``check`` jumps; None
-                (Refill off) jumps only on :attr:`refill_now`.
             scripts: Starts the user scripts of ``script`` waypoints.
+            supplies_low: True when free cap or potions are under their
+                Refill settings; a ``check`` then jumps too.
 
         Raises:
             ValueError: On bad timings, or rope/shovel waypoints or
@@ -419,7 +433,7 @@ class Cavebot:
         self._bumped_into_creature: set[tuple[int, int, int]] = set()
         self._clock = clock if clock is not None else time.monotonic
         self._callback = on_waypoint_reached
-        self.refill_cap = refill_cap
+        self._supplies_low = supplies_low
         #: Refill now: the next ``check`` jumps to town (cleared by the jump).
         self.refill_now = False
         self._scripts = scripts
@@ -541,7 +555,9 @@ class Cavebot:
             return
 
         wp = self.route.waypoints[self.route.current]
-        if wp.action in _HAND_ACTIONS or (wp.action == "step" and self._stepped(wp, pos)):
+        if (wp.action in _HAND_ACTIONS and not has_tile(wp)) or (
+            wp.action in (*_HAND_ACTIONS, "step") and self._stepped(wp, pos)
+        ):
             self.release_walk_key()
             self._hand_action(wp, now)
             return
@@ -634,7 +650,7 @@ class Cavebot:
         candidates = [
             (max(abs(wp.x - pos.x), abs(wp.y - pos.y)), i)
             for i, wp in enumerate(self.route.waypoints)
-            if wp.action not in NO_TILE and wp.z == pos.z
+            if has_tile(wp) and wp.z == pos.z
         ]
         return min(candidates)[1] if candidates else 0
 
@@ -663,7 +679,9 @@ class Cavebot:
                 index = 0
                 continue
             wp = wps[index]
-            if wp.action == "label":
+            if has_tile(wp):
+                return index
+            elif wp.action == "label":
                 index += 1
             elif wp.action == "goto" or (wp.action == "check" and self._refill_due()):
                 if wp.action == "check":
@@ -683,9 +701,10 @@ class Cavebot:
 
     # doc: docs/prs/refill.md#check-waypoint
     def _refill_due(self) -> bool:
-        cap = self._state.snapshot().capacity
-        full = self.refill_cap is not None and cap.max_weight > 0 and cap.percent >= self.refill_cap
-        return self.refill_now or full
+        if self.refill_now:
+            logger.info("check: Refill now | refill")
+            return True
+        return self._supplies_low is not None and self._supplies_low()
 
     # doc: docs/prs/refill.md#drag-waypoint
     def _hand_sends(self, wp: Waypoint) -> list[Callable[[], object]]:
@@ -729,7 +748,7 @@ class Cavebot:
 
     # doc: docs/prs/steps.md#step-waypoint
     def _stepped(self, wp: Waypoint, pos: Position) -> bool:
-        """True once a ``step`` is on its tile: from then on it runs as a hand action."""
+        """True once a ``step`` or hand action is on its tile: from then on it runs."""
         started = self._sends_done > 0 or self._hand_done_at is not None
         if not started and (pos.x, pos.y, pos.z) == (wp.x, wp.y, wp.z):
             self._clicker.cancel()  # no walk click after the key
@@ -788,6 +807,15 @@ class Cavebot:
 
     def _advance(self) -> None:
         self.on_waypoint_reached(self.route.current)
+        wp = self.route.waypoints[self.route.current]
+        if wp.action == "goto" or (wp.action == "check" and self._refill_due()):
+            if wp.action == "check":
+                logger.info("cavebot: refill due, jump to %r", wp.label)
+                self.refill_now = False
+            wps = self.route.waypoints
+            self.route.current = next(
+                i for i, w in enumerate(wps) if w.action == "label" and w.label == wp.label
+            )
         self.route.current += 1
         self._expected_z = None
         self._last_cmd = float("-inf")
@@ -800,7 +828,7 @@ class Cavebot:
         n = len(wps)
         for k in range(n):
             i = (self.route.current + k) % n
-            if wps[i].action not in NO_TILE and wps[i].z == z:
+            if has_tile(wps[i]) and wps[i].z == z:
                 logger.info("cavebot: floor changed to %d, resync to waypoint %d", z, i)
                 self.route.current = i
                 self._expected_z = None

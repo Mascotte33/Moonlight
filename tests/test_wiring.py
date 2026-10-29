@@ -76,7 +76,7 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
         buffs=BuffManagerConfig(),
         cavebot=CavebotConfig(Route("hunt", waypoints=[Waypoint(100, 100, 7)])),
         looting=LootingConfig(),
-        refill=RefillConfig(trigger_cap=80.0),
+        refill=RefillConfig(cap_below=300),
         templates_dir=tmp_path / "templates",
         # F-09 / F-10: enable the perception sources these modules require.
         monster_name_source=True,
@@ -105,7 +105,7 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
         loop.tick()
         now[0] += 0.05
     assert next(calls) == 5  # P1: exactly one capture per tick, shared by all
-    assert loop.modules.cavebot is not None and loop.modules.cavebot.refill_cap == 80.0
+    assert loop.modules.cavebot is not None
     # F-20: every module that sends shares the loop's wire limiter.
     m = loop.modules
     assert m.cavebot is not None and m.looting is not None
