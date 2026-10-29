@@ -1,8 +1,8 @@
 """Central bot configuration (T40).
 
 :class:`BotConfig` aggregates everything needed to build the bot: the
-calibration profile name, the serial port, the loop parameters, the
-buff -> hotkey mapping and the per-module decision configs. The module
+calibration profile name, the serial port, the loop parameters and the
+per-module decision configs. The module
 configs are the existing dataclasses from feature packages (and
 :class:`moonlight.core.loop.LoopConfig`); nothing is re-invented here.
 
@@ -22,14 +22,11 @@ JSON format (``moonlight_config.json``)::
       "routes_dir": "data/waypoints",
       "loop": {"tick_rate": 20.0},         # any LoopConfig field
       "clicker": {"open_loop": false},     # any ClickerConfig field (F-14)
-      "hotkeys": {"utani hur": "F8"},      # buff -> combo
       "monster_name_source": false,        # unused
       "capacity_source": false,            # unused
-      "buff_icon_source": false,           # F-10: buffs needs this true (T34)
       "modules": {
         "healing":   {"enabled": true, "potion_cooldown_ms": 1000},
         "targeting": {"enabled": true},
-        "buffs":     {"enabled": false},
         "alarms":    {"enabled": true},
         "cavebot":   {"enabled": false, "route": "rotworms"},
         "looting":   {"enabled": false},
@@ -44,9 +41,7 @@ JSON format (``moonlight_config.json``)::
 
 Fail closed: ``profile``, ``modules`` and every module's ``enabled`` flag
 are required; unknown keys, wrong types, invalid values, a bad hotkey
-combo, a missing cavebot route file, or rotation without the
-cavebot all raise :class:`ConfigError`. Buffs additionally require its perception
-source (``buff_icon_source``) to be true (F-10).
+combo or a missing cavebot route file all raise :class:`ConfigError`.
 Fields left out of a module section take the dataclass defaults.
 
 A module that is off keeps its values: ``{"enabled": false, "potion_cooldown_ms":
@@ -68,10 +63,9 @@ from typing import Any, Union, get_args, get_origin, get_type_hints
 from moonlight.alarms.alarms import AlarmConfig
 from moonlight.cavebot.cavebot import Route, RouteError, RouteFileLoader
 from moonlight.core.loop import GameLoop, LoopConfig
-from moonlight.extras.buffs import BuffManagerConfig
 from moonlight.extras.extras import ExtrasConfig
 from moonlight.hardware.clicker import ClickerConfig
-from moonlight.healing.healing import HealingConfig, check_hotkey
+from moonlight.healing.healing import HealingConfig
 from moonlight.looting.looting import LootingConfig
 from moonlight.refill.refill import RefillConfig
 from moonlight.scripts.rotation import RotationConfig
@@ -97,7 +91,6 @@ ALWAYS_ON = ("extras",)
 MODULES = (
     "healing",
     "targeting",
-    "buffs",
     "alarms",
     "cavebot",
     "looting",
@@ -120,10 +113,8 @@ _TOP_KEYS = {
     "routes_dir",
     "monster_name_source",
     "capacity_source",
-    "buff_icon_source",
     "loop",
     "clicker",
-    "hotkeys",
     "modules",
 }
 
@@ -165,10 +156,8 @@ class BotConfig:
     #: Clicker mode (F-14): closed loop by default; open loop if T33 HIL
     #: shows the rendered cursor cannot be captured.
     clicker: ClickerConfig = ClickerConfig()
-    hotkeys: dict[str, str] | None = None
     healing: HealingConfig | None = None
     targeting: TargetingConfig | None = None
-    buffs: BuffManagerConfig | None = None
     alarms: AlarmConfig | None = None
     cavebot: CavebotConfig | None = None
     looting: LootingConfig | None = None
@@ -179,15 +168,10 @@ class BotConfig:
     extras: ExtrasConfig = ExtrasConfig()
     #: Accounts played in turn; their logins stay in this gitignored file.
     rotation: RotationConfig | None = None
-    #: Perception sources that are actually wired up (F-10). The buff-icon
-    #: reader is deferred (T34), so buffs would run against *unpopulated*
-    #: state; ``validate`` refuses to enable buffs without its source.
-    #: ``monster_name_source`` and ``capacity_source`` are unused; kept so
-    #: saved configs still load (refill without a capacity reader triggers
-    #: on Refill now only).
+    #: Unused; kept so saved configs still load (refill without a capacity
+    #: reader triggers on Refill now only).
     monster_name_source: bool = False
     capacity_source: bool = False
-    buff_icon_source: bool = False
     #: Kept values of modules that are off, by module name (T0.F1.K4).
     off: dict[str, Any] = field(default_factory=dict)
 
@@ -196,7 +180,6 @@ class BotConfig:
         """Safe defaults: healing, targeting and alarms on; the rest off."""
         cfg = cls(
             profile="moonlight_user",
-            hotkeys={},
             healing=HealingConfig(),
             targeting=TargetingConfig(),
             alarms=AlarmConfig(),
@@ -245,7 +228,6 @@ class BotConfig:
             "routes_dir",
             "monster_name_source",
             "capacity_source",
-            "buff_icon_source",
         ):
             if key in data:
                 kwargs[key] = _coerce(data[key], hints[key], key)
@@ -255,8 +237,6 @@ class BotConfig:
             kwargs["loop"] = _build(LoopConfig, data["loop"], "loop")
         if "clicker" in data:
             kwargs["clicker"] = _build(ClickerConfig, data["clicker"], "clicker")
-        if "hotkeys" in data:
-            kwargs["hotkeys"] = _coerce(data["hotkeys"], dict[str, str], "hotkeys")
 
         modules = _require_dict(data.get("modules"), "modules")
         _reject_unknown(modules, set(MODULES), "modules")
@@ -309,8 +289,6 @@ class BotConfig:
             for f in fields(self)
             if f.name not in MODULES and f.name != "off"
         }
-        if self.hotkeys is None:
-            del data["hotkeys"]
         data["loop"] = asdict(self.loop)
         data["clicker"] = asdict(self.clicker)
         modules: dict[str, Any] = {}
@@ -348,7 +326,6 @@ class BotConfig:
             sections: tuple[Any, ...] = (
                 self.healing,
                 self.targeting,
-                self.buffs,
                 self.alarms,
                 self.scripts,
                 self.extras,
@@ -357,8 +334,6 @@ class BotConfig:
             for cfg in sections:
                 if cfg is not None:
                     cfg.validate()
-            for name, combo in (self.hotkeys or {}).items():
-                check_hotkey(combo, f"hotkeys.{name}")
         except ValueError as exc:
             raise ConfigError(str(exc)) from exc
         if self.cavebot is not None:
@@ -374,14 +349,6 @@ class BotConfig:
         if self.rotation is not None and len(self.rotation.accounts) < 2:
             # checked only when on, so the Settings tab can save the logout hotkey
             raise ConfigError("rotation needs at least 2 accounts")
-        # F-10: the buffs module reads buff-icon state that no reader
-        # populates yet; refuse to enable it until one is wired.
-        if self.buffs is not None and not self.buff_icon_source:
-            raise ConfigError(
-                "buffs is enabled but no buff-icon perception source is "
-                "configured: set 'buff_icon_source' to true once buff-icon "
-                "perception is wired (T34), or disable the buffs module"
-            )
         return self
 
 

@@ -14,7 +14,6 @@ from moonlight.core import wiring
 from moonlight.core.config import BotConfig, CavebotConfig, ConfigError
 from moonlight.core.loop import GameLoop, LoopConfig
 from moonlight.core.state import Position, WorldState
-from moonlight.extras.buffs import BuffManagerConfig
 from moonlight.hardware.input import FakeInput
 from moonlight.looting.looting import LootingConfig
 from moonlight.refill.refill import RefillConfig
@@ -72,16 +71,13 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
     cfg = replace(
         BotConfig.default(),
         loop=LoopConfig(enable_f12_monitor=False),
-        hotkeys={b.spell: f"F{5 + i}" for i, b in enumerate(BuffManagerConfig().buffs)},
-        buffs=BuffManagerConfig(),
         cavebot=CavebotConfig(Route("hunt", waypoints=[Waypoint(100, 100, 7)])),
         looting=LootingConfig(),
         refill=RefillConfig(cap_below=300),
         templates_dir=tmp_path / "templates",
-        # F-09 / F-10: enable the perception sources these modules require.
+        # F-09: enable the perception sources these modules require.
         monster_name_source=True,
         capacity_source=True,
-        buff_icon_source=True,
     ).validate()
     rng = np.random.default_rng(0)
     frames = [rng.integers(0, 256, (600, 800, 3), dtype=np.uint8) for _ in range(3)]

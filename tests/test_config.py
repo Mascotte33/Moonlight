@@ -27,7 +27,7 @@ def raw(**modules: dict[str, Any]) -> dict[str, Any]:
     """Minimal valid config; *modules* override sections."""
     sections: dict[str, Any] = {name: {"enabled": False} for name in MODULES}
     sections.update(modules)
-    return {"profile": "p", "hotkeys": {}, "modules": sections}
+    return {"profile": "p", "modules": sections}
 
 
 def test_old_walk_keys_in_cavebot_still_loads(tmp_path: Path) -> None:
@@ -42,8 +42,7 @@ def test_old_walk_keys_in_cavebot_still_loads(tmp_path: Path) -> None:
 def test_default_is_valid() -> None:
     cfg = BotConfig.default()
     assert cfg.healing is not None and cfg.targeting is not None and cfg.alarms is not None
-    assert cfg.buffs is None and cfg.cavebot is None and cfg.refill is None
-    assert cfg.hotkeys == {}
+    assert cfg.cavebot is None and cfg.refill is None
 
 
 def test_load_roundtrip(tmp_path: Path) -> None:
@@ -104,15 +103,6 @@ def test_scripts_timers_load_and_a_config_without_scripts_still_loads() -> None:
         BotConfig.from_dict(raw(scripts={"enabled": True, "timers": "eat"}))
 
 
-def test_buffs_refused_without_icon_source() -> None:
-    """F-10: buffs without buff-icon perception is refused."""
-    data = raw(buffs={"enabled": True})
-    with pytest.raises(ConfigError, match="buff-icon perception source"):
-        BotConfig.from_dict(data)
-    data["buff_icon_source"] = True
-    assert BotConfig.from_dict(data).buffs is not None
-
-
 @pytest.mark.parametrize(
     "mutate",
     [
@@ -133,7 +123,6 @@ def test_buffs_refused_without_icon_source() -> None:
         ),
         lambda d: d["modules"].update(targeting={"enabled": True, "max_monsters_to_engage": True}),
         lambda d: d.update(loop={"tick_rate": -1.0}),
-        lambda d: d.update(hotkeys={"exura": "F 2"}),
         lambda d: d.update(profile=""),
         lambda d: d["modules"].update(cavebot={"enabled": True}),
         lambda d: d["modules"].update(cavebot={"enabled": True, "route": "missing"}),
@@ -243,16 +232,11 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
             "cures": [{"condition": "burn", "enabled": True, "hotkey": "F9"}],
         },
         targeting={"enabled": True},
-        buffs={
-            "enabled": True,
-            "buffs": [{"buff_name": "haste", "spell": "utani hur", "priority": 1}],
-        },
         alarms={"enabled": True},
         cavebot={"enabled": True, "route": "hunt", "rope_hotkey": "F5"},
         looting={"enabled": True},
         refill={"enabled": True, "cap_below": 300},
     )
-    data["hotkeys"]["utani hur"] = "F3"
     data.update(
         serial_port="COM7",
         profiles_dir=str(tmp_path / "profiles"),
@@ -261,7 +245,6 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
         clicker={"open_loop": True},
         monster_name_source=True,
         capacity_source=True,
-        buff_icon_source=True,
     )
     cfg = BotConfig.from_dict(data)
     path = tmp_path / "saved.json"

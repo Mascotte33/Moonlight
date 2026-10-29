@@ -45,8 +45,6 @@ without it the loop keeps its built-in behaviour.
   first in every non-KILL state (healing continues through ALARM); a heal
   sent this tick skips the rest of the dispatch.
   # doc: docs/prs/healing.md#healing-rules
-* **buffs** -- ``BuffManager.track`` + ``send`` of the top cast in the
-  ATTACK/LOOT/MOVE/IDLE states.
 * **looting** -- a selected target that vanishes from the battle list is
   reported via ``Looting.on_target_died``; ``should_loot`` -> LOOT,
   which runs ``Looting.step``.
@@ -114,7 +112,6 @@ from moonlight.targeting.targeting import PAUSE_SECONDS
 if TYPE_CHECKING:
     from moonlight.alarms.alarms import AlarmAction, AlarmDecision
     from moonlight.cavebot.cavebot import Cavebot
-    from moonlight.extras.buffs import BuffManager
     from moonlight.extras.extras import Extras
     from moonlight.hardware.clicker import ClickController
     from moonlight.healing.healing import HealingDecision
@@ -209,7 +206,6 @@ class DecisionModules:
     #: Decides while the cavebot is stuck on creatures: "all others" attack.
     stuck_targeting: TargetingDecision | None = None
     attack_hotkeys: AttackHotkeys | None = None
-    buffs: BuffManager | None = None
     alarms: AlarmDecision | None = None
     cavebot: Cavebot | None = None
     looting: Looting | None = None
@@ -743,11 +739,9 @@ class GameLoop:
         if looting is not None and looting.ring_due():
             self._send(snap, looting.press_ring)  # then carry on with this tick
         if self._state is BotState.ALARM:
-            # No attack/move/buffs; healing already ran (alert sent on entry).
+            # No attack/move; healing already ran (alert sent on entry).
             if self.modules.looting is not None and self.modules.looting.should_loot(snap):
                 self._act_loot(snap)  # the corpse is still there
-            return
-        if self.modules.buffs is not None and self._buff(snap):
             return
         if self.modules.extras is not None and self._extra(snap):
             return
@@ -819,13 +813,6 @@ class GameLoop:
             if self._send(snap, partial(healing.send, action, self.input), heal=True):
                 sent = True
         return sent
-
-    def _buff(self, snap: WorldState) -> bool:
-        """Buff module: send the top-priority due cast; True when sent."""
-        buffs = self.modules.buffs
-        assert buffs is not None
-        actions = buffs.track(snap)
-        return bool(actions) and self._send(snap, lambda: buffs.send(actions[0], self.input))
 
     def _extra(self, snap: WorldState) -> bool:
         """Extras: press the due hotkey (food, ring, amulet, haste, buff); True when sent."""

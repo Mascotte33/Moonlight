@@ -37,7 +37,7 @@ hands-on hardware steps. See [Built by AI agents](#built-by-ai-agents).
 flowchart LR
     CAP["Capture<br/>mss / dxcam<br/>region crops"] --> PER["Perception<br/>vitals · battle · minimap<br/>floor · sprites · cursor · OCR"]
     PER --> WS[("WorldState")]
-    WS --> DEC["Decision<br/>healing · targeting · buffs<br/>alarms · cavebot · looting · refill"]
+    WS --> DEC["Decision<br/>healing · targeting<br/>alarms · cavebot · looting · refill"]
     DEC -->|prioritised actions| IN["Input<br/>ClickController<br/>ArduinoInput"]
     IN -->|serial 115200| ARD["Arduino Leonardo<br/>USB HID"]
     ARD -->|keyboard / mouse| GAME["Game client"]
@@ -54,7 +54,7 @@ moonlight/
 ├── looting/      looting logic
 ├── refill/       refill trigger (free cap, potions)
 ├── scripts/      user scripts
-├── extras/       buffs
+├── extras/       food, haste, buff and ring helpers, player timer
 ├── alarms/       danger alarms
 ├── calibration/  screen-region finder, profiles + its tab
 ├── hardware/     Arduino input backends, closed-loop clicking + its tab
@@ -93,7 +93,6 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Server-log OCR | ✅ | ✅ | ❌ |
 | Healing + cures | ✅ | ✅ | 🟡 |
 | Targeting | ✅ | ✅ | 🟡 |
-| Buffs | ✅ | ✅ | ❌ |
 | Alarms | ✅ | ✅ | ❌ |
 | Cavebot (waypoint routing, route recorder) | ✅ | ✅ | ❌ |
 | Looting | ✅ | ✅ | ✅ |

@@ -64,7 +64,6 @@ MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "scripts": (),
     "rotation": (),
     "extras": (),  # player_list is optional: without it no player is timed
-    "buffs": ("status_icons",),
     "alarms": (),
 }
 
@@ -445,7 +444,7 @@ def build_loop(
 
 
 #: BotConfig fields a running bot takes without a rebuild (live apply).
-LIVE_FIELDS = (*MODULES, "hotkeys", "clicker", "templates_dir", "routes_dir", "off")
+LIVE_FIELDS = (*MODULES, "clicker", "templates_dir", "routes_dir", "off")
 
 
 def needs_restart(old: BotConfig, new: BotConfig) -> bool:
@@ -492,7 +491,6 @@ def build_modules(
     survive; a rebuilt cavebot walks to the nearest waypoint of its route.
     """
     from moonlight.alarms.alarms import AlarmDecision
-    from moonlight.extras.buffs import BuffManager
     from moonlight.healing.healing import HealingDecision
     from moonlight.targeting.attack_hotkeys import AttackHotkeys
     from moonlight.targeting.targeting import TargetingConfig, TargetingDecision
@@ -511,7 +509,6 @@ def build_modules(
             ("targeting", ("targeting",)),
             ("stuck_targeting", ("targeting", "off", "walk_keys", "cavebot")),
             ("attack_hotkeys", ("targeting", "off")),
-            ("buffs", ("buffs", "hotkeys")),
             ("alarms", ("alarms",)),
         ):
             if same(*keys):
@@ -541,8 +538,6 @@ def build_modules(
         )
     if (config.targeting is not None or m.stuck_targeting) and m.attack_hotkeys is None:
         m.attack_hotkeys = AttackHotkeys(rows)
-    if config.buffs is not None and m.buffs is None:
-        m.buffs = BuffManager(config.buffs, key_combos=config.hotkeys or {}, clock=clock)
     if config.alarms is not None and m.alarms is None:
         m.alarms = AlarmDecision(config.alarms, clock=clock)
 

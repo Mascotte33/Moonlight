@@ -71,15 +71,12 @@ class TestWorldStateDefault:
         assert ws.players_on_screen == 0
         assert ws.position == Position(0, 0, 0)
         assert ws.capacity == Capacity(0, 0)
-        assert ws.buffs == {}
         assert ws.last_update == 0.0
 
     def test_instances_are_independent(self) -> None:
         a, b = WorldState.default(), WorldState.default()
         a.monsters.append(Monster("Wolf"))
-        a.buffs["haste"] = 1.0
         assert b.monsters == []
-        assert b.buffs == {}
 
 
 class TestSnapshot:
@@ -100,12 +97,9 @@ class TestSnapshot:
         ws = WorldState.default()
         with ws.lock():
             ws.monsters = [Monster("Wolf")]
-            ws.buffs = {"haste": 5.0}
         snap = ws.snapshot()
         snap.monsters.append(Monster("Bear"))
-        snap.buffs["utamo vita"] = 99.0
         assert len(ws.monsters) == 1
-        assert ws.buffs == {"haste": 5.0}
 
     def test_snapshot_has_own_lock(self) -> None:
         ws = WorldState.default()

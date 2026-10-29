@@ -43,7 +43,7 @@ OPTIONS = [
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
     for name in (
-        "healing", "looting", "scripts", "rotation", "buffs", "alarms"
+        "healing", "looting", "scripts", "rotation", "alarms"
     )
 ]
 #: One row per extra: its hotkey and checkbox, then the player limits (docs/prs/extras.md#extras).
@@ -74,7 +74,6 @@ ROTATION_OPTIONS = [Option("Logout hotkey", "rotation.logout_hotkey", "hotkey")]
 #: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
 REASONS = [
     ("cavebot.route", "Cavebot needs a route. Pick one in the Route dropdown or record one below."),
-    ("buff-icon", "Buffs needs a buff-icon reader, which the bot doesn't have yet."),
     ("rotation needs the cavebot", "Rotation needs Cavebot on."),
     ("rotation needs at least", "Rotation needs 2 or more accounts in the config file."),
 ]

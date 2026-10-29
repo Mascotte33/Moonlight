@@ -26,7 +26,6 @@ from moonlight.cavebot.cavebot import Cavebot, Route, Waypoint
 from moonlight.core.loop import DecisionModules, GameLoop, LoopConfig
 from moonlight.core.state import Capacity, Monster, Position, WorldState
 from moonlight.core.wiring import make_perceive
-from moonlight.extras.buffs import BuffManager
 from moonlight.hardware.input import FakeInput
 from moonlight.healing.healing import HealingDecision
 from moonlight.looting.looting import Looting
@@ -102,7 +101,6 @@ def _decision_stats(tmp: Path) -> dict[str, Stats]:
 
     healing = HealingDecision()
     targeting = TargetingDecision()
-    buffs = BuffManager()
     alarms = AlarmDecision()
 
     with ws.lock():
@@ -128,7 +126,6 @@ def _decision_stats(tmp: Path) -> dict[str, Stats]:
     return {
         "healing": _measure(lambda _: healing.decide(ws.snapshot())),
         "targeting": _measure(lambda _: targeting.decide(ws.snapshot(), 0.0)),
-        "buffs": _measure(lambda _: buffs.track(ws.snapshot())),
         "alarms": _measure(lambda _: alarms.decide(ws.snapshot())),
         "cavebot": _measure(lambda _: cavebot.step()),
         "looting": _measure(loot_step),
@@ -184,7 +181,6 @@ def test_timing_report(tmp_path: Path) -> None:
                 None, profile.get_region("battle_list").to_tuple, profile.ui_scale
             ),
             clicker=mock.Mock(busy=False, **{"step.return_value": None}),
-            buffs=BuffManager(),
             alarms=AlarmDecision(),
         ),
         perceive=make_perceive(ws, profile, lambda: frames[0]),
@@ -293,7 +289,6 @@ def test_production_tick_within_budget(
                 "cavebot": {"enabled": True, "route": "far"},
                 "looting": {"enabled": False},
                 "refill": {"enabled": False},
-                "buffs": {"enabled": False},
             },
         }
     )

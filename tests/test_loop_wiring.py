@@ -132,21 +132,6 @@ def test_critical_alarm_enters_alarm_warning_does_not() -> None:
     assert gl.current_state is BotState.IDLE
 
 
-def test_buffs_track_and_send_when_not_busy() -> None:
-    buffs = idle_module(**{"track.return_value": ["haste"]})
-    gl, _ = make_loop(make_state(), FakeInput(), buffs=buffs)
-    gl.tick()
-    buffs.track.assert_called_once()
-    buffs.send.assert_called_once_with("haste", gl.input)
-
-
-def test_buffs_skipped_when_a_heal_is_sent() -> None:
-    buffs = idle_module(**{"track.return_value": ["haste"]})
-    gl, _ = make_loop(make_state(hp=50.0), FakeInput(), buffs=buffs, healing=HealingDecision())
-    gl.tick()
-    buffs.track.assert_not_called()
-
-
 def test_kill_detection_and_loot_state() -> None:
     ws = make_state(target="Wolf", monsters=0)
     looting = idle_module()
