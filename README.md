@@ -332,6 +332,10 @@ or in the `targeting` section of your profile config:
 - **Cavebot around monsters:** with walk keys on, the cavebot reads the
   monsters' health bars in the game view before every step and walks around
   them when that costs at most 8 more steps, instead of bumping into them.
+- **What the bot sees:** Diagnostics > "Show what the bot sees" shows the
+  game view with a red box on each monster found, the cavebot's planned walk
+  as a blue line (walk keys only) and a gold circle for 10 s where a monster
+  just died. It only shows; looting loots every corpse around.
 - **Cavebot when blocked:** a step key that does not move the player in
   0.7 s is pressed once more (a lag looks the same); a second miss marks
   that tile blocked for 12 s (freed early once the monster on it

@@ -417,6 +417,9 @@ class Cavebot:
         #: Tiles a walk key stepped onto that moved the player elsewhere (a hole, a teleport).
         self._jumped: set[tuple[int, int, int]] = set()
         self._target: tuple[int, int, int] | None = None
+        #: (x, y) tiles of the walk planned last on the player's floor, for the
+        #: "What the bot sees" view (docs/prs/extras.md#seen-path).
+        self.planned_path: list[tuple[int, int]] = []
         #: The target tile whose key was pressed a second time after not moving.
         self._retried_target: tuple[int, int, int] | None = None
         #: The walk key held down, kept between steps so the client walks on.
@@ -901,6 +904,7 @@ class Cavebot:
                 logger.info("cavebot: creatures block the way, targeting takes over")
             self.stuck_on_creatures = True
             self._target = None
+            self.planned_path = []
             self.release_walk_key()
             self._stuck_allowed_until = now + _STUCK_WINDOW  # stay put while it fights
             return
@@ -916,8 +920,10 @@ class Cavebot:
                 return
         if path is None:
             step = self._best_unbumped_step(wp, pos, danger)
+            self.planned_path = [(pos.x + step[0], pos.y + step[1])]
         else:
             step = path[0]
+            self.planned_path = path[2]
         self._target = (pos.x + step[0], pos.y + step[1], pos.z)
         self._press_walk_key(step)
 

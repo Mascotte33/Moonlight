@@ -4,7 +4,8 @@ The Health card (T10.F1.K1) shows the same dots as the Dashboard, each with
 its last value. The module switches live in Settings.
 
 "Show what the bot sees" opens a window with the game grid, a red box on
-every creature the health-bar scan finds. It scans about 5 times a second only while
+every creature the health-bar scan finds, the cavebot's path in blue and
+fresh kills in gold. It scans about 5 times a second only while
 open, and never sends input.
 """
 
@@ -13,12 +14,14 @@ from __future__ import annotations
 import time
 import tkinter as tk
 from collections import deque
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 import customtkinter as ctk
 import cv2
 import numpy as np
 
-from moonlight.core.state import WorldState
+from moonlight.core.state import Position, WorldState
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_profile, load_real_config
 from moonlight.gui.settings_tab import plain_reason
@@ -26,7 +29,7 @@ from moonlight.gui.state_bridge import LogFeed
 from moonlight.gui.tab_base import Tab, dot_color, health, section, stat_label, stat_num
 from moonlight.perception.creatures import find_creatures
 
-__all__ = ["DiagnosticsTab", "recent_errors", "seen_view"]
+__all__ = ["DiagnosticsTab", "recent_errors", "seen_view", "slots_of"]
 
 
 def recent_errors(log: LogFeed) -> str:
@@ -37,6 +40,10 @@ def recent_errors(log: LogFeed) -> str:
 
 #: Debug window refresh, ms (about 5 scans a second).
 SEES_MS = 200
+#: The player's (col, row) on the 15x11 game grid.
+PLAYER_SLOT = (7, 5)
+#: How long a killed monster's tile keeps its gold circle (docs/prs/extras.md#seen-path).
+CORPSE_SECONDS = 10.0
 #: Debug window width, px.
 SEES_W = 720
 
@@ -45,10 +52,16 @@ def seen_view(
     frame: np.ndarray,
     grid: tuple[int, int, int, int],
     creatures: list[tuple[int, int]],
+    path: Sequence[tuple[int, int]] = (),
+    corpses: Sequence[tuple[int, int]] = (),
 ) -> np.ndarray:
     """The game grid of *frame* (BGR) with tile lines and the scan's boxes.
 
+    *path* (a blue line from the player) and *corpses* (gold circles) are
+    (col, row) slots of the grid.
+
     # doc: docs/prs/keys-walking.md#creature-scan
+    # doc: docs/prs/extras.md#seen-path
     """
     gx, gy, gw, gh = grid
     view = frame[gy : gy + gh, gx : gx + gw].copy()
@@ -63,7 +76,22 @@ def seen_view(
         a = (round(col * tw) + 2, round(row * th) + 2)
         b = (round((col + 1) * tw) - 3, round((row + 1) * th) - 3)
         cv2.rectangle(view, a, b, (81, 93, 229), 3)
+
+    def centre(slot: tuple[int, int]) -> tuple[int, int]:
+        return round((slot[0] + 0.5) * tw), round((slot[1] + 0.5) * th)
+
+    if path:
+        points = np.array([centre(PLAYER_SLOT), *map(centre, path)], np.int32)
+        cv2.polylines(view, [points], False, (255, 120, 0), 3)
+    for slot in corpses:
+        cv2.circle(view, centre(slot), round(min(tw, th) / 2.5), (0, 215, 255), 3)
     return view
+
+
+def slots_of(tiles: Iterable[tuple[int, int]], player: Position) -> list[tuple[int, int]]:
+    """Grid (col, row) of world (x, y) *tiles* around *player*, off-grid ones dropped."""
+    slots = [(x - player.x + PLAYER_SLOT[0], y - player.y + PLAYER_SLOT[1]) for x, y in tiles]
+    return [(c, r) for c, r in slots if 0 <= c < 15 and 0 <= r < 11]
 
 
 class DiagnosticsTab(Tab):
@@ -159,6 +187,8 @@ class DiagnosticsTab(Tab):
         label.pack()
         scale = SEES_W / grid[2]
 
+        dead: dict[str, Any] = {"count": 0, "seen": set(), "corpses": {}}
+
         def close() -> None:
             cap.close()
             win.destroy()
@@ -173,7 +203,19 @@ class DiagnosticsTab(Tab):
                 win.after(1000, tick)
                 return
             slots = find_creatures(frame, grid)
-            photo = _photo(seen_view(frame, grid, slots), scale)
+            snap = self.ctx.state.snapshot()
+            player, now = snap.position, time.monotonic()
+            px, py = player.x - PLAYER_SLOT[0], player.y - PLAYER_SLOT[1]
+            seen = {(c + px, r + py) for c, r in slots}
+            if len(snap.monsters) < dead["count"]:  # a kill: its tile is the box that vanished
+                for tile in dead["seen"] - seen:
+                    dead["corpses"][tile] = now + CORPSE_SECONDS
+            dead.update(count=len(snap.monsters), seen=seen)
+            dead["corpses"] = {t: end for t, end in dead["corpses"].items() if end > now}
+            cavebot = self.ctx.live_cavebot()
+            path = slots_of(cavebot.planned_path, player) if cavebot is not None else []
+            corpses = slots_of(dead["corpses"], player)
+            photo = _photo(seen_view(frame, grid, slots, path, corpses), scale)
             label.configure(image=photo, text="")
             label.image = photo  # type: ignore[attr-defined]  # keep it alive
             win.after(SEES_MS, tick)

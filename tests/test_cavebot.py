@@ -923,8 +923,8 @@ def test_walk_keys_follow_the_cost_map_around_a_wall(tmp_path: Path) -> None:
     tile[0:10, 4] = (0, 255, 255)  # wall at x = 4, y 0..9; walk around below it
     cv2.imwrite(str(tmp_path / "0_0_7.png"), tile)
     costs = CostMap(tmp_path)
-    assert next_step((3, 5, 7), (6, 5, 7), costs.walkable) == ((0, 1), 13)
-    assert next_step((3, 5, 7), (3, 2, 7), costs.walkable) == ((0, -1), 3)
+    assert next_step((3, 5, 7), (6, 5, 7), costs.walkable)[:2] == ((0, 1), 13)  # type: ignore[index]
+    assert next_step((3, 5, 7), (3, 2, 7), costs.walkable) == ((0, -1), 3, [(3, 4), (3, 3), (3, 2)])
     sim = Sim([walk(6, 5)], Position(3, 5, 7), walk_keys=True, cost_map=costs)
     sim.bot.start()
     sim.step()
