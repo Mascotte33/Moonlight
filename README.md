@@ -342,7 +342,10 @@ or in the `targeting` section of your profile config:
 - **Cavebot when blocked:** a step key that does not move the player in
   0.7 s is pressed once more (a lag looks the same); a second miss marks
   that tile blocked for 12 s (freed early once the monster on it
-  walks off). The cavebot takes the cheapest way to the waypoint around
+  walks off). Whenever the creatures on screen move, the way is planned
+  again at once (`cavebot: creatures moved, walking another way`), so a
+  monster stepping in front is walked around without bumping it first.
+  The cavebot takes the cheapest way to the waypoint around
   blocked tiles and monsters, diagonals included (Q/E/Z/C, the
   client's WASD-mode diagonals; a diagonal costs 3 straight steps). **Stuck** means no way around,
   or a way more than 8 steps longer, after a bump: with monsters in the battle list

@@ -614,6 +614,15 @@ class Cavebot:
             self._target = None  # stand still while a target is selected
             self.release_walk_key()
             self._stuck_allowed_until = now + _STUCK_WINDOW  # the fight may have closed the way
+        elif self._creatures_moved(pos, now):
+            planned_target = self._target
+            if planned_target is not None and planned_target[:2] in self._creatures:
+                self._stuck_allowed_until = now + _STUCK_WINDOW  # like a bump: it may close the way
+            self._step_toward(wp, pos, now)
+            if self._target != planned_target:  # same step: keep the bump timer running
+                logger.info("cavebot: creatures moved, walking another way")
+                self._retried_target = None
+                self._last_cmd = now
         elif self._last_move > self._last_cmd or now - self._last_cmd >= _KEY_RETRY:
             target = self._target if self._last_move <= self._last_cmd else None
             step = None if target is None else (target[0] - pos.x, target[1] - pos.y)
@@ -945,6 +954,14 @@ class Cavebot:
             self.planned_path = path[2]
         self._target = (pos.x + step[0], pos.y + step[1], pos.z)
         self._press_walk_key(step)
+
+    def _creatures_moved(self, pos: Position, now: float) -> bool:
+        """The creatures on screen moved since the last scan: the way is planned again.
+
+        # doc: docs/prs/tunnel-fights.md#replan-on-creature-move
+        """
+        seen_before = self._creatures
+        return self._scan(pos, now) and self._creatures != seen_before
 
     def _attack_creature_in_the_way(
         self, path: list[tuple[int, int]], pos: Position, now: float
