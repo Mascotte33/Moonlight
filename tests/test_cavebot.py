@@ -531,22 +531,44 @@ def test_action_retried_when_floor_does_not_change() -> None:
 # -- stuck / floor change / stop -----------------------------------------------
 
 
-def test_stuck_same_position_raises_alarm_and_keeps_trying() -> None:
+def test_stuck_goes_to_the_nearest_waypoint_with_a_path(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level("INFO")
+    sim = Sim(
+        [walk(120, 100), walk(400, 100), walk(104, 103), walk(100, 108, 8)], Position(100, 100, 7)
+    )
+    sim.bot.start()
+    run_until(sim, 59.0)
+    assert sim.route.current == 0
+    run_until(sim, 61.0)
+    assert sim.route.current == 2 and sim.bot.alarm is None  # nearest, other floor ignored
+    assert "stuck at 100,100,7, going to waypoint 2" in caplog.text
+    run_until(sim, 70.0)
+    assert sim.route.current == 2  # a fresh timeout first
+
+
+def test_stuck_with_no_other_waypoint_waits_and_tries_again() -> None:
     sim = Sim([walk(120, 100)], Position(100, 100, 7))
     sim.bot.start()
-    for _ in range(1190):  # 59.5 s standing still
-        sim.step()
-    assert sim.bot.alarm is None
-    for _ in range(20):
-        sim.step()
-    assert sim.bot.is_active() and sim.bot.alarm == "stuck"
-    clicks = len(sim.clicker.clicks)
-    run_until(sim, sim.now + 10)
-    assert len(sim.clicker.clicks) > clicks  # still clicking the waypoint
-    sim.pos = Position(101, 100, 7)
-    sim.step()
-    assert sim.bot.alarm is None  # moving again
+    run_until(sim, 61.0)
+    assert sim.bot.alarm is None and sim.route.current == 0
+    sim.route.waypoints.append(walk(105, 100))  # a waypoint shows up: found at the next try
+    run_until(sim, 67.0)
+    assert sim.route.current == 1
 
+
+def test_stuck_skips_waypoints_walls_cut_off(tmp_path: Path) -> None:
+    cost = tmp_path / "cost"
+    cost.mkdir()
+    image = np.zeros((256, 256, 3), np.uint8)  # all walkable
+    image[:, 150] = (0, 255, 255)  # a wall at x=150 (tile 0,0)
+    cv2.imwrite(str(cost / "0_0_7.png"), image)
+    sim = Sim(
+        [walk(10, 10), walk(152, 100), walk(60, 100)], Position(100, 100, 7),
+        cost_map=CostMap(cost), walk_keys=True,
+    )
+    sim.bot.start()
+    run_until(sim, 61.0)
+    assert sim.route.current == 2  # 152 is behind the wall (within the search window)
 
 def run_until(sim: Sim, seconds: float) -> None:
     while sim.now < seconds - 1e-9:
@@ -570,7 +592,7 @@ def test_blocked_tries_right_side_second_then_still_goes_stuck() -> None:
     targets = [t for t, _ in sim.clicker.clicks]
     assert (70, 69) in targets and targets[-1] == (70, 71)
     run_until(sim, 61.0)
-    assert sim.bot.alarm == "stuck"
+    assert sim.bot.alarm is None
     targets = [t for t, _ in sim.clicker.clicks]
     assert targets.count((70, 69)) == 1 and targets.count((70, 71)) == 1
 
@@ -590,7 +612,7 @@ def test_unreadable_position_sends_nothing_and_still_times_out() -> None:
     sim.bot.start()
     for _ in range(1220):
         sim.step()
-    assert sim.clicker.clicks == [] and sim.bot.alarm == "stuck"
+    assert sim.clicker.clicks == [] and sim.bot.alarm is None
 
 
 def test_unexpected_floor_change_resyncs_to_waypoint_on_new_floor() -> None:
@@ -604,13 +626,89 @@ def test_unexpected_floor_change_resyncs_to_waypoint_on_new_floor() -> None:
     assert sim.clicker.clicks[-1][0][0] > MINIMAP[0] + MINIMAP[2] // 2  # walking east
 
 
-def test_floor_change_with_no_matching_waypoint_alarms_lost() -> None:
-    sim = Sim([walk(110, 100), walk(120, 100)], Position(100, 100, 7))
+def lost_sim(**kw: Any) -> Sim:
+    sim = Sim([walk(110, 100), walk(120, 100), walk(130, 100, 8)], Position(100, 100, 7), **kw)
     sim.bot.start()
     sim.step()
-    sim.pos = Position(100, 100, 9)
+    return sim
+
+
+def test_lost_on_a_floor_without_route_never_halts(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level("INFO")
+    sim = lost_sim()
+    sim.pos = Position(100, 100, 9)  # went down
     sim.step()
-    assert not sim.bot.is_active() and sim.bot.alarm == "lost"
+    assert sim.bot.is_active() and sim.bot.alarm is None
+    assert "lost on floor 9, trying rope" in caplog.text
+    assert sim.fake.sent_lines == ["K F9"]
+    assert sim.clicker.clicks[-1] == ((440, 176), ClickSide.LEFT)
+
+
+def test_lost_after_going_up_skips_the_rope_and_uses_the_tile() -> None:
+    sim = lost_sim()
+    sim.pos = Position(100, 100, 5)
+    sim.step()
+    assert sim.clicker.clicks[-1] == ((440, 176), ClickSide.RIGHT)
+    assert sim.fake.sent_lines == []
+
+
+def test_lost_steps_one_tile_and_walks_back_before_the_next(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO")
+    sim = lost_sim(walk_keys=True)
+    sim.pos = Position(100, 100, 5)
+    run_until(sim, sim.now + 2.1)  # use tile failed
+    assert "trying north" in caplog.text
+    assert "K up" in sim.fake.sent_lines
+    sim.pos = Position(100, 99, 7 - 2)  # the step worked, still lost
+    sim.step()
+    assert "K down" in sim.fake.sent_lines  # back to the arrival tile
+    sim.pos = Position(100, 100, 5)
+    run_until(sim, sim.now + 2.1)
+    assert "trying east" in caplog.text
+
+
+def test_lost_resyncs_to_the_nearest_waypoint_once_on_a_route_floor() -> None:
+    sim = Sim([walk(110, 100), walk(500, 500, 6), walk(131, 101, 6)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(100, 100, 5)
+    sim.step()  # lost
+    sim.pos = Position(130, 100, 6)  # the use-tile try went up to a route floor
+    sim.step()
+    assert sim.route.current == 2 and sim.bot.alarm is None
+
+
+def test_lost_fails_after_every_try_and_runs_again_after_a_minute(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO")
+    sim = lost_sim()
+    sim.pos = Position(100, 100, 5)
+    run_until(sim, sim.now + 21.0)  # use tile + 8 steps, none works
+    assert "lost on floor 5, escape failed" in caplog.text
+    clicks = len(sim.clicker.clicks)
+    run_until(sim, sim.now + 50.0)
+    assert len(sim.clicker.clicks) == clicks  # standing still
+    run_until(sim, sim.now + 15.0)
+    assert len(sim.clicker.clicks) > clicks  # the list runs again
+    assert sim.bot.is_active() and sim.bot.alarm is None
+
+
+def test_lost_on_another_unrouted_floor_runs_the_list_there_once(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO")
+    sim = lost_sim()
+    sim.pos = Position(100, 100, 9)
+    run_until(sim, sim.now + 0.2)  # rope
+    sim.pos = Position(100, 100, 10)  # a try dropped it one more floor
+    sim.step()
+    assert "lost on floor 10, trying rope" in caplog.text
+    sim.pos = Position(100, 100, 11)  # and again: no more wandering
+    sim.step()
+    assert "lost on floor 11, escape failed" in caplog.text
 
 
 def test_go_to_walks_to_the_picked_waypoint_next() -> None:
@@ -697,15 +795,15 @@ def test_stuck_still_alarms_without_resume_after_long_idle() -> None:
     Proves the resume() call on MOVE re-entry (not the passage of time alone)
     is what prevents the false stuck halt -- i.e. the fix is load-bearing.
     """
-    sim = Sim([walk(120, 100)], Position(100, 100, 7))
+    sim = Sim([walk(120, 100), walk(104, 100)], Position(100, 100, 7))
     sim.bot.start()
     sim.step()  # clock=0.05; _last_move set
 
     # Long fight/IDLE with NO resume() (the bug: timer not reset).
     sim.now += 61.0
     sim.step()
-    assert sim.bot.alarm == "stuck"
-    assert sim.bot.is_active()  # alarm only, still trying
+    assert sim.route.current == 1  # stuck: went to the nearest waypoint
+    assert sim.bot.is_active()
 
 
 def test_loop_calls_cavebot_resume_on_move_entry(
@@ -1161,7 +1259,7 @@ def test_walk_keys_skip_unreachable_waypoints_until_one_has_a_way(
     assert sim.bot.is_active()
 
 
-def test_walk_keys_blocked_waits_and_alarms_after_stuck_timeout() -> None:
+def test_walk_keys_blocked_keeps_trying_after_stuck_timeout_without_alarm() -> None:
     sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
     sim.bot.start()
     while sim.now < 55:  # every tile around bumped, nothing to fight
@@ -1170,15 +1268,6 @@ def test_walk_keys_blocked_waits_and_alarms_after_stuck_timeout() -> None:
     assert len(set(pressed(sim))) == 8
     while sim.now < 65:
         sim.step()
-    assert sim.bot.is_active() and sim.bot.alarm == "stuck"  # alarm, still trying
+    assert sim.bot.is_active() and sim.bot.alarm is None  # no other waypoint: still trying
 
 
-def test_walk_keys_blocked_alarm_clears_when_the_way_is_free() -> None:
-    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
-    sim.bot.start()
-    while sim.now < 65:
-        sim.step()
-    assert sim.bot.alarm == "stuck"
-    sim.pos = Position(100, 101, 7)  # the player stepped aside
-    sim.step()
-    assert sim.bot.is_active() and sim.bot.alarm is None

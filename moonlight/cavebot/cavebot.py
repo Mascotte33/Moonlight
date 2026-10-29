@@ -91,17 +91,20 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   its walking direction, then
   ``sidestep_after`` later the tile right of it. Once it moves again after a
   sidestep, a ``walk`` waypoint is skipped; any other waypoint is retried.
-* **Stuck**: position unchanged for ``stuck_timeout`` seconds ->
-  :attr:`Cavebot.alarm` is set to ``"stuck"`` (the operator is alerted) but
-  the route keeps trying; the alarm clears once it moves. The loop calls
-  :meth:`Cavebot.resume` whenever MOVE is (re)entered, so time spent in a
-  fight/loot/pause never counts as "stuck" (F-06).
+* **Stuck**: position unchanged for ``stuck_timeout`` seconds -> the
+  route goes on at the nearest other waypoint on the floor with a walkable
+  path (no alarm); with none it tries again every ``_STUCK_RETRY`` seconds.
+  The loop calls :meth:`Cavebot.resume` whenever MOVE is (re)entered, so
+  time spent in a fight/loot/pause never counts as "stuck" (F-06).
+  # doc: docs/prs/cavebot-escape.md#stuck-goes-to-nearest-waypoint
 * **Unexpected floor change** (z differs from what the route expects): the
-  route re-syncs to the next waypoint on the new floor, or stops with
-  alarm ``"lost"`` when no waypoint is on that floor.
+  route re-syncs to the next waypoint on the new floor. On a floor with no
+  route waypoint the bot is *lost* and tries to escape (rope, use the tile,
+  single steps), then retries every 60 s; the route never halts for it.
+  # doc: docs/prs/cavebot-escape.md#lost-escape
 
 Runtime failures never raise from :meth:`step` (an exception would kill
-the loop); they stop the route and set :attr:`alarm`.
+the loop); a goto loop stops the route and sets :attr:`alarm`.
 """
 
 from __future__ import annotations
@@ -195,6 +198,17 @@ _BLOCK_TTL = 12.0
 #: tried again this often.
 _BLOCKED_RETRY = 2.0
 _STUCK_WINDOW = 5.0
+#: Seconds before the stuck check looks again when no waypoint has a way.
+_STUCK_RETRY = 5.0
+# doc: docs/prs/cavebot-escape.md#lost-escape
+#: Seconds an escape try gets to change the floor before the next one.
+_ESCAPE_WAIT = 2.0
+#: Seconds between runs of the whole escape list.
+_ESCAPE_RETRY = 60.0
+_ESCAPE_STEPS = {
+    "north": (0, -1), "east": (1, 0), "south": (0, 1), "west": (-1, 0),
+    "northeast": (1, -1), "southeast": (1, 1), "southwest": (-1, 1), "northwest": (-1, -1),
+}  # fmt: skip
 #: The game view scrolls a step after the position changed: a scan then sees creatures a tile off.
 _VIEW_SETTLE = 0.5
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
@@ -330,6 +344,21 @@ def say_keys(text: str) -> list[str]:
     return ["enter"] + [ch if ch != " " else "space" for ch in text.lower()] + ["enter"]
 
 
+@dataclass
+class _Escape:
+    """One run of the lost-escape list on the tile *arrival*."""
+
+    arrival: Position
+    came_down: bool
+    tries: list[str]
+    #: A run started on another non-route floor: no further wandering.
+    nested: bool = False
+    next_try: int = 0
+    tried_at: float | None = None
+    back_at: float | None = None
+    retry_at: float | None = None
+
+
 class Cavebot:
     """Waypoint runner driven once per tick by ``loop.py``'s MOVE state."""
 
@@ -369,7 +398,8 @@ class Cavebot:
                 *walk_keys*.
             rope_hotkey: Combo bound to "use rope" in the client.
             shovel_hotkey: Combo bound to "use shovel" in the client.
-            stuck_timeout: Seconds without movement before alarm "stuck".
+            stuck_timeout: Seconds without movement before the route goes on
+                at the nearest waypoint.
             reclick_interval: Seconds standing still before a walk click or
                 tile action is retried.
             sidestep_after: Seconds without moving before each of the two
@@ -440,8 +470,7 @@ class Cavebot:
         self._sends_done = 0  # of the current hand action
         self._hand_done_at: float | None = None
 
-        #: Why the route stopped on its own ("stuck", "lost", "goto_loop"),
-        #: or None.
+        #: Why the route stopped on its own ("goto_loop"), or None.
         self.alarm: str | None = None
         self._active = False
         self._last_pos: Position | None = None
@@ -450,6 +479,8 @@ class Cavebot:
         self._moved_at = float("-inf")
         self._last_cmd = 0.0
         self._expected_z: int | None = None
+        #: The running lost-escape (None while the floor has route waypoints).
+        self._escape: _Escape | None = None
         #: Sidestep clicks sent since the player last moved (0-2).
         self._sidesteps = 0
         self._reset_tracking()
@@ -544,12 +575,12 @@ class Cavebot:
             if self._blocked_wait:
                 logger.info("cavebot: the way is free again")
                 self._blocked_wait = False
-            if self.alarm == "stuck":
-                logger.info("cavebot: moving again")
-                self.alarm = None
-        elif now - self._last_move > self._stuck_timeout and self.alarm != "stuck":
-            logger.warning("cavebot: route %r stuck, still trying", self.route.name)
-            self.alarm = "stuck"  # alert the operator, keep trying
+        elif (
+            pos is not None
+            and self._escape is None
+            and now - self._last_move > self._stuck_timeout
+        ):
+            self._go_to_nearest_waypoint(pos, now)
         if pos is None or not self._resolve_jumps():
             self.release_walk_key()
             return
@@ -573,7 +604,7 @@ class Cavebot:
             return
         if pos.z != wp.z:
             self.release_walk_key()
-            self._resync_floor(pos.z)
+            self._resync_floor(pos, now)
             return
         if max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= _REACH.get(wp.action, 1):
             if wp.action not in _FLOOR_DELTA:
@@ -625,6 +656,7 @@ class Cavebot:
         self._last_move = self._clock()
         self._last_cmd = float("-inf")
         self._expected_z = None
+        self._escape = None
         self._sidesteps = 0
         self.stuck_on_creatures = False
         self._sends_done, self._hand_done_at = 0, None
@@ -822,20 +854,127 @@ class Cavebot:
         self._clicker.cancel()  # the pending click targeted the old waypoint
         self._resolve_jumps()
 
-    def _resync_floor(self, z: int) -> None:
-        """Jump to the next positional waypoint on floor *z* (wrapping)."""
+    def _resync_floor(self, pos: Position, now: float) -> None:
+        """Jump to the next positional waypoint on floor *pos.z* (wrapping).
+
+        After a lost escape the nearest one; with none on the floor, the bot
+        is lost and :meth:`_escape_tick` tries to leave it.
+        """
         wps = self.route.waypoints
         n = len(wps)
-        for k in range(n):
-            i = (self.route.current + k) % n
-            if has_tile(wps[i]) and wps[i].z == z:
-                logger.info("cavebot: floor changed to %d, resync to waypoint %d", z, i)
-                self.route.current = i
-                self._expected_z = None
-                self._last_cmd = float("-inf")
-                self._clicker.cancel()
+        order = [(self.route.current + k) % n for k in range(n)]
+        on_floor = [i for i in order if has_tile(wps[i]) and wps[i].z == pos.z]
+        if not on_floor:
+            self._escape_tick(pos, now)
+            return
+        if self._escape is not None:
+            on_floor.sort(key=lambda i: max(abs(wps[i].x - pos.x), abs(wps[i].y - pos.y)))
+        i = on_floor[0]
+        logger.info("cavebot: floor changed to %d, resync to waypoint %d", pos.z, i)
+        self._escape = None
+        self.route.current = i
+        self._expected_z = None
+        self._last_cmd = float("-inf")
+        self._clicker.cancel()
+
+    # doc: docs/prs/cavebot-escape.md#stuck-goes-to-nearest-waypoint
+    def _go_to_nearest_waypoint(self, pos: Position, now: float) -> None:
+        """Stuck: carry on at the nearest other waypoint on this floor with a walkable path."""
+        walkable = self._unbumped(self._danger_tiles())
+        start = (pos.x, pos.y, pos.z)
+        best: tuple[int, int] | None = None  # (path cost, waypoint index)
+        for i, wp in enumerate(self.route.waypoints):
+            if i == self.route.current or not has_tile(wp) or wp.z != pos.z:
+                continue
+            goal = (wp.x, wp.y, wp.z)
+            path = None if goal == start else next_step(start, goal, walkable)
+            if goal != start and path is None:
+                continue
+            candidate = (0 if path is None else path[1], i)
+            best = candidate if best is None else min(best, candidate)
+        if best is None:
+            logger.debug("cavebot: stuck at %d,%d,%d, no waypoint has a way", *start)
+            self._last_move = now - self._stuck_timeout + _STUCK_RETRY
+            return
+        logger.info("cavebot: stuck at %d,%d,%d, going to waypoint %d", *start, best[1])
+        self.route.current = best[1]
+        self._last_move = now
+        self._last_cmd = float("-inf")
+        self._expected_z = None
+        self._target = self._retried_target = None
+        self.release_walk_key()
+        self._clicker.cancel()
+
+    # doc: docs/prs/cavebot-escape.md#lost-escape
+    def _escape_tick(self, pos: Position, now: float) -> None:
+        """Lost on a floor with no route waypoint: one tick of the escape list."""
+        esc = self._escape
+        if esc is None:
+            prev = self._previous_pos
+            came_down = prev is not None and pos.z > prev.z
+            esc = self._escape = _Escape(pos, came_down, self._escape_tries(came_down))
+        if self._clicker.busy:
+            self._clicker.step()
+            return
+        if esc.retry_at is not None:
+            if now < esc.retry_at:
                 return
-        self._halt("lost")
+            esc = self._escape = _Escape(pos, esc.came_down, self._escape_tries(esc.came_down))
+        if pos.z != esc.arrival.z:  # a try changed the floor, onto another one without route
+            if esc.nested:
+                self._escape_failed(esc, pos, now)
+                return
+            came_down = pos.z > esc.arrival.z
+            esc = self._escape = _Escape(pos, came_down, self._escape_tries(came_down), nested=True)
+        if pos != esc.arrival:  # a step try moved us: back to the arrival tile
+            if esc.back_at is None or now - esc.back_at >= _ESCAPE_WAIT:
+                back = (
+                    (esc.arrival.x > pos.x) - (esc.arrival.x < pos.x),
+                    (esc.arrival.y > pos.y) - (esc.arrival.y < pos.y),
+                )
+                self._escape_step(back)
+                esc.back_at = now
+            return
+        esc.back_at = None
+        if esc.tried_at is not None and now - esc.tried_at < _ESCAPE_WAIT:
+            return  # the last try is still working
+        if esc.next_try >= len(esc.tries):
+            self._escape_failed(esc, pos, now)
+            return
+        name = esc.tries[esc.next_try]
+        esc.next_try += 1
+        esc.tried_at = now
+        logger.info("cavebot: lost on floor %d, trying %s", pos.z, name)
+        if name == "rope":
+            assert self._input is not None  # _escape_tries adds it only with a backend
+            self._input.press_combo(self._hotkeys["rope"])
+            self._clicker.request(self._own_tile())
+        elif name == "use tile":
+            self._clicker.request(self._own_tile(), side=ClickSide.RIGHT)
+        else:
+            self._escape_step(_ESCAPE_STEPS[name])
+
+    def _escape_tries(self, came_down: bool) -> list[str]:
+        rope = ["rope"] if came_down and self._input is not None else []
+        return [*rope, "use tile", *_ESCAPE_STEPS]
+
+    def _escape_failed(self, esc: _Escape, pos: Position, now: float) -> None:
+        logger.warning("cavebot: lost on floor %d, escape failed", pos.z)
+        self._escape = _Escape(pos, esc.came_down, [], retry_at=now + _ESCAPE_RETRY)
+
+    def _escape_step(self, step: tuple[int, int]) -> None:
+        """One tile in direction *step*: its walk key, else a minimap click."""
+        if self._input is not None and self._walk_keys:
+            self._input.press_combo(WALK_KEYS[step])
+            return
+        mx, my, mw, mh = self._minimap_region
+        self._clicker.request((mx + mw // 2 + step[0], my + mh // 2 + step[1]))
+
+    def _own_tile(self) -> tuple[int, int]:
+        """Screen point of the player's own tile."""
+        gx, gy, gw, gh = self._game_region
+        tw, th = gw // GAME_GRID_COLS, gh // GAME_GRID_ROWS
+        return gx + PLAYER_SLOT[0] * tw + tw // 2, gy + PLAYER_SLOT[1] * th + th // 2
 
     def _retry_if_idle(self, now: float, command: Callable[[], None]) -> None:
         """Send *command* first time, then only after standing still a while."""
@@ -879,12 +1018,7 @@ class Cavebot:
         def walkable(x: int, y: int, z: int) -> bool:
             return (x, y) not in self._creatures and free(x, y, z)
 
-        def not_bumped(x: int, y: int, z: int) -> bool:
-            return (
-                (x, y, z) not in self._blocked
-                and (x, y, z) not in danger
-                and (cost is None or cost.walkable(x, y, z))
-            )
+        not_bumped = self._unbumped(danger)
 
         start, goal = (pos.x, pos.y, pos.z), (wp.x, wp.y, wp.z)
         path = next_step(start, goal, walkable)
@@ -918,6 +1052,19 @@ class Cavebot:
             step = path[0]
         self._target = (pos.x + step[0], pos.y + step[1], pos.z)
         self._press_walk_key(step)
+
+    def _unbumped(self, danger: set[tuple[int, int, int]]) -> Callable[[int, int, int], bool]:
+        """Tiles on the walk-cost map that are not blocked and not floor-change tiles."""
+        cost = self._cost_map if self._cost_map is not None and not self._cost_map.empty else None
+
+        def not_bumped(x: int, y: int, z: int) -> bool:
+            return (
+                (x, y, z) not in self._blocked
+                and (x, y, z) not in danger
+                and (cost is None or cost.walkable(x, y, z))
+            )
+
+        return not_bumped
 
     def _release_tiles_creatures_left(self) -> None:
         """A bumped tile is free again once the creature that stood on it walked off."""
