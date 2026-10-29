@@ -157,7 +157,7 @@ both), or after **Refill now** is pressed; otherwise it goes on to the next
 waypoint. The potions are found on the action bar by their
 picture (`data/templates/potions/<health|mana|spirit>/`), the Cap box by
 `data/templates/cap_label.png`; their digits must match known shapes
-(learned from the golden screenshots), or be at most 2 pixels off one digit only. A cap or count that does not read never
+(learned from the golden screenshots), or be twice as close to one digit as to any other. A cap or count that does not read never
 sends the bot to town. Each `check` logs one line per number that is on, such
 as `check: MP pots 230 >= 200 | continue`, and the Refill rows show the last
 read number and the picture it was read from.

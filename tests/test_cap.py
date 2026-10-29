@@ -77,6 +77,6 @@ def test_digits_match_a_known_shape_or_one_clearly_nearest() -> None:
     near = three[:off] + "#" + three[off + 1 :]  # one pixel off a 3
     assert near not in CAP_DIGITS
     assert read_number(draw(shape["1"], near)) == 13
-    between = "####./#####/##.##/##.##/##.##/...##/#####/####."  # half 0, half 9
+    between = "####./#####/##.##/##.##/#####/#..##/#####/####."  # half 0, half 9
     assert between not in CAP_DIGITS
     assert read_number(draw(shape["1"], between)) is None
