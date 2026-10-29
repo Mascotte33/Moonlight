@@ -105,9 +105,21 @@ LOOT_OPTIONS = [
     Option("Loot only at HP % or above", "looting.min_hp_to_loot", "entry", min=0, max=100),
 ]
 REFILL_OPTIONS = [
-    Option("Refill under free cap (0 off)", "refill.cap_below", "entry", min=0),
-    Option("Refill under health potions (0 off)", "refill.health_potions_below", "entry", min=0),
-    Option("Refill under mana potions (0 off)", "refill.mana_potions_below", "entry", min=0),
+    Option("Refill under free cap (0 off)", "refill.cap_below", "entry", min=0, off_at_zero=True),
+    Option(
+        "Refill under health potions (0 off)",
+        "refill.health_potions_below",
+        "entry",
+        min=0,
+        off_at_zero=True,
+    ),
+    Option(
+        "Refill under mana potions (0 off)",
+        "refill.mana_potions_below",
+        "entry",
+        min=0,
+        off_at_zero=True,
+    ),
 ]
 SCRIPT_OPTIONS = [
     Option("Timed scripts (name seconds, ...)", "scripts.timers", "entry"),

@@ -39,6 +39,8 @@ def save(tmp_path: Path, kind: str, pic: np.ndarray) -> None:
 def test_reads_the_bar_digits() -> None:
     assert read_count(slot(0, "105")) == 105
     assert read_count(slot(0, "88")) == 88
+    assert read_count(slot(0, "2346")) == 2346
+    assert read_count(slot(0, "79")) == 79
     assert read_count(slot(0, "")) is None
 
 

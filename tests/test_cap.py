@@ -9,7 +9,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from moonlight.perception.cap import CapReader
+from moonlight.perception.cap import CAP_DIGITS, CapReader, read_number
 
 #: A real crop of the side panel: Soul 100, Cap 985.
 PANEL = Path(__file__).parent / "cap_panel.png"
@@ -44,3 +44,25 @@ def test_low_is_cached_and_needs_a_read_cap() -> None:
     now[0] = 5.0
     assert not reader.low(1000)  # unknown cap never triggers
     assert not CapReader(lambda: panel_in_frame(0, 0)).low(900)
+
+
+def draw(*shapes: str) -> np.ndarray:
+    """RGB pixels with *shapes* (CAP_DIGITS keys) side by side, a column apart."""
+    cols = []
+    for shape in shapes:
+        rows = shape.split("/")
+        cols.append(np.array([[c == "#" for c in row] for row in rows]))
+        cols.append(np.zeros((len(rows), 1), bool))
+    lit = np.hstack(cols)
+    return np.where(lit[:, :, None], 220, 30).astype(np.uint8).repeat(3, axis=2)
+
+
+def test_digits_must_match_exactly() -> None:
+    shape = {d: g for g, d in CAP_DIGITS.items()}
+    assert read_number(draw(shape["1"], shape["5"], shape["3"], shape["0"])) == 1530
+    assert read_number(draw(shape["3"], shape["04"])) == 304  # touching pair
+    three = shape["3"]
+    off = three.index("/.") + 1
+    near = three[:off] + "#" + three[off + 1 :]  # one pixel off a 3
+    assert near not in CAP_DIGITS
+    assert read_number(draw(shape["1"], near)) is None

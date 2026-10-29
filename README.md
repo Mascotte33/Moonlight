@@ -151,12 +151,13 @@ scroll position when it changes.
 Refill is part of the waypoint list. A `check` waypoint with label `town`
 is added on the character's tile and the bot walks there. On it, the bot
 jumps to label `town` when the free cap in the side panel's Cap box is under
-the set number (Cavebot > Refill, 0 = off), when the action bar shows fewer
+the set number (Cavebot > Refill, 0 = off: the number shows gray with `off`), when the action bar shows fewer
 health or mana potions than set there (0 = off; spirit potions count for
 both), or after **Refill now** is pressed; otherwise it goes on to the next
 waypoint. The potions are found on the action bar by their
 picture (`data/templates/potions/<health|mana|spirit>/`), the Cap box by
-`data/templates/cap_label.png`; a cap or count that does not read never
+`data/templates/cap_label.png`; their digits must match known shapes exactly
+(learned from the golden screenshots). A cap or count that does not read never
 sends the bot to town, it only writes a line in bot.log.
 The town section uses `say` (presses Enter to open the chat box, types its label, Enter sends it; chat stays off for WASD; for
 NPC talk like `hi`, `deposit all`, `yes`), `key` (presses its label as a
