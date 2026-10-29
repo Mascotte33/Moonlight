@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from moonlight.core.config import MODULES, BotConfig, ConfigError
+from moonlight.extras.extras import ExtrasConfig
 from moonlight.healing.healing import CureRule, HealingConfig, HealingRule
 from moonlight.refill.refill import RefillConfig
 from moonlight.targeting.targeting import AreaRule
@@ -26,7 +27,7 @@ def raw(**modules: dict[str, Any]) -> dict[str, Any]:
     """Minimal valid config; *modules* override sections."""
     sections: dict[str, Any] = {name: {"enabled": False} for name in MODULES}
     sections.update(modules)
-    return {"profile": "p", "hotkeys": {}, "modules": sections}
+    return {"profile": "p", "modules": sections}
 
 
 def test_old_walk_keys_in_cavebot_still_loads(tmp_path: Path) -> None:
@@ -40,9 +41,8 @@ def test_old_walk_keys_in_cavebot_still_loads(tmp_path: Path) -> None:
 
 def test_default_is_valid() -> None:
     cfg = BotConfig.default()
-    assert cfg.healing is not None and cfg.targeting is not None and cfg.alarms is not None
-    assert cfg.buffs is None and cfg.cavebot is None and cfg.refill is None
-    assert cfg.hotkeys == {}
+    assert cfg.healing is not None and cfg.targeting is not None
+    assert cfg.cavebot is None and cfg.refill is None
 
 
 def test_load_roundtrip(tmp_path: Path) -> None:
@@ -103,15 +103,6 @@ def test_scripts_timers_load_and_a_config_without_scripts_still_loads() -> None:
         BotConfig.from_dict(raw(scripts={"enabled": True, "timers": "eat"}))
 
 
-def test_buffs_refused_without_icon_source() -> None:
-    """F-10: buffs without buff-icon perception is refused."""
-    data = raw(buffs={"enabled": True})
-    with pytest.raises(ConfigError, match="buff-icon perception source"):
-        BotConfig.from_dict(data)
-    data["buff_icon_source"] = True
-    assert BotConfig.from_dict(data).buffs is not None
-
-
 @pytest.mark.parametrize(
     "mutate",
     [
@@ -132,7 +123,6 @@ def test_buffs_refused_without_icon_source() -> None:
         ),
         lambda d: d["modules"].update(targeting={"enabled": True, "max_monsters_to_engage": True}),
         lambda d: d.update(loop={"tick_rate": -1.0}),
-        lambda d: d.update(hotkeys={"exura": "F 2"}),
         lambda d: d.update(profile=""),
         lambda d: d["modules"].update(cavebot={"enabled": True}),
         lambda d: d["modules"].update(cavebot={"enabled": True, "route": "missing"}),
@@ -242,16 +232,11 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
             "cures": [{"condition": "burn", "enabled": True, "hotkey": "F9"}],
         },
         targeting={"enabled": True},
-        buffs={
-            "enabled": True,
-            "buffs": [{"buff_name": "haste", "spell": "utani hur", "priority": 1}],
-        },
-        alarms={"enabled": True},
+        alarms={"low_hp_threshold": 25.0},
         cavebot={"enabled": True, "route": "hunt", "rope_hotkey": "F5"},
         looting={"enabled": True},
         refill={"enabled": True, "cap_below": 300},
     )
-    data["hotkeys"]["utani hur"] = "F3"
     data.update(
         serial_port="COM7",
         profiles_dir=str(tmp_path / "profiles"),
@@ -260,7 +245,6 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
         clicker={"open_loop": True},
         monster_name_source=True,
         capacity_source=True,
-        buff_icon_source=True,
     )
     cfg = BotConfig.from_dict(data)
     path = tmp_path / "saved.json"
@@ -294,32 +278,36 @@ def test_window_title_roundtrip() -> None:
     assert BotConfig.from_dict(cfg.to_dict()).window_title == "Tibia - Gunzodus"
 
 
-def test_extras_load_and_a_config_without_extras_still_loads() -> None:
+def test_extras_have_no_switch() -> None:
     cfg = BotConfig.from_dict(raw(extras={"enabled": True, "food": True, "food_hotkey": "F10"}))
-    assert cfg.extras is not None and cfg.extras.food_hotkey == "F10"
+    assert cfg.extras.food_hotkey == "F10"  # an old file's "enabled" is ignored
+    assert "enabled" not in cfg.to_dict()["modules"]["extras"]
     old = raw()
     del old["modules"]["extras"]
-    assert BotConfig.from_dict(old).extras is None
+    assert BotConfig.from_dict(old).extras == ExtrasConfig()  # every extra off
     with pytest.raises(ConfigError):
-        BotConfig.from_dict(raw(extras={"enabled": True, "food": True}))
+        BotConfig.from_dict(raw(extras={"food": True}))
 
 
-def test_rotation_accounts_load_round_trip_and_need_the_cavebot(tmp_path: Path) -> None:
+def test_rotation_is_on_when_it_has_accounts_and_has_no_switch(tmp_path: Path) -> None:
     route_file(tmp_path / "routes")
     accounts = [{"login": "a1", "password": "p1"}, {"login": "b2", "password": "p2", "minutes": 30}]
-    section = {"enabled": True, "accounts": accounts}
-    with pytest.raises(ConfigError, match="rotation needs the cavebot"):
-        BotConfig.from_dict(raw(rotation=section))
+    section = {"accounts": accounts}
     data = raw(cavebot={"enabled": True, "route": "hunt"}, rotation=section)
     data["routes_dir"] = str(tmp_path / "routes")
     cfg = BotConfig.from_dict(data)
     assert cfg.rotation is not None and cfg.rotation.accounts[1].minutes == 30.0
+    assert "enabled" not in cfg.to_dict()["modules"]["rotation"]
+    old_switch = {"enabled": False, "accounts": accounts}  # an old file's flag is ignored
+    assert BotConfig.from_dict(raw(rotation=old_switch)).rotation is not None
     assert BotConfig.from_dict(cfg.to_dict()) == cfg
     old = raw()
     del old["modules"]["rotation"]
     assert BotConfig.from_dict(old).rotation is None
-    data["modules"]["rotation"] = {"enabled": True, "accounts": accounts[:1]}
+    data["modules"]["rotation"] = {"accounts": accounts[:1]}
     with pytest.raises(ConfigError, match="needs at least 2 accounts"):
         BotConfig.from_dict(data)
-    off = BotConfig.from_dict(raw(rotation={"enabled": False, "logout_hotkey": "ctrl+l"}))
-    assert off.off["rotation"].accounts == ()  # no accounts yet is fine while off
+    off = BotConfig.from_dict(raw(rotation={"logout_hotkey": "ctrl+l"}))
+    assert off.off["rotation"].accounts == ()  # no accounts: off, values kept
+    saved = off.to_dict()["modules"]["rotation"]
+    assert off.rotation is None and saved["logout_hotkey"] == "ctrl+l"

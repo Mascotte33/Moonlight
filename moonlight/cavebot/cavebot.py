@@ -15,7 +15,7 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   so the bot clicks the minimap at ``center + (dx, dy)`` (clamped to the
   radar) and lets the client's auto-walk path there. The click is re-issued
   only after the player has stood still for ``reclick_interval`` seconds.
-  With ``walk_keys`` on, the bot holds one arrow key per step instead:
+  With ``walk_keys`` on, the bot holds one WSAD key per step instead:
   the first step of a shortest path on the walk-cost map
   (:mod:`moonlight.cavebot.pathing`), or straight at the waypoint without
   map data. The key stays down while the next step goes the same way, so
@@ -27,7 +27,7 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   blocked (a player, an NPC, a creature) for ``_BLOCK_TTL``
   seconds and the path is searched again around every blocked tile. The
   sidestep below is for minimap clicks only.
-* **Creatures** (``walk_keys``): every arrow key is preceded by a
+* **Creatures** (``walk_keys``): every WSAD key is preceded by a
   health-bar scan of the game grid (:mod:`moonlight.perception.creatures`);
   creature tiles are walked around when that costs at most ``_DETOUR`` more
   steps (no guess where a creature steps next: it closed 2-wide corridors).
@@ -182,12 +182,12 @@ _DANGER_ACTIONS = ("stairs", "shovel")
 _JUMP_TILES = 2
 # doc: docs/prs/keys-walking.md#arrow-steps
 # doc: docs/prs/keys-walking.md#learned-blocks
-#: Walk key per one-tile step (y grows downward, up is north); numpad keys walk diagonally.
+#: Walk key per one-tile step (y grows downward, w is north); q/e/z/c walk diagonally.
 WALK_KEYS = {
-    (0, -1): "up", (0, 1): "down", (-1, 0): "left", (1, 0): "right",
+    (0, -1): "w", (0, 1): "s", (-1, 0): "a", (1, 0): "d",
     (-1, -1): "q", (1, -1): "e", (-1, 1): "z", (1, 1): "c",
 }  # fmt: skip
-#: Seconds without moving before an arrow key is pressed again.
+#: Seconds without moving before an WSAD key is pressed again.
 _KEY_RETRY = 0.7
 #: Outlasts bumping all 8 neighbours (2 presses each); a creature walking off frees its tile.
 _BLOCK_TTL = 12.0
@@ -374,7 +374,7 @@ class Cavebot:
                 tile action is retried.
             sidestep_after: Seconds without moving before each of the two
                 sidestep clicks around a blocker.
-            walk_keys: Walk with the arrow keys instead of minimap clicks.
+            walk_keys: Walk with the WSAD keys instead of minimap clicks.
             cost_map: Walkable tiles for *walk_keys* path finding; without
                 it the bot steps straight at the waypoint.
             frames: The current screenshot, for the creature scan; without
@@ -400,7 +400,7 @@ class Cavebot:
         if any(wp.action == "drag" for wp in route.waypoints) and not clicker.absolute:
             raise ValueError("drag waypoints need the absolute clicker")
         if walk_keys and input_backend is None:
-            raise ValueError("walk_keys needs an input_backend for the arrow keys")
+            raise ValueError("walk_keys needs an input_backend for the WSAD keys")
         self.route = route
         self._clicker = clicker
         self._state = state
@@ -417,6 +417,9 @@ class Cavebot:
         #: Tiles a walk key stepped onto that moved the player elsewhere (a hole, a teleport).
         self._jumped: set[tuple[int, int, int]] = set()
         self._target: tuple[int, int, int] | None = None
+        #: (x, y) tiles of the walk planned last on the player's floor, for the
+        #: "What the bot sees" view (docs/prs/extras.md#seen-path).
+        self.planned_path: list[tuple[int, int]] = []
         #: The target tile whose key was pressed a second time after not moving.
         self._retried_target: tuple[int, int, int] | None = None
         #: The walk key held down, kept between steps so the client walks on.
@@ -494,6 +497,8 @@ class Cavebot:
         self._last_cmd = float("-inf")
         self._sidesteps = 0
         self._clicker.cancel()  # a click queued before leaving MOVE is stale
+        # A fight chased the character elsewhere: that is no jump to learn.
+        self._last_pos = self._previous_pos = None
 
     def stop(self) -> None:
         """Stop the route (no further input is sent)."""
@@ -899,6 +904,7 @@ class Cavebot:
                 logger.info("cavebot: creatures block the way, targeting takes over")
             self.stuck_on_creatures = True
             self._target = None
+            self.planned_path = []
             self.release_walk_key()
             self._stuck_allowed_until = now + _STUCK_WINDOW  # stay put while it fights
             return
@@ -914,8 +920,10 @@ class Cavebot:
                 return
         if path is None:
             step = self._best_unbumped_step(wp, pos, danger)
+            self.planned_path = [(pos.x + step[0], pos.y + step[1])]
         else:
             step = path[0]
+            self.planned_path = path[2]
         self._target = (pos.x + step[0], pos.y + step[1], pos.z)
         self._press_walk_key(step)
 

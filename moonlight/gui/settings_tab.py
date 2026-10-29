@@ -26,6 +26,7 @@ from moonlight.gui.loop_factory import (
 from moonlight.gui.tab_base import Option, Tab, section, write_option
 
 __all__ = [
+    "ALARMS_OPTIONS",
     "EXTRAS_OPTIONS",
     "MODULE_SWITCHES",
     "OPTIONS",
@@ -37,46 +38,47 @@ __all__ = [
 OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
     Option("Game window", "window_title", "dropdown"),
-    Option("Cavebot walks with arrow keys", "walk_keys", "switch"),
+    Option("Cavebot walks with WSAD keys", "walk_keys", "switch"),
 ]
-#: The only switch for each module (T2.F4.K2); cavebot and targeting have theirs on their tabs.
+#: The only switch for each module (T2.F4.K2); cavebot has its own on its tab.
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
-    for name in (
-        "healing", "looting", "scripts", "extras", "rotation", "buffs", "alarms"
-    )
+    for name in ("healing", "targeting", "looting", "scripts")
 ]
-#: One switch and hotkey per extra, then the player limits (docs/prs/extras.md#extras).
+#: One row per extra: its hotkey and checkbox, then the player limits (docs/prs/extras.md#extras).
 EXTRAS_OPTIONS = [
     option
     for name, label in (
         ("food", "Eat food when hungry"),
         ("haste", "Haste while walking"),
         ("buff", "Buff potion"),
+        ("spell_buff", "Spell buff"),
         ("ring", "Ring when the slot is empty"),
         ("amulet", "Amulet when the slot is empty"),
     )
     # The hotkey first: an extra turned on without one is refused.
     for option in (
-        Option(f"{label}: hotkey", f"extras.{name}_hotkey", "hotkey"),
-        Option(label, f"extras.{name}", "switch"),
+        Option(label, f"extras.{name}_hotkey", "hotkey"),
+        Option("", f"extras.{name}", "checkbox"),
     )
-] + [
-    Option("Buff potion: at least N monsters", "extras.buff_monsters", "entry"),
-    Option("Player staying after (min)", "extras.player_minutes", "entry"),
-    Option("Staying player: go refill", "extras.player_refill", "switch"),
-    Option("Staying player: alarm", "extras.player_alarm", "switch"),
-    Option("Private message: alarm", "extras.pm_alarm", "switch"),
 ]
-#: The accounts and passwords are typed into the config file, not here (docs/prs/rotation.md).
+#: HP, player and PM alarms: alert and screenshot, the bot goes on (docs/prs/extras.md#alarms).
+ALARMS_OPTIONS = [
+    Option("Low HP below (%)", "alarms.low_hp_threshold", "entry"),
+    Option("", "alarms.low_hp_alarm", "checkbox"),
+    Option("Fast HP drop in 1 s (HP %)", "alarms.fast_hp_drop_threshold", "entry"),
+    Option("", "alarms.fast_hp_drop_alarm", "checkbox"),
+    Option("Player in sight longer than (min, 0 = at once)", "extras.player_minutes", "entry"),
+    Option("", "extras.player_alarm", "checkbox"),
+    Option("Staying player: go refill", "extras.player_refill", "checkbox"),
+    Option("Private message", "extras.pm_alarm", "checkbox"),
+]
+#: Rotation has no switch: the accounts typed into the config file turn it on (docs).
 ROTATION_OPTIONS = [Option("Logout hotkey", "rotation.logout_hotkey", "hotkey")]
 
 #: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
 REASONS = [
     ("cavebot.route", "Cavebot needs a route. Pick one in the Route dropdown or record one below."),
-    ("buff-icon", "Buffs needs a buff-icon reader, which the bot doesn't have yet."),
-    ("rotation needs the cavebot", "Rotation needs Cavebot on."),
-    ("rotation needs at least", "Rotation needs 2 or more accounts in the config file."),
 ]
 
 
@@ -92,7 +94,7 @@ class SettingsTab(Tab):
     """Named configs (pick, New, Save, Delete) and core options."""
 
     title = "Settings"
-    options = [*OPTIONS, *MODULE_SWITCHES, *EXTRAS_OPTIONS, *ROTATION_OPTIONS]
+    options = [*OPTIONS, *MODULE_SWITCHES, *EXTRAS_OPTIONS, *ALARMS_OPTIONS, *ROTATION_OPTIONS]
 
     def build(self, parent: ctk.CTkFrame) -> None:
         io_box = section(parent, "Config")
@@ -126,9 +128,12 @@ class SettingsTab(Tab):
         box_extras = section(parent, "Extras")
         box_extras.pack(fill="x", padx=10, pady=4)
         self.build_options(box_extras, EXTRAS_OPTIONS)
-        box_rotation = section(parent, "Account rotation")
-        box_rotation.pack(fill="x", padx=10, pady=4)
-        self.build_options(box_rotation, ROTATION_OPTIONS)
+        box_alarms = section(parent, "Alarms")
+        box_alarms.pack(fill="x", padx=10, pady=4)
+        self.build_options(box_alarms, ALARMS_OPTIONS)
+        box_scripts = section(parent, "Scripts")
+        box_scripts.pack(fill="x", padx=10, pady=4)
+        self.build_options(box_scripts, ROTATION_OPTIONS)
         rows = [w for w in self.box_options.winfo_children() if isinstance(w, ctk.CTkFrame)]
         ctk.CTkLabel(
             self.box_options,
@@ -137,12 +142,6 @@ class SettingsTab(Tab):
             font=ctk.CTkFont(size=theme.SIZE_TITLE, weight="bold"),
             text_color=theme.TEXT_MUTED,
         ).pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0), before=rows[len(OPTIONS)])
-        ctk.CTkLabel(
-            self.box_options,
-            text="Each switch turns one bot module on or off. An off module keeps its values.",
-            anchor="w",
-            text_color=theme.TEXT_DIM,
-        ).pack(fill="x", padx=theme.PAD, before=rows[len(OPTIONS)])
         window_row = rows[[o.field for o in OPTIONS].index("window_title")]
         (self.menu_window,) = [
             w for w in window_row.winfo_children() if isinstance(w, ctk.CTkOptionMenu)

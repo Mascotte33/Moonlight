@@ -1,7 +1,7 @@
 """Status tab (T39) — live WorldState and loop statistics.
 
 Shows HP/MP bars, monster list, selected target, minimap position,
-inventory capacity, active buffs, the bot loop's own stats
+inventory capacity, the bot loop's own stats
 (tick count, uptime, actions sent/dropped) and a System card (T9.F1.K1).
 """
 
@@ -30,7 +30,7 @@ def age_text(last_update: float, now: float) -> str:
 
 
 class StatusTab(Tab):
-    """Live WorldState view: vitals, battle, position, capacity, buffs, loop."""
+    """Live WorldState view: vitals, battle, position, capacity, loop."""
 
     title = "Status"
 
@@ -91,8 +91,6 @@ class StatusTab(Tab):
         self._parent = parent
         self.lbl_capacity = stat_label(pos_grid, "Capacity")
         self.lbl_capacity.grid(row=0, column=1, sticky="ew", padx=10, pady=(8, 2))
-        self.lbl_buffs = stat_label(pos_grid, "Buffs")
-        self.lbl_buffs.grid(row=1, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 8))
 
         loop = section(parent, "Loop stats")
         loop.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=10, pady=(0, 10))
@@ -203,11 +201,6 @@ class StatusTab(Tab):
         self.lbl_capacity.configure(
             text=f"Capacity: {cap.weight:.1f} / {cap.max_weight:.1f}"
         )
-        buffs = ", ".join(
-            f"{name} {secs:.0f}s" for name, secs in snap.buffs.items()
-        ) or "none"
-        if self.lbl_buffs.cget("text") != f"Buffs: {buffs}":
-            self.lbl_buffs.configure(text=f"Buffs: {buffs}")
 
         stats = self._loop_stats()
         if stats:

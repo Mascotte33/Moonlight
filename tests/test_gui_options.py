@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 import pytest
 
 from moonlight.core.config import BotConfig, ConfigError
@@ -15,7 +13,6 @@ HP = Option("Low HP %", "alarms.low_hp_threshold", "slider", min=0, max=100)
 
 def test_dotted_write_sets_the_field() -> None:
     cfg = write_option(BotConfig.default(), HP, 65.0)
-    assert cfg.alarms is not None
     assert cfg.alarms.low_hp_threshold == 65.0
     assert cfg.targeting == BotConfig.default().targeting
 
@@ -34,21 +31,23 @@ def test_slider_float_fits_an_int_field() -> None:
 
 
 def test_write_into_none_section_creates_it() -> None:
-    off = replace(BotConfig.default(), alarms=None)
-    cfg = write_option(off, HP, 65.0)
+    wait = Option("Wait", "looting.wait_ms", "entry")
+    cfg = write_option(BotConfig.default(), wait, "500")
     # The value lands in the section; the module stays off until its switch.
-    assert cfg.alarms is None
-    assert read_option(cfg, HP.field) == 65.0
-    on = write_option(cfg, Option("Alarms", "alarms.enabled", "switch"), True)
-    assert on.alarms is not None and on.alarms.low_hp_threshold == 65.0
+    assert cfg.looting is None
+    assert read_option(cfg, wait.field) == 500
+    on = write_option(cfg, Option("Looting", "looting.enabled", "switch"), True)
+    assert on.looting is not None and on.looting.wait_ms == 500
 
 
 def test_enabled_switch_off_keeps_values() -> None:
-    cfg = write_option(BotConfig.default(), HP, 65.0)
-    cfg = write_option(cfg, Option("Alarms", "alarms.enabled", "switch"), False)
-    assert cfg.alarms is None
-    assert read_option(cfg, "alarms.enabled") is False
-    assert read_option(cfg, HP.field) == 65.0
+    wait = Option("Wait", "looting.wait_ms", "entry")
+    switch = Option("Looting", "looting.enabled", "switch")
+    cfg = write_option(write_option(BotConfig.default(), switch, True), wait, "500")
+    cfg = write_option(cfg, switch, False)
+    assert cfg.looting is None
+    assert read_option(cfg, "looting.enabled") is False
+    assert read_option(cfg, wait.field) == 500
 
 
 @pytest.mark.parametrize("value", [-1.0, 101.0])
@@ -125,7 +124,6 @@ def test_no_field_is_shown_by_two_tabs() -> None:
     ("cfg", "name", "reason"),
     [
         (BotConfig.default(), "cavebot", "Cavebot needs a route"),
-        (BotConfig.default(), "buffs", "Buffs needs a buff-icon reader"),
     ],
 )
 def test_refused_switch_has_a_plain_reason(cfg: BotConfig, name: str, reason: str) -> None:
@@ -147,7 +145,7 @@ def test_typed_slider_value_is_a_whole_number(text: str, value: int) -> None:
 
 def test_whole_number_fits_a_float_field() -> None:
     cfg = write_option(BotConfig.default(), HP, 65)
-    assert cfg.alarms is not None and cfg.alarms.low_hp_threshold == 65
+    assert cfg.alarms.low_hp_threshold == 65
 
 
 @pytest.mark.parametrize(
@@ -196,28 +194,37 @@ def test_show_paused_shows_off_but_keeps_the_saved_value() -> None:
 
 # doc: docs/prs/extras.md#extras
 def test_extras_options_write_in_order() -> None:
-    from moonlight.gui.settings_tab import EXTRAS_OPTIONS
+    from moonlight.gui.settings_tab import ALARMS_OPTIONS, EXTRAS_OPTIONS
 
-    cfg = write_option(BotConfig.default(), _switch("extras"), True)
+    cfg = BotConfig.default()
     values = {"extras.food_hotkey": "F9", "extras.food": True, "extras.player_minutes": "2.5"}
-    for option in EXTRAS_OPTIONS:
+    for option in [*EXTRAS_OPTIONS, *ALARMS_OPTIONS]:
         if option.field in values:
             cfg = write_option(cfg, option, values[option.field])
-    assert cfg.extras is not None and cfg.extras.food and cfg.extras.food_hotkey == "F9"
+    assert cfg.extras.food and cfg.extras.food_hotkey == "F9"
     assert cfg.extras.player_minutes == 2.5
     with pytest.raises(ConfigError):
-        write_option(cfg, Option("", "extras.haste", "switch"), True)
+        write_option(cfg, Option("", "extras.haste", "checkbox"), True)
 
 
-def test_rotation_switch_is_refused_without_accounts() -> None:
-    from moonlight.gui.settings_tab import ROTATION_OPTIONS
+def test_each_extra_is_one_row_hotkey_then_checkbox() -> None:
+    from moonlight.gui.settings_tab import EXTRAS_OPTIONS
 
-    with pytest.raises(ConfigError):
-        write_option(BotConfig.default(), _switch("rotation"), True)
-    from moonlight.scripts.rotation import Account, RotationConfig
+    fields = [option.field for option in EXTRAS_OPTIONS]
+    for name in ("food", "haste", "buff", "spell_buff", "ring", "amulet"):
+        at = fields.index(f"extras.{name}_hotkey")
+        hotkey, box = EXTRAS_OPTIONS[at], EXTRAS_OPTIONS[at + 1]
+        assert hotkey.label and hotkey.control == "hotkey"
+        assert box.field == f"extras.{name}"
+        assert box.label == "" and box.control == "checkbox"
+    assert all(option.control != "switch" for option in EXTRAS_OPTIONS)
 
+
+def test_rotation_logout_hotkey_is_kept_while_it_has_no_accounts() -> None:
+    from moonlight.gui.settings_tab import MODULE_SWITCHES, ROTATION_OPTIONS
+
+    assert all(not option.field.startswith("rotation") for option in MODULE_SWITCHES)
     (hotkey,) = ROTATION_OPTIONS
-    kept = RotationConfig(accounts=(Account("a", "p"), Account("b", "q")))
-    cfg = replace(BotConfig.default(), off={"rotation": kept})
-    cfg = write_option(cfg, hotkey, "ctrl+q")
+    cfg = write_option(BotConfig.default(), hotkey, "ctrl+q")
+    assert cfg.rotation is None  # off: no accounts
     assert cfg.off["rotation"].logout_hotkey == "ctrl+q"

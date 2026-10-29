@@ -71,8 +71,10 @@ def next_step(
     walkable: Callable[[int, int, int], bool],
     *,
     margin: int = 30,
-) -> tuple[tuple[int, int], int] | None:
-    """``((dx, dy), cost)`` of a cheapest path on *start*'s floor, or ``None``.
+) -> tuple[tuple[int, int], int, list[tuple[int, int]]] | None:
+    """``((dx, dy), cost, tiles)`` of a cheapest path on *start*'s floor, or ``None``.
+
+    *tiles* are the path's (x, y) from the first step to the goal.
 
     The goal tile counts as walkable (a waypoint may sit on an unexplored
     tile). ``None`` when there is no path inside the search window.
@@ -84,14 +86,18 @@ def next_step(
     x0, x1 = min(sx, gx) - m, max(sx, gx) + m
     y0, y1 = min(sy, gy) - m, max(sy, gy) + m
     best_cost = {(sx, sy): 0}
-    first_step: dict[tuple[int, int], tuple[int, int] | None] = {(sx, sy): None}
+    came_from: dict[tuple[int, int], tuple[int, int] | None] = {(sx, sy): None}
     queue: list[tuple[int, int, int]] = [(0, sx, sy)]
     while queue:
         cost, x, y = heapq.heappop(queue)
         if (x, y) == (gx, gy):
-            step = first_step[(x, y)]
-            assert step is not None  # start != goal
-            return step, cost
+            tiles: list[tuple[int, int]] = []
+            tile: tuple[int, int] | None = (x, y)
+            while tile is not None and tile != (sx, sy):
+                tiles.append(tile)
+                tile = came_from[tile]
+            tiles.reverse()
+            return (tiles[0][0] - sx, tiles[0][1] - sy), cost, tiles
         if cost > best_cost[(x, y)]:
             continue  # a cheaper way here was already expanded
         for (dx, dy), step_cost in _STEPS:
@@ -104,6 +110,6 @@ def next_step(
             if (nx, ny) != (gx, gy) and not walkable(nx, ny, z):
                 continue
             best_cost[(nx, ny)] = new_cost
-            first_step[(nx, ny)] = first_step[(x, y)] or (dx, dy)
+            came_from[(nx, ny)] = (x, y)
             heapq.heappush(queue, (new_cost, nx, ny))
     return None

@@ -37,7 +37,7 @@ hands-on hardware steps. See [Built by AI agents](#built-by-ai-agents).
 flowchart LR
     CAP["Capture<br/>mss / dxcam<br/>region crops"] --> PER["Perception<br/>vitals · battle · minimap<br/>floor · sprites · cursor · OCR"]
     PER --> WS[("WorldState")]
-    WS --> DEC["Decision<br/>healing · targeting · buffs<br/>alarms · cavebot · looting · refill"]
+    WS --> DEC["Decision<br/>healing · targeting<br/>alarms · cavebot · looting · refill"]
     DEC -->|prioritised actions| IN["Input<br/>ClickController<br/>ArduinoInput"]
     IN -->|serial 115200| ARD["Arduino Leonardo<br/>USB HID"]
     ARD -->|keyboard / mouse| GAME["Game client"]
@@ -54,7 +54,7 @@ moonlight/
 ├── looting/      looting logic
 ├── refill/       refill trigger (free cap, potions)
 ├── scripts/      user scripts
-├── extras/       buffs
+├── extras/       food, haste, buff and ring helpers, player timer
 ├── alarms/       danger alarms
 ├── calibration/  screen-region finder, profiles + its tab
 ├── hardware/     Arduino input backends, closed-loop clicking + its tab
@@ -93,13 +93,12 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Server-log OCR | ✅ | ✅ | ❌ |
 | Healing + cures | ✅ | ✅ | 🟡 |
 | Targeting | ✅ | ✅ | 🟡 |
-| Buffs | ✅ | ✅ | ❌ |
-| Alarms | ✅ | ✅ | ❌ |
+| Alarms (low HP, fast HP drop, staying player, PM; no switch) | ✅ | ✅ | ❌ |
 | Cavebot (waypoint routing, route recorder) | ✅ | ✅ | ❌ |
 | Looting | ✅ | ✅ | ✅ |
 | Refill (check, say, key, drag waypoints) | ✅ | ✅ | ❌ |
 | User scripts (script and wait waypoints, timers) | ✅ | ✅ | ❌ |
-| Extras (food, haste, buff, ring, amulet, player timer, PM alarm) | ✅ | ✅ | ❌ |
+| Extras (food, haste, buff potion, spell buff, ring, amulet, player timer; no switch) | ✅ | ✅ | ❌ |
 | Account rotation (timed accounts, logout at the depot, next login) | ✅ | ✅ | ❌ |
 | Step waypoints (one walk key from a tile: holes, teleports, stairs) | ✅ | ✅ | ❌ |
 | Cavebot fixes (lone unreachable target pause, blocked path retry) | ✅ | ✅ | ❌ |
@@ -124,14 +123,14 @@ waypoint button adds a waypoint on the character's tile.
 
 The arrow pad in Cavebot > Edit route adds a `step` waypoint on the
 character's tile: the bot walks onto that tile,
-presses that arrow key exactly once (diagonals: Q, E, Z, C), waits 0.5 s and
+presses that WSAD key exactly once (diagonals: Q, E, Z, C), waits 0.5 s and
 goes on to the next waypoint, wherever the step led. It never presses it
 again, so use it for holes, teleports, stairs and other one-tile moves. The
 middle button adds a `stand` on the tile. A `rope` waypoint walks onto its
-exact tile and stands still there 0.2 s before using the rope. With arrow-key
+exact tile and stands still there 0.2 s before using the rope. With WSAD-key
 walking, paths go around stairs, shovel holes, step targets and any tile that
 moved the character elsewhere when it walked onto it. Minimap-click walking
-lets the client pick the path and can cross them: turn on arrow-key walking
+lets the client pick the path and can cross them: turn on WSAD-key walking
 for routes next to holes or teleports.
 
 Looting presses the loot hotkey (the OTS loots every corpse around on
@@ -207,26 +206,37 @@ def run(bot):
 A running script pauses walking and waits during a fight or looting; healing
 always goes first. An error in a script is logged and stops that script only.
 
-Extras (Settings > Extras) press a hotkey when a picture shows: food when
+Extras (Settings > Extras, no module switch: a ticked extra is on) press a hotkey when a picture shows: food when
 hungry, ring or amulet when its slot is empty, haste while walking without
-haste or a protection zone, the buff potion when its icon is gone and at least
-N monsters are in the battle list. Cut each picture from a screenshot into
-`data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `ring_empty`,
+haste or a protection zone, the buff potion or a spell buff (own hotkey) when its icon is gone. Each extra
+is one row: its hotkey, then its checkbox at the far right (set the hotkey
+first). A hotkey box takes the next key you press and saves it; Escape cancels. Cut each
+picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `spell_buff`, `ring_empty`,
 `amulet_empty`, `pm`, all `.png`); an extra without its picture never presses.
+Not tested in the game yet: the buff potion, the spell buff and the private
+message alarm (their pictures are not cut yet).
 For the player timer, calibrate the optional `player_list` area: a second
 battle list set to players only. A player staying there longer than the set
-minutes sends the character to refill or sounds the alarm; with Extras on,
-players passing by no longer alarm. A private message tab sounds the alarm
-too. Every alarm saves a screenshot in `screenshots/` (the newest 20 stay).
+minutes (0 = at once) sends the character to refill or sounds the
+alarm (Settings > Alarms); players passing by do not alarm.
+
+Alarms have no module switch: Settings > Alarms has a value and a checkbox
+each for Low HP below (%), Fast HP drop in 1 s (HP %) and Player in sight
+longer than (min), plus checkboxes for "Staying player: go refill" and a private message. An alarm beeps, logs
+`ALARM: ...` once and saves a screenshot in `screenshots/` (the newest 20
+stay); it never pauses walking, attacking or looting.
 
 Account rotation plays accounts in turn (A, B, C, A...) in one client window.
+It has no switch: it is on when the config lists accounts (at least 2). It
+has not been tested live; the code is `moonlight/scripts/rotation.py` and the
+`rotate` waypoint in `moonlight/scripts/scripts.py`.
 List them in the config file (`configs/<name>.json`, never published) under
 `modules.rotation.accounts`: `login`, `password` (letters and digits only),
 `character` (its place in the character list, 1 = the first) and `minutes`
 (clock time from its login). Put a `script` waypoint with label `rotate` at the
 depot of the town section. When an account's time is up the next `check`
 waypoint goes to town; at `rotate` the bot presses the logout hotkey (Settings
-> Account rotation, Ctrl+L by default), types the next account's login and
+> Scripts, Ctrl+L by default), types the next account's login and
 password, picks the character and walks on. An account that does not log in
 within 30 s is skipped; when none does, the bot alarms and stops. Passwords
 show as `press (hidden)` in the command log. Every account plays the same
@@ -282,8 +292,8 @@ keys are refused at load. Rewrite the section to the new shape.
 ## Targeting
 
 Targeting clicks a monster's name in the battle list, then presses its
-attack hotkey. Turn it on with the **Targeting on** switch at the top of
-the Targeting tab (grayed while the bot is paused). Set it up in that tab,
+attack hotkey. Turn it on with the **Targeting** switch in
+Settings > Options > Modules. Set it up in the Targeting tab,
 or in the `targeting` section of your profile config:
 
 - **Monster rows** match a battle-list name (ignoring case). Each has a
@@ -324,6 +334,10 @@ or in the `targeting` section of your profile config:
 - **Cavebot around monsters:** with walk keys on, the cavebot reads the
   monsters' health bars in the game view before every step and walks around
   them when that costs at most 8 more steps, instead of bumping into them.
+- **What the bot sees:** Diagnostics > "Show what the bot sees" shows the
+  game view with a red box on each monster found, the cavebot's planned walk
+  as a blue line (walk keys only) and a gold circle for 10 s where a monster
+  just died. It only shows; looting loots every corpse around.
 - **Cavebot when blocked:** a step key that does not move the player in
   0.7 s is pressed once more (a lag looks the same); a second miss marks
   that tile blocked for 12 s (freed early once the monster on it

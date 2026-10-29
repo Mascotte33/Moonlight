@@ -7,7 +7,6 @@ moment in time:
 * vitals: ``hp_percent``, ``mp_percent``
 * combat: ``monsters``, ``selected_target``, ``players_on_screen``
 * world: ``position``, ``capacity``
-* buffs: name -> seconds remaining
 * bookkeeping: ``last_update``
 
 ``screen_ok`` (per T03 spec) is ``client_focused`` AND all calibrated
@@ -119,9 +118,6 @@ class WorldState:
     position_status: str = ""
     capacity: Capacity = field(default_factory=Capacity)
 
-    # Active buffs: name -> seconds remaining.
-    buffs: dict[str, float] = field(default_factory=dict)
-
     # Condition icons currently shown (``poison``, ``burn``, ...).
     active_status_icons: frozenset[str] = frozenset()
 
@@ -160,5 +156,4 @@ class WorldState:
         with self._lock:
             clone = replace(self)
             clone.monsters = list(self.monsters)
-            clone.buffs = dict(self.buffs)
             return clone
