@@ -147,9 +147,10 @@ Cavebot > Loot has a switch for each loot trigger. **Loot after every kill**
 (on by default) is the above. **Loot ringed corpses next to me** (off by
 default) presses the loot hotkey whenever a corpse's turning loot ring shows
 on the character's tile or the 8 around it, mid-fight too, without stopping;
-presses are the set wait apart, and at least 0.5 s. The ring is also seen
-while the character walks (the scroll is undone first), so ringed corpses
-passed on the route get looted too, also ones the bot did not kill; after a
+presses are the set wait apart, and at least 0.5 s. A ring counts only within
+3 s of the target dying: monsters hitting the character
+flash the same way and kept the cavebot from walking. The ring is also seen
+while the character walks (the scroll is undone first); after a
 ring press the cavebot stands for the set wait so the loot lands. With only
 this switch on, the cavebot stands still for up to 1 s after a kill
 (attacking goes on) until the ring press. bot.log shows `loot triggered`
@@ -341,14 +342,20 @@ or in the `targeting` section of your profile config:
 - **Cavebot when blocked:** a step key that does not move the player in
   0.7 s is pressed once more (a lag looks the same); a second miss marks
   that tile blocked for 12 s (freed early once the monster on it
-  walks off). The cavebot takes the cheapest way to the waypoint around
+  walks off). Whenever the creatures on screen move, the way is planned
+  again at once (`cavebot: creatures moved, walking another way`), so a
+  monster stepping in front is walked around without bumping it first.
+  The cavebot takes the cheapest way to the waypoint around
   blocked tiles and monsters, diagonals included (Q/E/Z/C, the
   client's WASD-mode diagonals; a diagonal costs 3 straight steps). **Stuck** means no way around,
   or a way more than 8 steps longer, after a bump: with monsters in the battle list
-  targeting takes over with every monster attacking, never-attack rows
-  included (players never), even with targeting off. Attack spells and area rules work as
-  usual. After each kill the cavebot looks for a way again and walks on
-  once there is one, back to your own targeting. With nothing to fight it tries
+  the cavebot right-clicks the first creature on its way
+  (`cavebot: attacking the creature in the way` in the log). If that selects
+  nothing within 1.5 s, targeting takes over with the top battle-list row (the
+  nearest) and every monster attacking, never-attack rows included (players
+  never), even with targeting off. Attack spells and area rules work as
+  usual. After each kill the cavebot forgets the tiles it bumped, looks for a
+  way again and walks on once there is one, back to your own targeting. With nothing to fight it tries
   every tile it has not bumped into yet; with none left it skips the
   waypoint (`cavebot: waypoint N unreachable, skipping` in the log) and the
   next ones until one on its floor has a way. When none has (a player in

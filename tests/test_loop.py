@@ -590,6 +590,32 @@ class TestSelectClick:
         assert "targeting paused" not in str(gl.get_stats()["current_task"])
         assert inp.sent_lines == []
 
+    def test_stuck_cavebot_click_on_the_creature_in_the_way_comes_before_row_0(self) -> None:
+        ws = make_state()
+        with ws.lock():
+            ws.monsters = [Monster("Bat", name_hash="b")]  # row 0, not in the way
+        cavebot = SimpleNamespace(
+            is_active=lambda: True,
+            step=lambda: None,
+            luring=lambda: False,
+            route=SimpleNamespace(current=0),
+            release_walk_key=lambda: None,
+            alarm=None,
+            targeting_paused=False,
+            stuck_on_creatures=True,
+            creature_in_the_way_clicked_until=1.5,  # it right-clicked the rat in the way
+            resume=lambda: None,
+            refill_now=False,
+        )
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, cavebot=cavebot)
+        gl.all_modules.stuck_targeting = gl.all_modules.targeting
+        ticks(gl, clock, 20)  # 1 s: no row-0 click while that click may still select
+        assert inp.sent_lines == []
+        ticks(gl, clock, 20)  # it selected nothing: row 0 after all
+        assert inp.sent_lines[-2:] == ["A 189 222", "C L"]
+
+
 F6_ROWS = TargetingConfig(
     default_monster=MonsterRow(hotkey="F6"),
     area_rules=(AreaRule("F5", minimum_adjacent_monsters=2),),
@@ -856,6 +882,37 @@ class TestCurrentTask:
         modules = DecisionModules(cavebot=cast(Cavebot, cavebot))
         assert self._task(make_state(), modules=modules) == "Walking to waypoint 3"
 
+
+
+def test_a_loot_ring_counts_only_after_the_target_died() -> None:
+    ws = make_state()
+    rat = Monster("Rat")
+    with ws.lock():
+        ws.monsters = [rat, Monster("Cave Rat", battle_list_row=1)]
+        ws.selected_target = rat
+    checks: list[int] = []
+
+    def ring_due() -> bool:
+        checks.append(1)
+        return False
+
+    looting = SimpleNamespace(
+        should_loot=lambda s: False,
+        loot_first=lambda s: False,
+        ring_due=ring_due,
+        on_target_died=lambda name: None,
+    )
+    gl, _ = make_loop(ws, FakeInput(), modules=DecisionModules(looting=cast(Looting, looting)))
+    gl.tick()
+    assert checks == []  # rats hitting the player flash like a ring
+    with ws.lock():
+        ws.monsters = [rat]  # the cave rat walked out of view
+    gl.tick()
+    assert checks == []
+    with ws.lock():
+        ws.monsters, ws.selected_target = [], None  # the target died
+    gl.tick()
+    assert checks == [1]
 
 # doc: docs/prs/extras.md#extras
 class TestExtras:

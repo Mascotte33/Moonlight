@@ -428,7 +428,7 @@ class TestMapMatcher:
 
 
 class TestFloorIntegration:
-    """z comes from an injected FloorSource (0 when unknown)."""
+    """z comes from an injected FloorSource (the last floor when unreadable)."""
 
     def test_z_from_floor_source(self) -> None:
         class _Floor:
@@ -445,20 +445,30 @@ class TestFloorIntegration:
         assert pos is not None
         assert pos.z == 3
 
-    def test_z_none_when_floor_unknown(self) -> None:
+    def test_unreadable_floor_keeps_the_last_floor(self) -> None:
+        floors: list[int | None] = [None, 8]  # a tooltip covers the indicator
+        seen_z: list[int] = []
+
         class _Floor:
             def read_floor(
                 self,
                 frame: np.ndarray,
                 region: tuple[int, int, int, int] | None = None,
             ) -> int | None:
-                return None
+                return floors.pop()
 
-        reader = make_reader(floor_reader=_Floor())
+        class _Matcher:
+            def match(
+                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+            ) -> tuple[int, int] | None:
+                seen_z.append(z)
+                return (1, 2) if z == 8 else None
+
+        reader = make_reader(floor_reader=_Floor(), map_matcher=_Matcher())
         frame, region = make_frame(7)
-        pos = reader.read_position(frame, region)
-        assert pos is not None
-        assert pos.z == 0
+        assert reader.read_position(frame, region) == Position(1, 2, 8)
+        assert reader.read_position(frame, region) == Position(1, 2, 8)
+        assert set(seen_z) == {8}
 
     def test_z_zero_without_floor_source(self) -> None:
         frame, region = make_frame(7)

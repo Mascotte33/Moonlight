@@ -136,6 +136,10 @@ TIMING_LOG_SECONDS = 10.0
 # Seconds a sent select click waits for the row's red outline before a
 # retry (clicking the attacked row again would stop the attack).
 _SELECT_OUTLINE_WAIT = 1.0
+#: Seconds after the target died in which a loot ring counts: a ring comes
+#: from a kill; without one, hits flashing on the player look the same, and
+#: monsters walking out of view drop the battle list count every few seconds.
+RING_AFTER_KILL_SECONDS = 3.0
 
 
 @dataclass(frozen=True)
@@ -284,6 +288,7 @@ class GameLoop:
         self._targeting_paused_until = 0.0  # a lone unreachable target: walk on
         self._last_target: str | None = None
         self._last_names: Counter[str] = Counter()
+        self._target_died_at = float("-inf")
         self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
@@ -528,13 +533,21 @@ class GameLoop:
         self._report_module_alarm()
         selected = snap.selected_target
         if self._had_selection and selected is None and m.cavebot is not None:
-            m.cavebot.stuck_on_creatures = False  # a kill: the cavebot looks for a way again
+            m.cavebot.on_target_killed()
         self._had_selection = selected is not None
         targeting = self._targeting()
         now = self._clock()
         self._target = None
+        clicked_creature_in_the_way = (
+            targeting is not None
+            and targeting is m.stuck_targeting  # stuck: the cavebot right-clicks the one in the way
+            and m.cavebot is not None
+            and selected is None
+            and now < m.cavebot.creature_in_the_way_clicked_until
+        )
         if targeting is not None and not self._targeting_paused(now):
-            self._target = targeting.decide(snap, now)
+            if not clicked_creature_in_the_way:  # else its click may still select it
+                self._target = targeting.decide(snap, now)
         if self._target is not None and self._target.kind == "pause":
             logger.info("%s: targeting paused %g s", self._target.reason, PAUSE_SECONDS)
             self._targeting_paused_until = now + PAUSE_SECONDS
@@ -554,8 +567,10 @@ class GameLoop:
                 names[prev] < self._last_names[prev] or (cur is None and not names[prev])
             ):
                 m.looting.on_target_died(prev)
+                self._target_died_at = now
             elif self._last_names and not names:
                 m.looting.on_target_died("")  # the battle list emptied: loot again
+                self._target_died_at = now
         self._last_names = names
         if m.extras is not None:
             m.extras.observe(snap)
@@ -679,7 +694,8 @@ class GameLoop:
             self._task = "Healing"
             return
         looting = self.modules.looting
-        if looting is not None and looting.ring_due():
+        ring_may_show = self._clock() - self._target_died_at < RING_AFTER_KILL_SECONDS
+        if looting is not None and ring_may_show and looting.ring_due():
             self._send(snap, looting.press_ring)  # then carry on with this tick
         if self.modules.extras is not None and self._extra(snap):
             return
