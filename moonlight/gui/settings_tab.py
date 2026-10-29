@@ -53,6 +53,7 @@ EXTRAS_OPTIONS = [
         ("food", "Eat food when hungry"),
         ("haste", "Haste while walking"),
         ("buff", "Buff potion"),
+        ("spell_buff", "Spell buff"),
         ("ring", "Ring when the slot is empty"),
         ("amulet", "Amulet when the slot is empty"),
     )

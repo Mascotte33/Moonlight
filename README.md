@@ -99,7 +99,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Looting | ✅ | ✅ | ✅ |
 | Refill (check, say, key, drag waypoints) | ✅ | ✅ | ❌ |
 | User scripts (script and wait waypoints, timers) | ✅ | ✅ | ❌ |
-| Extras (food, haste, buff, ring, amulet, player timer, PM alarm; no switch) | ✅ | ✅ | ❌ |
+| Extras (food, haste, buff potion, spell buff, ring, amulet, player timer, PM alarm; no switch) | ✅ | ✅ | ❌ |
 | Account rotation (timed accounts, logout at the depot, next login) | ✅ | ✅ | ❌ |
 | Step waypoints (one walk key from a tile: holes, teleports, stairs) | ✅ | ✅ | ❌ |
 | Cavebot fixes (lone unreachable target pause, blocked path retry) | ✅ | ✅ | ❌ |
@@ -209,10 +209,10 @@ always goes first. An error in a script is logged and stops that script only.
 
 Extras (Settings > Extras, no module switch: a ticked extra is on) press a hotkey when a picture shows: food when
 hungry, ring or amulet when its slot is empty, haste while walking without
-haste or a protection zone, the buff potion when its icon is gone. Each extra
+haste or a protection zone, the buff potion or a spell buff (own hotkey) when its icon is gone. Each extra
 is one row: its hotkey, then its checkbox at the far right (set the hotkey
 first). A hotkey box takes the next key you press and saves it; Escape cancels. Cut each
-picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `ring_empty`,
+picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `spell_buff`, `ring_empty`,
 `amulet_empty`, `pm`, all `.png`); an extra without its picture never presses.
 For the player timer, calibrate the optional `player_list` area: a second
 battle list set to players only. A player staying there longer than the set

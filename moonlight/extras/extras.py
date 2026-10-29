@@ -1,4 +1,4 @@
-"""Extras: food, haste, a buff potion, ring and amulet, player timer, PM alarm.
+"""Extras: food, haste, a buff potion, a spell buff, ring and amulet, player timer, PM alarm.
 
 Each extra has its own switch and presses a client hotkey. They look for
 pictures the owner cuts from a screenshot into ``data/templates/icons/``
@@ -32,6 +32,7 @@ ICONS = {
     "haste": "the haste icon in the status icon row",
     "pz": "the protection zone icon in the status icon row",
     "buff": "the buff potion's icon in the status icon row",
+    "spell_buff": "the spell buff's icon in the status icon row",
     "ring_empty": "the empty ring slot",
     "amulet_empty": "the empty amulet slot",
     "pm": "a private message chat tab",
@@ -54,6 +55,8 @@ class ExtrasConfig:
     haste_hotkey: str = ""
     buff: bool = False
     buff_hotkey: str = ""
+    spell_buff: bool = False
+    spell_buff_hotkey: str = ""
     ring: bool = False
     ring_hotkey: str = ""
     amulet: bool = False
@@ -68,7 +71,7 @@ class ExtrasConfig:
     pm_alarm: bool = False
 
     def validate(self) -> ExtrasConfig:
-        for name in ("food", "haste", "buff", "ring", "amulet"):
+        for name in ("food", "haste", "buff", "spell_buff", "ring", "amulet"):
             if getattr(self, name):
                 check_hotkey(getattr(self, f"{name}_hotkey"), f"extras.{name}")
         if self.player_minutes <= 0:
@@ -133,7 +136,7 @@ class Extras:
         if pictures is None:
             pictures = load_icons() if grab else {}
         self._pictures = pictures
-        for name in ("food", "haste", "buff", "ring", "amulet", "pm_alarm"):
+        for name in ("food", "haste", "buff", "spell_buff", "ring", "amulet", "pm_alarm"):
             picture = {
                 "food": "hungry",
                 "ring": "ring_empty",
@@ -195,6 +198,11 @@ class Extras:
                 walking and "haste" in seen and not icons & {"haste", "pz"},
             ),
             (c.buff, c.buff_hotkey, "buff" in seen and "buff" not in icons),
+            (
+                c.spell_buff,
+                c.spell_buff_hotkey,
+                "spell_buff" in seen and "spell_buff" not in icons,
+            ),
         )
         now = self._clock()
         for on, key, need in wanted:

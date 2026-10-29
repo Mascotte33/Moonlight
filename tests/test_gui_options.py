@@ -213,7 +213,7 @@ def test_each_extra_is_one_row_hotkey_then_checkbox() -> None:
     from moonlight.gui.settings_tab import EXTRAS_OPTIONS
 
     fields = [option.field for option in EXTRAS_OPTIONS]
-    for name in ("food", "haste", "buff", "ring", "amulet"):
+    for name in ("food", "haste", "buff", "spell_buff", "ring", "amulet"):
         at = fields.index(f"extras.{name}_hotkey")
         hotkey, box = EXTRAS_OPTIONS[at], EXTRAS_OPTIONS[at + 1]
         assert hotkey.label and hotkey.control == "hotkey"

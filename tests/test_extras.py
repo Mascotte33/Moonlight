@@ -11,15 +11,16 @@ import numpy as np
 import pytest
 
 from moonlight.core.state import WorldState
-from moonlight.extras.extras import Extras, ExtrasConfig, find_icons, save_screenshot
+from moonlight.extras.extras import ICONS, Extras, ExtrasConfig, find_icons, save_screenshot
 
-#: Every extra on but the buff potion, which presses whenever its icon is missing.
+#: Every extra on but the buff potion and spell buff (they press whenever their icon is missing).
 ALL = ExtrasConfig(
     food=True,
     food_hotkey="F1",
     haste=True,
     haste_hotkey="F2",
     buff_hotkey="F3",
+    spell_buff_hotkey="F6",
     ring=True,
     ring_hotkey="F4",
     amulet=True,
@@ -40,7 +41,7 @@ def extras(
     config: ExtrasConfig, clock: Clock, *icons: str, pictures: tuple[str, ...] = ()
 ) -> Extras:
     """An Extras that sees *icons*; *pictures* are the loaded ones (default: all)."""
-    names = pictures or ("hungry", "haste", "pz", "buff", "ring_empty", "amulet_empty", "pm")
+    names = pictures or tuple(ICONS)
     e = Extras(config, clock=clock, pictures={n: PICTURE for n in names})
     e.icons = frozenset(icons)
     return e
@@ -79,6 +80,14 @@ def test_buff_when_its_icon_is_missing() -> None:
     buff = replace(ALL, buff=True)
     assert extras(buff, clock).due(walking=False) == "F3"
     assert extras(buff, clock, "buff").due(walking=False) is None
+
+
+def test_spell_buff_when_its_icon_is_missing() -> None:
+    clock = Clock()
+    spell = replace(ALL, spell_buff=True)
+    assert extras(spell, clock).due(walking=False) == "F6"
+    assert extras(spell, clock, "spell_buff").due(walking=False) is None
+    assert extras(spell, clock, pictures=("hungry",)).due(walking=False) is None  # no picture
 
 
 def test_player_timer_alarm_refill_and_reset() -> None:
