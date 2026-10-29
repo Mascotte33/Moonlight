@@ -140,7 +140,7 @@ python tools/check_setup.py
 python -m moonlight
 ```
 
-Use `python -m moonlight --no-bot` to open the GUI without starting the bot loop.
+The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start` starts it right away.
 
 ## Healing and cures
 
