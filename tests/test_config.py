@@ -41,7 +41,7 @@ def test_old_walk_keys_in_cavebot_still_loads(tmp_path: Path) -> None:
 
 def test_default_is_valid() -> None:
     cfg = BotConfig.default()
-    assert cfg.healing is not None and cfg.targeting is not None and cfg.alarms is not None
+    assert cfg.healing is not None and cfg.targeting is not None
     assert cfg.cavebot is None and cfg.refill is None
 
 
@@ -232,7 +232,7 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
             "cures": [{"condition": "burn", "enabled": True, "hotkey": "F9"}],
         },
         targeting={"enabled": True},
-        alarms={"enabled": True},
+        alarms={"low_hp_threshold": 25.0},
         cavebot={"enabled": True, "route": "hunt", "rope_hotkey": "F5"},
         looting={"enabled": True},
         refill={"enabled": True, "cap_below": 300},

@@ -113,6 +113,13 @@ def test_player_timer_alarm_refill_and_reset() -> None:
     assert not e.staying and e.alarm() is None
 
 
+def test_zero_minutes_alarms_as_soon_as_a_player_is_listed() -> None:
+    e = extras(ExtrasConfig(player_minutes=0, player_alarm=True), Clock())
+    assert e.alarm() is None
+    e.observe(WorldState(players=("abc",)))
+    assert e.alarm() == "player in sight over 0 min"
+
+
 def test_pm_alarm() -> None:
     clock = Clock()
     assert extras(ExtrasConfig(pm_alarm=True), clock, "pm").alarm() == "private message"
@@ -123,7 +130,7 @@ def test_an_extra_on_needs_a_hotkey() -> None:
     with pytest.raises(ValueError):
         ExtrasConfig(food=True).validate()
     with pytest.raises(ValueError):
-        ExtrasConfig(player_minutes=0).validate()
+        ExtrasConfig(player_minutes=-1).validate()
 
 
 def test_find_icons_and_scan_once_a_second() -> None:

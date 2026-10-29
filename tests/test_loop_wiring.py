@@ -66,14 +66,11 @@ def idle_module(**overrides: object) -> mock.Mock:
     return m
 
 
-def test_healing_decide_and_send_every_tick_even_in_alarm() -> None:
+def test_healing_decide_and_send_every_tick() -> None:
     ws = make_state(hp=10.0)
-    with ws.lock():
-        ws.players_on_screen = 1  # ALARM
     inp = FakeInput()
     gl, _ = make_loop(ws, inp, healing=HealingDecision(HealingConfig()))
     gl.tick()
-    assert gl.current_state is BotState.ALARM
     assert inp.sent_lines == ["K F2", "K F3"]
 
 
@@ -113,23 +110,6 @@ def test_stuck_cavebot_hands_over_to_stuck_targeting_until_a_kill() -> None:
     gl.tick()
     assert not cavebot.stuck_on_creatures  # the cavebot looks for a way before the next fight
     assert stuck_targeting.decide.call_count == 2
-
-
-def alarm(severity: str) -> SimpleNamespace:
-    return SimpleNamespace(type=SimpleNamespace(value="pm_open"), severity=severity, message="m")
-
-
-def test_critical_alarm_enters_alarm_warning_does_not() -> None:
-    alarms = idle_module(**{"decide.return_value": alarm("critical")})
-    gl, _ = make_loop(make_state(), FakeInput(), alarms=alarms)
-    gl.tick()
-    assert gl.current_state is BotState.ALARM
-
-    alarms = idle_module(**{"decide.return_value": alarm("warning")})
-    gl, _ = make_loop(make_state(), FakeInput(), alarms=alarms)
-    gl.tick()
-    alarms.decide.assert_called_once()
-    assert gl.current_state is BotState.IDLE
 
 
 def test_kill_detection_and_loot_state() -> None:
@@ -182,17 +162,6 @@ def test_ring_press_does_not_stop_the_attack() -> None:
     looting.press_ring.assert_called_once()
     assert gl.current_state is BotState.ATTACK
     clicker.request.assert_called_once_with((5, 6))
-
-
-def test_alarm_still_loots() -> None:
-    ws = make_state()
-    with ws.lock():
-        ws.players_on_screen = 1  # ALARM
-    looting = idle_module(**{"should_loot.return_value": True})
-    gl, _ = make_loop(ws, FakeInput(), looting=looting)
-    gl.tick()
-    assert gl.current_state is BotState.ALARM
-    looting.step.assert_called_once()
 
 
 def test_emptied_battle_list_queues_a_loot() -> None:

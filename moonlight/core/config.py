@@ -27,7 +27,7 @@ JSON format (``moonlight_config.json``)::
       "modules": {
         "healing":   {"enabled": true, "potion_cooldown_ms": 1000},
         "targeting": {"enabled": true},
-        "alarms":    {"enabled": true},
+        "alarms":    {"low_hp_threshold": 20},  # no switch, like extras
         "cavebot":   {"enabled": false, "route": "rotworms"},
         "looting":   {"enabled": false},
         "refill":    {"enabled": false},  # follows cavebot; 0 = off
@@ -85,7 +85,7 @@ __all__ = [
 DEFAULT_CONFIG_FILE = "moonlight_config.json"
 
 #: Modules with no switch: always built, no ``enabled`` key (a missing section = defaults).
-ALWAYS_ON = ("extras",)
+ALWAYS_ON = ("alarms", "extras")
 
 #: Module section names, in ``modules`` of the JSON file.
 MODULES = (
@@ -158,7 +158,8 @@ class BotConfig:
     clicker: ClickerConfig = ClickerConfig()
     healing: HealingConfig | None = None
     targeting: TargetingConfig | None = None
-    alarms: AlarmConfig | None = None
+    #: HP alarms; always built.
+    alarms: AlarmConfig = AlarmConfig()
     cavebot: CavebotConfig | None = None
     looting: LootingConfig | None = None
     refill: RefillConfig | None = None
@@ -177,12 +178,11 @@ class BotConfig:
 
     @classmethod
     def default(cls) -> BotConfig:
-        """Safe defaults: healing, targeting and alarms on; the rest off."""
+        """Safe defaults: healing and targeting on; the rest off."""
         cfg = cls(
             profile="moonlight_user",
             healing=HealingConfig(),
             targeting=TargetingConfig(),
-            alarms=AlarmConfig(),
         )
         cfg.validate()
         return cfg
@@ -242,7 +242,7 @@ class BotConfig:
         _reject_unknown(modules, set(MODULES), "modules")
         routes_dir = kwargs.get("routes_dir", Path("data/waypoints"))
         for name in MODULES:
-            if name in ("scripts", "extras", "rotation") and name not in modules:
+            if name in ("scripts", "alarms", "extras", "rotation") and name not in modules:
                 continue  # configs saved before these had a section
             if name not in modules:
                 raise ConfigError(f"modules: missing required section {name!r}")

@@ -61,21 +61,21 @@ class ExtrasConfig:
     ring_hotkey: str = ""
     amulet: bool = False
     amulet_hotkey: str = ""
-    #: A player in the players-only battle list longer than this is "staying".
+    #: A player in the players-only battle list longer than this is "staying" (0 = at once).
     player_minutes: float = 5.0
     #: A staying player sends the character to refill (the next ``check`` jumps).
     player_refill: bool = False
-    #: A staying player pauses the bot and sounds the alarm.
+    #: A staying player sounds the alarm and saves a screenshot.
     player_alarm: bool = False
-    #: A private message pauses the bot, sounds the alarm and saves a screenshot.
+    #: A private message sounds the alarm and saves a screenshot.
     pm_alarm: bool = False
 
     def validate(self) -> ExtrasConfig:
         for name in ("food", "haste", "buff", "spell_buff", "ring", "amulet"):
             if getattr(self, name):
                 check_hotkey(getattr(self, f"{name}_hotkey"), f"extras.{name}")
-        if self.player_minutes <= 0:
-            raise ValueError("extras.player_minutes must be > 0")
+        if self.player_minutes < 0:
+            raise ValueError("extras.player_minutes must be >= 0")
         return self
 
 
@@ -178,7 +178,7 @@ class Extras:
         return any(last - first >= limit for first, last in self.players.values())
 
     def alarm(self) -> str | None:
-        """Why the bot pauses (private message, staying player), or None."""
+        """The alarm to raise (private message, staying player), or None."""
         if self.config.pm_alarm and "pm" in self.icons:
             return "private message"
         if self.config.player_alarm and self.staying:

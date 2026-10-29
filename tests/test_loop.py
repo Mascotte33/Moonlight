@@ -18,6 +18,7 @@ from typing import cast
 
 import pytest
 
+from moonlight.alarms.alarms import AlarmDecision
 from moonlight.cavebot.cavebot import Cavebot
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import VK_F12, F12Monitor, RateLimiter
@@ -124,7 +125,6 @@ class TestBotStatePriority:
         expected = [
             BotState.KILL,
             BotState.PAUSED,
-            BotState.ALARM,
             BotState.ATTACK,
             BotState.LOOT,
             BotState.MOVE,
@@ -135,7 +135,7 @@ class TestBotStatePriority:
     def test_priority_ranks(self) -> None:
         assert BotState.KILL.priority == 0
         assert BotState.PAUSED.priority == 1
-        assert BotState.IDLE.priority == 6
+        assert BotState.IDLE.priority == 5
 
 
 class TestGameLoopSafety:
@@ -347,46 +347,25 @@ class TestGameLoopStates:
         assert gl.current_state is BotState.IDLE
         assert inp.sent_lines == []
 
-    def test_alarm_on_players_on_screen(self) -> None:
-        ws = make_state(players=2, target=True, hp=100.0)
-        inp = FakeInput()
-        gl, _ = make_loop(ws, inp)
-        gl.tick()
-        assert gl.current_state is BotState.ALARM
-        assert "K r" not in inp.sent_lines  # no attack while alarming
-
-    def test_alarm_keeps_healing(self) -> None:
-        ws = make_state(players=1, hp=20.0)
-        inp = FakeInput()
-        gl, _ = make_loop(ws, inp)
-        gl.tick()
-        assert gl.current_state is BotState.ALARM
-        assert "K F2" in inp.sent_lines  # healing continues
-
-    def test_alarm_on_fast_hp_drop(self) -> None:
-        ws = make_state(hp=100.0)
-        inp = FakeInput()
-        gl, clock = make_loop(ws, inp)
-        gl.tick()  # t=0: HP 100 recorded
-        with ws.lock():
-            ws.hp_percent = 50.0
-        clock.advance(2.5)  # beyond the 2.0s alarm window
-        gl.tick()  # 50% drop within window -> ALARM
-        assert gl.current_state is BotState.ALARM
-
-    def test_priority_alarm_over_heal_over_attack(self) -> None:
-        ws = make_state(players=1, hp=10.0, target=True)
-        inp = FakeInput()
-        gl, _ = make_loop(ws, inp)
-        gl.tick()
-        assert gl.current_state is BotState.ALARM
-
-        # A heal sent skips the attack for that tick.
+    def test_priority_heal_over_attack(self) -> None:
         ws2 = make_state(hp=10.0, target=True)
         inp2 = FakeInput()
         gl2, _ = make_loop(ws2, inp2)
         gl2.tick()
         assert inp2.sent_lines == ["K F2", "K F3"]
+
+    # doc: docs/prs/extras.md#alarms
+    def test_low_hp_alarm_alerts_once_and_the_bot_keeps_attacking(self) -> None:
+        ws = make_state(hp=10.0, target=True)
+        clock = FakeClock()
+        alerts: list[str] = []
+        modules = DecisionModules(alarms=AlarmDecision(clock=clock))
+        gl, _ = make_loop(ws, FakeInput(), clock=clock, modules=modules, alert=alerts.append)
+        gl.tick()
+        clock.advance(0.1)
+        gl.tick()
+        assert alerts == ["ALARM: HP below 20%"]
+        assert gl.current_state is BotState.ATTACK
 
     def test_priority_heal_over_move(self) -> None:
         ws = make_state(hp=50.0)
@@ -929,7 +908,8 @@ class TestExtras:
         assert alerts == [] and not cavebot.refill_now
         clock.advance(60.0)
         gl.tick()
-        assert gl.current_state is BotState.ALARM and cavebot.refill_now
+        gl.tick()
+        assert cavebot.refill_now
         assert alerts == ["ALARM: player in sight over 1 min"]
 
 

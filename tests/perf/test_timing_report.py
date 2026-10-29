@@ -285,7 +285,6 @@ def test_production_tick_within_budget(
             "modules": {
                 "healing": {"enabled": True},
                 "targeting": {"enabled": True},
-                "alarms": {"enabled": True},
                 "cavebot": {"enabled": True, "route": "far"},
                 "looting": {"enabled": False},
                 "refill": {"enabled": False},

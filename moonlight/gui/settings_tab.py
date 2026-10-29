@@ -26,6 +26,7 @@ from moonlight.gui.loop_factory import (
 from moonlight.gui.tab_base import Option, Tab, section, write_option
 
 __all__ = [
+    "ALARMS_OPTIONS",
     "EXTRAS_OPTIONS",
     "MODULE_SWITCHES",
     "OPTIONS",
@@ -42,9 +43,7 @@ OPTIONS = [
 #: The only switch for each module (T2.F4.K2); cavebot and targeting have theirs on their tabs.
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
-    for name in (
-        "healing", "looting", "scripts", "rotation", "alarms"
-    )
+    for name in ("healing", "looting", "scripts", "rotation")
 ]
 #: One row per extra: its hotkey and checkbox, then the player limits (docs/prs/extras.md#extras).
 EXTRAS_OPTIONS = [
@@ -63,10 +62,17 @@ EXTRAS_OPTIONS = [
         Option("", f"extras.{name}", "checkbox"),
     )
 ] + [
-    Option("Player staying after (min)", "extras.player_minutes", "entry"),
     Option("Staying player: go refill", "extras.player_refill", "checkbox"),
-    Option("Staying player: alarm", "extras.player_alarm", "checkbox"),
-    Option("Private message: alarm", "extras.pm_alarm", "checkbox"),
+]
+#: HP, player and PM alarms: alert and screenshot, the bot goes on (docs/prs/extras.md#alarms).
+ALARMS_OPTIONS = [
+    Option("Low HP below (%)", "alarms.low_hp_threshold", "entry"),
+    Option("", "alarms.low_hp_alarm", "checkbox"),
+    Option("Fast HP drop in 1 s (HP %)", "alarms.fast_hp_drop_threshold", "entry"),
+    Option("", "alarms.fast_hp_drop_alarm", "checkbox"),
+    Option("Player in sight longer than (min, 0 = at once)", "extras.player_minutes", "entry"),
+    Option("", "extras.player_alarm", "checkbox"),
+    Option("Private message", "extras.pm_alarm", "checkbox"),
 ]
 #: The accounts and passwords are typed into the config file, not here (docs/prs/rotation.md).
 ROTATION_OPTIONS = [Option("Logout hotkey", "rotation.logout_hotkey", "hotkey")]
@@ -91,7 +97,7 @@ class SettingsTab(Tab):
     """Named configs (pick, New, Save, Delete) and core options."""
 
     title = "Settings"
-    options = [*OPTIONS, *MODULE_SWITCHES, *EXTRAS_OPTIONS, *ROTATION_OPTIONS]
+    options = [*OPTIONS, *MODULE_SWITCHES, *EXTRAS_OPTIONS, *ALARMS_OPTIONS, *ROTATION_OPTIONS]
 
     def build(self, parent: ctk.CTkFrame) -> None:
         io_box = section(parent, "Config")
@@ -125,6 +131,9 @@ class SettingsTab(Tab):
         box_extras = section(parent, "Extras")
         box_extras.pack(fill="x", padx=10, pady=4)
         self.build_options(box_extras, EXTRAS_OPTIONS)
+        box_alarms = section(parent, "Alarms")
+        box_alarms.pack(fill="x", padx=10, pady=4)
+        self.build_options(box_alarms, ALARMS_OPTIONS)
         box_rotation = section(parent, "Account rotation")
         box_rotation.pack(fill="x", padx=10, pady=4)
         self.build_options(box_rotation, ROTATION_OPTIONS)

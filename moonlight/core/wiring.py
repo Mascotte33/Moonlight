@@ -538,7 +538,7 @@ def build_modules(
         )
     if (config.targeting is not None or m.stuck_targeting) and m.attack_hotkeys is None:
         m.attack_hotkeys = AttackHotkeys(rows)
-    if config.alarms is not None and m.alarms is None:
+    if m.alarms is None:
         m.alarms = AlarmDecision(config.alarms, clock=clock)
 
     # One clicker (one mouse) for every module that clicks.

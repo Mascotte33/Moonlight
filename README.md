@@ -93,12 +93,12 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Server-log OCR | ✅ | ✅ | ❌ |
 | Healing + cures | ✅ | ✅ | 🟡 |
 | Targeting | ✅ | ✅ | 🟡 |
-| Alarms | ✅ | ✅ | ❌ |
+| Alarms (low HP, fast HP drop, staying player, PM; no switch) | ✅ | ✅ | ❌ |
 | Cavebot (waypoint routing, route recorder) | ✅ | ✅ | ❌ |
 | Looting | ✅ | ✅ | ✅ |
 | Refill (check, say, key, drag waypoints) | ✅ | ✅ | ❌ |
 | User scripts (script and wait waypoints, timers) | ✅ | ✅ | ❌ |
-| Extras (food, haste, buff potion, spell buff, ring, amulet, player timer, PM alarm; no switch) | ✅ | ✅ | ❌ |
+| Extras (food, haste, buff potion, spell buff, ring, amulet, player timer; no switch) | ✅ | ✅ | ❌ |
 | Account rotation (timed accounts, logout at the depot, next login) | ✅ | ✅ | ❌ |
 | Step waypoints (one walk key from a tile: holes, teleports, stairs) | ✅ | ✅ | ❌ |
 | Cavebot fixes (lone unreachable target pause, blocked path retry) | ✅ | ✅ | ❌ |
@@ -215,9 +215,14 @@ picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`,
 `amulet_empty`, `pm`, all `.png`); an extra without its picture never presses.
 For the player timer, calibrate the optional `player_list` area: a second
 battle list set to players only. A player staying there longer than the set
-minutes sends the character to refill or sounds the alarm; with Extras on,
-players passing by no longer alarm. A private message tab sounds the alarm
-too. Every alarm saves a screenshot in `screenshots/` (the newest 20 stay).
+minutes (0 = at once) sends the character to refill (Extras) or sounds the
+alarm (Settings > Alarms); players passing by do not alarm.
+
+Alarms have no module switch: Settings > Alarms has a value and a checkbox
+each for Low HP below (%), Fast HP drop in 1 s (HP %) and Player in sight
+longer than (min), plus a checkbox for a private message. An alarm beeps, logs
+`ALARM: ...` once and saves a screenshot in `screenshots/` (the newest 20
+stay); it never pauses walking, attacking or looting.
 
 Account rotation plays accounts in turn (A, B, C, A...) in one client window.
 List them in the config file (`configs/<name>.json`, never published) under

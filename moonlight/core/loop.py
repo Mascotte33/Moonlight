@@ -9,16 +9,12 @@ state the bot is in, using a strict priority order (highest wins):
                    failed) or the last tick raised: inputs released, the
                    loop keeps ticking (perceive only) and resumes on its own
                    once perception is healthy again.
-3. ALARM           Player on screen, PM open, fast HP drop, a critical
-                   alarm, or a cavebot alarm: stop attack/walk; healing
-                   and a queued loot continue. Entering ALARM alerts the
-                   operator.
-4. ATTACK          A target is selected (or, with targeting wired, the
+3. ATTACK          A target is selected (or, with targeting wired, the
                    targeting module chose one).
-5. LOOT            A kill is waiting to be looted (looting wired).
-6. MOVE            A waypoint route is active (cavebot / move_provider);
+4. LOOT            A kill is waiting to be looted (looting wired).
+5. MOVE            A waypoint route is active (cavebot / move_provider);
                    the town trip is part of the route (refill).
-7. IDLE            Nothing to do.
+6. IDLE            Nothing to do.
 
 Healing is not a state: the healing module runs first in every non-KILL
 tick (see below). When healing is off, nothing heals.
@@ -27,9 +23,10 @@ Decision modules (T40): an optional :class:`DecisionModules` bundle wires
 the feature packages engines into the tick. Each one is optional;
 without it the loop keeps its built-in behaviour.
 
-* **alarms** -- ``AlarmDecision.decide`` every tick; a critical alarm -> ALARM.
-  PM detection is *not* wired in production (no PM perception exists);
-  ``pm_open_check`` stays injectable for when it does.
+* **alarms** -- ``AlarmDecision.decide`` (HP) or ``Extras.alarm`` (player,
+  PM) every tick; a new alarm is alerted once with a screenshot. An alarm
+  never stops walking, attacking or looting.
+  # doc: docs/prs/extras.md#alarms
 * **targeting** -- ``TargetingDecision.decide`` every tick; a ``select``
   (or a selected target) -> ATTACK, which clicks the battle-list row
   through the shared ``clicker``, one click in flight at a time.
@@ -42,7 +39,7 @@ without it the loop keeps its built-in behaviour.
   selection matches targeting's choice and no click is in flight.
   # doc: docs/prs/targeting.md#area-rules
 * **healing** -- ``HealingDecision.decide`` + ``send`` of each action
-  first in every non-KILL state (healing continues through ALARM); a heal
+  first in every non-KILL state; a heal
   sent this tick skips the rest of the dispatch.
   # doc: docs/prs/healing.md#healing-rules
 * **looting** -- a selected target that vanishes from the battle list is
@@ -96,7 +93,7 @@ import logging
 import math
 import threading
 import time
-from collections import Counter, deque
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -110,7 +107,7 @@ from moonlight.hardware.input import InputBackend
 from moonlight.targeting.targeting import PAUSE_SECONDS
 
 if TYPE_CHECKING:
-    from moonlight.alarms.alarms import AlarmAction, AlarmDecision
+    from moonlight.alarms.alarms import AlarmDecision
     from moonlight.cavebot.cavebot import Cavebot
     from moonlight.extras.extras import Extras
     from moonlight.hardware.clicker import ClickController
@@ -151,12 +148,6 @@ class LoopConfig:
     max_actions_per_second: float = 10.0
     """Hard cap on input actions per second."""
 
-    hp_drop_alarm_delta: float = 30.0
-    """HP % drop within the window that raises ALARM."""
-
-    hp_drop_alarm_window: float = 2.0
-    """Time window (seconds) for the fast-HP-drop alarm check."""
-
     f12_poll_interval: float = 0.01
     """Seconds between F12 keyboard polls."""
 
@@ -178,7 +169,6 @@ class BotState(StrEnum):
 
     KILL = "kill"
     PAUSED = "paused"
-    ALARM = "alarm"
     ATTACK = "attack"
     LOOT = "loot"
     MOVE = "move"
@@ -236,7 +226,6 @@ class GameLoop:
         *,
         clock: Callable[[], float] | None = None,
         sleep_fn: Callable[[float], None] | None = None,
-        pm_open_check: Callable[[WorldState], bool] | None = None,
         move_provider: Callable[[WorldState], bool] | None = None,
         move_action: Callable[[], None] | None = None,
         f12_monitor: F12Monitor | None = None,
@@ -252,7 +241,6 @@ class GameLoop:
             config: Loop parameters; defaults to :class:`LoopConfig`.
             clock: Monotonic-clock override (tests).
             sleep_fn: Sleep override (tests).
-            pm_open_check: True when the PM window is open (T25/perception).
             move_provider: True while a waypoint route is active (T22).
             move_action: Called (gated, wire rate-limited) in the MOVE state:
                 once per tick while the route is active (continuous motion).
@@ -263,7 +251,7 @@ class GameLoop:
             perceive: Called at the start of every tick, before the
                 snapshot (capture -> perception -> WorldState).
             alert: Operator alert sink (e.g. :func:`beep_alert`), called on
-                ALARM entry and on a failure stop; alerts are always logged.
+                a new alarm and on a failure stop; alerts are always logged.
         """
         cfg = config if config is not None else LoopConfig()
         self._validate_config(cfg)
@@ -275,7 +263,6 @@ class GameLoop:
         self.config = cfg
         self._clock = clock if clock is not None else time.monotonic
         self._sleep_fn = sleep_fn if sleep_fn is not None else time.sleep
-        self._pm_open_check = pm_open_check
         self.all_modules = modules if modules is not None else DecisionModules()
         #: GUI Pause: cavebot and targeting sit out, the rest keeps running.
         self.paused = False
@@ -293,7 +280,6 @@ class GameLoop:
         self._move_provider = move_provider
         self._move_action = move_action
         # Per-tick module decisions (refreshed by _observe each tick).
-        self._alarm: AlarmAction | None = None
         self._target: TargetingAction | None = None
         self._targeting_paused_until = 0.0  # a lone unreachable target: walk on
         self._last_target: str | None = None
@@ -335,8 +321,7 @@ class GameLoop:
         self._state_transitions: dict[BotState, int] = {}
         self._start_time: float | None = None
 
-        # (monotonic_time, hp) samples for the fast-HP-drop alarm.
-        self._hp_history: deque[tuple[float, float]] = deque()
+        self._reported_alarm: str | None = None
         self._reported_module_alarm: str | None = None
 
     @property
@@ -468,7 +453,6 @@ class GameLoop:
             self._record_tick_time(t0)
             return
 
-        self._record_hp(snap)
         self._observe(snap)
         new_state = self._decide_state(snap)
         if new_state is not self._state:
@@ -540,9 +524,7 @@ class GameLoop:
     def _observe(self, snap: WorldState) -> None:
         """Run the per-tick decision modules (alarms, targeting, kill check)."""
         m = self.modules
-        alarm = m.alarms.decide(snap) if m.alarms is not None else None
-        # Only critical alarms stop the bot; warnings are advisory.
-        self._alarm = alarm if alarm is not None and alarm.severity == "critical" else None
+        self._report_alarm(snap)
         self._report_module_alarm()
         selected = snap.selected_target
         if self._had_selection and selected is None and m.cavebot is not None:
@@ -599,8 +581,6 @@ class GameLoop:
         KILL is never returned here -- it is handled in :meth:`tick`
         before the snapshot, since it must win even over a stale state.
         """
-        if self._is_alarm(snap):
-            return BotState.ALARM
         m = self.modules
         if m.looting is not None and m.looting.loot_first(snap):
             return BotState.LOOT  # loot each kill before the next target
@@ -640,34 +620,25 @@ class GameLoop:
             self._alert(alarm)
         self._reported_module_alarm = alarm
 
-    def _is_alarm(self, snap: WorldState) -> bool:
-        """ALARM: player on screen, PM open, fast HP drop or a critical alarm.
+    def _report_alarm(self, snap: WorldState) -> None:
+        """Alert once per new alarm (HP, player, PM) and save a screenshot.
 
-        With extras on, a player alarms only after staying (the player timer).
+        An alarm only reports: walking, attacking and looting go on.
+        # doc: docs/prs/extras.md#alarms
         """
-        extras = self.modules.extras
-        if extras is not None and extras.alarm() is not None:
-            return True
-        if (extras is None and snap.players_on_screen > 0) or self._alarm is not None:
-            return True
-        if self._pm_open_check is not None and self._pm_open_check(snap):
-            return True
-        return self._hp_drop_fast(snap)
+        m = self.modules
+        reason = (m.alarms.decide(snap) if m.alarms is not None else None) or (
+            m.extras.alarm() if m.extras is not None else None
+        )
+        if reason is not None and reason != self._reported_alarm:
+            self._alert(f"ALARM: {reason}")
+            if m.extras is not None:
+                m.extras.screenshot()
+        self._reported_alarm = reason
 
     def _transition_reason(self, snap: WorldState, new_state: BotState) -> str:
         """Short human-readable reason for a transition (for logs)."""
         match new_state:
-            case BotState.ALARM:
-                if self._alarm is not None:
-                    return f"alarm {self._alarm.type.value}: {self._alarm.message}"
-                extra = self.modules.extras.alarm() if self.modules.extras is not None else None
-                if extra is not None:
-                    return extra
-                if snap.players_on_screen > 0:
-                    return f"players on screen: {snap.players_on_screen}"
-                if self._pm_open_check is not None and self._pm_open_check(snap):
-                    return "PM window open"
-                return "fast HP drop"
             case BotState.ATTACK:
                 if self._target is not None:
                     return f"select row {self._target.battle_list_row} ({self._target.reason})"
@@ -689,40 +660,12 @@ class GameLoop:
         logger.info("state %s -> %s (%s)", old.value, new_state.value, reason)
         if old is BotState.PAUSED:
             logger.info("resumed after pause")
-        if new_state is BotState.ALARM:
-            self._alert(f"ALARM: {reason}")
-            if self.modules.extras is not None:
-                self.modules.extras.screenshot()
         if new_state is BotState.ATTACK and self.modules.clicker is not None:
             self.modules.clicker.cancel()  # drop a walk click; the select click goes first
         if self.all_modules.cavebot is not None:
             self.all_modules.cavebot.release_walk_key()  # only MOVE walks
         if new_state is BotState.MOVE and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # fight/loot time is not "stuck" (F-06)
-
-    # -- fast HP drop tracking ---------------------------------------------
-
-    def _record_hp(self, snap: WorldState) -> None:
-        """Append one HP sample and trim history beyond 2x the window."""
-        if snap.hp_percent > 0.0:
-            self._hp_history.append((self._clock(), snap.hp_percent))
-        cutoff = self._clock() - (self.config.hp_drop_alarm_window * 2.0)
-        while self._hp_history and self._hp_history[0][0] < cutoff:
-            self._hp_history.popleft()
-
-    def _hp_drop_fast(self, snap: WorldState) -> bool:
-        """True when HP fell by ``hp_drop_alarm_delta`` within the window."""
-        if not self._hp_history or snap.hp_percent <= 0.0:
-            return False
-        target_t = self._clock() - self.config.hp_drop_alarm_window
-        ref_hp: float | None = None
-        for t, hp in reversed(self._hp_history):
-            if t <= target_t:
-                ref_hp = hp
-                break
-        if ref_hp is None:
-            return False
-        return (ref_hp - snap.hp_percent) >= self.config.hp_drop_alarm_delta
 
     # -- actions -------------------------------------------------------------
 
@@ -731,18 +674,13 @@ class GameLoop:
         if self._state is BotState.KILL:
             self._act_kill()
             return
-        # Healing continues through every state (including ALARM).
+        # Healing continues through every state.
         if self.modules.healing is not None and self._heal(snap):
             self._task = "Healing"
             return
         looting = self.modules.looting
         if looting is not None and looting.ring_due():
             self._send(snap, looting.press_ring)  # then carry on with this tick
-        if self._state is BotState.ALARM:
-            # No attack/move; healing already ran (alert sent on entry).
-            if self.modules.looting is not None and self.modules.looting.should_loot(snap):
-                self._act_loot(snap)  # the corpse is still there
-            return
         if self.modules.extras is not None and self._extra(snap):
             return
         match self._state:
@@ -992,8 +930,6 @@ class GameLoop:
             raise ValueError("tick_rate must be > 0")
         if cfg.max_actions_per_second <= 0:
             raise ValueError("max_actions_per_second must be > 0")
-        if cfg.hp_drop_alarm_delta <= 0.0 or cfg.hp_drop_alarm_window <= 0.0:
-            raise ValueError("hp_drop_alarm_delta and hp_drop_alarm_window must be > 0")
         if cfg.pause_timeout <= 0.0 or cfg.max_consecutive_errors < 1:
             raise ValueError("pause_timeout must be > 0 and max_consecutive_errors >= 1")
 
@@ -1035,7 +971,7 @@ class GameLoop:
         self._tick_time_total = 0.0
         self._tick_time_max = 0.0
         self._state_transitions = {}
-        self._hp_history.clear()
+        self._reported_alarm = None
 
     def __enter__(self) -> GameLoop:
         return self
