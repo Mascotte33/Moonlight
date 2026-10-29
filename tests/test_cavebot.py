@@ -1030,7 +1030,7 @@ def test_walk_keys_stuck_when_creatures_close_every_way(monkeypatch: pytest.Monk
     for _ in range(_BLOCK_STEPS):  # fighting: no key
         sim.step()
     sim.state.selected_target = None
-    sim.bot.stuck_on_creatures = False  # the loop clears it after a kill
+    sim.bot.on_target_killed()  # the loop calls it after a kill
     for _ in range(_BLOCK_STEPS):  # the way is still closed: stuck again, still no key
         sim.step()
     assert sim.bot.stuck_on_creatures
@@ -1061,7 +1061,8 @@ def test_walk_keys_fight_through_instead_of_a_long_detour(
     tile[100:105, 100] = 100  # a corridor down to the waypoint
     tile[100, 100:121] = tile[100:105, 120] = tile[104, 100:121] = 100  # a long loop around
     cv2.imwrite(str(tmp_path / "0_0_7.png"), tile)
-    monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: [(7, 6)])
+    seen = [(7, 6)]
+    monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: seen)
     sim = Sim(
         [walk(100, 104)],
         Position(100, 100, 7),
@@ -1075,6 +1076,14 @@ def test_walk_keys_fight_through_instead_of_a_long_detour(
         sim.step()
     assert pressed(sim) == ["s", "s"]  # a lag? pressed twice
     assert sim.bot.stuck_on_creatures
+    assert sim.clicker.clicks == [((440, 176 + 32), ClickSide.RIGHT)]  # the rat, not row 0
+    seen.clear()  # the rat died
+    sim.state.monsters = []
+    sim.bot.on_target_killed()
+    for _ in range(_BLOCK_STEPS):
+        sim.step()
+    assert sim.bot.route.current == 0  # not skipped: the corridor is open again
+    assert pressed(sim)[2:3] == ["s"]
 
 
 def _seeing_sim(monkeypatch: pytest.MonkeyPatch, slots: list[tuple[int, int]]) -> Sim:

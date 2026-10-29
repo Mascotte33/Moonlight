@@ -39,9 +39,11 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   around over ``_DETOUR`` steps longer, with monsters in the battle list,
   within ``_STUCK_WINDOW`` seconds of a bump (before one it walks the short
   way and bumps first: the scan can be a tile off): it sets
-  :attr:`Cavebot.stuck_on_creatures` and stands still; the loop then
-  targets with every monster attacking (spells and area rules included)
-  and clears the flag after each kill, so the cavebot looks for a way again.
+  :attr:`Cavebot.stuck_on_creatures`, stands still and right-clicks the
+  first creature on the way; the loop then targets with every monster
+  attacking (spells and area rules included), the top row only if that click
+  selected nothing, and calls :meth:`Cavebot.on_target_killed` after each
+  kill, so the cavebot looks for a way again over the tiles it bumped too.
   While a target is selected it stands still, whatever selected it, and
   walks on once nothing is (or while :attr:`Cavebot.targeting_paused`).
   Stuck after a bump with nothing to fight and no way over tiles not bumped
@@ -195,6 +197,8 @@ _BLOCK_TTL = 12.0
 #: tried again this often.
 _BLOCKED_RETRY = 2.0
 _STUCK_WINDOW = 5.0
+#: Seconds the battle-list pick waits for a right-click on the creature in the way.
+_CREATURE_IN_THE_WAY_CLICK_WAIT = 1.5
 #: The game view scrolls a step after the position changed: a scan then sees creatures a tile off.
 _VIEW_SETTLE = 0.5
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
@@ -420,6 +424,8 @@ class Cavebot:
         #: (x, y) tiles of the walk planned last on the player's floor, for the
         #: "What the bot sees" view (docs/prs/extras.md#seen-path).
         self.planned_path: list[tuple[int, int]] = []
+        # doc: docs/prs/tunnel-fights.md#creature-in-the-way
+        self.creature_in_the_way_clicked_until = float("-inf")
         #: The target tile whose key was pressed a second time after not moving.
         self._retried_target: tuple[int, int, int] | None = None
         #: The walk key held down, kept between steps so the client walks on.
@@ -622,6 +628,16 @@ class Cavebot:
                 self._retried_target = None
                 self._step_toward(wp, pos, now)
             self._last_cmd = now
+
+    def on_target_killed(self) -> None:
+        """A kill: look for a way again, over the tiles bumped so far too.
+
+        The bumped tile is most often the dead creature's; kept, it closes a
+        one-tile corridor and the waypoint is skipped instead of walked to.
+        """
+        self.stuck_on_creatures = False
+        self._blocked.clear()  # ponytail: a wall is bumped once more, cheap
+        self._bumped_into_creature.clear()
 
     # -- internals ----------------------------------------------------------
 
@@ -907,6 +923,9 @@ class Cavebot:
             self.planned_path = []
             self.release_walk_key()
             self._stuck_allowed_until = now + _STUCK_WINDOW  # stay put while it fights
+            through_creatures = next_step(start, goal, free)
+            if through_creatures is not None:
+                self._attack_creature_in_the_way(through_creatures[2], pos, now)
             return
         self.stuck_on_creatures = False
         if stuck and now >= self._stuck_allowed_until:
@@ -926,6 +945,27 @@ class Cavebot:
             self.planned_path = path[2]
         self._target = (pos.x + step[0], pos.y + step[1], pos.z)
         self._press_walk_key(step)
+
+    def _attack_creature_in_the_way(
+        self, path: list[tuple[int, int]], pos: Position, now: float
+    ) -> None:
+        """Right-click the first creature on *path*: that one is attacked, not the top row."""
+        if self._state.selected_target is not None or now < self.creature_in_the_way_clicked_until:
+            return
+        creature = next((tile for tile in path if tile in self._creatures), None)
+        if creature is None:
+            return  # the scan saw none on the way: the battle list picks
+        logger.info("cavebot: attacking the creature in the way at %s,%s", *creature)
+        self._clicker.request(self._tile_pixel(creature, pos), side=ClickSide.RIGHT)
+        self.creature_in_the_way_clicked_until = now + _CREATURE_IN_THE_WAY_CLICK_WAIT
+
+    def _tile_pixel(self, tile: tuple[int, int], pos: Position) -> tuple[int, int]:
+        """Frame pixel at the middle of world *tile* on the game grid."""
+        gx, gy, gw, gh = self._game_region
+        tw, th = gw // GAME_GRID_COLS, gh // GAME_GRID_ROWS
+        col = PLAYER_SLOT[0] + tile[0] - pos.x
+        row = PLAYER_SLOT[1] + tile[1] - pos.y
+        return gx + col * tw + tw // 2, gy + row * th + th // 2
 
     def _release_tiles_creatures_left(self) -> None:
         """A bumped tile is free again once the creature that stood on it walked off."""
@@ -993,11 +1033,7 @@ class Cavebot:
         self._clicker.request((mx + mw // 2 + side[0], my + mh // 2 + side[1]))
 
     def _tile_action(self, wp: Waypoint, pos: Position) -> None:
-        gx, gy, gw, gh = self._game_region
-        tw, th = gw // GAME_GRID_COLS, gh // GAME_GRID_ROWS
-        col = PLAYER_SLOT[0] + wp.x - pos.x
-        row = PLAYER_SLOT[1] + wp.y - pos.y
-        tile = (gx + col * tw + tw // 2, gy + row * th + th // 2)
+        tile = self._tile_pixel((wp.x, wp.y), pos)
         if wp.action == "ladder":
             self._clicker.request(tile, side=ClickSide.RIGHT)  # "use" the ladder
             return

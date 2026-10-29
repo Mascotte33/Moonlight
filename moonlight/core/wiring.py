@@ -535,6 +535,7 @@ def build_modules(
             ),
             profile.get_region("battle_list").to_tuple,
             profile.ui_scale,
+            attack_top_row_first=True,
         )
     if (config.targeting is not None or m.stuck_targeting) and m.attack_hotkeys is None:
         m.attack_hotkeys = AttackHotkeys(rows)

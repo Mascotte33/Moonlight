@@ -54,6 +54,15 @@ def test_lowest_row_breaks_a_tie() -> None:
     assert picked(rows(), state(monsters)) == 1
 
 
+def test_stuck_targeting_attacks_the_top_row_first() -> None:
+    monsters = [Monster("Rat", 90.0), Monster("Cyclops", 10.0, battle_list_row=1)]
+    stuck = TargetingDecision(
+        TargetingConfig(monsters=(MonsterRow("cyclops", priority=3),)), attack_top_row_first=True
+    )
+    assert picked(stuck, state(monsters)) == 0  # the nearest, in the way
+
+
+
 def test_stays_on_a_valid_target() -> None:
     weak = Monster("Rat", 10.0, battle_list_row=0)
     selected = Monster("Rat", 90.0, battle_list_row=1)

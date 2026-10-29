@@ -345,10 +345,13 @@ or in the `targeting` section of your profile config:
   blocked tiles and monsters, diagonals included (Q/E/Z/C, the
   client's WASD-mode diagonals; a diagonal costs 3 straight steps). **Stuck** means no way around,
   or a way more than 8 steps longer, after a bump: with monsters in the battle list
-  targeting takes over with every monster attacking, never-attack rows
-  included (players never), even with targeting off. Attack spells and area rules work as
-  usual. After each kill the cavebot looks for a way again and walks on
-  once there is one, back to your own targeting. With nothing to fight it tries
+  the cavebot right-clicks the first creature on its way
+  (`cavebot: attacking the creature in the way` in the log). If that selects
+  nothing within 1.5 s, targeting takes over with the top battle-list row (the
+  nearest) and every monster attacking, never-attack rows included (players
+  never), even with targeting off. Attack spells and area rules work as
+  usual. After each kill the cavebot forgets the tiles it bumped, looks for a
+  way again and walks on once there is one, back to your own targeting. With nothing to fight it tries
   every tile it has not bumped into yet; with none left it skips the
   waypoint (`cavebot: waypoint N unreachable, skipping` in the log) and the
   next ones until one on its floor has a way. When none has (a player in

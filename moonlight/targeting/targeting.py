@@ -170,8 +170,12 @@ class TargetingDecision:
         config: TargetingConfig | None = None,
         battle_list_region: Rect | None = None,
         ui_scale: float = 1.0,
+        attack_top_row_first: bool = False,
     ) -> None:
         self.config = config if config is not None else TargetingConfig()
+        # Stuck in a corridor: the top row is the nearest creature (the battle
+        # list sorted by distance), most often the one in the way.
+        self._attack_top_row_first = attack_top_row_first
         self.config.validate()
         self._rows = {row.name.lower(): row for row in self.config.monsters}
         self._battle_list_region = battle_list_region
@@ -247,10 +251,13 @@ class TargetingDecision:
             return None
         if state.selected_target in candidates:
             return None  # finish the current target, even when a higher priority one comes
-        best = min(
-            candidates,
-            key=lambda m: (-self.row_for(m).priority, m.hp_percent, m.battle_list_row),
-        )
+        if self._attack_top_row_first:
+            best = min(candidates, key=lambda m: m.battle_list_row)
+        else:
+            best = min(
+                candidates,
+                key=lambda m: (-self.row_for(m).priority, m.hp_percent, m.battle_list_row),
+            )
         priority = self.row_for(best).priority
         reason = f"{best.name or '?'} priority {priority}, hp {best.hp_percent:.0f}"
         return TargetingAction("select", best.battle_list_row, reason=reason)

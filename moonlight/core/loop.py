@@ -528,13 +528,21 @@ class GameLoop:
         self._report_module_alarm()
         selected = snap.selected_target
         if self._had_selection and selected is None and m.cavebot is not None:
-            m.cavebot.stuck_on_creatures = False  # a kill: the cavebot looks for a way again
+            m.cavebot.on_target_killed()
         self._had_selection = selected is not None
         targeting = self._targeting()
         now = self._clock()
         self._target = None
+        clicked_creature_in_the_way = (
+            targeting is not None
+            and targeting is m.stuck_targeting  # stuck: the cavebot right-clicks the one in the way
+            and m.cavebot is not None
+            and selected is None
+            and now < m.cavebot.creature_in_the_way_clicked_until
+        )
         if targeting is not None and not self._targeting_paused(now):
-            self._target = targeting.decide(snap, now)
+            if not clicked_creature_in_the_way:  # else its click may still select it
+                self._target = targeting.decide(snap, now)
         if self._target is not None and self._target.kind == "pause":
             logger.info("%s: targeting paused %g s", self._target.reason, PAUSE_SECONDS)
             self._targeting_paused_until = now + PAUSE_SECONDS
