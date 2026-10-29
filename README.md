@@ -225,13 +225,16 @@ longer than (min), plus a checkbox for a private message. An alarm beeps, logs
 stay); it never pauses walking, attacking or looting.
 
 Account rotation plays accounts in turn (A, B, C, A...) in one client window.
+It has no switch: it is on when the config lists accounts (at least 2). It
+has not been tested live; the code is `moonlight/scripts/rotation.py` and the
+`rotate` waypoint in `moonlight/scripts/scripts.py`.
 List them in the config file (`configs/<name>.json`, never published) under
 `modules.rotation.accounts`: `login`, `password` (letters and digits only),
 `character` (its place in the character list, 1 = the first) and `minutes`
 (clock time from its login). Put a `script` waypoint with label `rotate` at the
 depot of the town section. When an account's time is up the next `check`
 waypoint goes to town; at `rotate` the bot presses the logout hotkey (Settings
-> Account rotation, Ctrl+L by default), types the next account's login and
+> Scripts, Ctrl+L by default), types the next account's login and
 password, picks the character and walks on. An account that does not log in
 within 30 s is skipped; when none does, the bot alarms and stops. Passwords
 show as `press (hidden)` in the command log. Every account plays the same

@@ -33,7 +33,7 @@ JSON format (``moonlight_config.json``)::
         "refill":    {"enabled": false},  # follows cavebot; 0 = off
         "scripts":   {"enabled": false, "timers": "eat 60"},
         "extras":    {"food": true, "food_hotkey": "F10"},  # no switch: a ticked extra is on
-        "rotation":  {"enabled": false, "logout_hotkey": "ctrl+l", "accounts": [
+        "rotation":  {"logout_hotkey": "ctrl+l", "accounts": [
           {"login": "abc", "password": "xyz", "character": 1, "minutes": 60}
         ]}
       }
@@ -250,6 +250,8 @@ class BotConfig:
             enabled = section.pop("enabled", None)
             if name in ALWAYS_ON:  # old files: the switch is gone
                 enabled = True
+            elif name == "rotation":  # no switch: on when it has accounts
+                enabled = bool(section.get("accounts"))
             elif not isinstance(enabled, bool):
                 raise ConfigError(f"modules.{name}.enabled must be true or false")
             if name == "refill":  # no switch: on with the cavebot, its 0s turn it off
@@ -297,6 +299,9 @@ class BotConfig:
             kept = self.off.get(name)
             if name in ALWAYS_ON:
                 modules[name] = _section(cfg)
+            elif name == "rotation":  # no switch: the accounts turn it on
+                held = cfg if cfg is not None else kept
+                modules[name] = _section(held) if held is not None else {}
             elif cfg is not None:
                 modules[name] = {"enabled": True, **_section(cfg)}
             elif kept is not None:
@@ -344,8 +349,6 @@ class BotConfig:
                 )
         if self.refill is not None and self.cavebot is None:
             raise ConfigError("refill needs the cavebot module enabled")
-        if self.rotation is not None and self.cavebot is None:
-            raise ConfigError("rotation needs the cavebot module enabled")
         if self.rotation is not None and len(self.rotation.accounts) < 2:
             # checked only when on, so the Settings tab can save the logout hotkey
             raise ConfigError("rotation needs at least 2 accounts")

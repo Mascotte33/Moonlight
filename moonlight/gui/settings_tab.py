@@ -43,7 +43,7 @@ OPTIONS = [
 #: The only switch for each module (T2.F4.K2); cavebot and targeting have theirs on their tabs.
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
-    for name in ("healing", "looting", "scripts", "rotation")
+    for name in ("healing", "looting", "scripts")
 ]
 #: One row per extra: its hotkey and checkbox, then the player limits (docs/prs/extras.md#extras).
 EXTRAS_OPTIONS = [
@@ -74,14 +74,12 @@ ALARMS_OPTIONS = [
     Option("", "extras.player_alarm", "checkbox"),
     Option("Private message", "extras.pm_alarm", "checkbox"),
 ]
-#: The accounts and passwords are typed into the config file, not here (docs/prs/rotation.md).
+#: Rotation has no switch: the accounts typed into the config file turn it on (docs).
 ROTATION_OPTIONS = [Option("Logout hotkey", "rotation.logout_hotkey", "hotkey")]
 
 #: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
 REASONS = [
     ("cavebot.route", "Cavebot needs a route. Pick one in the Route dropdown or record one below."),
-    ("rotation needs the cavebot", "Rotation needs Cavebot on."),
-    ("rotation needs at least", "Rotation needs 2 or more accounts in the config file."),
 ]
 
 
@@ -134,9 +132,9 @@ class SettingsTab(Tab):
         box_alarms = section(parent, "Alarms")
         box_alarms.pack(fill="x", padx=10, pady=4)
         self.build_options(box_alarms, ALARMS_OPTIONS)
-        box_rotation = section(parent, "Account rotation")
-        box_rotation.pack(fill="x", padx=10, pady=4)
-        self.build_options(box_rotation, ROTATION_OPTIONS)
+        box_scripts = section(parent, "Scripts")
+        box_scripts.pack(fill="x", padx=10, pady=4)
+        self.build_options(box_scripts, ROTATION_OPTIONS)
         rows = [w for w in self.box_options.winfo_children() if isinstance(w, ctk.CTkFrame)]
         ctk.CTkLabel(
             self.box_options,

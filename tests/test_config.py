@@ -289,22 +289,25 @@ def test_extras_have_no_switch() -> None:
         BotConfig.from_dict(raw(extras={"food": True}))
 
 
-def test_rotation_accounts_load_round_trip_and_need_the_cavebot(tmp_path: Path) -> None:
+def test_rotation_is_on_when_it_has_accounts_and_has_no_switch(tmp_path: Path) -> None:
     route_file(tmp_path / "routes")
     accounts = [{"login": "a1", "password": "p1"}, {"login": "b2", "password": "p2", "minutes": 30}]
-    section = {"enabled": True, "accounts": accounts}
-    with pytest.raises(ConfigError, match="rotation needs the cavebot"):
-        BotConfig.from_dict(raw(rotation=section))
+    section = {"accounts": accounts}
     data = raw(cavebot={"enabled": True, "route": "hunt"}, rotation=section)
     data["routes_dir"] = str(tmp_path / "routes")
     cfg = BotConfig.from_dict(data)
     assert cfg.rotation is not None and cfg.rotation.accounts[1].minutes == 30.0
+    assert "enabled" not in cfg.to_dict()["modules"]["rotation"]
+    old_switch = {"enabled": False, "accounts": accounts}  # an old file's flag is ignored
+    assert BotConfig.from_dict(raw(rotation=old_switch)).rotation is not None
     assert BotConfig.from_dict(cfg.to_dict()) == cfg
     old = raw()
     del old["modules"]["rotation"]
     assert BotConfig.from_dict(old).rotation is None
-    data["modules"]["rotation"] = {"enabled": True, "accounts": accounts[:1]}
+    data["modules"]["rotation"] = {"accounts": accounts[:1]}
     with pytest.raises(ConfigError, match="needs at least 2 accounts"):
         BotConfig.from_dict(data)
-    off = BotConfig.from_dict(raw(rotation={"enabled": False, "logout_hotkey": "ctrl+l"}))
-    assert off.off["rotation"].accounts == ()  # no accounts yet is fine while off
+    off = BotConfig.from_dict(raw(rotation={"logout_hotkey": "ctrl+l"}))
+    assert off.off["rotation"].accounts == ()  # no accounts: off, values kept
+    saved = off.to_dict()["modules"]["rotation"]
+    assert off.rotation is None and saved["logout_hotkey"] == "ctrl+l"

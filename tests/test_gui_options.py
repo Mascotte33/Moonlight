@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 import pytest
 
 from moonlight.core.config import BotConfig, ConfigError
@@ -222,15 +220,11 @@ def test_each_extra_is_one_row_hotkey_then_checkbox() -> None:
     assert all(option.control != "switch" for option in EXTRAS_OPTIONS)
 
 
-def test_rotation_switch_is_refused_without_accounts() -> None:
-    from moonlight.gui.settings_tab import ROTATION_OPTIONS
+def test_rotation_logout_hotkey_is_kept_while_it_has_no_accounts() -> None:
+    from moonlight.gui.settings_tab import MODULE_SWITCHES, ROTATION_OPTIONS
 
-    with pytest.raises(ConfigError):
-        write_option(BotConfig.default(), _switch("rotation"), True)
-    from moonlight.scripts.rotation import Account, RotationConfig
-
+    assert all(not option.field.startswith("rotation") for option in MODULE_SWITCHES)
     (hotkey,) = ROTATION_OPTIONS
-    kept = RotationConfig(accounts=(Account("a", "p"), Account("b", "q")))
-    cfg = replace(BotConfig.default(), off={"rotation": kept})
-    cfg = write_option(cfg, hotkey, "ctrl+q")
+    cfg = write_option(BotConfig.default(), hotkey, "ctrl+q")
+    assert cfg.rotation is None  # off: no accounts
     assert cfg.off["rotation"].logout_hotkey == "ctrl+q"
