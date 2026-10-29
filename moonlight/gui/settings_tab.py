@@ -62,7 +62,6 @@ EXTRAS_OPTIONS = [
         Option(label, f"extras.{name}", "switch"),
     )
 ] + [
-    Option("Buff potion: at least N monsters", "extras.buff_monsters", "entry"),
     Option("Player staying after (min)", "extras.player_minutes", "entry"),
     Option("Staying player: go refill", "extras.player_refill", "switch"),
     Option("Staying player: alarm", "extras.player_alarm", "switch"),

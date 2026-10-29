@@ -54,8 +54,6 @@ class ExtrasConfig:
     haste_hotkey: str = ""
     buff: bool = False
     buff_hotkey: str = ""
-    #: The buff potion is drunk only with at least this many monsters in the battle list.
-    buff_monsters: int = 3
     ring: bool = False
     ring_hotkey: str = ""
     amulet: bool = False
@@ -73,8 +71,6 @@ class ExtrasConfig:
         for name in ("food", "haste", "buff", "ring", "amulet"):
             if getattr(self, name):
                 check_hotkey(getattr(self, f"{name}_hotkey"), f"extras.{name}")
-        if self.buff_monsters < 1:
-            raise ValueError("extras.buff_monsters must be >= 1")
         if self.player_minutes <= 0:
             raise ValueError("extras.player_minutes must be > 0")
         return self
@@ -186,7 +182,7 @@ class Extras:
             return f"player in sight over {self.config.player_minutes:g} min"
         return None
 
-    def due(self, snap: WorldState, walking: bool) -> str | None:
+    def due(self, walking: bool) -> str | None:
         """The hotkey to press now, or None. *walking*: the route walks, no fight."""
         c, icons, seen = self.config, self.icons, self._pictures
         wanted = (
@@ -198,11 +194,7 @@ class Extras:
                 c.haste_hotkey,
                 walking and "haste" in seen and not icons & {"haste", "pz"},
             ),
-            (
-                c.buff,
-                c.buff_hotkey,
-                "buff" in seen and "buff" not in icons and len(snap.monsters) >= c.buff_monsters,
-            ),
+            (c.buff, c.buff_hotkey, "buff" in seen and "buff" not in icons),
         )
         now = self._clock()
         for on, key, need in wanted:

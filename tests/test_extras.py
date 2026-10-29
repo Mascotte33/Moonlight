@@ -4,22 +4,22 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from moonlight.core.state import Monster, WorldState
+from moonlight.core.state import WorldState
 from moonlight.extras.extras import Extras, ExtrasConfig, find_icons, save_screenshot
 
+#: Every extra on but the buff potion, which presses whenever its icon is missing.
 ALL = ExtrasConfig(
     food=True,
     food_hotkey="F1",
     haste=True,
     haste_hotkey="F2",
-    buff=True,
     buff_hotkey="F3",
-    buff_monsters=2,
     ring=True,
     ring_hotkey="F4",
     amulet=True,
@@ -48,10 +48,10 @@ def extras(
 
 def test_food_ring_amulet_when_their_picture_shows() -> None:
     clock = Clock()
-    assert extras(ALL, clock).due(WorldState(), walking=False) is None
-    assert extras(ALL, clock, "hungry").due(WorldState(), walking=False) == "F1"
-    assert extras(ALL, clock, "ring_empty").due(WorldState(), walking=False) == "F4"
-    assert extras(ALL, clock, "amulet_empty").due(WorldState(), walking=False) == "F5"
+    assert extras(ALL, clock).due(walking=False) is None
+    assert extras(ALL, clock, "hungry").due(walking=False) == "F1"
+    assert extras(ALL, clock, "ring_empty").due(walking=False) == "F4"
+    assert extras(ALL, clock, "amulet_empty").due(walking=False) == "F5"
 
 
 def test_one_key_waits_between_presses() -> None:
@@ -59,27 +59,26 @@ def test_one_key_waits_between_presses() -> None:
     e = extras(ALL, clock, "hungry")
     e.pressed("F1")
     clock.now = 1.0
-    assert e.due(WorldState(), walking=False) is None
+    assert e.due(walking=False) is None
     clock.now = 2.0
-    assert e.due(WorldState(), walking=False) == "F1"
+    assert e.due(walking=False) == "F1"
 
 
 def test_haste_only_walking_without_haste_or_pz() -> None:
     clock = Clock()
-    assert extras(ALL, clock).due(WorldState(), walking=True) == "F2"
-    assert extras(ALL, clock).due(WorldState(), walking=False) is None
-    assert extras(ALL, clock, "haste").due(WorldState(), walking=True) is None
-    assert extras(ALL, clock, "pz").due(WorldState(), walking=True) is None
+    assert extras(ALL, clock).due(walking=True) == "F2"
+    assert extras(ALL, clock).due(walking=False) is None
+    assert extras(ALL, clock, "haste").due(walking=True) is None
+    assert extras(ALL, clock, "pz").due(walking=True) is None
     # No haste picture: the bot cannot tell, so it never presses.
-    assert extras(ALL, clock, pictures=("pz",)).due(WorldState(), walking=True) is None
+    assert extras(ALL, clock, pictures=("pz",)).due(walking=True) is None
 
 
-def test_buff_needs_monsters_and_a_missing_icon() -> None:
+def test_buff_when_its_icon_is_missing() -> None:
     clock = Clock()
-    two = WorldState(monsters=[Monster(name="a"), Monster(name="b")])
-    assert extras(ALL, clock).due(WorldState(monsters=[Monster(name="a")]), False) is None
-    assert extras(ALL, clock).due(two, walking=False) == "F3"
-    assert extras(ALL, clock, "buff").due(two, walking=False) is None
+    buff = replace(ALL, buff=True)
+    assert extras(buff, clock).due(walking=False) == "F3"
+    assert extras(buff, clock, "buff").due(walking=False) is None
 
 
 def test_player_timer_alarm_refill_and_reset() -> None:
