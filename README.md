@@ -127,7 +127,7 @@ loots while an alarm is up. Set it in Cavebot > Loot.
 Refill is part of the waypoint list. A `check` waypoint with label `town`
 jumps to label `town` when used capacity reaches the start % (Cavebot >
 Refill) or after **Refill now** is pressed; otherwise the bot walks past it.
-The town section uses `say` (types its label into chat and presses Enter, for
+The town section uses `say` (presses Enter to open the chat box, types its label, Enter sends it; chat stays off for WASD; for
 NPC talk like `hi`, `deposit all`, `yes`), `key` (presses its label as a
 hotkey) and `drag` (label `x1 y1 x2 y2` in client pixels: drags the left
 button from one spot to the other, such as the loot backpack onto the depot
