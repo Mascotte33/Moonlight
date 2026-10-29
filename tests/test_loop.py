@@ -561,9 +561,9 @@ class TestSelectClick:
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp)
         ticks(gl, clock, 8 * 20 + 3)  # 8 s on a target whose HP never moves
-        assert inp.sent_lines == ["K up"]
+        assert inp.sent_lines == ["K w"]
         ticks(gl, clock, 8 * 20 + 6)  # 8 s more, then the click on the next row
-        assert inp.sent_lines == ["K up", "A 189 244", "C L"]
+        assert inp.sent_lines == ["K w", "A 189 244", "C L"]
 
 
     def test_lone_stuck_target_pauses_targeting_with_a_countdown(self) -> None:

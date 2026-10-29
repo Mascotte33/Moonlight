@@ -21,7 +21,7 @@ import numpy as np
 from moonlight.core.state import WorldState
 from moonlight.healing.healing import check_hotkey
 
-__all__ = ["ICONS", "ICONS_DIR", "Extras", "ExtrasConfig", "save_screenshot"]
+__all__ = ["ICONS", "ICONS_DIR", "Extras", "ExtrasConfig", "locate", "save_screenshot"]
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,8 @@ ICONS = {
 }
 MATCH = 0.9
 SCAN_GAP = 1.0  # s between picture scans
+#: Around a picture's first spot: the status row shifts sideways as icons come and go.
+SPOT_PAD_X, SPOT_PAD_Y = 100, 10
 PRESS_GAP = 2.0  # s between two presses of one key: the icon takes a moment to change
 PLAYER_GONE = 60.0  # s out of the player list before a player's timer resets
 SCREENSHOTS_DIR = Path("screenshots")
@@ -91,18 +93,15 @@ def load_icons(directory: Path = ICONS_DIR) -> dict[str, np.ndarray]:
     return out
 
 
-def find_icons(frame: np.ndarray, pictures: dict[str, np.ndarray]) -> frozenset[str]:
-    """Names of the *pictures* shown in *frame* (RGB)."""
+def locate(frame: np.ndarray, picture: np.ndarray) -> tuple[int, int] | None:
+    """Top-left (x, y) of *picture* in *frame*, or None (same colour order, or both gray)."""
     import cv2
 
-    found = set()
-    for name, picture in pictures.items():
-        if frame.shape[0] < picture.shape[0] or frame.shape[1] < picture.shape[1]:
-            continue
-        scores = cv2.matchTemplate(frame, picture, cv2.TM_CCOEFF_NORMED)
-        if scores.max() >= MATCH:
-            found.add(name)
-    return frozenset(found)
+    if frame.shape[0] < picture.shape[0] or frame.shape[1] < picture.shape[1]:
+        return None
+    scores = cv2.matchTemplate(frame, picture, cv2.TM_CCOEFF_NORMED)
+    _, best, _, spot = cv2.minMaxLoc(scores)
+    return (int(spot[0]), int(spot[1])) if best >= MATCH else None
 
 
 def save_screenshot(
@@ -150,6 +149,9 @@ class Extras:
         #: The pictures seen at the last scan.
         self.icons: frozenset[str] = frozenset()
         self._scanned = float("-inf")
+        #: Picture name -> where it was first found; later scans look only there.
+        self._spots: dict[str, tuple[int, int]] = {}
+        self._search_turn = 0
         self._pressed: dict[str, float] = {}
         #: Player name hash -> (first seen, last seen).
         self.players: dict[str, tuple[float, float]] = {}
@@ -162,7 +164,7 @@ class Extras:
         if self._grab and self._pictures and now - self._scanned >= SCAN_GAP:
             self._scanned = now
             try:
-                self.icons = find_icons(self._grab(), self._pictures)
+                self.icons = self._scan(self._grab())
             except Exception:  # noqa: BLE001 - a failed grab only skips this scan
                 logger.exception("extras: picture scan failed")
         was_staying = self.staying
@@ -170,6 +172,36 @@ class Extras:
             self.players[key] = (self.players.get(key, (now, now))[0], now)
         self.players = {k: v for k, v in self.players.items() if now - v[1] < PLAYER_GONE}
         self.refill_due = self.config.player_refill and self.staying and not was_staying
+
+    # doc: docs/prs/extras.md#extras
+    def _scan(self, frame: np.ndarray) -> frozenset[str]:
+        """The pictures shown in *frame*: a found one is checked at its spot only.
+
+        A full-window search costs ~50 ms (gray, 2560x1369) against ~1 ms at the
+        spot, so one picture not found yet is searched per scan, in turn.
+        """
+        import cv2
+
+        found = set()
+        for name, picture in self._pictures.items():
+            if name in self._spots:
+                x, y = self._spots[name]
+                window = frame[
+                    max(0, y - SPOT_PAD_Y) : y + picture.shape[0] + SPOT_PAD_Y,
+                    max(0, x - SPOT_PAD_X) : x + picture.shape[1] + SPOT_PAD_X,
+                ]
+                if locate(window, picture) is not None:
+                    found.add(name)
+        not_found_yet = [name for name in self._pictures if name not in self._spots]
+        if not_found_yet:
+            name = not_found_yet[self._search_turn % len(not_found_yet)]
+            self._search_turn += 1
+            gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+            spot = locate(gray, cv2.cvtColor(self._pictures[name], cv2.COLOR_RGB2GRAY))
+            if spot is not None:
+                self._spots[name] = spot
+                found.add(name)
+        return frozenset(found)
 
     @property
     def staying(self) -> bool:

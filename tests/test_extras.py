@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from moonlight.core.state import WorldState
-from moonlight.extras.extras import ICONS, Extras, ExtrasConfig, find_icons, save_screenshot
+from moonlight.extras.extras import ICONS, Extras, ExtrasConfig, locate, save_screenshot
 
 #: Every extra on but the buff potion and spell buff (they press whenever their icon is missing).
 ALL = ExtrasConfig(
@@ -140,7 +140,8 @@ def test_find_icons_and_scan_once_a_second() -> None:
         "hungry": frame[10:20, 30:45].copy(),
         "pm": rng.integers(0, 255, (10, 10, 3), dtype=np.uint8),
     }
-    assert find_icons(frame, pictures) == {"hungry"}
+    assert locate(frame, pictures["hungry"]) == (30, 10)
+    assert locate(frame, pictures["pm"]) is None
     clock, grabs = Clock(), []
 
     def grab() -> np.ndarray:
@@ -148,10 +149,17 @@ def test_find_icons_and_scan_once_a_second() -> None:
         return frame
 
     e = Extras(ALL, grab=grab, clock=clock, pictures=pictures)
-    e.observe(WorldState())
+    e.observe(WorldState())  # searches hungry
     clock.now = 0.5
     e.observe(WorldState())
     assert e.icons == {"hungry"} and len(grabs) == 1
+    clock.now = 1.0
+    e.observe(WorldState())  # hungry at its spot, pm searched
+    assert e.icons == {"hungry"} and len(grabs) == 2
+    frame[10:20, 30:45] = 0  # no longer hungry
+    clock.now = 2.0
+    e.observe(WorldState())
+    assert e.icons == frozenset()
 
 
 def test_screenshots_keep_the_newest(tmp_path: Path) -> None:
