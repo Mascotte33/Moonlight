@@ -855,7 +855,12 @@ class TestCurrentTask:
         assert self._task(make_state(target=True)) == "Attacking"
 
     def test_looting(self) -> None:
-        looting = SimpleNamespace(should_loot=lambda s: True, step=lambda s: None)
+        looting = SimpleNamespace(
+            should_loot=lambda s: True,
+            loot_first=lambda s: True,
+            ring_due=lambda: False,
+            step=lambda s: None,
+        )
         modules = DecisionModules(looting=cast(Looting, looting))
         assert self._task(make_state(), modules=modules) == "Looting"
 

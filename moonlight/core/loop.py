@@ -98,7 +98,7 @@ import logging
 import math
 import threading
 import time
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -301,7 +301,7 @@ class GameLoop:
         self._target: TargetingAction | None = None
         self._targeting_paused_until = 0.0  # a lone unreachable target: walk on
         self._last_target: str | None = None
-        self._had_monsters = False
+        self._last_names: Counter[str] = Counter()
         self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
@@ -563,18 +563,22 @@ class GameLoop:
             self._target = None
         if m.cavebot is not None:
             m.cavebot.targeting_paused = self._targeting_paused(now)
+        names = Counter(mon.name for mon in snap.monsters)
         if m.looting is not None:
-            # ponytail: "selected target vanished from the battle list" = kill
-            # (a target lost out of range counts too); use the server-log OCR
-            # (perception/logocr.py) if false loot attempts matter.
+            # ponytail: one fewer monster named like the target = kill (the
+            # client may select the next one at once; one walking off screen
+            # counts too); use the server-log OCR (perception/logocr.py) if
+            # false loot attempts matter.
             prev = self._last_target
             cur = snap.selected_target
             self._last_target = cur.name if cur is not None else None
-            if prev and cur is None and all(mon.name != prev for mon in snap.monsters):
+            if prev and (
+                names[prev] < self._last_names[prev] or (cur is None and not names[prev])
+            ):
                 m.looting.on_target_died(prev)
-            elif self._had_monsters and not snap.monsters:
+            elif self._last_names and not names:
                 m.looting.on_target_died("")  # the battle list emptied: loot again
-        self._had_monsters = bool(snap.monsters)
+        self._last_names = names
         if m.extras is not None:
             m.extras.observe(snap)
             if m.extras.refill_due and m.cavebot is not None:
@@ -602,6 +606,8 @@ class GameLoop:
         if self._is_alarm(snap):
             return BotState.ALARM
         m = self.modules
+        if m.looting is not None and m.looting.loot_first(snap):
+            return BotState.LOOT  # loot each kill before the next target
         targeting = self._targeting()
         if m.cavebot is not None and m.cavebot.luring():
             pass  # a lure waypoint walks past monsters
@@ -733,6 +739,9 @@ class GameLoop:
         if self.modules.healing is not None and self._heal(snap):
             self._task = "Healing"
             return
+        looting = self.modules.looting
+        if looting is not None and looting.ring_due():
+            self._send(snap, looting.press_ring)  # then carry on with this tick
         if self._state is BotState.ALARM:
             # No attack/move/buffs; healing already ran (alert sent on entry).
             if self.modules.looting is not None and self.modules.looting.should_loot(snap):

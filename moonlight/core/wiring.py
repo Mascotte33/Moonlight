@@ -91,7 +91,8 @@ def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect
     names = set(_PERCEIVE_REGIONS) | {n for n in OPTIONAL_REGIONS if n in profile.regions}
     for module in _enabled_modules(config):
         names.update(MODULE_REGIONS.get(module, ()))
-    if not config.walk_keys and config.targeting is None:
+    rings = config.looting is not None and config.looting.ringed_corpses
+    if not config.walk_keys and config.targeting is None and not rings:
         names.discard("game_grid")
     if any(name not in profile.regions for name in names):
         return None
@@ -629,7 +630,17 @@ def build_modules(
         if config.looting is not None:
             from moonlight.looting.looting import Looting
 
-            m.looting = Looting(backend, config.looting, clock=clock or time.monotonic)
+            m.looting = Looting(
+                backend,
+                config.looting,
+                clock=clock or time.monotonic,
+                frames=frames,
+                game_region=(
+                    profile.get_region("game_grid").to_tuple
+                    if config.looting.ringed_corpses
+                    else None
+                ),
+            )
     return m
 
 

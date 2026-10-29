@@ -83,8 +83,9 @@
 #define HID_F1        0xC2   // HID_F1 .. HID_F12 (0xC2..0xCD)
 #define HID_F13       0xF0   // HID_F13 .. HID_F24 (0xF0..0xFB)
 
-#define KEY_TAP_HOLD_MS       5UL      // min press duration for K taps
-#define MOUSE_CLICK_HOLD_MS   5UL      // min press duration for C clicks
+// Taps and clicks hold as long as a real finger press (~60 ms), fixed.
+#define KEY_TAP_HOLD_MS       60UL     // K tap hold
+#define MOUSE_CLICK_HOLD_MS   60UL     // C click hold
 
 #define CMD_BLINK_DURATION_MS 120UL    // LED pulse per valid command
 #define ERR_BLINK_DURATION_MS 600UL    // LED fast-blink window on ERR
@@ -289,10 +290,12 @@ static void applyCombo(char* const tokens[], int start, int end, bool press) {
   }
 }
 
-// Tap combo: press, hold KEY_TAP_HOLD_MS, release. Keys that were already
-// held (via D) are NOT released by the tap - only keys pressed by this
-// command are.
+// Tap combo: press every key (alt+q, shift+f1: all down together), hold
+// KEY_TAP_HOLD_MS, release in reverse. Keys that were already held (via D)
+// are NOT released by the tap - only keys pressed by this command are.
 static void tapCombo(char* const tokens[], int start, int end) {
+  uint8_t pressed[MAX_HELD_KEYS];
+  int count = 0;
   for (int i = start; i < end; i++) {
     char partBuf[LINE_BUF_SIZE];
     strncpy(partBuf, tokens[i], sizeof(partBuf) - 1);
@@ -306,17 +309,18 @@ static void tapCombo(char* const tokens[], int start, int end) {
       if (key < 0) continue;
 
       uint8_t k = (uint8_t)key;
-      bool wasHeld = isHeld(k);
-      if (!wasHeld) {
+      if (!isHeld(k) && count < MAX_HELD_KEYS) {
         Keyboard.press(k);
         addHeld(k);
-      }
-      delay(KEY_TAP_HOLD_MS);
-      if (!wasHeld) {
-        Keyboard.release(k);
-        removeHeld(k);
+        pressed[count++] = k;
       }
     }
+  }
+  delay(KEY_TAP_HOLD_MS);
+  while (count > 0) {
+    uint8_t k = pressed[--count];
+    Keyboard.release(k);
+    removeHeld(k);
   }
 }
 

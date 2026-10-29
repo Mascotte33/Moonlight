@@ -96,7 +96,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Buffs | ✅ | ✅ | ❌ |
 | Alarms | ✅ | ✅ | ❌ |
 | Cavebot (waypoint routing, route recorder) | ✅ | ✅ | ❌ |
-| Looting | ✅ | ✅ | ❌ |
+| Looting | ✅ | ✅ | ✅ |
 | Refill (check, say, key, drag waypoints) | ✅ | ✅ | ❌ |
 | User scripts (script and wait waypoints, timers) | ✅ | ✅ | ❌ |
 | Extras (food, haste, buff, ring, amulet, player timer, PM alarm) | ✅ | ✅ | ❌ |
@@ -112,7 +112,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 **Tested** — covered by passing automated tests. **Working** — ✅ verified in a
 full live game session; 🟡 partial: verified on real hardware or real
 screenshots, but not yet in a full session; ❌ not yet verified live. The first
-full live session has not happened yet.
+full live session (2026-10-28) verified looting.
 
 The route recorder saves the tile the character stood on, never the one it is
 walking to: a position counts after it held for 0.6 s, or once the character
@@ -135,10 +135,27 @@ lets the client pick the path and can cross them: turn on arrow-key walking
 for routes next to holes or teleports.
 
 Looting presses the loot hotkey (the OTS loots every corpse around on
-Alt+Q) after each kill and again when the battle list empties, then stands
+Alt+Q) 0.3 s after each kill (also when more monsters of that name are left),
+before attacking the next monster, and again
+when the battle list empties, then stands
 still for the set wait (400 ms by default) before walking on. Below the set
 HP (70 % by default) it holds still and heals first, then loots. It also
-loots while an alarm is up. Set it in Cavebot > Loot.
+loots while an alarm is up. Set it in Cavebot > Loot. Every key tap and
+mouse click holds 60 ms, like a real press; combo hotkeys (Alt+Q, Shift+F1)
+hold all their keys down together. Reflash the Leonardo after updating.
+
+Cavebot > Loot has a switch for each loot trigger. **Loot after every kill**
+(on by default) is the above. **Loot ringed corpses next to me** (off by
+default) presses the loot hotkey whenever a corpse's turning loot ring shows
+on the character's tile or the 8 around it, mid-fight too, without stopping;
+presses are the set wait apart, and at least 0.5 s. The ring is also seen
+while the character walks (the scroll is undone first), so ringed corpses
+passed on the route get looted too, also ones the bot did not kill; after a
+ring press the cavebot stands for the set wait so the loot lands. With only
+this switch on, the cavebot stands still for up to 1 s after a kill
+(attacking goes on) until the ring press. bot.log shows `loot triggered`
+when a ring is found and `looting` at each loot press. A ring
+whose press could not go out at once is pressed on the next free slot.
 
 Every waypoint button in Edit route adds the waypoint on the character's
 tile; there are no typed X, Y, Z fields. The bot walks onto that tile before
