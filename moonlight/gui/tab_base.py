@@ -409,9 +409,9 @@ def combo_from_key(keysym: str, keycode: int, state: int) -> str | None:
 
 
 class HotkeyBox(ctk.CTkFrame):  # type: ignore[misc]  # customtkinter is untyped
-    """Click it, press a key, click OK: that key is the hotkey.
+    """Click it, press a key: that key is the hotkey, saved at once.
 
-    Escape cancels. OK runs *on_submit* (the tab's save).
+    Escape cancels. The key press runs *on_submit* (the tab's save).
     """
 
     _listening: ClassVar[HotkeyBox | None] = None
@@ -420,7 +420,6 @@ class HotkeyBox(ctk.CTkFrame):  # type: ignore[misc]  # customtkinter is untyped
         super().__init__(parent, fg_color="transparent")
         self._on_submit = on_submit
         self._combo = ""
-        self._pending = ""
         self._bind_id: str | None = None
         self.btn = ctk.CTkButton(
             self,
@@ -434,15 +433,6 @@ class HotkeyBox(ctk.CTkFrame):  # type: ignore[misc]  # customtkinter is untyped
             font=ctk.CTkFont(family=theme.MONO, size=theme.SIZE_BODY),
         )
         self.btn.pack(side="right")
-        self.ok = ctk.CTkButton(
-            self,
-            text="OK",
-            width=40,
-            command=self._confirm,
-            fg_color=theme.MANA,
-            hover_color=theme.MANA_HOVER,
-            text_color=theme.NIGHT,
-        )
         self.set("")
 
     def get(self) -> str:
@@ -467,16 +457,10 @@ class HotkeyBox(ctk.CTkFrame):  # type: ignore[misc]  # customtkinter is untyped
             return "break"
         combo = combo_from_key(event.keysym, event.keycode, event.state)
         if combo is not None:
-            self._pending = combo
-            self.btn.configure(text=combo)
-            self.ok.pack(side="right", padx=(theme.UNIT, 0))
+            self.set(combo)
+            if self._on_submit is not None:
+                self._on_submit()
         return "break"
-
-    def _confirm(self) -> None:
-        combo = self._pending
-        self.set(combo)
-        if self._on_submit is not None:
-            self._on_submit()
 
     def _stop(self) -> None:
         if self._bind_id is not None:
@@ -484,8 +468,6 @@ class HotkeyBox(ctk.CTkFrame):  # type: ignore[misc]  # customtkinter is untyped
             self._bind_id = None
         if HotkeyBox._listening is self:
             HotkeyBox._listening = None
-        self._pending = ""
-        self.ok.pack_forget()
 
 
 def _control(
@@ -504,7 +486,8 @@ def _control(
         box = ctk.CTkCheckBox(
             row, text="", width=24, fg_color=theme.LIFE, hover_color=theme.HOVER, command=on_submit
         )
-        box.pack(side="right", padx=(0, theme.UNIT))
+        # Packed before the row's label: the far-right slot, even on a shared row.
+        box.pack(side="right", padx=(theme.UNIT, 0), before=row.pack_slaves()[0])
         return lambda: bool(box.get()), lambda v: box.select() if v else box.deselect()
     if option.control == "dropdown":
         choices = option.choices or []
