@@ -7,8 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from moonlight.calibration.calibrate import CalibrationProfile, Region
-from moonlight.calibration.calibration_steps import AREAS
+from moonlight.calibration.calibrate import REGIONS, CalibrationProfile, Region
 from moonlight.calibration.profile import ProfileManager
 from moonlight.calibration.tab import (
     AREA_HELP,
@@ -112,7 +111,7 @@ def test_load_old_profile(tmp_path: Path) -> None:
 
 
 def test_every_area_has_help() -> None:
-    assert set(AREA_HELP) == set(AREAS)
+    assert set(AREA_HELP) == set(REGIONS)
     assert all(t.endswith(".") for t in AREA_HELP.values())
 
 

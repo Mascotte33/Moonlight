@@ -24,7 +24,6 @@ from pathlib import Path
 
 __all__ = [
     "REGIONS",
-    "OPTIONAL_REGIONS",
     "GAME_GRID_COLS",
     "GAME_GRID_ROWS",
     "CalibrationError",
@@ -51,8 +50,6 @@ REGIONS: tuple[str, ...] = (
     "game_grid",
     "chase_buttons",
 )
-#: Areas a profile may define; the extras that read them stay off without.
-OPTIONAL_REGIONS: tuple[str, ...] = ("player_list",)
 
 #: The game window is a 15x11 grid of slots; the player sits at (7, 5).
 GAME_GRID_COLS = 15
@@ -259,10 +256,8 @@ class CalibrationProfile:
 
     def set_region(self, name: str, region: Region) -> None:
         """Set or replace a region by name."""
-        if name not in REGIONS + OPTIONAL_REGIONS:
-            raise CalibrationError(
-                f"Unknown region {name!r}; expected one of {REGIONS + OPTIONAL_REGIONS}"
-            )
+        if name not in REGIONS:
+            raise CalibrationError(f"Unknown region {name!r}; expected one of {REGIONS}")
         self.regions[name] = region
 
     # -- accessors ----------------------------------------------------------

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from moonlight.calibration.calibrate import OPTIONAL_REGIONS, CalibrationProfile
+from moonlight.calibration.calibrate import CalibrationProfile
 from moonlight.core.config import MODULES, BotConfig
 from moonlight.core.loop import DecisionModules, GameLoop
 from moonlight.core.safety import RateLimitedInput, beep_alert
@@ -63,7 +63,7 @@ MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "refill": (),
     "scripts": (),
     "rotation": (),
-    "extras": (),  # player_list is optional: without it no player is timed
+    "extras": (),
     "alarms": (),
 }
 
@@ -87,7 +87,7 @@ def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect
     keys) scans it for creatures; for clicks it is only geometry, and the
     clicker grabs its own small cursor ROI.
     """
-    names = set(_PERCEIVE_REGIONS) | {n for n in OPTIONAL_REGIONS if n in profile.regions}
+    names = set(_PERCEIVE_REGIONS)
     for module in _enabled_modules(config):
         names.update(MODULE_REGIONS.get(module, ()))
     rings = config.looting is not None and config.looting.ringed_corpses
@@ -239,6 +239,7 @@ def make_perceive(
     into ``creature_slots``. While *client_is_foreground* is False no new name
     hash is learned (another window may cover the battle list).
     """
+    from moonlight.calibration.autofind import ANCHORS_DIR, PLAYERS_HEADER, PlayerListFollower
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.chase_mode import read_chase_mode
     from moonlight.perception.creatures import find_creatures
@@ -249,12 +250,12 @@ def make_perceive(
 
     vitals = VitalsReader(profile)
     battle = BattleReader(profile, seen_monsters=seen_monsters)
-    # doc: docs/prs/extras.md#player-timer
-    player_list = (
-        BattleReader(profile, battle_region=profile.get_region("player_list").to_tuple)
-        if "player_list" in profile.regions
-        else None
-    )
+    # doc: docs/prs/player-list.md#players-window
+    players_window = PlayerListFollower()
+    player_list = BattleReader(profile)
+    if not (ANCHORS_DIR / f"{PLAYERS_HEADER}.png").exists():
+        logger.warning("no %s.png: the Players window is never found", PLAYERS_HEADER)
+    player_box: Rect | None = None
     floor = FloorReader(profile)
     status_icons: StatusIconReader | None = None
     if "status_icons" in profile.regions:
@@ -277,6 +278,7 @@ def make_perceive(
     )
 
     def perceive() -> None:
+        nonlocal player_box
         focused = focus_check() if focus_check is not None else True
         try:
             if not focused:
@@ -286,7 +288,11 @@ def make_perceive(
                 seen_monsters.learns_new_names = client_is_foreground()
             hp, mp = vitals.read_vitals(frame)
             monsters, selected, players = entries_to_state(battle.read_battle_list(frame))
-            names = player_list.read_battle_list(frame) if player_list is not None else []
+            box = players_window.find(frame[..., ::-1])
+            if box != player_box:
+                logger.info("Players window %s", f"at {box}" if box else "not found")
+                player_box = box
+            names = player_list.read_battle_list(frame, box) if box else []
             slots = tuple(find_creatures(frame, creature_grid)) if creature_grid else ()
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
