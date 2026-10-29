@@ -38,12 +38,12 @@ __all__ = [
 OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
     Option("Game window", "window_title", "dropdown"),
-    Option("Cavebot walks with arrow keys", "walk_keys", "switch"),
+    Option("Cavebot walks with WSAD keys", "walk_keys", "switch"),
 ]
-#: The only switch for each module (T2.F4.K2); cavebot and targeting have theirs on their tabs.
+#: The only switch for each module (T2.F4.K2); cavebot has its own on its tab.
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
-    for name in ("healing", "looting", "scripts")
+    for name in ("healing", "targeting", "looting", "scripts")
 ]
 #: One row per extra: its hotkey and checkbox, then the player limits (docs/prs/extras.md#extras).
 EXTRAS_OPTIONS = [
@@ -61,8 +61,6 @@ EXTRAS_OPTIONS = [
         Option(label, f"extras.{name}_hotkey", "hotkey"),
         Option("", f"extras.{name}", "checkbox"),
     )
-] + [
-    Option("Staying player: go refill", "extras.player_refill", "checkbox"),
 ]
 #: HP, player and PM alarms: alert and screenshot, the bot goes on (docs/prs/extras.md#alarms).
 ALARMS_OPTIONS = [
@@ -72,6 +70,7 @@ ALARMS_OPTIONS = [
     Option("", "alarms.fast_hp_drop_alarm", "checkbox"),
     Option("Player in sight longer than (min, 0 = at once)", "extras.player_minutes", "entry"),
     Option("", "extras.player_alarm", "checkbox"),
+    Option("Staying player: go refill", "extras.player_refill", "checkbox"),
     Option("Private message", "extras.pm_alarm", "checkbox"),
 ]
 #: Rotation has no switch: the accounts typed into the config file turn it on (docs).
@@ -143,12 +142,6 @@ class SettingsTab(Tab):
             font=ctk.CTkFont(size=theme.SIZE_TITLE, weight="bold"),
             text_color=theme.TEXT_MUTED,
         ).pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0), before=rows[len(OPTIONS)])
-        ctk.CTkLabel(
-            self.box_options,
-            text="Each switch turns one bot module on or off. An off module keeps its values.",
-            anchor="w",
-            text_color=theme.TEXT_DIM,
-        ).pack(fill="x", padx=theme.PAD, before=rows[len(OPTIONS)])
         window_row = rows[[o.field for o in OPTIONS].index("window_title")]
         (self.menu_window,) = [
             w for w in window_row.winfo_children() if isinstance(w, ctk.CTkOptionMenu)

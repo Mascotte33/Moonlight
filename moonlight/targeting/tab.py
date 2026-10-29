@@ -24,13 +24,11 @@ from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.tab_base import (
     HotkeyBox,
-    Option,
     Tab,
     read_option,
     row_button,
     row_entry,
     section,
-    write_option,
 )
 from moonlight.targeting.seen_monsters import SeenMonster, SeenMonsters
 from moonlight.targeting.targeting import TargetingConfig
@@ -40,16 +38,11 @@ if TYPE_CHECKING:  # pragma: no cover
 
 __all__ = [
     "MOVEMENT_LABELS",
-    "OPTIONS",
     "AreaRuleFields",
     "MonsterRowFields",
     "TargetingSettings",
     "TargetingTab",
     "apply_targeting",
-]
-
-OPTIONS = [
-    Option("Targeting on", "targeting.enabled", "switch"),
 ]
 
 #: Movement menu text for each config value.
@@ -239,12 +232,10 @@ class TargetingTab(Tab):
     """Targeting rows, area rules and settings, saved into the picked config."""
 
     title = "Targeting"
-    options = OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
         settings_box = section(parent, "Targeting")
         settings_box.pack(fill="x", padx=10, pady=(10, 0))
-        self.build_options(settings_box)
         line = ctk.CTkFrame(settings_box, fg_color="transparent")
         line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
         ctk.CTkLabel(line, text="Attack key every (ms)", text_color=theme.TEXT_DIM).pack(
@@ -469,8 +460,6 @@ class TargetingTab(Tab):
     def apply(self) -> BotConfig:
         path = picked_config()
         cfg = load_real_config(path)
-        for option in self.options:
-            cfg = write_option(cfg, option, self._readers[option.field]())
         cfg = apply_targeting(
             cfg,
             [line.fields() for line in self._monster_lines],
@@ -566,7 +555,6 @@ class TargetingTab(Tab):
             self._seen_empty.grid(row=0, column=0, sticky="w")
 
     def on_poll(self, snap: WorldState) -> None:
-        self.show_paused(["targeting.enabled"], self.ctx.paused)
         names = ", ".join(m.name or "?" for m in snap.monsters) or "none"
         text = f"creatures on screen: {names}"
         if self.lbl_live.cget("text") != text:

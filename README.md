@@ -123,14 +123,14 @@ waypoint button adds a waypoint on the character's tile.
 
 The arrow pad in Cavebot > Edit route adds a `step` waypoint on the
 character's tile: the bot walks onto that tile,
-presses that arrow key exactly once (diagonals: Q, E, Z, C), waits 0.5 s and
+presses that WSAD key exactly once (diagonals: Q, E, Z, C), waits 0.5 s and
 goes on to the next waypoint, wherever the step led. It never presses it
 again, so use it for holes, teleports, stairs and other one-tile moves. The
 middle button adds a `stand` on the tile. A `rope` waypoint walks onto its
-exact tile and stands still there 0.2 s before using the rope. With arrow-key
+exact tile and stands still there 0.2 s before using the rope. With WSAD-key
 walking, paths go around stairs, shovel holes, step targets and any tile that
 moved the character elsewhere when it walked onto it. Minimap-click walking
-lets the client pick the path and can cross them: turn on arrow-key walking
+lets the client pick the path and can cross them: turn on WSAD-key walking
 for routes next to holes or teleports.
 
 Looting presses the loot hotkey (the OTS loots every corpse around on
@@ -215,12 +215,12 @@ picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`,
 `amulet_empty`, `pm`, all `.png`); an extra without its picture never presses.
 For the player timer, calibrate the optional `player_list` area: a second
 battle list set to players only. A player staying there longer than the set
-minutes (0 = at once) sends the character to refill (Extras) or sounds the
+minutes (0 = at once) sends the character to refill or sounds the
 alarm (Settings > Alarms); players passing by do not alarm.
 
 Alarms have no module switch: Settings > Alarms has a value and a checkbox
 each for Low HP below (%), Fast HP drop in 1 s (HP %) and Player in sight
-longer than (min), plus a checkbox for a private message. An alarm beeps, logs
+longer than (min), plus checkboxes for "Staying player: go refill" and a private message. An alarm beeps, logs
 `ALARM: ...` once and saves a screenshot in `screenshots/` (the newest 20
 stay); it never pauses walking, attacking or looting.
 
@@ -290,8 +290,8 @@ keys are refused at load. Rewrite the section to the new shape.
 ## Targeting
 
 Targeting clicks a monster's name in the battle list, then presses its
-attack hotkey. Turn it on with the **Targeting on** switch at the top of
-the Targeting tab (grayed while the bot is paused). Set it up in that tab,
+attack hotkey. Turn it on with the **Targeting** switch in
+Settings > Options > Modules. Set it up in the Targeting tab,
 or in the `targeting` section of your profile config:
 
 - **Monster rows** match a battle-list name (ignoring case). Each has a
