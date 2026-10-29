@@ -1,7 +1,7 @@
 """Golden-frame SMOKE tests for the unlabelled perception readers (T28).
 
 SMOKE coverage, not accuracy coverage: labels.json has no ground truth for
-sprites, cursor, loot or the server log, and we do not fabricate any. Every
+sprites, cursor or the server log, and we do not fabricate any. Every
 reader runs over every real golden frame (2560x1369) and must
 
 * not raise, and
@@ -42,8 +42,6 @@ LOG_REGION = (180, 1210, 2020, 135)
 #: Template cuts from the first frame: (x, y, w, h).
 SPRITE_CUT = (1105, 556, 64, 64)  # player character, viewport center
 CURSOR_CUT = (2520, 20, 16, 16)  # minimap compass detail
-LOOT_TITLE_CUT = (0, 0, 120, 16)  # "Loot Analyser" title bar
-LOOT_ITEM_CUT = (10, 40, 20, 20)  # an item icon under it
 
 
 def _frames() -> list[Path]:
@@ -92,7 +90,6 @@ def run() -> Run:
         MinimapReader,
         SpriteDetector,
     )
-    from moonlight.perception.loot import TITLE_TEMPLATE, LootReader
 
     profile = CalibrationProfile.load(PROFILE)
     first_bgr = cv2.imread(str(_FRAMES[0]))
@@ -109,10 +106,6 @@ def run() -> Run:
             cursor_region=(0, 0, first.shape[1], first.shape[0]),
             cursor_templates=_cut(first, CURSOR_CUT),
         ).read,
-        "loot": LootReader(
-            {TITLE_TEMPLATE: _cut(first, LOOT_TITLE_CUT), "probe": _cut(first, LOOT_ITEM_CUT)},
-            region=(0, 0, 400, 400),
-        ).read_loot_window,
         "logocr": lambda f: log_ocr.read(f, log_config),
         "battle": BattleReader(profile).read_battle_list,
         "floor": FloorReader(profile).read_floor,
@@ -179,21 +172,6 @@ def test_cursor_smoke(run: Run, golden_summary: list[str]) -> None:
     assert run.outputs["cursor"][0] == (x + w // 2, y + h // 2)
     n = sum(p is not None for p in run.outputs["cursor"])
     golden_summary.append(f"smoke cursor: ok on {len(_FRAMES)} frames, probe found on {n}")
-
-
-def test_loot_smoke(run: Run, golden_summary: list[str]) -> None:
-    from moonlight.perception.loot import LootWindow
-
-    _no_errors(run, "loot")
-    for window in run.outputs["loot"]:
-        if window is None:
-            continue
-        assert isinstance(window, LootWindow) and window.open is True
-        for index, item, count in window.items:
-            assert 0 <= index < 25 and item == "probe" and count >= 1
-    assert run.outputs["loot"][0] is not None  # its own title template
-    n = sum(w is not None for w in run.outputs["loot"])
-    golden_summary.append(f"smoke loot: ok on {len(_FRAMES)} frames, title found on {n}")
 
 
 def test_logocr_smoke(run: Run, golden_summary: list[str]) -> None:

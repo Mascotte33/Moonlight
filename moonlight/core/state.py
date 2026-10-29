@@ -108,6 +108,8 @@ class WorldState:
     monsters: list[Monster] = field(default_factory=list)
     selected_target: Monster | None = None
     players_on_screen: int = 0
+    #: Name hashes in the players-only battle list (``player_list`` area).
+    players: tuple[str, ...] = ()
     #: Game-grid slots ``(col, row)`` of the creatures on screen (health-bar scan).
     creature_slots: tuple[tuple[int, int], ...] = ()
 

@@ -1,247 +1,126 @@
-"""Offline tests for the user script loader (T27.D)."""
+"""Offline tests for user scripts: the generator API, waits, timers, find."""
+
+# doc: docs/prs/scripts.md#script-api
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
+from moonlight.core.safety import RateLimitedInput, RateLimiter
 from moonlight.core.state import WorldState
-from moonlight.hardware.input import ClickSide, FakeInput
-from moonlight.scripts.scripts import BotScript, Condition, ScriptRunner, Trigger
+from moonlight.hardware.input import FakeInput
+from moonlight.scripts.scripts import ScriptRunner, ScriptsConfig, parse_timers
 
-GOOD = """
-from moonlight.scripts.scripts import BotScript
-class S(BotScript):
-    def tick(self, state, input):
-        input.press_combo("f2")
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def runner(tmp_path: Path, clock: Clock | None = None, **srcs: str) -> ScriptRunner:
+    for name, src in srcs.items():
+        (tmp_path / f"{name}.py").write_text(src)
+    return ScriptRunner(tmp_path, clock=clock or Clock())
+
+
+def ticks(r: ScriptRunner, inp: FakeInput, n: int, snap: WorldState | None = None) -> None:
+    for _ in range(n):
+        r.step(snap or WorldState(), inp)
+
+
+PRESS_WAIT_SAY = """
+def run(bot):
+    yield bot.press("f2")
+    yield 1
+    yield bot.say("hi")
 """
 
-ALL_CALLS = """
-from moonlight.scripts.scripts import BotScript
-from moonlight.hardware.input import ClickSide
-class S(BotScript):
-    def tick(self, state, input):
-        input.press_combo('f1'); input.hold_combo('a')
-        input.mouse_move(1, 1); input.click(ClickSide.LEFT)
-"""
+
+def test_one_command_per_tick_and_a_wait(tmp_path: Path) -> None:
+    clock = Clock()
+    r, inp = runner(tmp_path, clock, s=PRESS_WAIT_SAY), FakeInput()
+    assert r.names() == ["s"] and r.start("s")
+    ticks(r, inp, 5)
+    assert inp.sent_lines == ["K f2"]  # waiting
+    clock.now = 1.0
+    ticks(r, inp, 6)
+    assert inp.sent_lines == ["K f2", "K enter", "K h", "K i", "K enter"]
+    assert r.running is None
 
 
-def ok_state(hp: float = 100.0) -> WorldState:
-    return WorldState(client_focused=True, screen_ok=True, hp_percent=hp)
-
-
-def runner(tmp_path: Path, **srcs: str) -> ScriptRunner:
-    for n, s in srcs.items():
-        (tmp_path / f"{n}.py").write_text(s)
-    r = ScriptRunner(tmp_path)
-    r.load_all()
-    return r
-
-
-def test_load_valid(tmp_path: Path) -> None:
-    r = runner(tmp_path, good=GOOD)
-    assert list(r.scripts) == ["good"]
-    assert isinstance(r.scripts["good"], BotScript)
-
-
-def test_syntax_error_does_not_crash(tmp_path: Path) -> None:
-    r = runner(tmp_path, bad="def (:\n", good=GOOD)
-    assert list(r.scripts) == ["good"]
-
-
-def test_import_error_does_not_crash(tmp_path: Path) -> None:
-    assert runner(tmp_path, bad="import no_such_module_xyz\n").scripts == {}
-
-
-def test_raise_at_import_does_not_crash(tmp_path: Path) -> None:
-    assert runner(tmp_path, bad="raise RuntimeError('x')\n").scripts == {}
-
-
-def test_sys_exit_at_import_does_not_crash(tmp_path: Path) -> None:
-    assert runner(tmp_path, bad="import sys\nsys.exit(1)\n").scripts == {}
-
-
-def test_no_subclass(tmp_path: Path) -> None:
-    assert runner(tmp_path, empty="x = 1\n").scripts == {}
-
-
-def test_ctor_error_does_not_crash(tmp_path: Path) -> None:
-    src = (
-        "from moonlight.scripts.scripts import BotScript\n"
-        "class S(BotScript):\n    def __init__(self): raise ValueError\n"
-    )
-    assert runner(tmp_path, s=src).scripts == {}
-
-
-def test_missing_dir() -> None:
-    assert ScriptRunner(Path("/definitely/not/here")).load_all() == []
-
-
-def test_empty_dir(tmp_path: Path) -> None:
-    assert ScriptRunner(tmp_path).load_all() == []
-
-
-def test_missing_file_load(tmp_path: Path) -> None:
-    assert ScriptRunner(tmp_path).load(tmp_path / "nope.py") is False
-
-
-def test_tick_runs_script_and_emits(tmp_path: Path) -> None:
-    r = runner(tmp_path, good=GOOD)
-    fake = FakeInput()
-    assert r.start("good", 1)
-    assert r.tick(ok_state(), fake) is True
-    assert fake.sent_lines == ["K f2"]
-
-
-def test_idle_runner_does_nothing(tmp_path: Path) -> None:
-    r = runner(tmp_path, good=GOOD)
-    fake = FakeInput()
-    assert r.tick(ok_state(), fake) is False
-    assert fake.sent_lines == []
-
-
-def test_exception_in_tick_swallowed(tmp_path: Path) -> None:
-    src = (
-        "from moonlight.scripts.scripts import BotScript\n"
-        "class S(BotScript):\n    def tick(self, state, input): 1/0\n"
-    )
-    r = runner(tmp_path, boom=src)
-    r.start("boom", 2)
-    assert r.tick(ok_state(), FakeInput()) is True
-    assert r.tick(ok_state(), FakeInput()) is True
-
-
-def test_start_unknown_or_bad_ticks(tmp_path: Path) -> None:
-    r = runner(tmp_path, good=GOOD)
-    assert not r.start("nope")
-    assert not r.start("good", 0)
-
-
-def test_runs_exactly_n_ticks(tmp_path: Path) -> None:
-    r = runner(tmp_path, good=GOOD)
-    fake = FakeInput()
-    r.start("good", 3)
-    for _ in range(6):
-        r.tick(ok_state(), fake)
-    assert len(fake.sent_lines) == 3
-    assert r.active is None
-
-
-def test_trigger_fires_and_stops(tmp_path: Path) -> None:
-    r = runner(tmp_path, good=GOOD)
-    r.triggers.append(Trigger(Condition("hp_percent", "<", 30), "good", 2))
-    fake = FakeInput()
-    r.tick(ok_state(20), fake)
-    r.tick(ok_state(90), fake)  # still running its 2nd tick
-    r.tick(ok_state(90), fake)  # done, condition false
-    assert len(fake.sent_lines) == 2
-    assert r.active is None
-
-
-def test_trigger_not_fired_when_false(tmp_path: Path) -> None:
-    r = runner(tmp_path, good=GOOD)
-    r.triggers.append(Trigger(Condition("hp_percent", "<", 30), "good"))
-    fake = FakeInput()
-    r.tick(ok_state(80), fake)
-    assert fake.sent_lines == []
-
-
-def test_trigger_unknown_script_ignored(tmp_path: Path) -> None:
-    r = runner(tmp_path, good=GOOD)
-    r.triggers.append(Trigger(Condition("hp_percent", "<", 30), "missing"))
-    assert r.tick(ok_state(1), FakeInput()) is False
-
-
-@pytest.mark.parametrize(
-    ("op", "val", "expected"),
-    [
-        ("<", 50, False),
-        ("<=", 50, True),
-        (">", 49, True),
-        (">=", 51, False),
-        ("==", 50, True),
-        ("!=", 50, False),
-    ],
-)
-def test_condition_ops(op: str, val: float, expected: bool) -> None:
-    assert Condition("hp_percent", op, val).evaluate(ok_state(50)) is expected
-
-
-def test_condition_validation() -> None:
-    with pytest.raises(ValueError):
-        Condition("hp_percent", "~", 1)
-    with pytest.raises(ValueError):
-        Condition("_lock", "==", 1)
-
-
-def test_condition_missing_or_nonnumeric_field() -> None:
-    assert not Condition("nonexistent", "<", 1).evaluate(ok_state())
-    assert not Condition("position", "<", 1).evaluate(ok_state())
-
-
-@pytest.mark.parametrize(
-    "state",
-    [WorldState(), WorldState(client_focused=True), WorldState(screen_ok=True)],
-)
-def test_fail_closed_no_input(tmp_path: Path, state: WorldState) -> None:
-    r = runner(tmp_path, s=ALL_CALLS)
-    fake = FakeInput()
-    r.start("s", 1)
-    r.tick(state, fake)
-    assert fake.sent_lines == []
-
-
-def test_safe_state_passes_all_calls(tmp_path: Path) -> None:
-    r = runner(tmp_path, s=ALL_CALLS)
-    fake = FakeInput()
+def test_reads_hp_from_the_tick(tmp_path: Path) -> None:
+    src = "def run(bot):\n    if bot.hp < 50:\n        yield bot.press('f3')\n"
+    r, inp = runner(tmp_path, s=src), FakeInput()
     r.start("s")
-    r.tick(ok_state(), fake)
-    assert len(fake.sent_lines) == 4
+    ticks(r, inp, 3, WorldState(hp_percent=40.0))
+    assert inp.sent_lines == ["K f3"]
 
 
-def test_unsafe_state_does_not_start_trigger(tmp_path: Path) -> None:
-    r = runner(tmp_path, good=GOOD)
-    r.triggers.append(Trigger(Condition("hp_percent", "<", 30), "good"))
-    assert r.tick(WorldState(hp_percent=1), FakeInput()) is False
-    assert r.active is None
-
-
-def test_yields_to_higher_priority(tmp_path: Path) -> None:
-    r = runner(tmp_path, good=GOOD)
+def test_a_command_the_limiter_dropped_is_sent_again(tmp_path: Path) -> None:
+    clock = Clock()
     fake = FakeInput()
-    r.start("good", 2)
-    assert r.tick(ok_state(), fake, higher_priority_active=True) is False
-    assert fake.sent_lines == [] and r.remaining == 2
-    r.tick(ok_state(), fake)
-    assert len(fake.sent_lines) == 1
+    limited = RateLimitedInput(fake, RateLimiter(rate=1.0, capacity=1.0, clock=clock))
+    limited.reserve = 0.0
+    limited.press_combo("F1")  # empties the bucket
+    r = runner(tmp_path, clock, s="def run(bot):\n    yield bot.press('f2')\n")
+    r.start("s")
+    assert not r.step(WorldState(), limited)  # f2 dropped
+    clock.now = 1.0
+    assert r.step(WorldState(), limited)
+    assert fake.sent_lines == ["K F1", "K f2"]
 
 
-def test_stop(tmp_path: Path) -> None:
-    r = runner(tmp_path, good=GOOD)
-    r.start("good", 5)
-    r.stop()
-    assert r.tick(ok_state(), FakeInput()) is False
+BROKEN = ["def run(bot):\n    yield 1 / 0\n", "x = (", "import sys; sys.exit()"]
 
 
-def test_click_wire_format(tmp_path: Path) -> None:
-    src = (
-        "from moonlight.scripts.scripts import BotScript\n"
-        "from moonlight.hardware.input import ClickSide\n"
-        "class S(BotScript):\n"
-        "    def tick(self, state, input): input.click(ClickSide.RIGHT)\n"
-    )
+@pytest.mark.parametrize("src", BROKEN)
+def test_a_broken_script_stops_without_crashing(tmp_path: Path, src: str) -> None:
+    r, inp = runner(tmp_path, s=src), FakeInput()
+    if r.start("s"):
+        ticks(r, inp, 2)
+    assert r.running is None and inp.sent_lines == []
+
+
+def test_timers_run_at_once_then_every_n_seconds(tmp_path: Path) -> None:
+    clock = Clock()
+    r, inp = runner(tmp_path, clock, eat="def run(bot):\n    yield bot.press('f5')\n"), FakeInput()
+    r.timers = parse_timers("eat 60")
+    assert r.poll() == "eat"
+    ticks(r, inp, 3)
+    assert r.poll() is None
+    clock.now = 60.0
+    assert r.poll() == "eat"
+
+
+def test_parse_timers() -> None:
+    assert parse_timers(" eat 60, rope 2.5 ,") == [("eat", 60.0), ("rope", 2.5)]
+    for bad in ("eat", "eat 0", "eat sixty", "my script 5"):
+        with pytest.raises(ValueError):
+            ScriptsConfig(bad).validate()
+
+
+# doc: docs/prs/scripts.md#find-picture
+def test_find_returns_the_picture_centre_or_none(tmp_path: Path) -> None:
+    import cv2
+
+    rng = np.random.default_rng(1)
+    frame = rng.integers(0, 255, (200, 300, 3), dtype=np.uint8)
+    cv2.imwrite(str(tmp_path / "pic.png"), cv2.cvtColor(frame[50:70, 100:130], cv2.COLOR_RGB2BGR))
+    src = """
+def run(bot):
+    spot = bot.find("pic.png")
+    yield bot.press(f"{spot[0]}x{spot[1]}" if spot else "none")
+"""
     r = runner(tmp_path, s=src)
-    fake = FakeInput()
-    r.start("s")
-    r.tick(ok_state(), fake)
-    assert fake.sent_lines == [f"C {ClickSide.RIGHT.value}"]
-
-
-def test_example_script_runs() -> None:
-    r = ScriptRunner()
-    assert "example" in r.load_all()
-    fake = FakeInput()
-    r.start("example")
-    r.tick(ok_state(), fake)
-    assert fake.sent_lines == ["K f1"]
+    for shown, line in ((frame, "K 115x60"), (np.zeros_like(frame), "K none")):
+        inp = FakeInput()
+        r.grab = lambda shown=shown: shown
+        r.start("s")
+        ticks(r, inp, 2)
+        assert inp.sent_lines == [line]

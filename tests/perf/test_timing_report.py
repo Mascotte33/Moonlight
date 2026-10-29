@@ -22,7 +22,7 @@ import pytest
 
 from moonlight.alarms.alarms import AlarmDecision
 from moonlight.calibration.calibrate import CalibrationProfile
-from moonlight.cavebot.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
+from moonlight.cavebot.cavebot import Cavebot, Route, Waypoint
 from moonlight.core.loop import DecisionModules, GameLoop, LoopConfig
 from moonlight.core.state import Capacity, Monster, Position, WorldState
 from moonlight.core.wiring import make_perceive
@@ -40,8 +40,6 @@ from moonlight.perception import (
     SpriteDetector,
     VitalsReader,
 )
-from moonlight.perception.loot import TITLE_TEMPLATE, LootReader, LootWindow
-from moonlight.refill.refill import Refill, RefillConfig
 from moonlight.targeting.targeting import TargetingDecision
 
 pytestmark = pytest.mark.slow
@@ -58,8 +56,6 @@ GAME_GRID = (416, 60, 1442, 1056)
 LOG_REGION = (180, 1210, 2020, 135)
 SPRITE_CUT = (1105, 556, 64, 64)
 CURSOR_CUT = (2520, 20, 16, 16)
-LOOT_TITLE_CUT = (0, 0, 120, 16)
-LOOT_ITEM_CUT = (10, 40, 20, 20)
 
 Stats = tuple[float, float]  # (mean ms, p95 ms)
 
@@ -102,7 +98,6 @@ def _decision_stats(tmp: Path) -> dict[str, Stats]:
         ws.monsters = [Monster("Wolf", 80.0), Monster("Bear", 100.0)]
         ws.selected_target = Monster("Wolf", 80.0)
         ws.capacity = Capacity(weight=95.0, max_weight=100.0)
-    frame = np.zeros((64, 64, 3), np.uint8)
     inp = FakeInput()
 
     healing = HealingDecision()
@@ -124,26 +119,7 @@ def _decision_stats(tmp: Path) -> dict[str, Stats]:
     )
     cavebot.start()
 
-    reader = mock.Mock()
-    reader.read_loot_window.return_value = LootWindow(open=True)
-    looting = Looting(reader, mock.Mock(), inp, ws, frame_provider=lambda: frame)
-
-    (tmp / "refill.json").write_text(
-        json.dumps(
-            {
-                "name": "refill",
-                "waypoints": [
-                    {"x": 100, "y": 100, "z": 7},
-                    {"action": "label", "label": "storage"},
-                    {"x": 100, "y": 100, "z": 7},
-                    {"action": "label", "label": "farming"},
-                ],
-            }
-        )
-    )
-    refill = Refill(
-        RefillConfig(routes_dir=tmp), cavebot, RouteFileLoader(), looting, ws, inp
-    )
+    looting = Looting(inp, clock=clock)
 
     def loot_step(_: int) -> None:
         looting.on_target_died("Wolf")
@@ -156,7 +132,6 @@ def _decision_stats(tmp: Path) -> dict[str, Stats]:
         "alarms": _measure(lambda _: alarms.decide(ws.snapshot())),
         "cavebot": _measure(lambda _: cavebot.step()),
         "looting": _measure(loot_step),
-        "refill": _measure(lambda _: refill.should_refill(ws.snapshot())),
     }
 
 
@@ -188,10 +163,6 @@ def test_timing_report(tmp_path: Path) -> None:
             game_grid_region=GAME_GRID, monster_templates={"probe": [_cut(first, SPRITE_CUT)]}
         ).detect,
         "logocr": lambda f: log.read(f, log_cfg),
-        "loot": LootReader(
-            {TITLE_TEMPLATE: _cut(first, LOOT_TITLE_CUT), "probe": _cut(first, LOOT_ITEM_CUT)},
-            region=(0, 0, 400, 400),
-        ).read_loot_window,
     }
     perception = {
         name: _measure(lambda i, read=read: read(frames[i % len(frames)]))  # type: ignore[misc]

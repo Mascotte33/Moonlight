@@ -92,13 +92,12 @@ def _switch(name: str) -> Option:
 
 
 def test_looting_switch_off_and_on_keeps_values() -> None:
-    cfg = replace(BotConfig.default(), monster_name_source=True)
-    cfg = write_option(cfg, _switch("looting"), True)
-    cfg = write_option(cfg, Option("Max", "looting.max_items_per_loot", "entry"), "7")
+    cfg = write_option(BotConfig.default(), _switch("looting"), True)
+    cfg = write_option(cfg, Option("Wait", "looting.wait_ms", "entry"), "7")
     cfg = write_option(cfg, _switch("looting"), False)
     assert cfg.looting is None
     cfg = write_option(cfg, _switch("looting"), True)
-    assert cfg.looting is not None and cfg.looting.max_items_per_loot == 7
+    assert cfg.looting is not None and cfg.looting.wait_ms == 7
 
 
 def test_cavebot_switch_without_route_refused() -> None:
@@ -111,7 +110,7 @@ def test_cavebot_switch_without_route_refused() -> None:
 def test_off_module_without_kept_values_shows_defaults() -> None:
     cfg = BotConfig.default()
     assert cfg.looting is None and "looting" not in cfg.off
-    assert read_option(cfg, "looting.max_items_per_loot") == LootingConfig().max_items_per_loot
+    assert read_option(cfg, "looting.wait_ms") == LootingConfig().wait_ms
     assert read_option(cfg, "cavebot.rope_hotkey") is None
 
 
@@ -126,9 +125,7 @@ def test_no_field_is_shown_by_two_tabs() -> None:
     ("cfg", "name", "reason"),
     [
         (BotConfig.default(), "cavebot", "Cavebot needs a route"),
-        (BotConfig.default(), "looting", "Looting needs a monster-name reader"),
         (BotConfig.default(), "buffs", "Buffs needs a buff-icon reader"),
-        (BotConfig.default(), "refill", "Refill needs Cavebot and Looting on"),
     ],
 )
 def test_refused_switch_has_a_plain_reason(cfg: BotConfig, name: str, reason: str) -> None:
@@ -137,14 +134,6 @@ def test_refused_switch_has_a_plain_reason(cfg: BotConfig, name: str, reason: st
     with pytest.raises(ConfigError) as exc:
         write_option(cfg, _switch(name), True)
     assert plain_reason(str(exc.value)).startswith(reason)
-
-
-def test_refill_without_capacity_reader_has_a_plain_reason() -> None:
-    from moonlight.gui.settings_tab import plain_reason
-
-    msg = "refill is enabled but no capacity perception source is configured"
-    assert plain_reason(msg).startswith("Refill needs a capacity reader")
-    assert plain_reason("something else") == "something else"
 
 
 @pytest.mark.parametrize(
@@ -203,3 +192,32 @@ def test_show_paused_shows_off_but_keeps_the_saved_value() -> None:
     tab.show_paused(["targeting.enabled"], False)
     assert widget["on"] is True and switch.state == "normal"
     assert tab._readers["targeting.enabled"]() is True
+
+
+# doc: docs/prs/extras.md#extras
+def test_extras_options_write_in_order() -> None:
+    from moonlight.gui.settings_tab import EXTRAS_OPTIONS
+
+    cfg = write_option(BotConfig.default(), _switch("extras"), True)
+    values = {"extras.food_hotkey": "F9", "extras.food": True, "extras.player_minutes": "2.5"}
+    for option in EXTRAS_OPTIONS:
+        if option.field in values:
+            cfg = write_option(cfg, option, values[option.field])
+    assert cfg.extras is not None and cfg.extras.food and cfg.extras.food_hotkey == "F9"
+    assert cfg.extras.player_minutes == 2.5
+    with pytest.raises(ConfigError):
+        write_option(cfg, Option("", "extras.haste", "switch"), True)
+
+
+def test_rotation_switch_is_refused_without_accounts() -> None:
+    from moonlight.gui.settings_tab import ROTATION_OPTIONS
+
+    with pytest.raises(ConfigError):
+        write_option(BotConfig.default(), _switch("rotation"), True)
+    from moonlight.scripts.rotation import Account, RotationConfig
+
+    (hotkey,) = ROTATION_OPTIONS
+    kept = RotationConfig(accounts=(Account("a", "p"), Account("b", "q")))
+    cfg = replace(BotConfig.default(), off={"rotation": kept})
+    cfg = write_option(cfg, hotkey, "ctrl+q")
+    assert cfg.off["rotation"].logout_hotkey == "ctrl+q"

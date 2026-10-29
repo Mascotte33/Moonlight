@@ -56,7 +56,6 @@ def idle_module(**overrides: object) -> mock.Mock:
     m.decide.return_value = None
     m.track.return_value = []
     m.should_loot.return_value = False
-    m.should_refill.return_value = False
     m.is_active.return_value = False
     m.send.return_value = True
     m.alarm = None
@@ -161,16 +160,27 @@ def test_kill_detection_and_loot_state() -> None:
     looting.step.assert_called_once()
 
 
-def test_refill_start_step_and_resume_cavebot() -> None:
-    cavebot = idle_module()
-    refill = idle_module(**{"should_refill.return_value": True, "step.return_value": False})
-    refill.phase = "done"
-    gl, _ = make_loop(make_state(), FakeInput(), refill=refill, cavebot=cavebot)
+def test_alarm_still_loots() -> None:
+    ws = make_state()
+    with ws.lock():
+        ws.players_on_screen = 1  # ALARM
+    looting = idle_module(**{"should_loot.return_value": True})
+    gl, _ = make_loop(ws, FakeInput(), looting=looting)
     gl.tick()
-    assert gl.current_state is BotState.REFILL
-    refill.start.assert_called_once()
-    refill.step.assert_called_once()
-    cavebot.start.assert_called_once()  # route resumed after the trip
+    assert gl.current_state is BotState.ALARM
+    looting.step.assert_called_once()
+
+
+def test_emptied_battle_list_queues_a_loot() -> None:
+    ws = make_state(monsters=2)
+    looting = idle_module()
+    gl, clock = make_loop(ws, FakeInput(), looting=looting)
+    gl.tick()
+    with ws.lock():
+        ws.monsters = []
+    clock.now += 1.0
+    gl.tick()
+    looting.on_target_died.assert_called_once_with("")
 
 
 def test_cavebot_is_default_move_provider() -> None:

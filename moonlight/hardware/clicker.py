@@ -236,6 +236,11 @@ class ClickController:
         """True while a requested click (or the park after it) is in progress."""
         return bool(self._jobs) or self._park is not None
 
+    @property
+    def absolute(self) -> bool:
+        """True when moves go through the firmware's absolute pointer."""
+        return self._screen is not None
+
     def request(
         self,
         target: tuple[int, int],
@@ -368,7 +373,7 @@ class ClickController:
             return None
         job = self._jobs[0]
         if not job.jumped:
-            point = self._to_wire(job.target)
+            point = self.to_wire(job.target)
             if self._sent(lambda: self._input.mouse_to(*point)):
                 job.jumped = True
                 self._last_move = self._clock()
@@ -385,10 +390,10 @@ class ClickController:
                 # ponytail: 16 px left of the minimap is the game view's right
                 # edge in the default layout; make it a config knob if a
                 # layout puts something hover-sensitive there.
-                self._park = self._to_wire((mx - 16, my + mh // 2))
+                self._park = self.to_wire((mx - 16, my + mh // 2))
         return True
 
-    def _to_wire(self, point: tuple[int, int]) -> tuple[int, int]:
+    def to_wire(self, point: tuple[int, int]) -> tuple[int, int]:
         """Frame point -> firmware absolute units (0..ABS_MAX per axis)."""
         assert self._screen is not None
         ox, oy = self._window_origin() if self._window_origin else (0, 0)

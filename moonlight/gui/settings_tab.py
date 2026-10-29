@@ -25,7 +25,14 @@ from moonlight.gui.loop_factory import (
 )
 from moonlight.gui.tab_base import Option, Tab, section, write_option
 
-__all__ = ["MODULE_SWITCHES", "OPTIONS", "SettingsTab", "plain_reason"]
+__all__ = [
+    "EXTRAS_OPTIONS",
+    "MODULE_SWITCHES",
+    "OPTIONS",
+    "ROTATION_OPTIONS",
+    "SettingsTab",
+    "plain_reason",
+]
 
 OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
@@ -35,16 +42,41 @@ OPTIONS = [
 #: The only switch for each module (T2.F4.K2); cavebot and targeting have theirs on their tabs.
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
-    for name in ("healing", "looting", "refill", "buffs", "alarms")
+    for name in (
+        "healing", "looting", "scripts", "extras", "rotation", "buffs", "alarms"
+    )
 ]
+#: One switch and hotkey per extra, then the player limits (docs/prs/extras.md#extras).
+EXTRAS_OPTIONS = [
+    option
+    for name, label in (
+        ("food", "Eat food when hungry"),
+        ("haste", "Haste while walking"),
+        ("buff", "Buff potion"),
+        ("ring", "Ring when the slot is empty"),
+        ("amulet", "Amulet when the slot is empty"),
+    )
+    # The hotkey first: an extra turned on without one is refused.
+    for option in (
+        Option(f"{label}: hotkey", f"extras.{name}_hotkey", "hotkey"),
+        Option(label, f"extras.{name}", "switch"),
+    )
+] + [
+    Option("Buff potion: at least N monsters", "extras.buff_monsters", "entry"),
+    Option("Player staying after (min)", "extras.player_minutes", "entry"),
+    Option("Staying player: go refill", "extras.player_refill", "switch"),
+    Option("Staying player: alarm", "extras.player_alarm", "switch"),
+    Option("Private message: alarm", "extras.pm_alarm", "switch"),
+]
+#: The accounts and passwords are typed into the config file, not here (docs/prs/rotation.md).
+ROTATION_OPTIONS = [Option("Logout hotkey", "rotation.logout_hotkey", "hotkey")]
 
 #: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
 REASONS = [
     ("cavebot.route", "Cavebot needs a route. Pick one in the Route dropdown or record one below."),
-    ("monster-name", "Looting needs a monster-name reader, which the bot doesn't have yet."),
-    ("capacity perception", "Refill needs a capacity reader, which the bot doesn't have yet."),
     ("buff-icon", "Buffs needs a buff-icon reader, which the bot doesn't have yet."),
-    ("refill needs", "Refill needs Cavebot and Looting on."),
+    ("rotation needs the cavebot", "Rotation needs Cavebot on."),
+    ("rotation needs at least", "Rotation needs 2 or more accounts in the config file."),
 ]
 
 
@@ -60,7 +92,7 @@ class SettingsTab(Tab):
     """Named configs (pick, New, Save, Delete) and core options."""
 
     title = "Settings"
-    options = [*OPTIONS, *MODULE_SWITCHES]
+    options = [*OPTIONS, *MODULE_SWITCHES, *EXTRAS_OPTIONS, *ROTATION_OPTIONS]
 
     def build(self, parent: ctk.CTkFrame) -> None:
         io_box = section(parent, "Config")
@@ -90,7 +122,13 @@ class SettingsTab(Tab):
 
         self.box_options = section(parent, "Options")
         self.box_options.pack(fill="x", padx=10, pady=4)
-        self.build_options(self.box_options)
+        self.build_options(self.box_options, [*OPTIONS, *MODULE_SWITCHES])
+        box_extras = section(parent, "Extras")
+        box_extras.pack(fill="x", padx=10, pady=4)
+        self.build_options(box_extras, EXTRAS_OPTIONS)
+        box_rotation = section(parent, "Account rotation")
+        box_rotation.pack(fill="x", padx=10, pady=4)
+        self.build_options(box_rotation, ROTATION_OPTIONS)
         rows = [w for w in self.box_options.winfo_children() if isinstance(w, ctk.CTkFrame)]
         ctk.CTkLabel(
             self.box_options,
@@ -119,7 +157,7 @@ class SettingsTab(Tab):
         ).pack(side="right", padx=theme.UNIT)
         self._refresh_windows()
         self._reasons: dict[str, ctk.CTkLabel] = {}
-        for option, row in zip(self.options, rows, strict=True):
+        for option, row in zip([*OPTIONS, *MODULE_SWITCHES], rows, strict=True):
             for switch in row.winfo_children():
                 if isinstance(switch, ctk.CTkSwitch):
                     switch.configure(command=lambda f=option.field: self._check_switch(f))

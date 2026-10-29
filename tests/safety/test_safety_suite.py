@@ -9,7 +9,6 @@ Tests 13-18 (T32a / F-19) run the production wiring instead: ``wiring.build_loop
 
 from __future__ import annotations
 
-import json
 import threading
 from dataclasses import replace
 from pathlib import Path
@@ -21,18 +20,16 @@ import numpy as np
 import pytest
 
 from moonlight.calibration.calibrate import CalibrationProfile
-from moonlight.cavebot.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
+from moonlight.cavebot.cavebot import Cavebot, Route, Waypoint
 from moonlight.core.config import BotConfig
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import F12Monitor
-from moonlight.core.state import Capacity, Monster, Position, WorldState
+from moonlight.core.state import Monster, Position, WorldState
 from moonlight.core.wiring import build_loop
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.healing.healing import HealingConfig, HealingDecision, HealingRule
 from moonlight.looting.looting import Looting, LootingConfig
-from moonlight.perception.loot import LootWindow
-from moonlight.refill.refill import Refill, RefillConfig
 
 pytestmark = pytest.mark.safety
 
@@ -80,7 +77,6 @@ def idle_module(**overrides: Any) -> mock.Mock:
     m.decide.return_value = None
     m.track.return_value = []
     m.should_loot.return_value = False
-    m.should_refill.return_value = False
     m.is_active.return_value = False
     m.send.return_value = True
     m.alarm = None
@@ -154,7 +150,7 @@ def test_4_stuck_detection_sets_alarm_not_exception() -> None:
     clock.now = 60.1  # no movement for > 60 s
     bot.step()  # must not raise
     assert bot.alarm == "stuck"
-    assert not bot.is_active()
+    assert bot.is_active()  # the route keeps trying
 
 
 def test_5_lost_floor_detection_sets_alarm() -> None:
@@ -260,78 +256,32 @@ def test_10_no_input_while_idle() -> None:
     assert inp.sent_lines == []
 
 
-def test_11_loot_window_input_only_when_open_and_focused() -> None:
+def test_11_loot_key_only_when_focused() -> None:
     inp = FakeInput()
     ws = make_state()
-    reader = mock.Mock()
-    cfg = LootingConfig(loot_hotkey="F7", move_all_hotkey="F6")
-    looting = Looting(
-        reader, mock.Mock(), inp, ws, cfg, frame_provider=lambda: np.zeros((4, 4, 3), np.uint8)
-    )
-    item = mock.Mock()
-    window = LootWindow(open=True, items=[item])
-
-    # Open window but unfocused client -> nothing.
+    looting = Looting(inp, LootingConfig(loot_hotkey="alt+q"), clock=lambda: 0.0)
     looting.on_target_died("Wolf")
-    reader.read_loot_window.return_value = window
     ws.client_focused = False
     assert looting.step(ws) is False
     assert inp.sent_lines == []
-
-    # Focused + open window -> the items are moved.
     ws.client_focused = True
     looting.step(ws)
-    assert inp.sent_lines == ["K F6"]
-
-    # Window never opens: only the single open-hotkey press, then give up.
-    inp2 = FakeInput()
-    looting2 = Looting(
-        reader, mock.Mock(), inp2, ws, cfg, frame_provider=lambda: np.zeros((4, 4, 3), np.uint8)
-    )
-    reader.read_loot_window.return_value = None
-    looting2.on_target_died("Wolf")
-    for _ in range(30):
-        looting2.step(ws)
-    assert inp2.sent_lines == ["K F7"]
-    assert looting2.pending is None
+    assert inp.sent_lines == ["K alt+q"]
 
 
-def test_12_refill_only_starts_above_cap_threshold(tmp_path: Path) -> None:
-    route = {
-        "name": "refill",
-        "waypoints": [
-            {"x": 100, "y": 100, "z": 7},
-            {"action": "label", "label": "storage"},
-            {"x": 100, "y": 100, "z": 7},
-            {"action": "label", "label": "farming"},
-        ],
-    }
-    (tmp_path / "refill.json").write_text(json.dumps(route))
-    cavebot = mock.Mock()
-    cavebot.is_active.return_value = False
-    cavebot.alarm = None
-    looting = mock.Mock()
-    looting.pending = None
-    refill = Refill(
-        RefillConfig(trigger_cap=90.0, routes_dir=tmp_path),
-        cavebot,
-        RouteFileLoader(),
-        looting,
-        make_state(),
-        FakeInput(),
-    )
-    below = make_state(capacity=Capacity(weight=50.0, max_weight=100.0))
-    above = make_state(capacity=Capacity(weight=95.0, max_weight=100.0))
-    assert not refill.should_refill(below)
-    assert refill.should_refill(above)
-
-    # Through the loop: REFILL state only when cap is high.
-    gl, _ = make_loop(below, FakeInput(), refill=refill, cavebot=cavebot)
-    gl.tick()
-    assert gl.current_state is BotState.IDLE
-    gl, _ = make_loop(above, FakeInput(), refill=refill, cavebot=cavebot)
-    gl.tick()
-    assert gl.current_state is BotState.REFILL
+def test_12_refill_only_starts_under_free_cap() -> None:
+    wps = [
+        Waypoint(100, 100, 7),
+        Waypoint(0, 0, 0, "check", "town"),
+        Waypoint(101, 100, 7),
+        Waypoint(0, 0, 0, "label", "town"),
+        Waypoint(120, 100, 7),
+    ]
+    for low, nxt in ((False, 2), (True, 4)):
+        bot, _ = make_cavebot(Clock(), wps, (100, 100), 7)
+        bot._supplies_low = lambda low=low: low
+        bot.step()  # on waypoint 0: reached, past the check
+        assert bot.route.current == nxt
 
 
 # -- F-19: the production wiring (wiring.build_loop + make_perceive + focus) ---------

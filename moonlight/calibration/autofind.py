@@ -20,9 +20,9 @@ from moonlight.perception.vitals import hp_fill_mask
 # doc: docs/prs/gui-calibration.md#finder-registry
 
 # HP/MP bars (moved from tools/calibrate_auto.py, checked on 200 screenshots).
-SEARCH_ROWS = 80          # bars live in the top strip of the client
-MIN_BORDER_RUN = 300      # px; each bar's bottom border is at least this long
-MAX_BORDER_GAP = 20       # px; dark gap between the HP and MP border runs
+SEARCH_ROWS = 80  # bars live in the top strip of the client
+MIN_BORDER_RUN = 300  # px; each bar's bottom border is at least this long
+MAX_BORDER_GAP = 20  # px; dark gap between the HP and MP border runs
 
 
 def _runs(mask: np.ndarray) -> list[tuple[int, int]]:

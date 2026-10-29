@@ -11,6 +11,7 @@ import pytest
 
 from moonlight.core.config import MODULES, BotConfig, ConfigError
 from moonlight.healing.healing import CureRule, HealingConfig, HealingRule
+from moonlight.refill.refill import RefillConfig
 from moonlight.targeting.targeting import AreaRule
 
 
@@ -28,7 +29,6 @@ def raw(**modules: dict[str, Any]) -> dict[str, Any]:
     return {"profile": "p", "hotkeys": {}, "modules": sections}
 
 
-
 def test_old_walk_keys_in_cavebot_still_loads(tmp_path: Path) -> None:
     route_file(tmp_path / "routes")
     data = raw(cavebot={"enabled": True, "route": "hunt", "walk_keys": True})
@@ -36,6 +36,7 @@ def test_old_walk_keys_in_cavebot_still_loads(tmp_path: Path) -> None:
     path = tmp_path / "moonlight_config.json"
     path.write_text(json.dumps(data))
     assert BotConfig.load(path).walk_keys is True
+
 
 def test_default_is_valid() -> None:
     cfg = BotConfig.default()
@@ -50,7 +51,7 @@ def test_load_roundtrip(tmp_path: Path) -> None:
         healing={"enabled": True, "spell_cooldown_ms": 800},
         cavebot={"enabled": True, "route": "hunt", "rope_hotkey": "F5"},
         looting={"enabled": True},
-        refill={"enabled": True, "trigger_cap": 80.0},
+        refill={"enabled": True, "trigger_cap": 80.0, "cap_below": 300},
     )
     data["routes_dir"] = str(tmp_path / "routes")
     data["loop"] = {"tick_rate": 10.0, "enable_f12_monitor": False}
@@ -65,36 +66,41 @@ def test_load_roundtrip(tmp_path: Path) -> None:
     assert cfg.healing == HealingConfig(spell_cooldown_ms=800)
     assert cfg.cavebot is not None and cfg.cavebot.route.name == "hunt"
     assert cfg.cavebot.rope_hotkey == "F5" and cfg.walk_keys is True
-    assert cfg.refill is not None and cfg.refill.trigger_cap == 80.0
+    assert cfg.refill is not None and cfg.refill.cap_below == 300  # the old used cap % is dropped
     assert cfg.loop.tick_rate == 10.0 and cfg.serial_port == "COM7"
     assert cfg.targeting is None
     assert cfg.monster_name_source is True and cfg.capacity_source is True
 
 
-def test_looting_refused_without_name_source() -> None:
-    """F-09: looting without a monster-name perception source is refused."""
-    data = raw(looting={"enabled": True})
-    with pytest.raises(ConfigError, match="monster-name perception source"):
-        BotConfig.from_dict(data)
-    data["monster_name_source"] = True
+def test_looting_loads_a_config_saved_with_the_loot_window_keys() -> None:
+    data = raw(
+        looting={
+            "enabled": True,
+            "move_all_hotkey": None,
+            "max_items_per_loot": 25,
+            "min_cap_to_loot": 10.0,
+        }
+    )
     assert BotConfig.from_dict(data).looting is not None
 
 
-def test_refill_refused_without_capacity_source(tmp_path: Path) -> None:
-    """F-09: refill without a capacity perception source is refused."""
+def test_refill_follows_the_cavebot_and_loads_old_route_file_keys(tmp_path: Path) -> None:
     route_file(tmp_path / "routes")
-    data = raw(
-        cavebot={"enabled": True, "route": "hunt"},
-        looting={"enabled": True},
-        refill={"enabled": True},
-    )
+    old = {"enabled": False, "route_name": "refill", "stop_cap": 50.0, "deposit_hotkey": "F5"}
+    assert BotConfig.from_dict(raw(refill={**old, "enabled": True})).refill is None
+    data = raw(cavebot={"enabled": True, "route": "hunt"}, refill=old)
     data["routes_dir"] = str(tmp_path / "routes")
-    # Let the looting guard pass so the capacity guard is what fires.
-    data["monster_name_source"] = True
-    with pytest.raises(ConfigError, match="capacity perception source"):
-        BotConfig.from_dict(data)
-    data["capacity_source"] = True
-    assert BotConfig.from_dict(data).refill is not None
+    assert BotConfig.from_dict(data).refill == RefillConfig()
+
+
+def test_scripts_timers_load_and_a_config_without_scripts_still_loads() -> None:
+    cfg = BotConfig.from_dict(raw(scripts={"enabled": True, "timers": "eat 60"}))
+    assert cfg.scripts is not None and cfg.scripts.timers == "eat 60"
+    old = raw()
+    del old["modules"]["scripts"]
+    assert BotConfig.from_dict(old).scripts is None
+    with pytest.raises(ConfigError):
+        BotConfig.from_dict(raw(scripts={"enabled": True, "timers": "eat"}))
 
 
 def test_buffs_refused_without_icon_source() -> None:
@@ -130,7 +136,6 @@ def test_buffs_refused_without_icon_source() -> None:
         lambda d: d.update(profile=""),
         lambda d: d["modules"].update(cavebot={"enabled": True}),
         lambda d: d["modules"].update(cavebot={"enabled": True, "route": "missing"}),
-        lambda d: d["modules"].update(refill={"enabled": True}),
     ],
 )
 def test_fail_closed(mutate: Any) -> None:
@@ -244,7 +249,7 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
         alarms={"enabled": True},
         cavebot={"enabled": True, "route": "hunt", "rope_hotkey": "F5"},
         looting={"enabled": True},
-        refill={"enabled": True, "trigger_cap": 80.0},
+        refill={"enabled": True, "cap_below": 300},
     )
     data["hotkeys"]["utani hur"] = "F3"
     data.update(
@@ -287,3 +292,34 @@ def test_window_title_roundtrip() -> None:
     assert BotConfig.default().window_title == TIBIA_WINDOW_TITLE
     cfg = replace(BotConfig.default(), window_title="Tibia - Gunzodus")
     assert BotConfig.from_dict(cfg.to_dict()).window_title == "Tibia - Gunzodus"
+
+
+def test_extras_load_and_a_config_without_extras_still_loads() -> None:
+    cfg = BotConfig.from_dict(raw(extras={"enabled": True, "food": True, "food_hotkey": "F10"}))
+    assert cfg.extras is not None and cfg.extras.food_hotkey == "F10"
+    old = raw()
+    del old["modules"]["extras"]
+    assert BotConfig.from_dict(old).extras is None
+    with pytest.raises(ConfigError):
+        BotConfig.from_dict(raw(extras={"enabled": True, "food": True}))
+
+
+def test_rotation_accounts_load_round_trip_and_need_the_cavebot(tmp_path: Path) -> None:
+    route_file(tmp_path / "routes")
+    accounts = [{"login": "a1", "password": "p1"}, {"login": "b2", "password": "p2", "minutes": 30}]
+    section = {"enabled": True, "accounts": accounts}
+    with pytest.raises(ConfigError, match="rotation needs the cavebot"):
+        BotConfig.from_dict(raw(rotation=section))
+    data = raw(cavebot={"enabled": True, "route": "hunt"}, rotation=section)
+    data["routes_dir"] = str(tmp_path / "routes")
+    cfg = BotConfig.from_dict(data)
+    assert cfg.rotation is not None and cfg.rotation.accounts[1].minutes == 30.0
+    assert BotConfig.from_dict(cfg.to_dict()) == cfg
+    old = raw()
+    del old["modules"]["rotation"]
+    assert BotConfig.from_dict(old).rotation is None
+    data["modules"]["rotation"] = {"enabled": True, "accounts": accounts[:1]}
+    with pytest.raises(ConfigError, match="needs at least 2 accounts"):
+        BotConfig.from_dict(data)
+    off = BotConfig.from_dict(raw(rotation={"enabled": False, "logout_hotkey": "ctrl+l"}))
+    assert off.off["rotation"].accounts == ()  # no accounts yet is fine while off

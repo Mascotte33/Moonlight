@@ -1,8 +1,9 @@
-"""Cavebot tab: Waypoints, and a Refill / Loot / Edit route switch (T3.F1.K1, T3.F7.K1, T3.F8.K1).
+"""Cavebot tab: Waypoints, and a Refill / Loot / Scripts / Edit route switch
+(T3.F1.K1, T3.F7.K1, T3.F8.K1).
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, read by
-:class:`RouteFileLoader`. ``cavebot.route`` and ``refill.route_name`` are
-saved by name, so their dropdowns hold names. Picking a route loads it into
+:class:`RouteFileLoader`. ``cavebot.route`` is saved by
+name, so its dropdown holds names. Picking a route loads it into
 the editor; waypoints are added by hand or recorded while walking (T3.F9.K1)
 and reach the route file only on Save.
 """
@@ -15,12 +16,24 @@ from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from tkinter import messagebox
+from typing import Any
 
 import customtkinter as ctk
+import numpy as np
+from PIL import Image
 
-from moonlight.cavebot.cavebot import ACTIONS, Route, RouteError, RouteFileLoader, Waypoint
+from moonlight.cavebot.cavebot import (
+    ACTIONS,
+    WALK_KEYS,
+    Route,
+    RouteError,
+    RouteFileLoader,
+    Waypoint,
+    has_tile,
+)
 from moonlight.cavebot.recorder import (
     StandTracker,
+    cursor_line,
     make_waypoint,
     position_line,
     route_path,
@@ -35,20 +48,25 @@ from moonlight.gui import loop_factory, theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.settings_tab import plain_reason
 from moonlight.gui.tab_base import Option, Tab, read_option, section, write_option
+from moonlight.refill.refill import LAST_READ
+from moonlight.scripts.scripts import ScriptRunner
 
 __all__ = [
     "LOOT_OPTIONS",
     "OPTIONS",
     "REFILL_OPTIONS",
     "ROUTE",
+    "SCRIPT_OPTIONS",
     "SWITCH",
     "CavebotTab",
     "apply_cavebot",
     "picked_route",
     "picked_waypoint",
+    "refill_now",
     "drop_route",
     "route_names",
     "waypoint_line",
+    "move_waypoint",
     "waypoint_table",
 ]
 
@@ -58,9 +76,9 @@ NO_ROUTES_HINT = "No routes yet. Press New, then add waypoints in Edit route."
 #: The cavebot's only on/off switch (Settings has none for it).
 SWITCH = Option("Cavebot on", "cavebot.enabled", "switch")
 ROUTE = Option("Route", "cavebot.route", "dropdown")
-#: Waypoint buttons, one row each: walking, changing floor, jumping. Stairs
-#: are walked over like any tile, so they get no button.
-KIND_ROWS = (ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:])
+#: Waypoint buttons, one row each: walking, changing floor, jumping, town, scripts.
+#: Stairs are walked over like any tile, so they get no button.
+KIND_ROWS = (ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:11], ACTIONS[11:14], ACTIONS[14:16])
 #: Shown under the position while the minimap matches no map tile.
 LOST_HINT = "No map match. Use minimap zoom 1 or 2, or explore the area first."
 #: Direction pad: (arrow, dx, dy) in 3x3 order. Up is north, y - 1.
@@ -86,16 +104,16 @@ OPTIONS = [
 ]
 LOOT_OPTIONS = [
     Option("Loot hotkey", "looting.loot_hotkey", "hotkey"),
-    Option("Move-all hotkey (blank = none)", "looting.move_all_hotkey", "hotkey"),
-    Option("Min cap to loot (oz)", "looting.min_cap_to_loot", "entry"),
+    Option("Wait after looting (ms)", "looting.wait_ms", "entry"),
+    Option("Loot only at HP % or above", "looting.min_hp_to_loot", "entry", min=0, max=100),
 ]
-REFILL_ROUTE = Option("Refill route", "refill.route_name", "dropdown")
 REFILL_OPTIONS = [
-    Option("Start refill at used cap %", "refill.trigger_cap", "entry"),
-    Option("Stop at used cap %", "refill.stop_cap", "entry"),
-    REFILL_ROUTE,
-    Option("Storage hotkey", "refill.storage_hotkey", "hotkey"),
-    Option("Deposit hotkey (blank = none)", "refill.deposit_hotkey", "hotkey"),
+    Option("cap <", "refill.cap_below", "entry", min=0, off_at_zero=True),
+    Option("HP pots <", "refill.health_potions_below", "entry", min=0, off_at_zero=True),
+    Option("MP pots <", "refill.mana_potions_below", "entry", min=0, off_at_zero=True),
+]
+SCRIPT_OPTIONS = [
+    Option("Timed scripts (name seconds, ...)", "scripts.timers", "entry"),
 ]
 
 
@@ -114,7 +132,7 @@ def drop_route(cfg: BotConfig, name: str) -> BotConfig:
     """*cfg* without route *name*, so the route file can be deleted.
 
     A cavebot on *name* moves to the first other route on disk, from its
-    first waypoint, or turns off (refill with it) when none is left.
+    first waypoint, or turns off when none is left.
     """
     if picked_route(cfg) != name:
         return cfg
@@ -125,13 +143,22 @@ def drop_route(cfg: BotConfig, name: str) -> BotConfig:
         modules["cavebot"].update(route=left[0], start_index=0)
     else:
         modules["cavebot"] = {"enabled": False}
-        modules["refill"]["enabled"] = False
     return BotConfig.from_dict(data)
 
 
 def picked_waypoint(line: int, count: int) -> int | None:
     """The waypoint (0-based) on *line* of :func:`waypoint_table`; line 1 is the header."""
     return line - 2 if 2 <= line < count + 2 else None
+
+
+# doc: docs/prs/potion-count.md#waypoint-order
+def move_waypoint(waypoints: list[Waypoint], index: int, by: int) -> int:
+    """Swap waypoint *index* with its neighbour *by* (-1 up, +1 down); its new index."""
+    to = index + by
+    if not 0 <= to < len(waypoints):
+        return index
+    waypoints[index], waypoints[to] = waypoints[to], waypoints[index]
+    return to
 
 
 def waypoint_table(route: Route | None, current: int | None = None) -> str:
@@ -141,7 +168,7 @@ def waypoint_table(route: Route | None, current: int | None = None) -> str:
     lines = [f" {'#':>3}  {'Type':<7} {'Coordinates':<19} Label"]
     for i, wp in enumerate(route.waypoints):
         mark = ">" if i == current else " "
-        where = "" if wp.action in ("label", "goto") else f"({wp.x}, {wp.y}, {wp.z})"
+        where = f"({wp.x}, {wp.y}, {wp.z})" if has_tile(wp) else ""
         lines.append(f"{mark}{i + 1:>3}  {wp.action:<7} {where:<19} {wp.label}".rstrip())
     return "\n".join(lines)
 
@@ -152,13 +179,12 @@ def waypoint_line(current: int | None, total: int) -> str:
 
 
 def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
-    """*cfg* with the cavebot, loot and refill option *values*.
+    """*cfg* with the cavebot, loot, refill and script option *values*.
 
     The cavebot route is written first. With no route on disk picked the
     cavebot options are skipped, so Save still works for an off cavebot
-    without routes. A blank cavebot hotkey keeps its default; a blank
-    deposit or move-all hotkey means none. The start waypoint is given
-    1-based. Loot goes before refill, which needs looting on. The switch
+    without routes. A blank cavebot hotkey keeps its default. The start
+    waypoint is given 1-based. The switch
     goes after the route, so turning the cavebot on with no route is refused.
 
     Raises:
@@ -176,7 +202,7 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
                 cfg = write_option(cfg, option, values[option.field])
     if SWITCH.field in values:
         cfg = write_option(cfg, SWITCH, values[SWITCH.field])
-    for option in LOOT_OPTIONS + REFILL_OPTIONS:
+    for option in LOOT_OPTIONS + REFILL_OPTIONS + SCRIPT_OPTIONS:
         if option.field in values:
             cfg = write_option(cfg, option, values[option.field])
     return cfg
@@ -219,11 +245,19 @@ def _button(parent: ctk.CTkFrame, text: str, command: Callable[[], None]) -> ctk
     )
 
 
+def refill_now(cavebot: Any) -> str:
+    """Send the running *cavebot* to town at its next ``check``; the message to show."""
+    if cavebot is None:
+        return "Start the bot with Cavebot on first"
+    cavebot.refill_now = True
+    return "Refill at the next check waypoint"
+
+
 class CavebotTab(Tab):
-    """Waypoints card beside one card switching Refill, Loot and Edit route."""
+    """Waypoints card beside one card switching Refill, Loot, Scripts and Edit route."""
 
     title = "Cavebot"
-    options = OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS
+    options = OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS + SCRIPT_OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
         root = ctk.CTkFrame(parent, fg_color="transparent")
@@ -232,6 +266,8 @@ class CavebotTab(Tab):
             root.grid_columnconfigure(col, weight=weight, uniform="cards")
         root.grid_rowconfigure(0, weight=1)
         self._root, self._locked = root, False
+        self._last_read: dict[str, tuple[ctk.CTkLabel, ctk.CTkLabel]] = {}
+        self._shown_read: dict[str, object] = {}
 
         box = section(root, "Waypoints")
         box.grid(row=0, column=0, sticky="nsew", padx=(0, theme.GAP))
@@ -261,17 +297,25 @@ class CavebotTab(Tab):
         )
         self.wp_list.pack(fill="both", expand=True, padx=theme.PAD, pady=(theme.UNIT, 0))
         self.wp_list.tag_config("current", foreground=theme.LIFE)
+        self.wp_list.tag_config("selected", background=theme.HOVER)
+        self.wp_list.bind("<Button-1>", self._select_waypoint)
         self.wp_list.bind("<Double-Button-1>", self._pick_waypoint)
+        moves = ctk.CTkFrame(box, fg_color="transparent")
+        moves.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        for arrow, by in (("▲", -1), ("▼", 1)):
+            button = _button(moves, arrow, partial(self._move, by))
+            button.configure(width=32)
+            button.pack(side="left", padx=(0, theme.UNIT))
         self.lbl_current = ctk.CTkLabel(box, text="Not running", anchor="w")
         self.lbl_current.pack(fill="x", padx=theme.PAD)
         self.lbl_msg = ctk.CTkLabel(box, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
-        side = section(root, "Refill / Loot / Edit route")
+        side = section(root, "Refill / Loot / Scripts / Edit route")
         side.grid(row=0, column=1, sticky="nsew")
         pages = {
             name: ctk.CTkFrame(side, fg_color="transparent")
-            for name in ("Refill", "Loot", "Edit route")
+            for name in ("Refill", "Loot", "Scripts", "Edit route")
         }
 
         def show(name: str) -> None:
@@ -291,9 +335,10 @@ class CavebotTab(Tab):
         ctk.CTkLabel(
             refill,
             text=(
-                "When your used capacity reaches the start %, the bot walks the refill route"
-                " to its 'storage' label. It deposits until used capacity is down to the stop %,"
-                " then walks to the 'farming' label and hunts again."
+                "Add 'check' with label 'town' on the tile where the bot should decide."
+                " There it jumps to label 'town' when free cap or potions are under these"
+                " numbers, or Refill now was pressed; else it goes on. Put the town trip"
+                " after label 'town' and end it with a 'goto' back to the hunt."
             ),
             anchor="w",
             justify="left",
@@ -301,20 +346,50 @@ class CavebotTab(Tab):
             text_color=theme.TEXT_DIM,
         ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.build_options(refill, REFILL_OPTIONS)
-        self.menu_refill_route = _menu(refill, REFILL_OPTIONS, REFILL_ROUTE)
+        # doc: docs/prs/potion-count.md#last-read
+        rows = [w for w in refill.winfo_children() if isinstance(w, ctk.CTkFrame)]
+        for option, row in zip(REFILL_OPTIONS, rows, strict=True):
+            text = ctk.CTkLabel(row, text="last read: —", text_color=theme.TEXT_MUTED)
+            text.pack(side="left", padx=(theme.UNIT, 0))
+            picture = ctk.CTkLabel(row, text="")
+            picture.pack(side="left", padx=(theme.UNIT, 0))
+            self._last_read[option.field] = (text, picture)
+        _button(refill, "Refill now", self._refill_now).pack(
+            anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0)
+        )
         self.build_options(pages["Loot"], LOOT_OPTIONS)
+        # doc: docs/prs/scripts.md#script-api
+        ctk.CTkLabel(
+            pages["Scripts"],
+            text=(
+                "A script is a .py file in scripts/ with def run(bot). A 'script' waypoint"
+                " runs it by name (label 'example' runs scripts/example.py); timed scripts run"
+                " every N seconds while Scripts is on in Settings. Scripts: "
+                + (", ".join(ScriptRunner().names()) or "none yet")
+            ),
+            anchor="w",
+            justify="left",
+            wraplength=260,
+            text_color=theme.TEXT_DIM,
+        ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self.build_options(pages["Scripts"], SCRIPT_OPTIONS)
         show("Refill")
 
         edit = pages["Edit route"]
         add = ctk.CTkFrame(edit, fg_color="transparent")
         add.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.ent_label = _entry(add, "label", 80)
-        self.ent_x, self.ent_y, self.ent_z = (_entry(add, axis, 56) for axis in "XYZ")
+        # doc: docs/prs/refill.md#drag-waypoint
+        self.lbl_cursor = ctk.CTkLabel(
+            edit, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
+        )
+        self.lbl_cursor.pack(fill="x", padx=theme.PAD)
+        self._capture: Any = None  # ScreenCapture, made on the first draw
         tools = ctk.CTkFrame(edit, fg_color="transparent")
         tools.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         for text, command in (("Undo", self._undo), ("Clear", self._clear)):
             _button(tools, text, command).pack(side="left", padx=(0, theme.UNIT))
-        # T3.F9.K2: one button per waypoint type, at X, Y, Z or the bot's position.
+        # T3.F9.K2: one button per waypoint type, at the bot's position.
         kinds = ctk.CTkFrame(edit, fg_color="transparent")
         kinds.pack(anchor="w", padx=theme.PAD, pady=(theme.PAD, 0))
         for row, group in enumerate(KIND_ROWS):
@@ -322,7 +397,8 @@ class CavebotTab(Tab):
                 button = _button(kinds, action.capitalize(), partial(self._add_action, action))
                 button.configure(width=64)
                 button.grid(row=row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
-        # A stand waypoint one sqm away from X, Y, Z or the bot; the middle one is that sqm.
+        # doc: docs/prs/steps.md#step-waypoint
+        # A step waypoint on X, Y, Z or the bot's sqm: one key press that way; the middle stands.
         pad = ctk.CTkFrame(edit, fg_color="transparent")
         pad.pack(anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0))
         for i, (arrow, dx, dy) in enumerate(DIRECTIONS):
@@ -352,6 +428,8 @@ class CavebotTab(Tab):
         self._dirty = False
         self._error = ""
         self._text = ""
+        #: The waypoint clicked once (highlighted; the arrows move it).
+        self._selected: int | None = None
         self._recording = False
         self._stand = StandTracker()
         self._stood_before: Position | None = None  # for the stairs walked over
@@ -364,7 +442,6 @@ class CavebotTab(Tab):
         names = route_names(self._routes_dir)
         listed = names if not self._name or self._name in names else [*names, self._name]
         self.menu_route.configure(values=listed or [NO_ROUTES])
-        self.menu_refill_route.configure(values=names or [NO_ROUTES])
         return names
 
     def _reload(self) -> None:
@@ -405,6 +482,7 @@ class CavebotTab(Tab):
     def _show_route(self, name: str) -> None:
         """Load route *name* into the editor; unsaved edits are dropped."""
         self._waypoints = []
+        self._selected = None
         self._error = ""
         self._name = ""
         if name not in (NO_ROUTES, PICK):
@@ -452,19 +530,59 @@ class CavebotTab(Tab):
             (self.lbl_current, running),
             (self.lbl_pos, position_line(self._last if lost else self._pos, self._status)),
             (self.lbl_hint, hint),
+            (self.lbl_cursor, self._cursor_text()),
         ):
             if label.cget("text") != value:
                 label.configure(text=value)
+        if self._selected is not None and self._selected >= len(self._waypoints):
+            self._selected = None
         if text == self._text:
             return
         self._text = text
+        top = self.wp_list.yview()[0]
         self.wp_list.configure(state="normal")
         self.wp_list.delete("1.0", "end")
         self.wp_list.insert("1.0", text)
+        self.wp_list.yview_moveto(top)  # keep the scroll where it was
         if current is not None and not self._error:  # line 1 is the header
             self.wp_list.tag_add("current", f"{current + 2}.0", f"{current + 2}.end")
             self.wp_list.see(f"{current + 2}.0")
+        self._mark_selected()
         self.wp_list.configure(state="disabled")
+
+    def _mark_selected(self) -> None:
+        self.wp_list.tag_remove("selected", "1.0", "end")
+        if self._selected is not None and not self._error:
+            line = self._selected + 2
+            self.wp_list.tag_add("selected", f"{line}.0", f"{line}.end+1c")
+
+    def _select_waypoint(self, event: tk.Event) -> None:
+        """One click: highlight that waypoint for the arrows."""
+        line = int(str(self.wp_list.index(f"@{event.x},{event.y}")).split(".")[0])
+        self._selected = None if self._error else picked_waypoint(line, len(self._waypoints))
+        self._mark_selected()
+
+    def _move(self, by: int) -> None:
+        """Move the selected waypoint one row up (-1) or down (+1)."""
+        if self._selected is None:
+            self.lbl_msg.configure(text="Click a waypoint first")
+            return
+        to = move_waypoint(self._waypoints, self._selected, by)
+        if to != self._selected:
+            self._selected = to
+            self._changed()
+            self.wp_list.see(f"{to + 2}.0")
+
+    def _refill_now(self) -> None:
+        self.lbl_msg.configure(text=refill_now(self.ctx.live_cavebot()))
+
+    def _cursor_text(self) -> str:
+        from moonlight.perception.capture import ScreenCapture
+        from moonlight.perception.cursor import screen_cursor
+
+        if self._capture is None:
+            self._capture = ScreenCapture(window_title=load_real_config().window_title)
+        return cursor_line(screen_cursor(), self._capture.get_window_rect())
 
     def _pick_waypoint(self, event: tk.Event) -> str:
         """Double-click: the running bot walks to that waypoint next, else starts there."""
@@ -513,31 +631,27 @@ class CavebotTab(Tab):
             self.submit()
 
     def _add_action(self, action: str) -> None:
-        """Add *action* at the character's tile; X, Y, Z when typed and not recording."""
-        typed = (self.ent_x.get(), self.ent_y.get(), self.ent_z.get())
-        if self._recording:
-            typed = ("",) * 3
+        """Add *action* on the character's tile."""
         at = self._stand.stood if self._recording else None
         try:
-            wp = make_waypoint(action, self.ent_label.get(), typed, at or self._pos)
+            wp = make_waypoint(action, self.ent_label.get(), at or self._pos)
         except RouteError as exc:
             self.lbl_msg.configure(text=str(exc))
             return
         self._waypoints.append(wp)
         self.lbl_msg.configure(text=f"Added {wp.action} ({len(self._waypoints)} waypoints)")
         self._changed()
+        self.wp_list.see("end")
 
     def _add_step(self, dx: int, dy: int) -> None:
-        """Add a stand waypoint *dx*, *dy* sqm from X, Y, Z or the bot."""
-        manual = (self.ent_x.get(), self.ent_y.get(), self.ent_z.get())
-        try:
-            wp = make_waypoint("stand", "", manual, self._pos)
-        except RouteError as exc:
-            self.lbl_msg.configure(text=str(exc))
-            return
-        self._waypoints.append(replace(wp, x=wp.x + dx, y=wp.y + dy))
-        self.lbl_msg.configure(text=f"Added stand ({len(self._waypoints)} waypoints)")
-        self._changed()
+        """Add a step (one walk key *dx*, *dy*) on the bot's sqm; 0, 0: a stand."""
+        count = len(self._waypoints)
+        self._add_action("stand")
+        if (dx, dy) != (0, 0) and len(self._waypoints) > count:
+            wp = replace(self._waypoints[-1], action="step", label=WALK_KEYS[dx, dy])
+            self._waypoints[-1] = wp
+            self.lbl_msg.configure(text=f"Added step {wp.label} ({len(self._waypoints)} waypoints)")
+            self._changed()
 
     def _undo(self) -> None:
         if self._waypoints:
@@ -617,6 +731,10 @@ class CavebotTab(Tab):
 
     def on_poll(self, snap: WorldState) -> None:
         self.show_paused([SWITCH.field], self.ctx.paused)
+        for field, read in LAST_READ.items():
+            if field in self._last_read and self._shown_read.get(field) is not read:
+                self._shown_read[field] = read
+                self._show_read(field, *read)
         self._pos = pos = snap.position
         self._status = snap.position_status
         if pos != Position(0, 0, 0):
@@ -641,6 +759,14 @@ class CavebotTab(Tab):
                 self._waypoints.append(Waypoint(stood.x, stood.y, stood.z))
                 self._changed()
         self._draw()
+
+    def _show_read(self, field: str, n: int | None, pixels: np.ndarray | None) -> None:
+        text, picture = self._last_read[field]
+        text.configure(text=f"last read: {'?' if n is None else n}")
+        # Not found: a 1x1 dark dot (customtkinter keeps the old picture on image=None).
+        pixels = np.zeros((1, 1, 3), np.uint8) if pixels is None else pixels
+        image = Image.fromarray(np.ascontiguousarray(pixels))
+        picture.configure(image=ctk.CTkImage(image, size=image.size))
 
     def reload_options(self) -> None:
         super().reload_options()

@@ -178,6 +178,13 @@ class RateLimitedInput(InputBackend):
         if self._pay("click"):
             self.backend.click(side)
 
+    def mouse_down(self, side: ClickSide) -> None:
+        if self._pay("mouse_down"):
+            self.backend.mouse_down(side)
+
+    def mouse_up(self, side: ClickSide) -> None:
+        self.backend.mouse_up(side)
+
     def ping(self) -> bool:
         return self.backend.ping()
 
