@@ -339,10 +339,18 @@ or in the `targeting` section of your profile config:
   waypoint (`cavebot: waypoint N unreachable, skipping` in the log) and the
   next ones until one on its floor has a way. When none has (a player in
   the only path), it stands still and tries the blocked tiles again every
-  2 s, walking on as soon as one is free; after 60 s it raises the stuck
-  alarm and keeps trying. A route that goes 60 s without moving for any
-  other reason also raises the stuck alarm and keeps trying; it never stops by itself
-  for being stuck (`cavebot: moving again` clears the alarm). Diagonals need the client's chat off (WASD walking).
+  2 s, walking on as soon as one is free. **Stuck** (no movement for 60 s) is
+  no alarm: the cavebot goes to the nearest other waypoint on its floor
+  that has a way (`cavebot: stuck at X,Y,Z, going to waypoint N`) and carries on
+  from there; with none it looks again every 5 s. **Lost** (standing on a floor
+  with no waypoint of the route) is no alarm either: the cavebot tries, one try
+  every 2 s, the rope (only if it went down a floor; rope hotkey), a right-click
+  on its own tile (ladder, sewer grate), then one step in each of N, E, S, W, NE,
+  SE, SW, NW (walking back to the arrival tile between steps). As soon as it
+  stands on a floor of the route it walks to the nearest waypoint there. A step
+  onto another floor without waypoints runs the list once more from there. When
+  all fail (`cavebot: lost on floor N, escape failed`) it stands still (healing
+  and attacking go on) and runs the list again every 60 s. Diagonals need the client's chat off (WASD walking).
 - **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
