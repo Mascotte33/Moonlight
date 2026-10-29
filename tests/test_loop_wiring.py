@@ -91,7 +91,12 @@ def test_stuck_cavebot_hands_over_to_stuck_targeting_until_a_kill() -> None:
     stuck_targeting = idle_module(
         **{"decide.return_value": action, "row_center.return_value": (5, 6)}
     )
-    cavebot = idle_module(stuck_on_creatures=True, **{"luring.return_value": False})
+    cavebot = idle_module(
+        stuck_on_creatures=True,
+        creature_in_the_way_clicked_until=float("-inf"),
+        **{"luring.return_value": False},
+    )
+    cavebot.on_target_killed.side_effect = lambda: setattr(cavebot, "stuck_on_creatures", False)
     clicker = mock.Mock(busy=False, **{"step.return_value": None})
     ws = make_state(monsters=1)
     gl, clock = make_loop(
@@ -155,13 +160,16 @@ def test_ring_press_does_not_stop_the_attack() -> None:
     targeting = idle_module(**{"decide.return_value": action, "row_center.return_value": (5, 6)})
     looting = idle_module(**{"ring_due.return_value": True})
     clicker = mock.Mock(busy=False, **{"step.return_value": None})
-    gl, _ = make_loop(
-        make_state(monsters=1), FakeInput(), targeting=targeting, looting=looting, clicker=clicker
-    )
+    ws = make_state(target="Wolf", monsters=2)
+    gl, clock = make_loop(ws, FakeInput(), targeting=targeting, looting=looting, clicker=clicker)
+    gl.tick()
+    with ws.lock():
+        ws.selected_target, ws.monsters = None, [Monster(name="m1")]  # the wolf died
+    clock.now += 1.0
     gl.tick()
     looting.press_ring.assert_called_once()
     assert gl.current_state is BotState.ATTACK
-    clicker.request.assert_called_once_with((5, 6))
+    clicker.request.assert_called_with((5, 6))
 
 
 def test_emptied_battle_list_queues_a_loot() -> None:
