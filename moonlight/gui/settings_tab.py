@@ -46,7 +46,7 @@ MODULE_SWITCHES = [
         "healing", "looting", "scripts", "extras", "rotation", "buffs", "alarms"
     )
 ]
-#: One switch and hotkey per extra, then the player limits (docs/prs/extras.md#extras).
+#: One row per extra: its hotkey and checkbox, then the player limits (docs/prs/extras.md#extras).
 EXTRAS_OPTIONS = [
     option
     for name, label in (
@@ -58,14 +58,14 @@ EXTRAS_OPTIONS = [
     )
     # The hotkey first: an extra turned on without one is refused.
     for option in (
-        Option(f"{label}: hotkey", f"extras.{name}_hotkey", "hotkey"),
-        Option(label, f"extras.{name}", "switch"),
+        Option(label, f"extras.{name}_hotkey", "hotkey"),
+        Option("", f"extras.{name}", "checkbox"),
     )
 ] + [
     Option("Player staying after (min)", "extras.player_minutes", "entry"),
-    Option("Staying player: go refill", "extras.player_refill", "switch"),
-    Option("Staying player: alarm", "extras.player_alarm", "switch"),
-    Option("Private message: alarm", "extras.pm_alarm", "switch"),
+    Option("Staying player: go refill", "extras.player_refill", "checkbox"),
+    Option("Staying player: alarm", "extras.player_alarm", "checkbox"),
+    Option("Private message: alarm", "extras.pm_alarm", "checkbox"),
 ]
 #: The accounts and passwords are typed into the config file, not here (docs/prs/rotation.md).
 ROTATION_OPTIONS = [Option("Logout hotkey", "rotation.logout_hotkey", "hotkey")]

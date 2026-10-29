@@ -206,7 +206,20 @@ def test_extras_options_write_in_order() -> None:
     assert cfg.extras is not None and cfg.extras.food and cfg.extras.food_hotkey == "F9"
     assert cfg.extras.player_minutes == 2.5
     with pytest.raises(ConfigError):
-        write_option(cfg, Option("", "extras.haste", "switch"), True)
+        write_option(cfg, Option("", "extras.haste", "checkbox"), True)
+
+
+def test_each_extra_is_one_row_hotkey_then_checkbox() -> None:
+    from moonlight.gui.settings_tab import EXTRAS_OPTIONS
+
+    fields = [option.field for option in EXTRAS_OPTIONS]
+    for name in ("food", "haste", "buff", "ring", "amulet"):
+        at = fields.index(f"extras.{name}_hotkey")
+        hotkey, box = EXTRAS_OPTIONS[at], EXTRAS_OPTIONS[at + 1]
+        assert hotkey.label and hotkey.control == "hotkey"
+        assert box.field == f"extras.{name}"
+        assert box.label == "" and box.control == "checkbox"
+    assert all(option.control != "switch" for option in EXTRAS_OPTIONS)
 
 
 def test_rotation_switch_is_refused_without_accounts() -> None:

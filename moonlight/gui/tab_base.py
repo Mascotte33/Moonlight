@@ -64,12 +64,13 @@ class Option:
     *field* is a dotted path into :class:`BotConfig`, e.g.
     ``"healing.normal_hp_percent"``. ``"<module>.enabled"`` turns a module
     on or off; writing any other field never changes that. An entry with
-    *off_at_zero* shows a grayed "off" while it holds 0.
+    *off_at_zero* shows a grayed "off" while it holds 0. An option with an
+    empty *label* sits on the row of the option before it.
     """
 
     label: str
     field: str
-    control: Literal["slider", "switch", "entry", "dropdown", "hotkey"]
+    control: Literal["slider", "switch", "checkbox", "entry", "dropdown", "hotkey"]
     min: float | None = None
     max: float | None = None
     choices: list[str] | None = None
@@ -302,15 +303,16 @@ class Tab:
             self.ctx.config_listeners.append(self.reload_options)
         cfg = load_real_config()
         for option in self.options if options is None else options:
-            row = ctk.CTkFrame(parent, fg_color="transparent")
-            row.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-            ctk.CTkLabel(
-                row,
-                text=option.label,
-                anchor="w",
-                font=ctk.CTkFont(size=theme.SIZE_BODY),
-                text_color=theme.TEXT_DIM,
-            ).pack(side="left")
+            if option.label:
+                row = ctk.CTkFrame(parent, fg_color="transparent")
+                row.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+                ctk.CTkLabel(
+                    row,
+                    text=option.label,
+                    anchor="w",
+                    font=ctk.CTkFont(size=theme.SIZE_BODY),
+                    text_color=theme.TEXT_DIM,
+                ).pack(side="left")
             get, put = _control(row, option, self.submit)
             put(read_option(cfg, option.field))
             self._readers[option.field] = get
@@ -498,6 +500,12 @@ def _control(
         switch = ctk.CTkSwitch(row, text="", progress_color=theme.LIFE, command=on_submit)
         switch.pack(side="right")
         return lambda: bool(switch.get()), lambda v: switch.select() if v else switch.deselect()
+    if option.control == "checkbox":
+        box = ctk.CTkCheckBox(
+            row, text="", width=24, fg_color=theme.LIFE, hover_color=theme.HOVER, command=on_submit
+        )
+        box.pack(side="right", padx=(0, theme.UNIT))
+        return lambda: bool(box.get()), lambda v: box.select() if v else box.deselect()
     if option.control == "dropdown":
         choices = option.choices or []
         menu = ctk.CTkOptionMenu(

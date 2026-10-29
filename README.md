@@ -209,8 +209,9 @@ always goes first. An error in a script is logged and stops that script only.
 
 Extras (Settings > Extras) press a hotkey when a picture shows: food when
 hungry, ring or amulet when its slot is empty, haste while walking without
-haste or a protection zone, the buff potion when its icon is gone. Cut each picture from a screenshot into
-`data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `ring_empty`,
+haste or a protection zone, the buff potion when its icon is gone. Each extra
+is one row: its checkbox and its hotkey (set the hotkey first). Cut each
+picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `ring_empty`,
 `amulet_empty`, `pm`, all `.png`); an extra without its picture never presses.
 For the player timer, calibrate the optional `player_list` area: a second
 battle list set to players only. A player staying there longer than the set
