@@ -68,7 +68,7 @@ def draw(*shapes: str) -> np.ndarray:
     return np.where(lit[:, :, None], 220, 30).astype(np.uint8).repeat(3, axis=2)
 
 
-def test_digits_must_match_exactly() -> None:
+def test_digits_match_a_known_shape_or_one_clearly_nearest() -> None:
     shape = {d: g for g, d in CAP_DIGITS.items()}
     assert read_number(draw(shape["1"], shape["5"], shape["3"], shape["0"])) == 1530
     assert read_number(draw(shape["3"], shape["04"])) == 304  # touching pair
@@ -76,4 +76,7 @@ def test_digits_must_match_exactly() -> None:
     off = three.index("/.") + 1
     near = three[:off] + "#" + three[off + 1 :]  # one pixel off a 3
     assert near not in CAP_DIGITS
-    assert read_number(draw(shape["1"], near)) is None
+    assert read_number(draw(shape["1"], near)) == 13
+    between = "####./#####/##.##/##.##/##.##/...##/#####/####."  # half 0, half 9
+    assert between not in CAP_DIGITS
+    assert read_number(draw(shape["1"], between)) is None

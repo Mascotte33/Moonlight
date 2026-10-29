@@ -3,8 +3,9 @@
 Finds the ``Cap:`` label picture once (``data/templates/cap_label.png``),
 then reads the number under it. The client draws the digits a little
 differently depending on where they land, so each digit must match one of
-the known shapes exactly (a near match misread 1530 as 1850); an unknown
-one is logged and the cap is unknown (no refill for it).
+the known shapes, or be at most ``NEAR_MAX`` pixels off one digit and
+clearly further from every other (a plain nearest match misread 1530 as
+1850); an unknown one is logged and the cap is unknown (no refill for it).
 
 # doc: docs/prs/potion-count.md#cap-reader
 """
@@ -30,6 +31,11 @@ NUMBER_ROWS = (9, 17)
 NUMBER_COLS = (-8, 28)
 #: Digit pixels: RGB sum of 300 or more.
 LIT = 300
+#: An unknown shape reads as the closest digit when it is at most NEAR_MAX
+#: pixels off and every other digit is NEAR_GAP more pixels off (holding out
+#: each golden shape in turn, this never gave a wrong digit).
+NEAR_MAX = 2
+NEAR_GAP = 3
 #: Known digit shapes, row by row, from the golden screenshots. Digits that
 #: touch come out as one shape and stand for both.
 CAP_DIGITS = {
@@ -42,6 +48,8 @@ CAP_DIGITS = {
     ): "04",
     ".##../###../.##../..#../..#../..#../.###./#####": "1",
     ".##../###../.##../..#../.##../..#../.###./#####": "1",  # bot.log 2026-10-29
+    ".####./.#####/.##.##/###.##/.##.##/.##.##/.#####/.####.": "0",  # bot.log 2026-10-29
+    "...##./..###./..###./.##.#./######/######/...##./....#.": "4",  # bot.log 2026-10-29
     ".##./###./###./.##./.##./.##./####/####": "1",
     "..##./####./.###./..##./..##./..##./.####/#####": "1",
     "..##./####./.###./..##./..##./..##./.###./#####": "1",
@@ -133,13 +141,43 @@ def read_number(pixels: np.ndarray) -> int | None:
         while end < len(cols) and cols[end]:
             end += 1
         pattern = "/".join("".join("#" if v else "." for v in row) for row in lit[:, x:end])
-        digit = CAP_DIGITS.get(pattern)
+        digit = CAP_DIGITS.get(pattern) or _near(lit[:, x:end])
         if digit is None:
             logger.info("cap: unknown digit %s", pattern)
             return None
         text += digit
         x = end
     return int(text) if text else None
+
+
+def _off(a: np.ndarray, b: np.ndarray) -> int:
+    """Pixels that differ between shapes *a* and *b*, best side-by-side shift."""
+    width = max(a.shape[1], b.shape[1]) + 2
+    best = a.size + b.size
+    for left_a in range(width - a.shape[1] + 1):
+        pa = np.zeros((a.shape[0], width), bool)
+        pa[:, left_a : left_a + a.shape[1]] = a
+        for left_b in range(width - b.shape[1] + 1):
+            pb = np.zeros((b.shape[0], width), bool)
+            pb[:, left_b : left_b + b.shape[1]] = b
+            best = min(best, int((pa ^ pb).sum()))
+    return best
+
+
+def _near(shape: np.ndarray) -> str | None:
+    """The digit *shape* is clearly closest to, or None."""
+    # ponytail: compares against all 50 shapes on every unknown digit; fine, unknowns are rare.
+    off: dict[str, int] = {}
+    for pattern, digit in CAP_DIGITS.items():
+        known = np.array([[c == "#" for c in row] for row in pattern.split("/")])
+        if known.shape[0] == shape.shape[0] and abs(known.shape[1] - shape.shape[1]) <= 2:
+            off[digit] = min(off.get(digit, known.size), _off(shape, known))
+    ranked = sorted(off.items(), key=lambda kv: kv[1])
+    if not ranked or ranked[0][1] > NEAR_MAX:
+        return None
+    if len(ranked) > 1 and ranked[1][1] < ranked[0][1] + NEAR_GAP:
+        return None
+    return ranked[0][0]
 
 
 class CapReader:
