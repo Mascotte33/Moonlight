@@ -34,7 +34,6 @@ __all__ = [
     "region_to_absolute",
     "normalize_rect",
     "default_profiles_dir",
-    "list_profiles",
 ]
 
 #: All region keys a calibration profile must define, in canonical order.
@@ -340,11 +339,3 @@ class CalibrationProfile:
 def default_profiles_dir() -> Path:
     """Return the ``profiles/`` directory next to the package."""
     return Path(__file__).resolve().parent.parent / "profiles"
-
-
-def list_profiles(directory: str | Path | None = None) -> list[str]:
-    """List profile names available in *directory* (default: profiles/)."""
-    d = Path(directory) if directory is not None else default_profiles_dir()
-    if not d.exists():
-        return []
-    return sorted(p.stem for p in d.glob("*.json"))

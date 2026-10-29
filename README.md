@@ -371,6 +371,7 @@ or in the `targeting` section of your profile config:
 - **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
+  These files are not profiles and never show in the profile lists.
   The Targeting tab lists the ones with no monster row yet: the picture,
   then the guessed name (filled in once tesseract reads it). Correct the
   name, then click **Add to monsters** and the line leaves the list. The ✕

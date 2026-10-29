@@ -128,7 +128,7 @@ def test_invalid_profile_names(name: str) -> None:
 
 def test_list_profiles(tmp_path: Path) -> None:
     assert ProfileManager(tmp_path / "missing").list_profiles() == []
-    for name in ("b.json", "a.json", "notes.txt"):
+    for name in ("b.json", "a.json", "notes.txt", "a.seen_monsters.json"):
         (tmp_path / name).write_text("{}", encoding="utf-8")
     assert ProfileManager(tmp_path).list_profiles() == ["a", "b"]
 
