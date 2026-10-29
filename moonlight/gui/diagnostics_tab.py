@@ -5,7 +5,7 @@ its last value. The module switches live in Settings.
 
 "Show what the bot sees" opens a window with the game grid, a red box on
 every creature the health-bar scan finds, the cavebot's path in blue and
-fresh kills in gold. It scans 30 times a second, in its own thread, only while
+fresh kills in gold. It scans 15 times a second, in its own thread, only while
 open, and never sends input.
 """
 
@@ -39,8 +39,8 @@ def recent_errors(log: LogFeed) -> str:
     return "\n".join(reversed(lines)) or "No errors"
 
 
-#: Debug window refresh, ms (30 frames a second).
-SEES_MS = 33
+#: Debug window refresh, ms (15 frames a second: 30 cost the bot ~5 ms a tick).
+SEES_MS = 66
 #: The player's (col, row) on the 15x11 game grid.
 PLAYER_SLOT = (7, 5)
 #: How long a killed monster's tile keeps its gold circle (docs/prs/extras.md#seen-path).
@@ -192,7 +192,7 @@ class DiagnosticsTab(Tab):
         stop = threading.Event()
 
         def grab_and_scan() -> None:
-            """Off the Tk thread: a grab and scan take ~25 ms, too long for 30 fps in Tk."""
+            """Off the Tk thread: a grab and scan take ~25 ms, too long to run in Tk."""
             dead: dict[str, Any] = {"count": 0, "seen": set(), "corpses": {}}
             try:
                 cap = ScreenCapture(window_title=cfg.window_title)  # mss belongs to its thread
