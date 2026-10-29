@@ -102,6 +102,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Extras (food, haste, buff, ring, amulet, player timer, PM alarm) | ✅ | ✅ | ❌ |
 | Account rotation (timed accounts, logout at the depot, next login) | ✅ | ✅ | ❌ |
 | Step waypoints (one walk key from a tile: holes, teleports, stairs) | ✅ | ✅ | ❌ |
+| Cavebot fixes (lone unreachable target pause, blocked path retry) | ✅ | ✅ | ❌ |
 | Arduino HID input | ✅ | ✅ | 🟡 |
 | Closed-loop clicking | ✅ | ✅ | 🟡 |
 | Kill switch + safety stops | ✅ | ✅ | ❌ |
@@ -268,7 +269,10 @@ or in the `targeting` section of your profile config:
   by accident. All attack keys share `attack_cooldown_ms` (default 2000).
 - **Unreachable:** when the target's HP stands still for
   `unreachable_after_seconds` (default 8), the bot takes one step toward it.
-  After the same time again, it skips that monster for 30 s.
+  After the same time again, it skips that monster for 30 s. With no other
+  monster to attack it pauses targeting for 5 s instead (the settings stay
+  as they are) and the cavebot walks on; the dashboard shows
+  "(targeting paused N s)".
 - **Chase mode:** each monster row is "chase" or "stand still". The bot reads
   the active (red) chase button from the `chase_buttons` region (Calibration
   tab) and, when it differs from the target's row, presses
@@ -297,8 +301,12 @@ or in the `targeting` section of your profile config:
   once there is one, back to your own targeting. With nothing to fight it tries
   every tile it has not bumped into yet; with none left it skips the
   waypoint (`cavebot: waypoint N unreachable, skipping` in the log) and the
-  next ones until one on its floor has a way. When none has, or the route
-  goes 60 s without moving, the route stops with the stuck alarm. Diagonals need the client's chat off (WASD walking).
+  next ones until one on its floor has a way. When none has (a player in
+  the only path), it stands still and tries the blocked tiles again every
+  2 s, walking on as soon as one is free; after 60 s it raises the stuck
+  alarm and keeps trying. A route that goes 60 s without moving for any
+  other reason also raises the stuck alarm and keeps trying; it never stops by itself
+  for being stuck (`cavebot: moving again` clears the alarm). Diagonals need the client's chat off (WASD walking).
 - **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.

@@ -150,7 +150,7 @@ def test_4_stuck_detection_sets_alarm_not_exception() -> None:
     clock.now = 60.1  # no movement for > 60 s
     bot.step()  # must not raise
     assert bot.alarm == "stuck"
-    assert not bot.is_active()
+    assert bot.is_active()  # the route keeps trying
 
 
 def test_5_lost_floor_detection_sets_alarm() -> None:

@@ -587,6 +587,30 @@ class TestSelectClick:
         assert inp.sent_lines == ["K up", "A 189 244", "C L"]
 
 
+    def test_lone_stuck_target_pauses_targeting_with_a_countdown(self) -> None:
+        ws = make_state()
+        wolf = Monster("Wolf", name_hash="w")
+        with ws.lock():
+            ws.monsters = [wolf]
+            ws.selected_target = wolf
+        cavebot = SimpleNamespace(
+            is_active=lambda: False,
+            luring=lambda: False,
+            route=SimpleNamespace(current=0),
+            release_walk_key=lambda: None,
+            alarm=None,
+            targeting_paused=False,
+        )
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, cavebot=cavebot)
+        ticks(gl, clock, 8 * 20 + 3)  # 8 s on a target whose HP never moves
+        assert cavebot.targeting_paused and gl.current_state is not BotState.ATTACK
+        assert "(targeting paused 5 s)" in str(gl.get_stats()["current_task"])
+        ticks(gl, clock, 5 * 20 + 2)
+        assert not cavebot.targeting_paused
+        assert "targeting paused" not in str(gl.get_stats()["current_task"])
+        assert inp.sent_lines == []
+
 F6_ROWS = TargetingConfig(
     default_monster=MonsterRow(hotkey="F6"),
     area_rules=(AreaRule("F5", minimum_adjacent_monsters=2),),

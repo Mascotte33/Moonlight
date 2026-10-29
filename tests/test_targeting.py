@@ -217,6 +217,18 @@ def test_ignored_target_can_be_chosen_again_after_30_seconds() -> None:
     assert picked_at(targeting, s, 46.0) == 0
 
 
+def test_lone_stuck_target_asks_for_a_pause() -> None:
+    targeting = rows()
+    s = stuck_state()
+    s.monsters = s.monsters[:1]  # the wolf only
+    targeting.decide(s, 0.0)
+    assert targeting.decide(s, 7.9) is None
+    assert targeting.decide(s, 8.0) == TargetingAction(
+        "pause", 0, reason="Wolf hp stuck at 100, nothing else to attack"
+    )
+    assert targeting.decide(s, 8.1) is None  # the watch starts over
+
+
 def test_no_creature_slot_means_no_step() -> None:
     targeting = rows()
     for slots in ((), ((7, 4), (8, 5))):  # none, or only adjacent ones

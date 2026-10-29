@@ -43,10 +43,12 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   targets with every monster attacking (spells and area rules included)
   and clears the flag after each kill, so the cavebot looks for a way again.
   While a target is selected it stands still, whatever selected it, and
-  walks on once nothing is. Stuck after a bump with nothing to fight and no
-  way over tiles not bumped yet: the waypoint is skipped, and the next ones
-  in route order, until one on this floor has such a way; none: alarm
-  ``"stuck"``.
+  walks on once nothing is (or while :attr:`Cavebot.targeting_paused`).
+  Stuck after a bump with nothing to fight and no way over tiles not bumped
+  yet: the waypoint is skipped, and the next ones in route order, until one
+  on this floor has such a way; none: it stands still and retries the
+  blocked tiles every ``_BLOCKED_RETRY`` seconds (a player in the only
+  path), walking on once one is free.
 * **Arrival**: within 1 tile (Chebyshev distance) of the waypoint on the
   same floor; ``node`` within 3 tiles, ``stand`` and ``rope`` only on the
   exact tile (a rope after standing still there ``_ROPE_SETTLE`` s).
@@ -83,8 +85,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   its walking direction, then
   ``sidestep_after`` later the tile right of it. Once it moves again after a
   sidestep, a ``walk`` waypoint is skipped; any other waypoint is retried.
-* **Stuck**: position unchanged for ``stuck_timeout`` seconds -> the route
-  stops and :attr:`Cavebot.alarm` is set to ``"stuck"``. The loop calls
+* **Stuck**: position unchanged for ``stuck_timeout`` seconds ->
+  :attr:`Cavebot.alarm` is set to ``"stuck"`` (the operator is alerted) but
+  the route keeps trying; the alarm clears once it moves. The loop calls
   :meth:`Cavebot.resume` whenever MOVE is (re)entered, so time spent in a
   fight/loot/pause never counts as "stuck" (F-06).
 * **Unexpected floor change** (z differs from what the route expects): the
@@ -174,6 +177,9 @@ WALK_KEYS = {
 _KEY_RETRY = 0.7
 #: Outlasts bumping all 8 neighbours (2 presses each); a creature walking off frees its tile.
 _BLOCK_TTL = 12.0
+#: With no way past the blocked tiles (a player on the only path), they are
+#: tried again this often.
+_BLOCKED_RETRY = 2.0
 _STUCK_WINDOW = 5.0
 #: The game view scrolls a step after the position changed: a scan then sees creatures a tile off.
 _VIEW_SETTLE = 0.5
@@ -392,6 +398,7 @@ class Cavebot:
         self._walk_keys = walk_keys
         self._cost_map = cost_map
         self._blocked: dict[tuple[int, int, int], float] = {}  # tile -> expiry
+        self._blocked_wait = False  # no way past the blocked tiles: retrying
         #: Tiles a walk key stepped onto that moved the player elsewhere (a hole, a teleport).
         self._jumped: set[tuple[int, int, int]] = set()
         self._target: tuple[int, int, int] | None = None
@@ -402,6 +409,8 @@ class Cavebot:
         self._frames = frames
         #: Creatures leave no way through: the loop targets them (cleared after each kill).
         self.stuck_on_creatures = False
+        #: Set by the loop while targeting is paused: walk on past a selected target.
+        self.targeting_paused = False
         self._stuck_allowed_until = float("-inf")
         self._creatures: set[tuple[int, int]] = set()  # tiles the last scan saw
         self._previous_pos: Position | None = None  # where the view still is right after a step
@@ -517,9 +526,15 @@ class Cavebot:
             self._previous_pos, self._last_pos = self._last_pos, pos
             self._last_move = self._moved_at = now
             self._learn_jump(pos)
-        elif now - self._last_move > self._stuck_timeout:
-            self._halt("stuck")
-            return
+            if self._blocked_wait:
+                logger.info("cavebot: the way is free again")
+                self._blocked_wait = False
+            if self.alarm == "stuck":
+                logger.info("cavebot: moving again")
+                self.alarm = None
+        elif now - self._last_move > self._stuck_timeout and self.alarm != "stuck":
+            logger.warning("cavebot: route %r stuck, still trying", self.route.name)
+            self.alarm = "stuck"  # alert the operator, keep trying
         if pos is None or not self._resolve_jumps():
             self.release_walk_key()
             return
@@ -563,7 +578,11 @@ class Cavebot:
             return
         if not self._walk_keys:
             self._retry_if_idle(now, lambda: self._walk_toward(wp, pos))
-        elif self._state.selected_target is not None and not self.luring():
+        elif (
+            self._state.selected_target is not None
+            and not self.luring()
+            and not self.targeting_paused
+        ):
             self._target = None  # stand still while a target is selected
             self.release_walk_key()
             self._stuck_allowed_until = now + _STUCK_WINDOW  # the fight may have closed the way
@@ -592,6 +611,7 @@ class Cavebot:
         self._sidesteps = 0
         self.stuck_on_creatures = False
         self._sends_done, self._hand_done_at = 0, None
+        self._blocked_wait = False
 
     def _halt(self, alarm: str) -> None:
         logger.warning("cavebot: route %r stopped: %s", self.route.name, alarm)
@@ -742,7 +762,6 @@ class Cavebot:
         """Move on to the next waypoint with a path over *walkable*; none: alarm "stuck"."""
         start, index = (pos.x, pos.y, pos.z), self.route.current
         for _ in range(len(self.route.waypoints)):
-            logger.info("cavebot: waypoint %d unreachable, skipping", index)
             following = self._positional_from(index + 1)
             if following is None or following == self.route.current:
                 break
@@ -750,11 +769,21 @@ class Cavebot:
             wp = self.route.waypoints[index]
             goal = (wp.x, wp.y, wp.z)
             if wp.z == pos.z and (goal == start or next_step(start, goal, walkable) is not None):
+                logger.info(
+                    "cavebot: waypoint %d unreachable, skipping to %d", self.route.current, index
+                )
                 self.route.current = index
                 self._target = self._retried_target = None
                 return
-        if self._active:  # a goto loop already halted it
-            self._halt("stuck")
+        if not self._active:  # a goto loop already halted it
+            return
+        if not self._blocked_wait:
+            logger.info("cavebot: no way past the blocked tiles, trying again every %g s",
+                        _BLOCKED_RETRY)
+            self._blocked_wait = True
+        # The blocked tiles expire soon: the next try walks into them again.
+        retry = self._clock() + _BLOCKED_RETRY
+        self._blocked = {t: min(end, retry) for t, end in self._blocked.items()}
 
     def _advance(self) -> None:
         self.on_waypoint_reached(self.route.current)
@@ -835,7 +864,8 @@ class Cavebot:
             short = next_step(start, goal, free)
             detour_too_long = short is not None and path[1] > short[1] + _DETOUR
         stuck = path is None or detour_too_long
-        if stuck and self._state.monsters and now < self._stuck_allowed_until:
+        fight = self._state.monsters and not self.targeting_paused
+        if stuck and fight and now < self._stuck_allowed_until:
             if not self.stuck_on_creatures:
                 logger.info("cavebot: creatures block the way, targeting takes over")
             self.stuck_on_creatures = True

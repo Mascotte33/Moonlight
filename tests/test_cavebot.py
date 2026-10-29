@@ -462,18 +462,21 @@ def test_action_retried_when_floor_does_not_change() -> None:
 # -- stuck / floor change / stop -----------------------------------------------
 
 
-def test_stuck_same_position_raises_alarm_and_stops() -> None:
+def test_stuck_same_position_raises_alarm_and_keeps_trying() -> None:
     sim = Sim([walk(120, 100)], Position(100, 100, 7))
     sim.bot.start()
     for _ in range(1190):  # 59.5 s standing still
         sim.step()
-    assert sim.bot.is_active()
+    assert sim.bot.alarm is None
     for _ in range(20):
         sim.step()
-    assert not sim.bot.is_active() and sim.bot.alarm == "stuck"
+    assert sim.bot.is_active() and sim.bot.alarm == "stuck"
     clicks = len(sim.clicker.clicks)
+    run_until(sim, sim.now + 10)
+    assert len(sim.clicker.clicks) > clicks  # still clicking the waypoint
+    sim.pos = Position(101, 100, 7)
     sim.step()
-    assert len(sim.clicker.clicks) == clicks
+    assert sim.bot.alarm is None  # moving again
 
 
 def run_until(sim: Sim, seconds: float) -> None:
@@ -619,7 +622,7 @@ def test_resume_resets_stuck_timer_on_move_reentry() -> None:
     assert sim.bot.is_active()
 
 
-def test_stuck_still_halts_without_resume_after_long_idle() -> None:
+def test_stuck_still_alarms_without_resume_after_long_idle() -> None:
     """Contrast for F-06: without resume() a long idle WOULD halt as stuck.
 
     Proves the resume() call on MOVE re-entry (not the passage of time alone)
@@ -633,7 +636,7 @@ def test_stuck_still_halts_without_resume_after_long_idle() -> None:
     sim.now += 61.0
     sim.step()
     assert sim.bot.alarm == "stuck"
-    assert not sim.bot.is_active()
+    assert sim.bot.is_active()  # alarm only, still trying
 
 
 def test_loop_calls_cavebot_resume_on_move_entry(
@@ -1084,18 +1087,29 @@ def test_walk_keys_skip_unreachable_waypoints_until_one_has_a_way(
     for _ in range(_BLOCK_STEPS // 2):
         sim.step()
     assert sim.route.current == 2  # waypoint 1 is on another floor: skipped too
-    assert "waypoint 0 unreachable, skipping" in caplog.text
-    assert "waypoint 1 unreachable, skipping" in caplog.text
+    assert "waypoint 0 unreachable, skipping to 2" in caplog.text
     assert pressed(sim)[0] == "right" and pressed(sim)[-1] == "down"
     assert sim.bot.is_active()
 
 
-def test_walk_keys_stuck_alarm_when_no_waypoint_is_reachable() -> None:
+def test_walk_keys_blocked_waits_and_alarms_after_stuck_timeout() -> None:
     sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
     sim.bot.start()
-    for _ in range(400):  # every tile around bumped, nothing to fight
+    while sim.now < 55:  # every tile around bumped, nothing to fight
         sim.step()
-        if not sim.bot.is_active():
-            break
-    assert sim.bot.alarm == "stuck" and sim.now < 20
+    assert sim.bot.is_active() and sim.bot.alarm is None  # keeps retrying
     assert len(set(pressed(sim))) == 8
+    while sim.now < 65:
+        sim.step()
+    assert sim.bot.is_active() and sim.bot.alarm == "stuck"  # alarm, still trying
+
+
+def test_walk_keys_blocked_alarm_clears_when_the_way_is_free() -> None:
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    while sim.now < 65:
+        sim.step()
+    assert sim.bot.alarm == "stuck"
+    sim.pos = Position(100, 101, 7)  # the player stepped aside
+    sim.step()
+    assert sim.bot.is_active() and sim.bot.alarm is None

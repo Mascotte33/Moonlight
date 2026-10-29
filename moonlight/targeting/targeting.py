@@ -14,7 +14,9 @@ never used. Players are never candidates; the alarms keep their own
 
 A selected target whose HP stands still for ``unreachable_after_seconds`` gets
 one ``step_closer`` action (a unit step toward the nearest creature slot that
-is not adjacent); after the same time again it is ignored for 30 s.
+is not adjacent); after the same time again it is ignored for 30 s. With
+nothing else to attack it gets a ``pause`` action instead: the loop turns
+targeting off for ``PAUSE_SECONDS`` so the cavebot walks on.
 
 ``client_focused`` / ``screen_ok`` gating is the loop's job. The module only
 reads a snapshot and returns a decision; one decision thread drives it.
@@ -31,6 +33,7 @@ from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
     "MOVEMENTS",
+    "PAUSE_SECONDS",
     "AreaRule",
     "MonsterRow",
     "TargetingAction",
@@ -44,6 +47,9 @@ Rect = tuple[int, int, int, int]
 
 #: Seconds an unreachable target is left alone.
 _IGNORE_SECONDS = 30.0
+
+#: Seconds targeting stays off after a lone target's HP stood still.
+PAUSE_SECONDS = 5.0
 
 
 # doc: docs/prs/targeting.md#monster-rows
@@ -131,6 +137,9 @@ class TargetingAction:
     """``"select"``: click battle-list row ``battle_list_row``.
 
     ``"step_closer"``: press one arrow key for the unit step ``step``.
+
+    ``"pause"``: the selected target is unreachable and nothing else is
+    there to attack; the loop turns targeting off for ``PAUSE_SECONDS``.
     """
 
     kind: str
@@ -188,8 +197,13 @@ class TargetingDecision:
         # battle list gives no ids.
         return (monster.name_hash, monster.hp_percent)
 
-    def _watch_hp(self, state: WorldState, now: float) -> TargetingAction | None:
-        """Step closer once when the selected target's HP stands still, then ignore it."""
+    def _watch_hp(
+        self, state: WorldState, now: float, candidates: list[Monster]
+    ) -> TargetingAction | None:
+        """Step closer once when the selected target's HP stands still, then ignore it.
+
+        With no other candidate it asks for a pause instead.
+        """
         selected = state.selected_target
         if selected is None or self.is_unreachable(selected):
             self._watched = None
@@ -201,12 +215,17 @@ class TargetingDecision:
         if now - self._watched_since < self.config.unreachable_after_seconds:
             return None
         self._watched_since = now
+        name = selected.name or "?"
+        if all(m.battle_list_row == selected.battle_list_row for m in candidates):
+            self._watched = None
+            reason = f"{name} hp stuck at {selected.hp_percent:.0f}, nothing else to attack"
+            return TargetingAction("pause", selected.battle_list_row, reason=reason)
         if not self._stepped:
             self._stepped = True
             step = _step_toward_creature(state.creature_slots)
             if step is None:
                 return None
-            reason = f"{selected.name or '?'} hp stuck at {selected.hp_percent:.0f}, step closer"
+            reason = f"{name} hp stuck at {selected.hp_percent:.0f}, step closer"
             return TargetingAction("step_closer", selected.battle_list_row, step, reason)
         self._ignored_until[key] = now + _IGNORE_SECONDS
         self._watched = None
@@ -215,14 +234,15 @@ class TargetingDecision:
     def decide(self, state: WorldState, now: float) -> TargetingAction | None:
         """The action to take, or None when the selection is already right."""
         self._ignored_until = {k: end for k, end in self._ignored_until.items() if end > now}
-        step_closer = self._watch_hp(state, now)
-        if step_closer is not None:
-            return step_closer
         candidates = [
             m
             for m in state.monsters
             if not m.is_player and not self.row_for(m).ignore and not self.is_unreachable(m)
         ]
+        watched = self._watch_hp(state, now, candidates)
+        if watched is not None:
+            return watched
+        candidates = [m for m in candidates if not self.is_unreachable(m)]  # just ignored
         if not candidates:
             return None
         if state.selected_target in candidates:
