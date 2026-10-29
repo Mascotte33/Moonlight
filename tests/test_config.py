@@ -51,7 +51,7 @@ def test_load_roundtrip(tmp_path: Path) -> None:
         healing={"enabled": True, "spell_cooldown_ms": 800},
         cavebot={"enabled": True, "route": "hunt", "rope_hotkey": "F5"},
         looting={"enabled": True},
-        refill={"enabled": True, "trigger_cap": 80.0},
+        refill={"enabled": True, "trigger_cap": 80.0, "cap_below": 300},
     )
     data["routes_dir"] = str(tmp_path / "routes")
     data["loop"] = {"tick_rate": 10.0, "enable_f12_monitor": False}
@@ -66,7 +66,7 @@ def test_load_roundtrip(tmp_path: Path) -> None:
     assert cfg.healing == HealingConfig(spell_cooldown_ms=800)
     assert cfg.cavebot is not None and cfg.cavebot.route.name == "hunt"
     assert cfg.cavebot.rope_hotkey == "F5" and cfg.walk_keys is True
-    assert cfg.refill is not None and cfg.refill.trigger_cap == 80.0
+    assert cfg.refill is not None and cfg.refill.cap_below == 300  # the old used cap % is dropped
     assert cfg.loop.tick_rate == 10.0 and cfg.serial_port == "COM7"
     assert cfg.targeting is None
     assert cfg.monster_name_source is True and cfg.capacity_source is True
@@ -251,7 +251,7 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
         alarms={"enabled": True},
         cavebot={"enabled": True, "route": "hunt", "rope_hotkey": "F5"},
         looting={"enabled": True},
-        refill={"enabled": True, "trigger_cap": 80.0},
+        refill={"enabled": True, "cap_below": 300},
     )
     data["hotkeys"]["utani hur"] = "F3"
     data.update(

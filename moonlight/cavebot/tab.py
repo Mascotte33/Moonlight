@@ -22,12 +22,12 @@ import customtkinter as ctk
 
 from moonlight.cavebot.cavebot import (
     ACTIONS,
-    NO_TILE,
     WALK_KEYS,
     Route,
     RouteError,
     RouteFileLoader,
     Waypoint,
+    has_tile,
 )
 from moonlight.cavebot.recorder import (
     StandTracker,
@@ -104,7 +104,7 @@ LOOT_OPTIONS = [
     Option("Loot only at HP % or above", "looting.min_hp_to_loot", "entry", min=0, max=100),
 ]
 REFILL_OPTIONS = [
-    Option("Start refill at used cap %", "refill.trigger_cap", "entry"),
+    Option("Refill under free cap (0 off)", "refill.cap_below", "entry", min=0),
     Option("Refill under health potions (0 off)", "refill.health_potions_below", "entry", min=0),
     Option("Refill under mana potions (0 off)", "refill.mana_potions_below", "entry", min=0),
 ]
@@ -155,7 +155,7 @@ def waypoint_table(route: Route | None, current: int | None = None) -> str:
     lines = [f" {'#':>3}  {'Type':<7} {'Coordinates':<19} Label"]
     for i, wp in enumerate(route.waypoints):
         mark = ">" if i == current else " "
-        where = "" if wp.action in NO_TILE else f"({wp.x}, {wp.y}, {wp.z})"
+        where = f"({wp.x}, {wp.y}, {wp.z})" if has_tile(wp) else ""
         lines.append(f"{mark}{i + 1:>3}  {wp.action:<7} {where:<19} {wp.label}".rstrip())
     return "\n".join(lines)
 
@@ -312,9 +312,10 @@ class CavebotTab(Tab):
         ctk.CTkLabel(
             refill,
             text=(
-                "A 'check' waypoint with label 'town' jumps to label 'town' when your used"
-                " capacity reaches the start % or Refill now was pressed. Put the town trip"
-                " there and end it with a 'goto' back to the hunt."
+                "Add 'check' with label 'town' on the tile where the bot should decide."
+                " There it jumps to label 'town' when free cap or potions are under these"
+                " numbers, or Refill now was pressed; else it goes on. Put the town trip"
+                " after label 'town' and end it with a 'goto' back to the hunt."
             ),
             anchor="w",
             justify="left",
@@ -347,7 +348,6 @@ class CavebotTab(Tab):
         add = ctk.CTkFrame(edit, fg_color="transparent")
         add.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.ent_label = _entry(add, "label", 80)
-        self.ent_x, self.ent_y, self.ent_z = (_entry(add, axis, 56) for axis in "XYZ")
         # doc: docs/prs/refill.md#drag-waypoint
         self.lbl_cursor = ctk.CTkLabel(
             edit, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
@@ -358,7 +358,7 @@ class CavebotTab(Tab):
         tools.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         for text, command in (("Undo", self._undo), ("Clear", self._clear)):
             _button(tools, text, command).pack(side="left", padx=(0, theme.UNIT))
-        # T3.F9.K2: one button per waypoint type, at X, Y, Z or the bot's position.
+        # T3.F9.K2: one button per waypoint type, at the bot's position.
         kinds = ctk.CTkFrame(edit, fg_color="transparent")
         kinds.pack(anchor="w", padx=theme.PAD, pady=(theme.PAD, 0))
         for row, group in enumerate(KIND_ROWS):
@@ -569,13 +569,10 @@ class CavebotTab(Tab):
             self.submit()
 
     def _add_action(self, action: str) -> None:
-        """Add *action* at the character's tile; X, Y, Z when typed and not recording."""
-        typed = (self.ent_x.get(), self.ent_y.get(), self.ent_z.get())
-        if self._recording:
-            typed = ("",) * 3
+        """Add *action* on the character's tile."""
         at = self._stand.stood if self._recording else None
         try:
-            wp = make_waypoint(action, self.ent_label.get(), typed, at or self._pos)
+            wp = make_waypoint(action, self.ent_label.get(), at or self._pos)
         except RouteError as exc:
             self.lbl_msg.configure(text=str(exc))
             return
@@ -584,7 +581,7 @@ class CavebotTab(Tab):
         self._changed()
 
     def _add_step(self, dx: int, dy: int) -> None:
-        """Add a step (one walk key *dx*, *dy*) on X, Y, Z or the bot's sqm; 0, 0: a stand."""
+        """Add a step (one walk key *dx*, *dy*) on the bot's sqm; 0, 0: a stand."""
         count = len(self._waypoints)
         self._add_action("stand")
         if (dx, dy) != (0, 0) and len(self._waypoints) > count:

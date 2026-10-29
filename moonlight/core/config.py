@@ -279,7 +279,8 @@ class BotConfig:
                         section.pop(key, None)
                 if name == "refill":  # the refill route file's keys, gone with it
                     for key in (
-                        "stop_cap", "route_name", "storage_hotkey", "deposit_hotkey", "routes_dir"
+                        "stop_cap", "route_name", "storage_hotkey", "deposit_hotkey", "routes_dir",
+                        "trigger_cap",  # used cap %, now the free cap number cap_below
                     ):
                         section.pop(key, None)
                 value = _coerce(section, hints[name], f"modules.{name}")

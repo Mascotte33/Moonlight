@@ -52,7 +52,7 @@ moonlight/
 ├── targeting/    target picking, attack hotkeys + its tab
 ├── cavebot/      walking, pathing, route recorder + its tab
 ├── looting/      looting logic
-├── refill/       refill trigger (cap %, potions)
+├── refill/       refill trigger (free cap, potions)
 ├── scripts/      user scripts
 ├── extras/       buffs
 ├── alarms/       danger alarms
@@ -123,7 +123,7 @@ rope or shovel click its button while standing on the tile you use it from. Whil
 waypoint button adds a waypoint on the character's tile.
 
 The arrow pad in Cavebot > Edit route adds a `step` waypoint on the
-character's tile (or the typed X, Y, Z): the bot walks onto that tile,
+character's tile: the bot walks onto that tile,
 presses that arrow key exactly once (diagonals: Q, E, Z, C), waits 0.5 s and
 goes on to the next waypoint, wherever the step led. It never presses it
 again, so use it for holes, teleports, stairs and other one-tile moves. The
@@ -140,14 +140,21 @@ still for the set wait (400 ms by default) before walking on. Below the set
 HP (70 % by default) it holds still and heals first, then loots. It also
 loots while an alarm is up. Set it in Cavebot > Loot.
 
+Every waypoint button in Edit route adds the waypoint on the character's
+tile; there are no typed X, Y, Z fields. `label`, `goto`, `say`, `key`,
+`drag`, `script` and `wait` have no tile: they happen where the bot stands.
+
 Refill is part of the waypoint list. A `check` waypoint with label `town`
-jumps to label `town` when used capacity reaches the start % (Cavebot >
-Refill), when the action bar shows fewer health or mana potions than set
-there (0 = off; spirit potions count for both), or after **Refill now** is
-pressed; otherwise the bot walks past it. The potions are found on the
-action bar by their picture (`data/templates/potions/<health|mana|spirit>/`);
-a potion with no picture yet or a count that does not read never sends the
-bot to town, it only writes a line in bot.log.
+is added on the character's tile and the bot walks there. On it, the bot
+jumps to label `town` when the free cap in the side panel's Cap box is under
+the set number (Cavebot > Refill, 0 = off), when the action bar shows fewer
+health or mana potions than set there (0 = off; spirit potions count for
+both), or after **Refill now** is pressed; otherwise it goes on to the next
+waypoint. A `check` from an older route has no tile and decides as soon as
+the route reaches it. The potions are found on the action bar by their
+picture (`data/templates/potions/<health|mana|spirit>/`), the Cap box by
+`data/templates/cap_label.png`; a cap or count that does not read never
+sends the bot to town, it only writes a line in bot.log.
 The town section uses `say` (presses Enter to open the chat box, types its label, Enter sends it; chat stays off for WASD; for
 NPC talk like `hi`, `deposit all`, `yes`), `key` (presses its label as a
 hotkey) and `drag` (label `x1 y1 x2 y2` in client pixels: drags the left

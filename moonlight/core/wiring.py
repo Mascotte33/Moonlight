@@ -617,9 +617,8 @@ def build_modules(
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
                 frames=frames,
                 clock=clock,
-                refill_cap=config.refill.trigger_cap if config.refill else None,
                 scripts=m.scripts,
-                potions_low=_potions_low(config, screen_grab),
+                supplies_low=_supplies_low(config, screen_grab),
             )
             if prev is None or prev.cavebot is None:
                 m.cavebot.start()
@@ -633,20 +632,28 @@ def build_modules(
     return m
 
 
-def _potions_low(
+def _supplies_low(
     config: BotConfig, grab: Callable[[], np.ndarray] | None
 ) -> Callable[[], bool] | None:
-    """The cavebot's potion refill trigger, or None when it is off."""
+    """The cavebot's cap and potion refill trigger, or None when both are off."""
     refill = config.refill
     if refill is None or grab is None:
         return None
-    hp, mp = refill.health_potions_below, refill.mana_potions_below
-    if hp <= 0 and mp <= 0:
-        return None
-    from moonlight.perception.potions import PotionCounter
+    cap, hp, mp = refill.cap_below, refill.health_potions_below, refill.mana_potions_below
+    checks: list[Callable[[], bool]] = []
+    if cap > 0:
+        from moonlight.perception.cap import CapReader
 
-    counter = PotionCounter(grab)
-    return lambda: counter.low(hp, mp)
+        reader = CapReader(grab)
+        checks.append(lambda: reader.low(cap))
+    if hp > 0 or mp > 0:
+        from moonlight.perception.potions import PotionCounter
+
+        counter = PotionCounter(grab)
+        checks.append(lambda: counter.low(hp, mp))
+    if not checks:
+        return None
+    return lambda: any([check() for check in checks])
 
 
 def capture_providers(
