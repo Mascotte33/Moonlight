@@ -76,9 +76,12 @@ NO_ROUTES_HINT = "No routes yet. Press New, then add waypoints in Edit route."
 #: The cavebot's only on/off switch (Settings has none for it).
 SWITCH = Option("Cavebot on", "cavebot.enabled", "switch")
 ROUTE = Option("Route", "cavebot.route", "dropdown")
-#: Waypoint buttons, one row each: walking, changing floor, jumping, town, scripts.
+#: Waypoint buttons, one row each: walking, changing floor, jumping, hand actions, scripts,
+#: town (depot, NPCs).
 #: Stairs are walked over like any tile, so they get no button.
-KIND_ROWS = (ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:11], ACTIONS[11:14], ACTIONS[14:16])
+KIND_ROWS = (
+    ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:11], ACTIONS[11:14], ACTIONS[14:16], ACTIONS[17:],
+)  # fmt: skip
 #: Shown under the position while the minimap matches no map tile.
 LOST_HINT = "No map match. Use minimap zoom 1 or 2, or explore the area first."
 #: Direction pad: (arrow, dx, dy) in 3x3 order. Up is north, y - 1.

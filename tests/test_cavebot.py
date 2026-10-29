@@ -1223,3 +1223,63 @@ def test_walk_keys_blocked_alarm_clears_when_the_way_is_free() -> None:
     sim.pos = Position(100, 101, 7)  # the player stepped aside
     sim.step()
     assert sim.bot.is_active() and sim.bot.alarm is None
+
+
+# -- finddepo -----------------------------------------------------------------
+
+
+def test_pick_locker_takes_the_nearest_free_tile_next_to_a_locker() -> None:
+    from moonlight.cavebot.town import pick_locker
+
+    lockers = {(10, 4), (12, 4)}
+    south = {(10, 5), (12, 5)}
+    assert pick_locker(lockers, (12, 6), lambda x, y: (x, y) in south) == ((12, 4), (12, 5))
+    taken = {(12, 5)}
+    free = lambda x, y: (x, y) in south and (x, y) not in taken  # noqa: E731
+    assert pick_locker(lockers, (12, 6), free) == ((10, 4), (10, 5))
+    assert pick_locker(lockers, (12, 6), lambda x, y: False) is None
+
+
+def _depot_sim(monkeypatch: pytest.MonkeyPatch, lockers: set[tuple[int, int]]) -> Sim:
+    import moonlight.cavebot.cavebot as cb
+
+    seen: dict[str, set[tuple[int, int]]] = {"creatures": set()}
+    monkeypatch.setattr(cb, "find_lockers", lambda frame, grid: lockers)
+    monkeypatch.setattr(cb, "find_creatures", lambda frame, grid: sorted(seen["creatures"]))
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([Waypoint(100, 100, 7, "finddepo"), walk(120, 100)], Position(100, 100, 7),
+              frames=lambda: frame)  # fmt: skip
+    sim.seen = seen  # type: ignore[attr-defined]
+    sim.bot.start()
+    return sim
+
+
+def test_finddepo_walks_to_the_free_tile_below_the_nearest_locker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Lockers in slots (7, 3) and (9, 3): the player (slot 7, 5) is at 100,100.
+    sim = _depot_sim(monkeypatch, {(7, 3), (9, 3)})
+    sim.seen["creatures"] = {(7, 4)}  # type: ignore[attr-defined]  # someone at the first
+    sim.step()
+    assert sim.bot.depot_locker == (102, 98, 7)
+    assert sim.clicker.clicks  # walking to 102,99
+    sim.pos = Position(102, 99, 7)
+    sim.step()
+    assert sim.route.current == 1
+
+
+def test_finddepo_waits_while_every_locker_is_taken_then_alarms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sim = _depot_sim(monkeypatch, {(7, 3)})
+    sim.seen["creatures"] = {(7, 4)}  # type: ignore[attr-defined]
+    run_until(sim, 299)
+    assert sim.bot.alarm is None and sim.route.current == 0 and not sim.clicker.clicks
+    run_until(sim, 302)
+    assert sim.bot.alarm == "depot_taken" and sim.bot.is_active()
+    sim.seen["creatures"] = set()  # type: ignore[attr-defined]
+    run_until(sim, 306)
+    assert sim.bot.alarm is None and sim.bot.depot_locker == (100, 98, 7)
+    sim.pos = Position(100, 99, 7)
+    sim.step()
+    assert sim.route.current == 1

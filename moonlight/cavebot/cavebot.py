@@ -84,6 +84,10 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   hotkey. One key per tick (a key the wire limiter drops is sent again),
   then the route holds 1 s so NPC answers and windows land.
 * **wait**: holds the route for its label's seconds.
+* **finddepo**: on its tile it finds the depot lockers in the game view
+  (:mod:`moonlight.cavebot.town`) and walks to the nearest free tile next to
+  one (no creature or player, walkable). All taken: it looks again every
+  few seconds, with alarm ``"depot_taken"`` after 5 min.
 * **script**: runs the user script named by its label
   (:mod:`moonlight.scripts.scripts`); the route holds until it ends.
 * **End of route**: a hunting route starts over at waypoint 0; a route
@@ -121,6 +125,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from moonlight.cavebot.pathing import CostMap, next_step
+from moonlight.cavebot.town import find_lockers, pick_locker
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, InputBackend
@@ -150,8 +155,8 @@ logger = logging.getLogger(__name__)
 #: Valid waypoint actions.
 ACTIONS = (
     "walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto", "check",
-    "say", "key", "drag", "script", "wait", "step",
-)
+    "say", "key", "drag", "script", "wait", "step", "finddepo",
+)  # fmt: skip
 
 #: Actions that need no position (executed immediately).
 _JUMP_ACTIONS = ("label", "goto", "check")
@@ -202,6 +207,10 @@ _CREATURE_IN_THE_WAY_CLICK_WAIT = 1.5
 #: The game view scrolls a step after the position changed: a scan then sees creatures a tile off.
 _VIEW_SETTLE = 0.5
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
+# doc: docs/prs/depot.md#finddepo-waypoint
+#: Seconds between looks for a free locker, and before the alarm when all are taken.
+_DEPOT_RELOOK = 3.0
+_DEPOT_ALARM = 300.0
 
 #: Game grid layout (docs/ui_layout.md #10): 15x11 tiles, player at (7, 5).
 GAME_GRID_COLS = 15
@@ -448,6 +457,11 @@ class Cavebot:
         self._scripts = scripts
         self._sends_done = 0  # of the current hand action
         self._hand_done_at: float | None = None
+        #: The locker the last ``finddepo`` picked (x, y, z), for ``deposit``.
+        self.depot_locker: tuple[int, int, int] | None = None
+        self._depot_stand: Waypoint | None = None  # the tile next to it
+        self._depot_looked = float("-inf")
+        self._depot_wait_since: float | None = None
 
         #: Why the route stopped on its own ("stuck", "lost", "goto_loop"),
         #: or None.
@@ -566,6 +580,12 @@ class Cavebot:
             return
 
         wp = self.route.waypoints[self.route.current]
+        if wp.action == "finddepo":
+            stand = self._find_depot(wp, pos, now)
+            if stand is None:
+                self.release_walk_key()
+                return
+            wp = stand
         if (wp.action in _HAND_ACTIONS and not has_tile(wp)) or (
             wp.action in (*_HAND_ACTIONS, "step") and self._stepped(wp, pos)
         ):
@@ -847,10 +867,57 @@ class Cavebot:
                 i for i, w in enumerate(wps) if w.action == "label" and w.label == wp.label
             )
         self.route.current += 1
+        self._depot_stand, self._depot_wait_since = None, None
         self._expected_z = None
         self._last_cmd = float("-inf")
         self._clicker.cancel()  # the pending click targeted the old waypoint
         self._resolve_jumps()
+
+    # doc: docs/prs/depot.md#finddepo-waypoint
+    def _find_depot(self, wp: Waypoint, pos: Position, now: float) -> Waypoint | None:
+        """Where ``finddepo`` walks: its own tile, then the tile next to the
+        picked locker; None while it looks or waits for a free locker."""
+        if self._depot_stand is not None:
+            return self._depot_stand
+        if (pos.x, pos.y, pos.z) != (wp.x, wp.y, wp.z):
+            return wp  # walk to where the lockers are in view
+        self._last_move = now  # waiting here is not being stuck
+        if now - self._depot_looked < _DEPOT_RELOOK:
+            return None
+        self._depot_looked = now
+        frame = self._frames() if self._frames is not None else None
+        picked = None
+        if frame is not None:
+            px, py = pos.x - PLAYER_SLOT[0], pos.y - PLAYER_SLOT[1]
+            lockers = {(px + c, py + r) for c, r in find_lockers(frame, self._game_region)}
+            taken = {(px + c, py + r) for c, r in find_creatures(frame, self._game_region)}
+            cost = (
+                self._cost_map if self._cost_map is not None and not self._cost_map.empty else None
+            )
+
+            def free(x: int, y: int) -> bool:
+                if (x, y) in taken:
+                    return False
+                if cost is None:  # ponytail: no cost map, only the tile south of a locker
+                    return (x, y - 1) in lockers
+                return cost.walkable(x, y, pos.z)
+
+            picked = pick_locker(lockers, (pos.x, pos.y), free)
+        if picked is None:
+            if self._depot_wait_since is None:
+                logger.info("cavebot: no free depot locker, waiting")
+                self._depot_wait_since = now
+            elif now - self._depot_wait_since >= _DEPOT_ALARM and self.alarm != "depot_taken":
+                logger.warning("cavebot: every depot locker taken for 5 min, still waiting")
+                self.alarm = "depot_taken"
+            return None
+        (lx, ly), (sx, sy) = picked
+        logger.info("cavebot: depot locker %s,%s, standing at %s,%s", lx, ly, sx, sy)
+        if self.alarm == "depot_taken":
+            self.alarm = None
+        self.depot_locker = (lx, ly, pos.z)
+        self._depot_stand = Waypoint(sx, sy, pos.z, "stand")
+        return self._depot_stand
 
     def _resync_floor(self, z: int) -> None:
         """Jump to the next positional waypoint on floor *z* (wrapping)."""
