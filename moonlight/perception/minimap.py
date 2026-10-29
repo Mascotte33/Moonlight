@@ -337,14 +337,18 @@ class MinimapReader:
         self._prev_gray = None
 
     def _read_z(self, frame: np.ndarray) -> int:
-        """Read the z-level via the floor reader (0 when unknown)."""
+        """Read the z-level via the floor reader (0 without one).
+
+        An unreadable indicator (a tooltip or an overlay over it) keeps the
+        last floor: a guessed 0 has no map and lost the position for good.
+        """
         if self._floor_reader is None:
             return 0
         region = self._floor_region
         if region is None and isinstance(self._floor_reader, FloorReader):
             region = self._floor_reader.floor_region
         floor = self._floor_reader.read_floor(frame, region)
-        return 0 if floor is None else int(floor)
+        return self._position.z if floor is None else int(floor)
 
     def _marker_at_center(self, crop: np.ndarray) -> bool:
         """Check the player marker around the radar center.
