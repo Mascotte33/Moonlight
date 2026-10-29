@@ -13,6 +13,8 @@
  *                 (each axis 0..32767, maps to the screen the OS
  *                 assigns to absolute pointers)  -> ERR otherwise
  *   C L | C R     mouse click (left/right)       -> OK
+ *   H L | H R     hold mouse button down         -> OK
+ *   R L | R R     release mouse button           -> OK
  *   P             ping                           -> PONG
  *   X             release all inputs             -> OK
  *
@@ -441,11 +443,16 @@ static void processLine(char* line) {
         break;
       }
 
-      case 'C': { // mouse click
+      case 'C':   // mouse click
+      case 'H':   // hold mouse button
+      case 'R': { // release mouse button
         if (n == 2 && strlen(tokens[1]) == 1) {
           char side = tokens[1][0];
           if (side == 'L' || side == 'R') {
-            mouseClick(side);
+            uint8_t button = (side == 'L') ? MOUSE_LEFT : MOUSE_RIGHT;
+            if (cmd == 'C') mouseClick(side);
+            else if (cmd == 'H') Mouse.press(button);
+            else Mouse.release(button);
             ok = true;
           }
         }

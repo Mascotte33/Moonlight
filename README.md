@@ -52,7 +52,7 @@ moonlight/
 ├── targeting/    target picking, attack hotkeys + its tab
 ├── cavebot/      walking, pathing, route recorder + its tab
 ├── looting/      looting logic
-├── refill/       depot and shop trips
+├── refill/       refill trigger (free cap, potions)
 ├── scripts/      user scripts
 ├── extras/       buffs
 ├── alarms/       danger alarms
@@ -97,8 +97,13 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Alarms | ✅ | ✅ | ❌ |
 | Cavebot (waypoint routing, route recorder) | ✅ | ✅ | ❌ |
 | Looting | ✅ | ✅ | ✅ |
-| Refill route | ✅ | ✅ | ❌ |
-| User script runner | ✅ | ✅ | ❌ |
+| Refill (check, say, key, drag waypoints) | ✅ | ✅ | ❌ |
+| User scripts (script and wait waypoints, timers) | ✅ | ✅ | ❌ |
+| Extras (food, haste, buff, ring, amulet, player timer, PM alarm) | ✅ | ✅ | ❌ |
+| Account rotation (timed accounts, logout at the depot, next login) | ✅ | ✅ | ❌ |
+| Step waypoints (one walk key from a tile: holes, teleports, stairs) | ✅ | ✅ | ❌ |
+| Cavebot fixes (lone unreachable target pause, blocked path retry) | ✅ | ✅ | ❌ |
+| Potion count refill trigger (action bar digits) | ✅ | ✅ | ❌ |
 | Arduino HID input | ✅ | ✅ | 🟡 |
 | Closed-loop clicking | ✅ | ✅ | 🟡 |
 | Kill switch + safety stops | ✅ | ✅ | ❌ |
@@ -116,6 +121,18 @@ over stairs or into a hole records a `stairs` waypoint on that tile, so the
 route plays back across floors; for a ladder (or a sewer grate: Ladder too),
 rope or shovel click its button while standing on the tile you use it from. While recording, every
 waypoint button adds a waypoint on the character's tile.
+
+The arrow pad in Cavebot > Edit route adds a `step` waypoint on the
+character's tile: the bot walks onto that tile,
+presses that arrow key exactly once (diagonals: Q, E, Z, C), waits 0.5 s and
+goes on to the next waypoint, wherever the step led. It never presses it
+again, so use it for holes, teleports, stairs and other one-tile moves. The
+middle button adds a `stand` on the tile. A `rope` waypoint walks onto its
+exact tile and stands still there 0.2 s before using the rope. With arrow-key
+walking, paths go around stairs, shovel holes, step targets and any tile that
+moved the character elsewhere when it walked onto it. Minimap-click walking
+lets the client pick the path and can cross them: turn on arrow-key walking
+for routes next to holes or teleports.
 
 Looting presses the loot hotkey (the OTS loots every corpse around on
 Alt+Q) 0.3 s after each kill (also when more monsters of that name are left),
@@ -140,6 +157,81 @@ this switch on, the cavebot stands still for up to 1 s after a kill
 when a ring is found and `looting` at each loot press. A ring
 whose press could not go out at once is pressed on the next free slot.
 
+Every waypoint button in Edit route adds the waypoint on the character's
+tile; there are no typed X, Y, Z fields. The bot walks onto that tile before
+it does the waypoint: a `label`, `goto`, `say`, `key`, `drag`, `script` or
+`wait` too. Those from older routes have no tile and happen where the bot
+stands. One click on a row in the waypoint list highlights it; the ▲ and ▼
+buttons under the list move it one row up or down. The list keeps its
+scroll position when it changes.
+
+Refill is part of the waypoint list. A `check` waypoint with label `town`
+is added on the character's tile and the bot walks there. On it, the bot
+jumps to label `town` when the free cap in the side panel's Cap box is under
+the set number (Cavebot > Refill > `cap <`, 0 = off: the number shows gray with `off`; there is no Refill switch, it is on with the cavebot), when the action bar shows fewer
+health or mana potions than set there (0 = off; spirit potions count for
+both), or after **Refill now** is pressed; otherwise it goes on to the next
+waypoint. The potions are found on the action bar by their
+picture (`data/templates/potions/<health|mana|spirit>/`), the Cap box by
+`data/templates/cap_label.png`; their digits must match known shapes
+(learned from the golden screenshots), or be twice as close to one digit as to any other. A cap or count that does not read never
+sends the bot to town. Each `check` logs one line per number that is on, such
+as `check: MP pots 230 >= 200 | continue`, and the Refill rows show the last
+read number and the picture it was read from.
+The town section uses `say` (presses Enter to open the chat box, types its label, Enter sends it; chat stays off for WASD; for
+NPC talk like `hi`, `deposit all`, `yes`), `key` (presses its label as a
+hotkey) and `drag` (label `x1 y1 x2 y2` in client pixels: drags the left
+button from one spot to the other, such as the loot backpack onto the depot
+stash). Edit route shows the cursor in client pixels for drag labels. End
+the town section with a `goto` back to the hunt. Drag needs the firmware's
+`H` / `R` mouse commands: reflash the Leonardo.
+
+A `wait` waypoint holds the route for its label in seconds. A `script`
+waypoint runs `scripts/<label>.py`; Cavebot > Scripts runs scripts on a timer
+too (`eat 60, rope 5`: name and seconds), while Scripts is on in Settings. A
+script is a Python generator `run(bot)` that yields commands one at a time,
+so the bot heals in between:
+
+```python
+def run(bot):
+    if bot.mana > 90:             # also bot.hp, bot.cap (used %)
+        yield bot.say("utevo lux")
+    yield 2                       # wait 2 seconds
+    spot = bot.find("rope.png")   # a picture in scripts/, None when not seen
+    if spot:
+        yield bot.click(*spot)    # client pixels, right=True for a right click
+    yield bot.press("f5")
+    yield bot.goto("town")        # walk on from route label town
+```
+
+A running script pauses walking and waits during a fight or looting; healing
+always goes first. An error in a script is logged and stops that script only.
+
+Extras (Settings > Extras) press a hotkey when a picture shows: food when
+hungry, ring or amulet when its slot is empty, haste while walking without
+haste or a protection zone, the buff potion when its icon is gone and at least
+N monsters are in the battle list. Cut each picture from a screenshot into
+`data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `ring_empty`,
+`amulet_empty`, `pm`, all `.png`); an extra without its picture never presses.
+For the player timer, calibrate the optional `player_list` area: a second
+battle list set to players only. A player staying there longer than the set
+minutes sends the character to refill or sounds the alarm; with Extras on,
+players passing by no longer alarm. A private message tab sounds the alarm
+too. Every alarm saves a screenshot in `screenshots/` (the newest 20 stay).
+
+Account rotation plays accounts in turn (A, B, C, A...) in one client window.
+List them in the config file (`configs/<name>.json`, never published) under
+`modules.rotation.accounts`: `login`, `password` (letters and digits only),
+`character` (its place in the character list, 1 = the first) and `minutes`
+(clock time from its login). Put a `script` waypoint with label `rotate` at the
+depot of the town section. When an account's time is up the next `check`
+waypoint goes to town; at `rotate` the bot presses the logout hotkey (Settings
+> Account rotation, Ctrl+L by default), types the next account's login and
+password, picks the character and walks on. An account that does not log in
+within 30 s is skipped; when none does, the bot alarms and stops. Passwords
+show as `press (hidden)` in the command log. Every account plays the same
+route and settings. Scripts can type too: `bot.type("abc")`.
+
 ## Getting started
 
 Requirements: Windows, Python 3.12+, an Arduino Leonardo for real input
@@ -163,7 +255,7 @@ python tools/check_setup.py
 python -m moonlight
 ```
 
-Use `python -m moonlight --no-bot` to open the GUI without starting the bot loop.
+The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start` starts it right away.
 
 ## Healing and cures
 
@@ -213,7 +305,10 @@ or in the `targeting` section of your profile config:
   by accident. All attack keys share `attack_cooldown_ms` (default 2000).
 - **Unreachable:** when the target's HP stands still for
   `unreachable_after_seconds` (default 8), the bot takes one step toward it.
-  After the same time again, it skips that monster for 30 s.
+  After the same time again, it skips that monster for 30 s. With no other
+  monster to attack it pauses targeting for 5 s instead (the settings stay
+  as they are) and the cavebot walks on; the dashboard shows
+  "(targeting paused N s)".
 - **Chase mode:** each monster row is "chase" or "stand still". The bot reads
   the active (red) chase button from the `chase_buttons` region (Calibration
   tab) and, when it differs from the target's row, presses
@@ -242,8 +337,12 @@ or in the `targeting` section of your profile config:
   once there is one, back to your own targeting. With nothing to fight it tries
   every tile it has not bumped into yet; with none left it skips the
   waypoint (`cavebot: waypoint N unreachable, skipping` in the log) and the
-  next ones until one on its floor has a way. When none has, or the route
-  goes 60 s without moving, the route stops with the stuck alarm. Diagonals need the client's chat off (WASD walking).
+  next ones until one on its floor has a way. When none has (a player in
+  the only path), it stands still and tries the blocked tiles again every
+  2 s, walking on as soon as one is free; after 60 s it raises the stuck
+  alarm and keeps trying. A route that goes 60 s without moving for any
+  other reason also raises the stuck alarm and keeps trying; it never stops by itself
+  for being stuck (`cavebot: moving again` clears the alarm). Diagonals need the client's chat off (WASD walking).
 - **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.

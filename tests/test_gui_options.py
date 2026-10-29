@@ -126,7 +126,6 @@ def test_no_field_is_shown_by_two_tabs() -> None:
     [
         (BotConfig.default(), "cavebot", "Cavebot needs a route"),
         (BotConfig.default(), "buffs", "Buffs needs a buff-icon reader"),
-        (BotConfig.default(), "refill", "Refill needs Cavebot and Looting on"),
     ],
 )
 def test_refused_switch_has_a_plain_reason(cfg: BotConfig, name: str, reason: str) -> None:
@@ -135,14 +134,6 @@ def test_refused_switch_has_a_plain_reason(cfg: BotConfig, name: str, reason: st
     with pytest.raises(ConfigError) as exc:
         write_option(cfg, _switch(name), True)
     assert plain_reason(str(exc.value)).startswith(reason)
-
-
-def test_refill_without_capacity_reader_has_a_plain_reason() -> None:
-    from moonlight.gui.settings_tab import plain_reason
-
-    msg = "refill is enabled but no capacity perception source is configured"
-    assert plain_reason(msg).startswith("Refill needs a capacity reader")
-    assert plain_reason("something else") == "something else"
 
 
 @pytest.mark.parametrize(
@@ -201,3 +192,32 @@ def test_show_paused_shows_off_but_keeps_the_saved_value() -> None:
     tab.show_paused(["targeting.enabled"], False)
     assert widget["on"] is True and switch.state == "normal"
     assert tab._readers["targeting.enabled"]() is True
+
+
+# doc: docs/prs/extras.md#extras
+def test_extras_options_write_in_order() -> None:
+    from moonlight.gui.settings_tab import EXTRAS_OPTIONS
+
+    cfg = write_option(BotConfig.default(), _switch("extras"), True)
+    values = {"extras.food_hotkey": "F9", "extras.food": True, "extras.player_minutes": "2.5"}
+    for option in EXTRAS_OPTIONS:
+        if option.field in values:
+            cfg = write_option(cfg, option, values[option.field])
+    assert cfg.extras is not None and cfg.extras.food and cfg.extras.food_hotkey == "F9"
+    assert cfg.extras.player_minutes == 2.5
+    with pytest.raises(ConfigError):
+        write_option(cfg, Option("", "extras.haste", "switch"), True)
+
+
+def test_rotation_switch_is_refused_without_accounts() -> None:
+    from moonlight.gui.settings_tab import ROTATION_OPTIONS
+
+    with pytest.raises(ConfigError):
+        write_option(BotConfig.default(), _switch("rotation"), True)
+    from moonlight.scripts.rotation import Account, RotationConfig
+
+    (hotkey,) = ROTATION_OPTIONS
+    kept = RotationConfig(accounts=(Account("a", "p"), Account("b", "q")))
+    cfg = replace(BotConfig.default(), off={"rotation": kept})
+    cfg = write_option(cfg, hotkey, "ctrl+q")
+    assert cfg.off["rotation"].logout_hotkey == "ctrl+q"

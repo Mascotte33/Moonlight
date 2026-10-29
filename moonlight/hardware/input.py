@@ -99,6 +99,8 @@ class InputBackend(ABC):
             Move the mouse by a relative pixel delta (signs allowed).
         click(side):
             Click the left or right mouse button.
+        mouse_down(side) / mouse_up(side):
+            Hold a mouse button down / let it go (drag).
         ping():
             Return True if the device is alive and replies PONG.
         release_all():
@@ -133,6 +135,14 @@ class InputBackend(ABC):
     def click(self, side: ClickSide) -> None:
         """Click the left or right mouse button."""
         ...
+
+    def mouse_down(self, side: ClickSide) -> None:
+        """Hold a mouse button down until :meth:`mouse_up`."""
+        raise NotImplementedError(f"{type(self).__name__} cannot hold a mouse button")
+
+    def mouse_up(self, side: ClickSide) -> None:
+        """Let go of a mouse button held with :meth:`mouse_down`."""
+        raise NotImplementedError(f"{type(self).__name__} cannot hold a mouse button")
 
     @abstractmethod
     def ping(self) -> bool:
@@ -186,6 +196,14 @@ class ProtocolEncoder:
     def click(self, side: ClickSide) -> str:
         """Encode a mouse click: ``C L`` or ``C R``."""
         return f"C {side.value}"
+
+    def mouse_down(self, side: ClickSide) -> str:
+        """Encode a mouse button hold: ``H L`` or ``H R``."""
+        return f"H {side.value}"
+
+    def mouse_up(self, side: ClickSide) -> str:
+        """Encode a mouse button release: ``R L`` or ``R R``."""
+        return f"R {side.value}"
 
     def ping(self) -> str:
         """Encode a ping: ``P`` (device replies PONG)."""
@@ -325,6 +343,14 @@ class FakeInput(InputBackend):
         """Mouse click. Wire: ``C L`` / ``C R``."""
         self.write(self.encoder.click(side))
 
+    def mouse_down(self, side: ClickSide) -> None:
+        """Hold a mouse button. Wire: ``H L`` / ``H R``."""
+        self.write(self.encoder.mouse_down(side))
+
+    def mouse_up(self, side: ClickSide) -> None:
+        """Release a mouse button. Wire: ``R L`` / ``R R``."""
+        self.write(self.encoder.mouse_up(side))
+
     def ping(self) -> bool:
         """Ping; True iff the simulated device replies PONG."""
         return self.write(self.encoder.ping()) == "PONG"
@@ -362,7 +388,7 @@ class FakeInput(InputBackend):
         if cmd == "A":
             ok = len(args) == 2 and all(a.isdigit() and int(a) <= ABS_MAX for a in args)
             return "OK" if ok else "ERR"
-        if cmd == "C":
+        if cmd in {"C", "H", "R"}:
             return "OK" if len(args) == 1 and args[0] in {"L", "R"} else "ERR"
         if cmd == "P":
             return "PONG" if not args else "ERR"
@@ -626,6 +652,14 @@ class ArduinoInput(InputBackend):
     def click(self, side: ClickSide) -> None:
         """Mouse click. Wire: ``C L`` / ``C R``."""
         self._send_async("click", self.encoder.click(side))
+
+    def mouse_down(self, side: ClickSide) -> None:
+        """Hold a mouse button. Wire: ``H L`` / ``H R``."""
+        self._send_async("mouse_down", self.encoder.mouse_down(side))
+
+    def mouse_up(self, side: ClickSide) -> None:
+        """Release a mouse button. Wire: ``R L`` / ``R R``."""
+        self._send_command("mouse_up", self.encoder.mouse_up(side))
 
     def ping(self) -> bool:
         """Send ``P``; True iff the device answers ``PONG`` right now."""

@@ -1,8 +1,8 @@
 """Entry point: ``python -m moonlight.gui``.
 
 ``--help`` prints usage and exits 0 without opening a window; otherwise the
-dark 10-tab GUI is launched and the bot loop thread is started (unless
-``--no-bot`` is given).
+dark 10-tab GUI is launched Stopped; Start (or ``--start``) runs the bot
+loop thread.
 """
 
 from __future__ import annotations

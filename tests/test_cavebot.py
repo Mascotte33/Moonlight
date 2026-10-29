@@ -19,9 +19,11 @@ import pytest
 from moonlight.cavebot.cavebot import Cavebot, Route, RouteError, RouteFileLoader, Waypoint
 from moonlight.cavebot.pathing import CostMap, next_step
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
+from moonlight.core.safety import RateLimitedInput, RateLimiter
 from moonlight.core.state import Monster, Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
+from moonlight.scripts.scripts import ScriptRunner
 
 MINIMAP = (10, 10, 120, 120)
 GAME = (200, 0, 480, 352)  # 32 px tiles; player tile center = (440, 176)
@@ -33,6 +35,8 @@ class RecordingClicker(ClickController):
     def __init__(self) -> None:
         self.clicks: list[tuple[tuple[int, int], ClickSide]] = []
         self.cancels = 0
+        self._screen: tuple[int, int, int, int] | None = (0, 0, 1000, 1000)
+        self._window_origin = None
 
     @property
     def busy(self) -> bool:
@@ -61,7 +65,7 @@ class Sim:
     def __init__(self, waypoints: list[Waypoint], start: Position, **kw: Any) -> None:
         self.now = 0.0
         self.fake = FakeInput()
-        self.clicker = RecordingClicker()
+        self.clicker = kw.pop("clicker", None) or RecordingClicker()
         self.state = WorldState(client_focused=True, screen_ok=True)
         self.reached: list[int] = []
         self._pos: Position | None = start
@@ -261,12 +265,194 @@ def test_label_goto_loops_route() -> None:
     assert sim.bot.is_active() and sim.route.current == 1 and sim.reached == [1]
 
 
+# doc: docs/prs/refill.md#check-waypoint
+def test_check_jumps_to_town_once_on_refill_now() -> None:
+    wps = [
+        Waypoint(0, 0, 0, "label", "hunt"),
+        walk(100, 100),
+        Waypoint(0, 0, 0, "check", "town"),
+        walk(110, 100),
+        Waypoint(0, 0, 0, "goto", "hunt"),
+        Waypoint(0, 0, 0, "label", "town"),
+        walk(120, 100),
+        Waypoint(0, 0, 0, "goto", "hunt"),
+    ]
+    sim = Sim(wps, Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    assert sim.route.current == 3  # not due: past the check
+    sim.route.current = 1
+    sim.bot.refill_now = True
+    sim.step()
+    assert sim.route.current == 6 and not sim.bot.refill_now
+    sim.route.current = 1
+    sim.step()
+    assert sim.route.current == 3  # the jump used it up
+
+
+# doc: docs/prs/potion-count.md#potion-count
+def test_check_jumps_to_town_while_potions_are_low() -> None:
+    wps = [
+        walk(100, 100),
+        Waypoint(0, 0, 0, "check", "town"),
+        walk(110, 100),
+        Waypoint(0, 0, 0, "label", "town"),
+        walk(120, 100),
+    ]
+    low = [True]
+    sim = Sim(wps, Position(100, 100, 7), supplies_low=lambda: low[0])
+    sim.bot.start()
+    sim.step()
+    assert sim.route.current == 4
+    low[0], sim.route.current = False, 0
+    sim.step()
+    assert sim.route.current == 2
+
+
+def test_a_check_with_a_tile_decides_once_the_bot_stands_on_it() -> None:
+    low = [True]
+    for due, after in ((True, 4), (False, 2)):
+        wps = [
+            walk(100, 100),
+            Waypoint(105, 100, 7, "check", "town"),
+            walk(110, 100),
+            Waypoint(0, 0, 0, "label", "town"),
+            walk(120, 100),
+        ]
+        low[0] = due
+        sim = Sim(wps, Position(100, 100, 7), supplies_low=lambda: low[0])
+        sim.bot.start()
+        sim.step()
+        assert sim.route.current == 1  # walks to the check first
+        sim.pos = Position(105, 100, 7)
+        sim.step()
+        assert sim.route.current == after
+
+
+def test_label_goto_and_say_with_a_tile_wait_for_the_bot_to_stand_there() -> None:
+    wps = [
+        Waypoint(100, 100, 7, "label", "top"),
+        Waypoint(103, 100, 7, "say", "hi"),
+        Waypoint(105, 100, 7, "goto", "top"),
+    ]
+    sim = Sim(wps, Position(101, 100, 7))
+    sim.bot.start()
+    sim.step()
+    assert sim.route.current == 0  # walks to the label first
+    sim.pos = Position(100, 100, 7)
+    sim.step()
+    assert sim.route.current == 1
+    sim.step()
+    assert sim.fake.sent_lines == []  # not on the say tile yet
+    sim.pos = Position(103, 100, 7)
+    for _ in range(5):
+        sim.step()
+    assert sim.fake.sent_lines == ["K enter", "K h", "K i", "K enter"]
+    sim.step(1.0)
+    assert sim.route.current == 2
+    sim.pos = Position(105, 100, 7)
+    sim.step()
+    assert sim.route.current == 1  # goto jumps on its tile: after label "top" is the say
+    assert RouteFileLoader.parse(
+        {"name": "r", "waypoints": [{"x": 1, "y": 2, "z": 7, "action": "label", "label": "a"}]}
+    ).waypoints[0] == Waypoint(1, 2, 7, "label", "a")
+
+
+def test_check_needs_an_existing_label() -> None:
+    raw = {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7}, {"action": "check", "label": "x"}]}
+    with pytest.raises(RouteError, match="check target"):
+        RouteFileLoader.parse(raw)
+
+
+# doc: docs/prs/refill.md#say-key-waypoints
+def test_say_types_one_key_per_tick_then_holds_before_moving_on() -> None:
+    wps = [walk(100, 100), Waypoint(0, 0, 0, "say", "Hi Bob"), walk(110, 100)]
+    sim = Sim(wps, Position(100, 100, 7))
+    sim.bot.start()
+    for _ in range(10):
+        sim.step()
+    keys = ["K enter", "K h", "K i", "K space", "K b", "K o", "K b", "K enter"]
+    assert sim.fake.sent_lines == keys
+    assert sim.route.current == 1
+    sim.step(1.0)
+    assert sim.route.current == 2
+
+
+def test_key_resends_a_press_the_wire_limiter_dropped() -> None:
+    sim = Sim([Waypoint(0, 0, 0, "key", "F5"), walk(110, 100)], Position(100, 100, 7))
+    limited = RateLimitedInput(sim.fake, RateLimiter(rate=1.0, capacity=1.0, clock=lambda: sim.now))
+    limited.reserve = 0.0
+    limited.press_combo("F1")  # empties the bucket
+    sim.bot._input = limited
+    sim.bot.start()
+    sim.step()
+    assert sim.fake.sent_lines == ["K F1"]  # dropped
+    sim.step(1.0)
+    assert sim.fake.sent_lines == ["K F1", "K F5"]
+
+
+def test_drag_moves_holds_moves_and_lets_go_one_command_per_tick() -> None:
+    sim = Sim([Waypoint(0, 0, 0, "drag", "100 200 300 400"), walk(110, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    for _ in range(5):
+        sim.step()
+    a, b = sim.clicker.to_wire((100, 200)), sim.clicker.to_wire((300, 400))
+    assert sim.fake.sent_lines == [f"A {a[0]} {a[1]}", "H L", f"A {b[0]} {b[1]}", "R L"]
+    sim.step(1.0)
+    assert sim.route.current == 1
+
+
+def test_drag_needs_the_absolute_clicker() -> None:
+    clicker = RecordingClicker()
+    clicker._screen = None
+    with pytest.raises(ValueError, match="absolute"):
+        Sim([Waypoint(0, 0, 0, "drag", "1 2 3 4")], Position(100, 100, 7), clicker=clicker)
+
+
+# doc: docs/prs/scripts.md#script-priority
+def test_wait_holds_the_route_for_its_seconds() -> None:
+    sim = Sim([Waypoint(0, 0, 0, "wait", "2"), walk(110, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.step()
+    sim.step(1.5)
+    assert sim.route.current == 0
+    sim.step(1.0)
+    assert sim.route.current == 1 and sim.fake.sent_lines == []
+
+
+def test_script_waypoint_starts_the_script_then_moves_on(tmp_path: Path) -> None:
+    (tmp_path / "s.py").write_text("def run(bot):\n    yield bot.goto('back')\n")
+    runner = ScriptRunner(tmp_path)
+    wps = [Waypoint(0, 0, 0, "script", "s"), walk(110, 100), Waypoint(0, 0, 0, "label", "back")]
+    sim = Sim(wps, Position(100, 100, 7), scripts=runner)
+    sim.bot.start()
+    sim.step()
+    assert runner.running == "s"
+    runner.cavebot = sim.bot
+    while runner.running:
+        runner.step(sim.state, sim.fake)
+    assert sim.route.current == 2  # bot.goto jumped the route
+
+
+@pytest.mark.parametrize(
+    ("action", "label"),
+    [("say", "hi!"), ("key", "ctrl 1"), ("drag", "1 2 3"), ("wait", "soon"), ("script", "a b")],
+)
+def test_bad_say_or_key_label_refused(action: str, label: str) -> None:
+    raw = {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7}, {"action": action, "label": label}]}
+    with pytest.raises(RouteError, match=action):
+        RouteFileLoader.parse(raw)
+
+
 # -- tile actions ------------------------------------------------------------
 
 
 def test_rope_presses_hotkey_clicks_tile_and_waits_for_floor_up() -> None:
     sim = Sim([Waypoint(100, 100, 7, "rope"), walk(100, 100, 6)], Position(100, 100, 7))
     sim.bot.start()
+    for _ in range(4):
+        sim.step()  # arrived: stands 0.2 s first
+    assert sim.fake.sent_lines == []
     sim.step()
     assert sim.fake.sent_lines == ["K F9"]
     assert sim.clicker.clicks == [((440, 176), ClickSide.LEFT)]
@@ -309,6 +495,31 @@ def test_ladder_down_a_sewer_grate_is_done() -> None:
     assert sim.reached == [0] and sim.bot.route.current == 1
 
 
+def test_step_presses_its_key_once_on_its_tile_then_moves_on() -> None:
+    # doc: docs/prs/steps.md#step-waypoint
+    wps = [Waypoint(100, 101, 7, "step", "down"), walk(110, 100, 8)]
+    sim = Sim(wps, Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    assert sim.fake.sent_lines == ["D down"]  # walks onto the step tile
+    sim.pos = Position(100, 101, 7)
+    for _ in range(10):
+        sim.step()  # the step did not move the player: still one press
+    assert sim.fake.sent_lines == ["D down", "U down", "K down"]
+    sim.pos = Position(100, 102, 8)  # fell through the hole
+    sim.step(0.4)  # over 0.5 s after the press, under 1 s: the hold is over
+    assert sim.reached == [0] and sim.route.current == 1
+    assert sim.fake.sent_lines.count("K down") == 1
+
+
+def test_step_label_is_a_walk_key() -> None:
+    raw = {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7, "action": "step", "label": "up"}]}
+    assert RouteFileLoader.parse(raw).waypoints[0].label == "up"
+    raw["waypoints"][0]["label"] = "F5"  # type: ignore[index]
+    with pytest.raises(RouteError, match="step label"):
+        RouteFileLoader.parse(raw)
+
+
 def test_action_retried_when_floor_does_not_change() -> None:
     sim = Sim([Waypoint(100, 100, 7, "ladder")], Position(100, 100, 7))
     sim.bot.start()
@@ -320,18 +531,21 @@ def test_action_retried_when_floor_does_not_change() -> None:
 # -- stuck / floor change / stop -----------------------------------------------
 
 
-def test_stuck_same_position_raises_alarm_and_stops() -> None:
+def test_stuck_same_position_raises_alarm_and_keeps_trying() -> None:
     sim = Sim([walk(120, 100)], Position(100, 100, 7))
     sim.bot.start()
     for _ in range(1190):  # 59.5 s standing still
         sim.step()
-    assert sim.bot.is_active()
+    assert sim.bot.alarm is None
     for _ in range(20):
         sim.step()
-    assert not sim.bot.is_active() and sim.bot.alarm == "stuck"
+    assert sim.bot.is_active() and sim.bot.alarm == "stuck"
     clicks = len(sim.clicker.clicks)
+    run_until(sim, sim.now + 10)
+    assert len(sim.clicker.clicks) > clicks  # still clicking the waypoint
+    sim.pos = Position(101, 100, 7)
     sim.step()
-    assert len(sim.clicker.clicks) == clicks
+    assert sim.bot.alarm is None  # moving again
 
 
 def run_until(sim: Sim, seconds: float) -> None:
@@ -477,7 +691,7 @@ def test_resume_resets_stuck_timer_on_move_reentry() -> None:
     assert sim.bot.is_active()
 
 
-def test_stuck_still_halts_without_resume_after_long_idle() -> None:
+def test_stuck_still_alarms_without_resume_after_long_idle() -> None:
     """Contrast for F-06: without resume() a long idle WOULD halt as stuck.
 
     Proves the resume() call on MOVE re-entry (not the passage of time alone)
@@ -491,7 +705,7 @@ def test_stuck_still_halts_without_resume_after_long_idle() -> None:
     sim.now += 61.0
     sim.step()
     assert sim.bot.alarm == "stuck"
-    assert not sim.bot.is_active()
+    assert sim.bot.is_active()  # alarm only, still trying
 
 
 def test_loop_calls_cavebot_resume_on_move_entry(
@@ -649,6 +863,28 @@ def test_walk_keys_presses_one_arrow_per_step() -> None:
     for _ in range(15):  # still not moved: blocked, press around it
         sim.step()
     assert pressed(sim)[3] in ("left", "right")
+
+
+def test_walk_keys_go_around_stairs_and_step_tiles() -> None:
+    # doc: docs/prs/steps.md#floor-change-tiles
+    wps = [walk(100, 104), Waypoint(100, 101, 7, "stairs"), Waypoint(101, 99, 7, "step", "up")]
+    sim = Sim(wps, Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    assert pressed(sim)[0] in ("left", "right", "z", "c")  # not down onto the stairs
+
+
+def test_walk_keys_avoid_a_tile_that_moved_the_player() -> None:
+    # doc: docs/prs/steps.md#floor-change-tiles
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    assert pressed(sim) == ["down"]
+    sim.pos = Position(130, 130, 7)  # the tile below was a teleport
+    sim.step()
+    sim.pos = Position(100, 100, 7)  # back again
+    sim.step(1.0)
+    assert pressed(sim)[-1] != "down"
 
 
 def test_walk_keys_hold_the_key_until_the_way_turns_or_stops() -> None:
@@ -920,18 +1156,29 @@ def test_walk_keys_skip_unreachable_waypoints_until_one_has_a_way(
     for _ in range(_BLOCK_STEPS // 2):
         sim.step()
     assert sim.route.current == 2  # waypoint 1 is on another floor: skipped too
-    assert "waypoint 0 unreachable, skipping" in caplog.text
-    assert "waypoint 1 unreachable, skipping" in caplog.text
+    assert "waypoint 0 unreachable, skipping to 2" in caplog.text
     assert pressed(sim)[0] == "right" and pressed(sim)[-1] == "down"
     assert sim.bot.is_active()
 
 
-def test_walk_keys_stuck_alarm_when_no_waypoint_is_reachable() -> None:
+def test_walk_keys_blocked_waits_and_alarms_after_stuck_timeout() -> None:
     sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
     sim.bot.start()
-    for _ in range(400):  # every tile around bumped, nothing to fight
+    while sim.now < 55:  # every tile around bumped, nothing to fight
         sim.step()
-        if not sim.bot.is_active():
-            break
-    assert sim.bot.alarm == "stuck" and sim.now < 20
+    assert sim.bot.is_active() and sim.bot.alarm is None  # keeps retrying
     assert len(set(pressed(sim))) == 8
+    while sim.now < 65:
+        sim.step()
+    assert sim.bot.is_active() and sim.bot.alarm == "stuck"  # alarm, still trying
+
+
+def test_walk_keys_blocked_alarm_clears_when_the_way_is_free() -> None:
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    while sim.now < 65:
+        sim.step()
+    assert sim.bot.alarm == "stuck"
+    sim.pos = Position(100, 101, 7)  # the player stepped aside
+    sim.step()
+    assert sim.bot.is_active() and sim.bot.alarm is None

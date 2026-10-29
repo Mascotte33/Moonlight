@@ -193,6 +193,9 @@ def load_profile(
 class LoggedInput(InputBackend):
     """Sends every command to *inner* and writes it to *log* as one line."""
 
+    #: True while a password is typed: its keys are not logged.
+    quiet = False
+
     def __init__(self, inner: InputBackend, log: Callable[[str], None]) -> None:
         self.inner = inner
         self._log = log
@@ -201,7 +204,7 @@ class LoggedInput(InputBackend):
         return getattr(self.inner, name)
 
     def press_combo(self, combo: str) -> None:
-        self._log(f"input: press {combo}")
+        self._log("input: press (hidden)" if self.quiet else f"input: press {combo}")
         self.inner.press_combo(combo)
 
     def hold_combo(self, combo: str) -> None:
@@ -223,6 +226,14 @@ class LoggedInput(InputBackend):
     def click(self, side: ClickSide) -> None:
         self._log(f"input: click {side.name.lower()}")
         self.inner.click(side)
+
+    def mouse_down(self, side: ClickSide) -> None:
+        self._log(f"input: hold {side.name.lower()} button")
+        self.inner.mouse_down(side)
+
+    def mouse_up(self, side: ClickSide) -> None:
+        self._log(f"input: release {side.name.lower()} button")
+        self.inner.mouse_up(side)
 
     def ping(self) -> bool:
         return self.inner.ping()

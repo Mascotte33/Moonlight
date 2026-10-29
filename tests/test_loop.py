@@ -12,6 +12,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -21,10 +22,13 @@ from moonlight.cavebot.cavebot import Cavebot
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import VK_F12, F12Monitor, RateLimiter
 from moonlight.core.state import Monster, WorldState
+from moonlight.extras.extras import Extras, ExtrasConfig
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
 from moonlight.healing.healing import HealingAction, HealingDecision
 from moonlight.looting.looting import Looting
+from moonlight.scripts.rotation import Account, Rotation, RotationConfig
+from moonlight.scripts.scripts import ScriptRunner
 from moonlight.targeting.attack_hotkeys import AttackHotkeys
 from moonlight.targeting.targeting import AreaRule, MonsterRow, TargetingConfig, TargetingDecision
 
@@ -123,7 +127,6 @@ class TestBotStatePriority:
             BotState.ALARM,
             BotState.ATTACK,
             BotState.LOOT,
-            BotState.REFILL,
             BotState.MOVE,
             BotState.IDLE,
         ]
@@ -132,7 +135,7 @@ class TestBotStatePriority:
     def test_priority_ranks(self) -> None:
         assert BotState.KILL.priority == 0
         assert BotState.PAUSED.priority == 1
-        assert BotState.IDLE.priority == 7
+        assert BotState.IDLE.priority == 6
 
 
 class TestGameLoopSafety:
@@ -397,6 +400,32 @@ class TestGameLoopStates:
         assert steps == []  # the heal skipped the step
 
 
+    # doc: docs/prs/scripts.md#script-priority
+    def test_script_pauses_walking_never_healing(self, tmp_path: Path) -> None:
+        (tmp_path / "s.py").write_text("def run(bot):\n    yield bot.press('f9')\n")
+        ws = make_state(hp=50.0)
+        inp = FakeInput()
+        steps: list[int] = []
+        c = FakeClock()
+        scripts = ScriptRunner(tmp_path, timers=[("s", 60.0)], clock=c)
+        modules = DecisionModules(healing=HealingDecision(clock=c), scripts=scripts)
+        gl, _ = make_loop(
+            ws, inp, clock=c, modules=modules,
+            move_provider=lambda s: True, move_action=lambda: steps.append(1),
+        )
+        gl.tick()
+        assert inp.sent_lines == ["K F2"]  # the heal first
+        with ws.lock():
+            ws.hp_percent = 100.0
+        for _ in range(3):
+            c.advance(1.0)
+            gl.tick()
+        assert inp.sent_lines == ["K F2", "K f9"] and steps == []
+        c.advance(1.0)
+        gl.tick()
+        assert steps == [1]  # the script ended: walking again
+
+
 class TestGameLoopRateLimit:
     def test_actions_capped_at_10_per_second(self) -> None:
         ws = make_state(hp=50.0)
@@ -557,6 +586,30 @@ class TestSelectClick:
         ticks(gl, clock, 8 * 20 + 6)  # 8 s more, then the click on the next row
         assert inp.sent_lines == ["K up", "A 189 244", "C L"]
 
+
+    def test_lone_stuck_target_pauses_targeting_with_a_countdown(self) -> None:
+        ws = make_state()
+        wolf = Monster("Wolf", name_hash="w")
+        with ws.lock():
+            ws.monsters = [wolf]
+            ws.selected_target = wolf
+        cavebot = SimpleNamespace(
+            is_active=lambda: False,
+            luring=lambda: False,
+            route=SimpleNamespace(current=0),
+            release_walk_key=lambda: None,
+            alarm=None,
+            targeting_paused=False,
+        )
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, cavebot=cavebot)
+        ticks(gl, clock, 8 * 20 + 3)  # 8 s on a target whose HP never moves
+        assert cavebot.targeting_paused and gl.current_state is not BotState.ATTACK
+        assert "(targeting paused 5 s)" in str(gl.get_stats()["current_task"])
+        ticks(gl, clock, 5 * 20 + 2)
+        assert not cavebot.targeting_paused
+        assert "targeting paused" not in str(gl.get_stats()["current_task"])
+        assert inp.sent_lines == []
 
 F6_ROWS = TargetingConfig(
     default_monster=MonsterRow(hotkey="F6"),
@@ -823,3 +876,82 @@ class TestCurrentTask:
         )
         modules = DecisionModules(cavebot=cast(Cavebot, cavebot))
         assert self._task(make_state(), modules=modules) == "Walking to waypoint 3"
+
+
+# doc: docs/prs/extras.md#extras
+class TestExtras:
+    @staticmethod
+    def extras(clock: FakeClock, config: ExtrasConfig, *icons: str) -> Extras:
+        names = ("hungry", "haste", "pz", "buff", "ring_empty", "amulet_empty", "pm")
+        e = Extras(config, clock=clock, pictures={n: None for n in names})  # type: ignore[misc]
+        e.icons = frozenset(icons)
+        return e
+
+    def test_food_idle_and_haste_only_while_walking(self) -> None:
+        clock = FakeClock()
+        config = ExtrasConfig(food=True, food_hotkey="F9", haste=True, haste_hotkey="F8")
+        extras = self.extras(clock, config, "hungry")
+        inp = FakeInput()
+        walking = {"on": False}
+        gl, _ = make_loop(
+            make_state(),
+            inp,
+            clock=clock,
+            modules=DecisionModules(extras=extras),
+            move_provider=lambda s: walking["on"],
+            move_action=lambda: None,
+        )
+        gl.tick()
+        assert inp.sent_lines == ["K F9"]  # idle: no haste
+        extras.icons = frozenset()
+        walking["on"] = True
+        clock.advance(1.0)
+        gl.tick()
+        assert gl.current_state is BotState.MOVE and inp.sent_lines == ["K F9", "K F8"]
+
+    def test_a_player_alarms_only_after_staying_and_sends_to_refill(self) -> None:
+        clock = FakeClock()
+        config = ExtrasConfig(player_minutes=1.0, player_alarm=True, player_refill=True)
+        cavebot = SimpleNamespace(
+            is_active=lambda: False,
+            luring=lambda: False,
+            resume=lambda: None,
+            release_walk_key=lambda: None,
+            alarm=None,
+            refill_now=False,
+        )
+        ws = make_state(players=1)
+        ws.players = ("abc",)
+        modules = DecisionModules(extras=self.extras(clock, config), cavebot=cast(Cavebot, cavebot))
+        alerts: list[str] = []
+        gl, _ = make_loop(ws, FakeInput(), clock=clock, modules=modules, alert=alerts.append)
+        gl.tick()
+        assert alerts == [] and not cavebot.refill_now
+        clock.advance(60.0)
+        gl.tick()
+        assert gl.current_state is BotState.ALARM and cavebot.refill_now
+        assert alerts == ["ALARM: player in sight over 1 min"]
+
+
+
+# doc: docs/prs/rotation.md#rotation
+class TestRotation:
+    def test_the_switch_runs_on_the_login_screen_without_pausing(self) -> None:
+        clock = FakeClock()
+        accounts = (Account("a", "p", minutes=1.0), Account("b", "q"))
+        scripts = ScriptRunner(clock=clock)
+        scripts.rotation = Rotation(RotationConfig(accounts=accounts), clock=clock)
+        ws = make_state()
+        inp = FakeInput()
+        gl, _ = make_loop(ws, inp, clock=clock, modules=DecisionModules(scripts=scripts))
+        clock.advance(60.0)
+        assert scripts.start("rotate")
+        for _ in range(3):
+            gl.tick()
+            clock.advance(0.2)
+        assert inp.sent_lines == ["K ctrl+l"]
+        ws.screen_ok = False  # logged out
+        for _ in range(30):
+            gl.tick()
+            clock.advance(0.2)
+        assert gl.current_state is not BotState.PAUSED and "K tab" in inp.sent_lines

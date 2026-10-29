@@ -12,7 +12,14 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from moonlight.cavebot.cavebot import RouteError, RouteFileLoader, Waypoint
+from moonlight.cavebot.cavebot import (
+    NO_TILE,
+    RouteError,
+    RouteFileLoader,
+    Waypoint,
+    has_tile,
+    label_error,
+)
 from moonlight.core.state import Position
 
 __all__ = [
@@ -24,6 +31,7 @@ __all__ = [
     "should_stop_recording",
     "stairs_waypoint",
     "position_line",
+    "cursor_line",
 ]
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
@@ -58,31 +66,25 @@ class StandTracker:
         return self._previous
 
 
-def make_waypoint(
-    action: str, label: str, manual: tuple[str, str, str], live: Position
-) -> Waypoint:
-    """A waypoint for *action*: at the *manual* x, y, z when all are given, else at *live*.
+def make_waypoint(action: str, label: str, live: Position) -> Waypoint:
+    """A waypoint for *action* on the character's tile *live*; the bot walks there first.
 
     Raises:
-        RouteError: For a missing label, bad numbers or an unknown position.
+        RouteError: For a missing label or an unknown position.
     """
-    if action in ("label", "goto"):
-        if not label.strip():
+    label = label.strip()
+    if action in NO_TILE:
+        if not label:
             raise RouteError(f"{action} needs a label")
-        return Waypoint(0, 0, 0, action, label.strip())
-    if all(v.strip() for v in manual):
-        try:
-            x, y, z = (int(v) for v in manual)
-        except ValueError:
-            raise RouteError("X, Y and Z must be whole numbers") from None
-        return Waypoint(x, y, z, action)
+        if bad := label_error(action, label):
+            raise RouteError(bad)
     if (live.x, live.y, live.z) == (0, 0, 0):
-        raise RouteError("Position unknown. Type X, Y and Z, or start the bot.")
-    return Waypoint(live.x, live.y, live.z, action)
+        raise RouteError("Position unknown. Start the bot first.")
+    return Waypoint(live.x, live.y, live.z, action, label if action in NO_TILE else "")
 
 
 def _last_positioned(waypoints: list[Waypoint]) -> Waypoint | None:
-    return next((wp for wp in reversed(waypoints) if wp.action not in ("label", "goto")), None)
+    return next((wp for wp in reversed(waypoints) if has_tile(wp)), None)
 
 
 def should_add(waypoints: list[Waypoint], pos: Position, min_tiles: int) -> bool:
@@ -101,11 +103,12 @@ def stairs_waypoint(
 ) -> Waypoint | None:
     """The stairs or hole tile walked over from *left* to *arrived* on another floor.
 
-    None on the same floor, after a rope, ladder or shovel waypoint (that
-    action changed the floor), or without a direction to step in.
+    None on the same floor, after a rope, ladder, shovel or step waypoint
+    (that action changed the floor), or without a direction to step in.
     """
     last = _last_positioned(waypoints)
-    if left.z == arrived.z or (last is not None and last.action in ("rope", "ladder", "shovel")):
+    tools = ("rope", "ladder", "shovel", "step")
+    if left.z == arrived.z or (last is not None and last.action in tools):
         return None
     dx = (arrived.x > left.x) - (arrived.x < left.x)
     dy = (arrived.y > left.y) - (arrived.y < left.y)
@@ -125,6 +128,18 @@ def position_line(pos: Position, status: str = "") -> str:
         return "Position unknown"
     tail = f" ({status})" if status else ""
     return f"Position {pos.x}, {pos.y}, {pos.z}{tail}"
+
+
+def cursor_line(
+    cursor: tuple[int, int] | None, window: tuple[int, int, int, int] | None
+) -> str:
+    """The mouse in client-window pixels (what a ``drag`` label takes)."""
+    if cursor is None or window is None:
+        return "Cursor: client not found"
+    x, y = cursor[0] - window[0], cursor[1] - window[1]
+    if not (0 <= x < window[2] and 0 <= y < window[3]):
+        return "Cursor: outside the client"
+    return f"Cursor {x} {y}"
 
 
 def route_path(routes_dir: Path, name: str) -> Path:
@@ -149,7 +164,9 @@ def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
         "name": name,
         "waypoints": [
             {"action": wp.action, "label": wp.label}
-            if wp.action in ("label", "goto")
+            if not has_tile(wp)
+            else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action, "label": wp.label}
+            if wp.action in (*NO_TILE, "step")
             else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action}
             for wp in waypoints
         ],

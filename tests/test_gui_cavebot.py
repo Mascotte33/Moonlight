@@ -8,12 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.cavebot.cavebot import RouteFileLoader
+from moonlight.cavebot.cavebot import RouteFileLoader, Waypoint
 from moonlight.cavebot.tab import (
     apply_cavebot,
     drop_route,
+    move_waypoint,
     picked_route,
     picked_waypoint,
+    refill_now,
     route_names,
     waypoint_line,
     waypoint_table,
@@ -95,14 +97,6 @@ def test_start_waypoint_is_given_one_based(tmp_path: Path) -> None:
     assert cfg.off["cavebot"].start_index == 1
 
 
-def test_blank_deposit_hotkey_writes_none(tmp_path: Path) -> None:
-    cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
-    cfg = apply_cavebot(cfg, {"refill.deposit_hotkey": "F5"})
-    assert cfg.off["refill"].deposit_hotkey == "F5"
-    cfg = apply_cavebot(cfg, {"refill.deposit_hotkey": ""})
-    assert cfg.off["refill"].deposit_hotkey is None
-
-
 def test_loot_values_are_written(tmp_path: Path) -> None:
     cfg = replace(BotConfig.default(), routes_dir=_routes(tmp_path))
     cfg = apply_cavebot(cfg, {"looting.wait_ms": "600", "looting.min_hp_to_loot": "50"})
@@ -134,7 +128,8 @@ def test_every_waypoint_type_has_a_button() -> None:
     from moonlight.cavebot.cavebot import ACTIONS
     from moonlight.cavebot.tab import KIND_ROWS
 
-    assert sum(KIND_ROWS, ()) == tuple(a for a in ACTIONS if a != "stairs")
+    # stairs is recorded, step comes from the direction pad
+    assert sum(KIND_ROWS, ()) == tuple(a for a in ACTIONS if a not in ("stairs", "step"))
 
 
 def test_direction_pad_is_every_neighbour_and_the_middle() -> None:
@@ -169,3 +164,24 @@ def test_picked_waypoint_skips_the_header_and_blank_lines() -> None:
     assert picked_waypoint(2, 3) == 0
     assert picked_waypoint(4, 3) == 2
     assert picked_waypoint(5, 3) is None
+
+
+def test_refill_now_flags_the_running_cavebot() -> None:
+    from types import SimpleNamespace
+
+    cavebot = SimpleNamespace(refill_now=False)
+    assert refill_now(cavebot) == "Refill at the next check waypoint"
+    assert cavebot.refill_now is True
+    assert refill_now(None) == "Start the bot with Cavebot on first"
+
+
+# doc: docs/prs/potion-count.md#waypoint-order
+def test_move_waypoint_swaps_with_its_neighbour_and_stops_at_the_ends() -> None:
+    a, b, c = Waypoint(1, 1, 7), Waypoint(2, 2, 7), Waypoint(3, 3, 7)
+    wps = [a, b, c]
+    assert move_waypoint(wps, 1, -1) == 0
+    assert wps == [b, a, c]
+    assert move_waypoint(wps, 0, -1) == 0  # already on top
+    assert move_waypoint(wps, 2, 1) == 2  # already at the bottom
+    assert move_waypoint(wps, 1, 1) == 2
+    assert wps == [b, c, a]

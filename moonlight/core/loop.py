@@ -10,15 +10,15 @@ state the bot is in, using a strict priority order (highest wins):
                    loop keeps ticking (perceive only) and resumes on its own
                    once perception is healthy again.
 3. ALARM           Player on screen, PM open, fast HP drop, a critical
-                   alarm, or a cavebot/refill alarm: stop attack/walk;
-                   healing and a queued loot continue. Entering ALARM
-                   alerts the operator.
+                   alarm, or a cavebot alarm: stop attack/walk; healing
+                   and a queued loot continue. Entering ALARM alerts the
+                   operator.
 4. ATTACK          A target is selected (or, with targeting wired, the
                    targeting module chose one).
 5. LOOT            A kill is waiting to be looted (looting wired).
-6. REFILL          Cap is full or a refill trip is running (refill wired).
-7. MOVE            A waypoint route is active (cavebot / move_provider).
-8. IDLE            Nothing to do.
+6. MOVE            A waypoint route is active (cavebot / move_provider);
+                   the town trip is part of the route (refill).
+7. IDLE            Nothing to do.
 
 Healing is not a state: the healing module runs first in every non-KILL
 tick (see below). When healing is off, nothing heals.
@@ -46,12 +46,10 @@ without it the loop keeps its built-in behaviour.
   sent this tick skips the rest of the dispatch.
   # doc: docs/prs/healing.md#healing-rules
 * **buffs** -- ``BuffManager.track`` + ``send`` of the top cast in the
-  ATTACK/LOOT/REFILL/MOVE/IDLE states.
+  ATTACK/LOOT/MOVE/IDLE states.
 * **looting** -- a selected target that vanishes from the battle list is
   reported via ``Looting.on_target_died``; ``should_loot`` -> LOOT,
   which runs ``Looting.step``.
-* **refill** -- ``should_refill`` / ``start`` / ``step``; when the trip
-  is done the cavebot route is resumed.
 * **cavebot** -- default ``move_provider``/``move_action``
   (``is_active`` / ``step``).
 
@@ -65,6 +63,8 @@ Safety invariants (re-checked on every tick, never just at startup):
   sent, and the loop resumes automatically when perception is healthy.
   It stops for good after ``pause_timeout`` seconds paused or
   ``max_consecutive_errors`` consecutive tick exceptions (operator alert).
+  The account switch (``rotate``) is no pause: it alone runs on the
+  login screen, needing only ``client_focused``.
 * **No input unless focused** -- no action is sent unless the snapshot
   has both ``client_focused`` and ``screen_ok`` True. The one exception is
   ``release_all``: kill, pause, tick exceptions and shutdown call it
@@ -74,7 +74,7 @@ Safety invariants (re-checked on every tick, never just at startup):
 * **Rate limit** -- at most ``max_actions_per_second`` serial commands
   (default 10/s sustained), counted at the wire by
   :class:`~moonlight.core.safety.RateLimitedInput`, so multi-command actions (clicker moves,
-  rope hotkey + click, MOVE/REFILL steps) cannot exceed it. Heals have
+  rope hotkey + click, MOVE steps) cannot exceed it. Heals have
   priority: non-heal commands leave one token in reserve, so a heal never
   waits behind an attack (worst case 12 commands in the first second,
   10/s after). Releases are never rate-limited.
@@ -95,6 +95,7 @@ unit-testable without hardware, Windows, or a running client.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from collections import Counter, deque
@@ -108,15 +109,17 @@ from moonlight.cavebot.cavebot import WALK_KEYS
 from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
+from moonlight.targeting.targeting import PAUSE_SECONDS
 
 if TYPE_CHECKING:
     from moonlight.alarms.alarms import AlarmAction, AlarmDecision
     from moonlight.cavebot.cavebot import Cavebot
     from moonlight.extras.buffs import BuffManager
+    from moonlight.extras.extras import Extras
     from moonlight.hardware.clicker import ClickController
     from moonlight.healing.healing import HealingDecision
     from moonlight.looting.looting import Looting
-    from moonlight.refill.refill import Refill
+    from moonlight.scripts.scripts import ScriptRunner
     from moonlight.targeting.attack_hotkeys import AttackHotkeys
     from moonlight.targeting.seen_monsters import SeenMonsters
     from moonlight.targeting.targeting import TargetingAction, TargetingDecision
@@ -181,7 +184,6 @@ class BotState(StrEnum):
     ALARM = "alarm"
     ATTACK = "attack"
     LOOT = "loot"
-    REFILL = "refill"
     MOVE = "move"
     IDLE = "idle"
 
@@ -211,9 +213,10 @@ class DecisionModules:
     alarms: AlarmDecision | None = None
     cavebot: Cavebot | None = None
     looting: Looting | None = None
-    refill: Refill | None = None
     #: The one mouse: targeting, cavebot and looting share it.
     clicker: ClickController | None = None
+    scripts: ScriptRunner | None = None
+    extras: Extras | None = None
 
 
 class GameLoop:
@@ -278,7 +281,7 @@ class GameLoop:
         self._sleep_fn = sleep_fn if sleep_fn is not None else time.sleep
         self._pm_open_check = pm_open_check
         self.all_modules = modules if modules is not None else DecisionModules()
-        #: GUI Pause: cavebot, targeting and refill sit out, the rest keeps running.
+        #: GUI Pause: cavebot and targeting sit out, the rest keeps running.
         self.paused = False
         self._perceive = perceive
         self._alert_sink = alert
@@ -296,6 +299,7 @@ class GameLoop:
         # Per-tick module decisions (refreshed by _observe each tick).
         self._alarm: AlarmAction | None = None
         self._target: TargetingAction | None = None
+        self._targeting_paused_until = 0.0  # a lone unreachable target: walk on
         self._last_target: str | None = None
         self._last_names: Counter[str] = Counter()
         self._had_selection = False
@@ -344,7 +348,9 @@ class GameLoop:
         """The modules that run this tick (``all_modules`` minus the paused ones)."""
         if not self.paused:
             return self.all_modules
-        return replace(self.all_modules, cavebot=None, targeting=None, attack_hotkeys=None)
+        return replace(
+            self.all_modules, cavebot=None, targeting=None, attack_hotkeys=None, scripts=None
+        )
 
     @modules.setter
     def modules(self, value: DecisionModules) -> None:
@@ -456,6 +462,10 @@ class GameLoop:
             self._perceive_time = self._clock() - t0
         snap = self.state.snapshot()
 
+        if self._switching_account(snap):
+            self._record_tick_time(t0)
+            return
+
         # Pause gate: !screen_ok (unfocused / bad frame) pauses, fail-closed.
         if not snap.screen_ok:
             self._pause("screen not ok (client unfocused or perception failed)")
@@ -471,6 +481,22 @@ class GameLoop:
         self._paused_since = None
         self._consecutive_errors = 0
         self._record_tick_time(t0)
+
+    # doc: docs/prs/rotation.md#rotation
+    def _switching_account(self, snap: WorldState) -> bool:
+        """The account switch, alone: True while it runs (the login screen is not a pause)."""
+        scripts = self.modules.scripts
+        if scripts is None or scripts.rotation is None or scripts.running != "rotate":
+            return False
+        self._task = "Switching account"
+        self._send(snap, lambda: scripts.step(snap, self.input), login_screen=True)
+        if scripts.rotation.failed:
+            scripts.rotation.failed = False
+            self._fail_stop("no rotation account logged in")
+        elif scripts.running is None and self.modules.cavebot is not None:
+            self.modules.cavebot.resume()  # the switch is not "stuck"
+        self._paused_since = None
+        return True
 
     # -- pause / release / alert ---------------------------------------------
 
@@ -527,7 +553,16 @@ class GameLoop:
             m.cavebot.stuck_on_creatures = False  # a kill: the cavebot looks for a way again
         self._had_selection = selected is not None
         targeting = self._targeting()
-        self._target = targeting.decide(snap, self._clock()) if targeting is not None else None
+        now = self._clock()
+        self._target = None
+        if targeting is not None and not self._targeting_paused(now):
+            self._target = targeting.decide(snap, now)
+        if self._target is not None and self._target.kind == "pause":
+            logger.info("%s: targeting paused %g s", self._target.reason, PAUSE_SECONDS)
+            self._targeting_paused_until = now + PAUSE_SECONDS
+            self._target = None
+        if m.cavebot is not None:
+            m.cavebot.targeting_paused = self._targeting_paused(now)
         names = Counter(mon.name for mon in snap.monsters)
         if m.looting is not None:
             # ponytail: one fewer monster named like the target = kill (the
@@ -544,6 +579,16 @@ class GameLoop:
             elif self._last_names and not names:
                 m.looting.on_target_died("")  # the battle list emptied: loot again
         self._last_names = names
+        if m.extras is not None:
+            m.extras.observe(snap)
+            if m.extras.refill_due and m.cavebot is not None:
+                m.cavebot.refill_now = True  # a player stays: the next check goes to refill
+        rotation = m.scripts.rotation if m.scripts is not None else None
+        if rotation is not None and m.cavebot is not None and rotation.refill_due():
+            m.cavebot.refill_now = True  # the account's time is up: to the depot's rotate
+
+    def _targeting_paused(self, now: float) -> bool:
+        return now < self._targeting_paused_until
 
     def _targeting(self) -> TargetingDecision | None:
         """``stuck_targeting`` while the cavebot is stuck on creatures, else ``targeting``."""
@@ -566,6 +611,8 @@ class GameLoop:
         targeting = self._targeting()
         if m.cavebot is not None and m.cavebot.luring():
             pass  # a lure waypoint walks past monsters
+        elif self._targeting_paused(self._clock()):
+            pass  # a lone unreachable target: walk on
         elif targeting is not None:
             selected = snap.selected_target
             if self._target is not None or (
@@ -578,22 +625,17 @@ class GameLoop:
             return BotState.ATTACK
         if m.looting is not None and m.looting.should_loot(snap):
             return BotState.LOOT
-        if m.refill is not None and (m.refill.is_active() or m.refill.should_refill(snap)):
-            return BotState.REFILL
         if self._move_provider is not None and self._move_provider(snap):
             return BotState.MOVE
         return BotState.IDLE
 
     def _module_alarm(self) -> str | None:
-        """A cavebot/refill alarm (``"stuck"``, ``"lost"``, ...), or None."""
-        for name, module in (("cavebot", self.modules.cavebot), ("refill", self.modules.refill)):
-            alarm = getattr(module, "alarm", None)
-            if alarm:
-                return f"{name} alarm: {alarm}"
-        return None
+        """A cavebot alarm (``"stuck"``, ``"lost"``, ...), or None."""
+        alarm = getattr(self.modules.cavebot, "alarm", None)
+        return f"cavebot alarm: {alarm}" if alarm else None
 
     def _report_module_alarm(self) -> None:
-        """Alert once when the cavebot or refill stops itself (stuck, lost).
+        """Alert once when the cavebot stops itself (stuck, lost).
 
         The stopped module only stops walking; healing and targeting go on.
         """
@@ -603,8 +645,14 @@ class GameLoop:
         self._reported_module_alarm = alarm
 
     def _is_alarm(self, snap: WorldState) -> bool:
-        """ALARM: player on screen, PM open, fast HP drop or a critical alarm."""
-        if snap.players_on_screen > 0 or self._alarm is not None:
+        """ALARM: player on screen, PM open, fast HP drop or a critical alarm.
+
+        With extras on, a player alarms only after staying (the player timer).
+        """
+        extras = self.modules.extras
+        if extras is not None and extras.alarm() is not None:
+            return True
+        if (extras is None and snap.players_on_screen > 0) or self._alarm is not None:
             return True
         if self._pm_open_check is not None and self._pm_open_check(snap):
             return True
@@ -616,6 +664,9 @@ class GameLoop:
             case BotState.ALARM:
                 if self._alarm is not None:
                     return f"alarm {self._alarm.type.value}: {self._alarm.message}"
+                extra = self.modules.extras.alarm() if self.modules.extras is not None else None
+                if extra is not None:
+                    return extra
                 if snap.players_on_screen > 0:
                     return f"players on screen: {snap.players_on_screen}"
                 if self._pm_open_check is not None and self._pm_open_check(snap):
@@ -628,8 +679,6 @@ class GameLoop:
                 return f"target: {name}"
             case BotState.LOOT:
                 return "loot pending"
-            case BotState.REFILL:
-                return "cap full / refill trip running"
             case BotState.MOVE:
                 return "waypoint route active"
             case BotState.IDLE:
@@ -646,10 +695,12 @@ class GameLoop:
             logger.info("resumed after pause")
         if new_state is BotState.ALARM:
             self._alert(f"ALARM: {reason}")
+            if self.modules.extras is not None:
+                self.modules.extras.screenshot()
         if new_state is BotState.ATTACK and self.modules.clicker is not None:
             self.modules.clicker.cancel()  # drop a walk click; the select click goes first
         if self.all_modules.cavebot is not None:
-            self.all_modules.cavebot.release_walk_key()  # only MOVE and REFILL walk
+            self.all_modules.cavebot.release_walk_key()  # only MOVE walks
         if new_state is BotState.MOVE and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # fight/loot time is not "stuck" (F-06)
 
@@ -698,19 +749,27 @@ class GameLoop:
             return
         if self.modules.buffs is not None and self._buff(snap):
             return
+        if self.modules.extras is not None and self._extra(snap):
+            return
         match self._state:
             case BotState.ATTACK:
                 self._act_attack(snap)
             case BotState.LOOT:
                 self._act_loot(snap)
-            case BotState.REFILL:
-                self._act_refill(snap)
             case BotState.MOVE:
-                self._act_move(snap)
+                if not self._act_script(snap):
+                    self._act_move(snap)
             case BotState.IDLE:
-                pass
+                self._act_script(snap)
 
-    def _send(self, snap: WorldState, action: Callable[[], object], *, heal: bool = False) -> bool:
+    def _send(
+        self,
+        snap: WorldState,
+        action: Callable[[], object],
+        *,
+        heal: bool = False,
+        login_screen: bool = False,
+    ) -> bool:
         """Gate one input action; the wire limiter paces its commands.
 
         Never sends input unless the snapshot has both ``client_focused``
@@ -719,10 +778,12 @@ class GameLoop:
         was not sent); every command it issues pays one token at the wire
         (:class:`~moonlight.core.safety.RateLimitedInput`), surplus commands are dropped.
         Non-*heal* actions leave one token in reserve so heals never wait
-        behind them. An *action* returning ``False`` (a module declined to
-        send) or losing a command to the limit is not counted as sent.
+        behind them. A *login_screen* action (the account switch) needs only
+        ``client_focused``: the login screen never reads as ``screen_ok``.
+        An *action* returning ``False`` (a module declined to send) or
+        losing a command to the limit is not counted as sent.
         """
-        if not (snap.client_focused and snap.screen_ok):
+        if not (snap.client_focused and (snap.screen_ok or login_screen)):
             self._actions_dropped_unfocused += 1
             return False
         wire = self.input
@@ -765,6 +826,16 @@ class GameLoop:
         assert buffs is not None
         actions = buffs.track(snap)
         return bool(actions) and self._send(snap, lambda: buffs.send(actions[0], self.input))
+
+    def _extra(self, snap: WorldState) -> bool:
+        """Extras: press the due hotkey (food, ring, amulet, haste, buff); True when sent."""
+        extras = self.modules.extras
+        assert extras is not None
+        key = extras.due(snap, walking=self._state is BotState.MOVE)
+        if key is None or not self._send(snap, lambda: self.input.press_combo(key)):
+            return False
+        extras.pressed(key)
+        return True
 
     def _act_attack(self, snap: WorldState) -> None:
         """ATTACK: click the battle-list row targeting chose, one click at a time.
@@ -857,24 +928,18 @@ class GameLoop:
 
         self._send(snap, lambda: looting.step(snap))
 
-    def _act_refill(self, snap: WorldState) -> None:
-        """REFILL: start the trip, then one step per tick (gated like MOVE).
-
-        When the trip is done, the cavebot's farming route is resumed at
-        the nearest waypoint; a
-        refill alarm leaves the route stopped (fail closed).
-        """
-        refill = self.modules.refill
-        assert refill is not None
-        cavebot = self.modules.cavebot
-
-        def step() -> None:
-            if not refill.is_active():
-                refill.start()
-            if not refill.step(snap) and refill.phase == "done" and cavebot is not None:
-                cavebot.start(nearest=True)
-
-        self._send(snap, step)
+    # doc: docs/prs/scripts.md#script-priority
+    def _act_script(self, snap: WorldState) -> bool:
+        """A user script's step instead of walking; True while one runs."""
+        scripts = self.modules.scripts
+        if scripts is None or scripts.poll() is None:
+            return False
+        self._task = f"Script {scripts.running}"
+        scripts.cavebot = self.modules.cavebot  # for bot.goto
+        self._send(snap, lambda: scripts.step(snap, self.input))
+        if scripts.running is None and self.modules.cavebot is not None:
+            self.modules.cavebot.resume()  # script time is not "stuck"
+        return True
 
     def _act_move(self, snap: WorldState) -> None:
         """MOVE: hand control to the waypoint runner (T22).
@@ -954,7 +1019,7 @@ class GameLoop:
         return {
             "state": self._state.value,
             "tick_count": ticks,
-            "current_task": self._task,
+            "current_task": self._task_text(),
             "uptime_seconds": round(uptime, 3),
             "avg_tick_time_ms": (
                 round(self._tick_time_total / ticks * 1000.0, 3) if ticks else 0.0
@@ -967,6 +1032,12 @@ class GameLoop:
             "kill_switch_active": self.kill_switch_active,
             "stop_requested": self.stop_requested,
         }
+
+    def _task_text(self) -> str:
+        left = self._targeting_paused_until - self._clock()
+        if left > 0:
+            return f"{self._task} (targeting paused {math.ceil(left)} s)"
+        return self._task
 
     def reset_stats(self) -> None:
         """Zero all counters (tests, UI reset button)."""

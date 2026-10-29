@@ -235,7 +235,7 @@ class CursorReader:
         return (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
 
 
-def _screen_cursor() -> tuple[int, int] | None:
+def screen_cursor() -> tuple[int, int] | None:
     """The mouse cursor's screen position from Windows or X11, or None elsewhere."""
     if sys.platform == "linux":
         return x11.cursor()
@@ -258,7 +258,7 @@ class OsCursorReader(CursorReader):
     def __init__(
         self,
         window_origin: Callable[[], tuple[int, int]],
-        screen_cursor: Callable[[], tuple[int, int] | None] = _screen_cursor,
+        screen_cursor: Callable[[], tuple[int, int] | None] = screen_cursor,
     ) -> None:
         """*window_origin* is the game area's screen ``(left, top)``."""
         # The clicker grabs this region on a first read; one pixel is enough.

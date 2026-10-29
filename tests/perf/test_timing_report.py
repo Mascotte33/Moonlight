@@ -22,7 +22,7 @@ import pytest
 
 from moonlight.alarms.alarms import AlarmDecision
 from moonlight.calibration.calibrate import CalibrationProfile
-from moonlight.cavebot.cavebot import Cavebot, Route, RouteFileLoader, Waypoint
+from moonlight.cavebot.cavebot import Cavebot, Route, Waypoint
 from moonlight.core.loop import DecisionModules, GameLoop, LoopConfig
 from moonlight.core.state import Capacity, Monster, Position, WorldState
 from moonlight.core.wiring import make_perceive
@@ -40,7 +40,6 @@ from moonlight.perception import (
     SpriteDetector,
     VitalsReader,
 )
-from moonlight.refill.refill import Refill, RefillConfig
 from moonlight.targeting.targeting import TargetingDecision
 
 pytestmark = pytest.mark.slow
@@ -122,23 +121,6 @@ def _decision_stats(tmp: Path) -> dict[str, Stats]:
 
     looting = Looting(inp, clock=clock)
 
-    (tmp / "refill.json").write_text(
-        json.dumps(
-            {
-                "name": "refill",
-                "waypoints": [
-                    {"x": 100, "y": 100, "z": 7},
-                    {"action": "label", "label": "storage"},
-                    {"x": 100, "y": 100, "z": 7},
-                    {"action": "label", "label": "farming"},
-                ],
-            }
-        )
-    )
-    refill = Refill(
-        RefillConfig(routes_dir=tmp), cavebot, RouteFileLoader(), looting, ws, inp
-    )
-
     def loot_step(_: int) -> None:
         looting.on_target_died("Wolf")
         looting.step(ws)
@@ -150,7 +132,6 @@ def _decision_stats(tmp: Path) -> dict[str, Stats]:
         "alarms": _measure(lambda _: alarms.decide(ws.snapshot())),
         "cavebot": _measure(lambda _: cavebot.step()),
         "looting": _measure(loot_step),
-        "refill": _measure(lambda _: refill.should_refill(ws.snapshot())),
     }
 
 

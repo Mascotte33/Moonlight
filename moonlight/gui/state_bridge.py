@@ -447,7 +447,7 @@ class GuiContext:
             self.on_config_change(restart)
 
     def bot_running(self) -> bool:
-        """True while the bot loop thread is alive (False in --no-bot)."""
+        """True while the bot loop thread is alive (False until Start)."""
         return self.controller is not None and self.controller.is_running
 
     def live_cavebot(self) -> Any:

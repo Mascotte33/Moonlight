@@ -29,7 +29,7 @@ from moonlight.calibration.calibrate import (
     Point,
     Rect,
 )
-from moonlight.calibration.calibration_steps import CalibrationSteps
+from moonlight.calibration.calibration_steps import AREAS, CalibrationSteps
 from moonlight.calibration.profile import ProfileManager
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
@@ -75,6 +75,7 @@ AREA_HELP: dict[str, str] = {
     "status_icons": "The row of small condition icons (poisoned, hasted and so on).",
     "game_grid": "The whole game view, 15 x 11 tiles, corner to corner.",
     "chase_buttons": "The Stand While Fighting and Chase Opponent buttons, one above the other.",
+    "player_list": "Optional: a second battle list set to show players only. → skips it.",
 }
 
 
@@ -221,15 +222,22 @@ class CalibrationTab(Tab):
         row = ctk.CTkFrame(self.idle, fg_color="transparent")
         row.pack(anchor="w", padx=theme.PAD, pady=theme.PAD)
         self.btn_start = ctk.CTkButton(
-            row, text="Start calibration", command=self.start,
-            fg_color=theme.MANA, hover_color=theme.MANA_HOVER, text_color=theme.NIGHT,
+            row,
+            text="Start calibration",
+            command=self.start,
+            fg_color=theme.MANA,
+            hover_color=theme.MANA_HOVER,
+            text_color=theme.NIGHT,
         )
         self.btn_start.pack(side="left", padx=(0, theme.GAP))
         ctk.CTkButton(row, text="Load screenshot", command=self.load).pack(side="left")
         ctk.CTkLabel(row, text="Calibration").pack(side="left", padx=(theme.PAD, theme.UNIT))
         self.menu_profile = ctk.CTkOptionMenu(
-            row, values=[""], command=self.pick_profile,
-            fg_color=theme.RAISED, button_color=theme.RAISED,
+            row,
+            values=[""],
+            command=self.pick_profile,
+            fg_color=theme.RAISED,
+            button_color=theme.RAISED,
             button_hover_color=theme.HOVER,
         )
         self.menu_profile.pack(side="left")
@@ -237,18 +245,26 @@ class CalibrationTab(Tab):
             side="left", padx=(theme.GAP, 0)
         )
         ctk.CTkButton(
-            row, text="Delete", width=64, command=self.delete_profile,
-            fg_color=theme.BLOOD, hover_color=theme.BLOOD_HOVER, text_color=theme.NIGHT,
+            row,
+            text="Delete",
+            width=64,
+            command=self.delete_profile,
+            fg_color=theme.BLOOD,
+            hover_color=theme.BLOOD_HOVER,
+            text_color=theme.NIGHT,
         ).pack(side="left", padx=(theme.UNIT, 0))
         self.lbl_status = ctk.CTkLabel(self.idle, text="", anchor="w")
         self.lbl_status.pack(fill="x", padx=theme.PAD)
         anchors = load_real_config().templates_dir / "anchors"
         if not has_reference_images(anchors):
-            ctk.CTkLabel(
-                self.idle, text=NO_REFERENCES, anchor="w", text_color=theme.AMBER
-            ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+            ctk.CTkLabel(self.idle, text=NO_REFERENCES, anchor="w", text_color=theme.AMBER).pack(
+                fill="x", padx=theme.PAD, pady=(theme.UNIT, 0)
+            )
         self.lbl_summary = ctk.CTkLabel(
-            self.idle, text="", anchor="w", text_color=theme.TEXT_DIM,
+            self.idle,
+            text="",
+            anchor="w",
+            text_color=theme.TEXT_DIM,
             font=ctk.CTkFont(size=theme.SIZE_BODY),
         )
         self.lbl_summary.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
@@ -263,17 +279,28 @@ class CalibrationTab(Tab):
         bar = ctk.CTkFrame(self.work, fg_color=theme.RAISED)
         bar.pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0))
         self.lbl_step = ctk.CTkLabel(
-            bar, text="", anchor="w", text_color=theme.TEXT,
+            bar,
+            text="",
+            anchor="w",
+            text_color=theme.TEXT,
             font=ctk.CTkFont(size=theme.SIZE_HEADING, weight="bold"),
         )
         self.lbl_step.pack(fill="x", padx=theme.PAD, pady=(theme.GAP, 0))
         self.lbl_help = ctk.CTkLabel(
-            bar, text="", anchor="w", justify="left", text_color=theme.TEXT,
-            font=ctk.CTkFont(size=theme.SIZE_BODY), wraplength=900,
+            bar,
+            text="",
+            anchor="w",
+            justify="left",
+            text_color=theme.TEXT,
+            font=ctk.CTkFont(size=theme.SIZE_BODY),
+            wraplength=900,
         )
         self.lbl_help.pack(fill="x", padx=theme.PAD)
         ctk.CTkLabel(
-            bar, text=KEY_HELP, anchor="w", text_color=theme.TEXT,
+            bar,
+            text=KEY_HELP,
+            anchor="w",
+            text_color=theme.TEXT,
             font=ctk.CTkFont(size=theme.SIZE_BODY),
         ).pack(fill="x", padx=theme.PAD, pady=(0, theme.GAP))
         self.review_bar = ctk.CTkFrame(self.work, fg_color="transparent")
@@ -281,8 +308,12 @@ class CalibrationTab(Tab):
         self.ent_scale = ctk.CTkEntry(self.review_bar, width=64, fg_color=theme.NIGHT)
         self.ent_scale.pack(side="left", padx=(0, theme.GAP))
         self.btn_save = ctk.CTkButton(
-            self.review_bar, text="Save", command=self.save,
-            fg_color=theme.LIFE, hover_color=theme.LIFE_HOVER, text_color=theme.NIGHT,
+            self.review_bar,
+            text="Save",
+            command=self.save,
+            fg_color=theme.LIFE,
+            hover_color=theme.LIFE_HOVER,
+            text_color=theme.NIGHT,
         )
         self.btn_save.pack(side="left")
         self.canvas = tk.Canvas(
@@ -484,7 +515,7 @@ class CalibrationTab(Tab):
     def _render_area(self, steps: CalibrationSteps) -> None:
         self.review_bar.pack_forget()
         name = steps.area or ""
-        self.lbl_step.configure(text=f"{REGIONS.index(name) + 1} of {len(REGIONS)}: {name}")
+        self.lbl_step.configure(text=f"{AREAS.index(name) + 1} of {len(AREAS)}: {name}")
         hint = AREA_HELP[name]
         if steps.box is not None:
             self._box(steps.box, theme.MANA)

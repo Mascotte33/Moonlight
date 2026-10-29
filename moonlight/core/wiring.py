@@ -19,13 +19,14 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from moonlight.calibration.calibrate import CalibrationProfile
+from moonlight.calibration.calibrate import OPTIONAL_REGIONS, CalibrationProfile
 from moonlight.core.config import MODULES, BotConfig
 from moonlight.core.loop import DecisionModules, GameLoop
 from moonlight.core.safety import RateLimitedInput, beep_alert
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.input import InputBackend
 from moonlight.perception.status_icons import CONDITION_TEMPLATES_DIR
+from moonlight.refill.refill import supplies_low
 
 if TYPE_CHECKING:
     from moonlight.hardware.clicker import ClickController
@@ -53,15 +54,16 @@ logger = logging.getLogger(__name__)
 #: perception readers in :func:`make_perceive` / :func:`build_loop`.
 #: ``tools/check_setup.py`` uses this to report per-module readiness (F-11): a
 #: module is MISSING when any of its required regions is absent from the
-#: profile. ``refill`` references a region that is not part of the standard
-#: calibration set (it needs a dedicated reader, T34), so it reports as
-#: MISSING until that is calibrated.
+#: profile.
 MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "healing": ("hp_bar", "mp_bar", "status_icons"),
     "targeting": ("battle_list", "game_grid"),
     "cavebot": ("minimap", "floor_indicator", "game_grid"),
     "looting": (),
-    "refill": ("capacity",),
+    "refill": (),
+    "scripts": (),
+    "rotation": (),
+    "extras": (),  # player_list is optional: without it no player is timed
     "buffs": ("status_icons",),
     "alarms": (),
 }
@@ -86,7 +88,7 @@ def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect
     keys) scans it for creatures; for clicks it is only geometry, and the
     clicker grabs its own small cursor ROI.
     """
-    names = set(_PERCEIVE_REGIONS)
+    names = set(_PERCEIVE_REGIONS) | {n for n in OPTIONAL_REGIONS if n in profile.regions}
     for module in _enabled_modules(config):
         names.update(MODULE_REGIONS.get(module, ()))
     rings = config.looting is not None and config.looting.ringed_corpses
@@ -248,6 +250,12 @@ def make_perceive(
 
     vitals = VitalsReader(profile)
     battle = BattleReader(profile, seen_monsters=seen_monsters)
+    # doc: docs/prs/extras.md#player-timer
+    player_list = (
+        BattleReader(profile, battle_region=profile.get_region("player_list").to_tuple)
+        if "player_list" in profile.regions
+        else None
+    )
     floor = FloorReader(profile)
     status_icons: StatusIconReader | None = None
     if "status_icons" in profile.regions:
@@ -279,6 +287,7 @@ def make_perceive(
                 seen_monsters.learns_new_names = client_is_foreground()
             hp, mp = vitals.read_vitals(frame)
             monsters, selected, players = entries_to_state(battle.read_battle_list(frame))
+            names = player_list.read_battle_list(frame) if player_list is not None else []
             slots = tuple(find_creatures(frame, creature_grid)) if creature_grid else ()
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
@@ -299,6 +308,7 @@ def make_perceive(
             state.monsters = monsters
             state.selected_target = selected
             state.players_on_screen = players
+            state.players = tuple(entry.name_hash for entry in names)
             state.creature_slots = slots
             state.active_status_icons = conditions
             state.chase_mode = chase_mode
@@ -360,6 +370,7 @@ def build_loop(
     roi_provider: Callable[[Rect], np.ndarray] | None = None,
     window_origin: Callable[[], tuple[int, int]] | None = None,
     on_clicker: Callable[[ClickController], None] | None = None,
+    screen_grab: Callable[[], np.ndarray] | None = None,
 ) -> GameLoop:
     """Assemble the bot: perception + the enabled decision modules + loop.
 
@@ -368,6 +379,7 @@ def build_loop(
     clicker's small cursor-ROI grabs and open-loop mode (F-14); without
     them the clicker reads the cached tick frame. *on_clicker* receives
     the click controller once built (:class:`TickGrabber.attach`).
+    *screen_grab* is a full client-window grab for the scripts' ``bot.find``.
 
     Raises:
         ValueError: If an enabled module cannot be built from *profile*
@@ -384,6 +396,7 @@ def build_loop(
         return build_modules(
             cfg, profile, backend, state, frames, old=old, clock=clock,
             roi_provider=roi_provider, window_origin=window_origin, on_clicker=on_clicker,
+            screen_grab=screen_grab,
         )
 
     from moonlight.calibration.calibrate import default_profiles_dir
@@ -470,6 +483,7 @@ def build_modules(
     roi_provider: Callable[[Rect], np.ndarray] | None = None,
     window_origin: Callable[[], tuple[int, int]] | None = None,
     on_clicker: Callable[[ClickController], None] | None = None,
+    screen_grab: Callable[[], np.ndarray] | None = None,
 ) -> DecisionModules:
     """The enabled decision modules for *config*.
 
@@ -503,7 +517,7 @@ def build_modules(
             if same(*keys):
                 setattr(m, name, getattr(prev, name))
         if same("cavebot", "looting", "refill", "clicker", "templates_dir", "routes_dir"):
-            m.cavebot, m.looting, m.refill = prev.cavebot, prev.looting, prev.refill
+            m.cavebot, m.looting = prev.cavebot, prev.looting
     if config.healing is not None and m.healing is None:
         m.healing = HealingDecision(config.healing, clock=clock)
     if config.targeting is not None and m.targeting is None:
@@ -561,6 +575,28 @@ def build_modules(
         )
         if on_clicker is not None:
             on_clicker(m.clicker)
+    # One runner for the bot's life: a kept cavebot starts its scripts in it.
+    from moonlight.scripts.scripts import ScriptRunner, parse_timers
+
+    if prev is not None and prev.scripts is not None:
+        m.scripts = prev.scripts
+    else:
+        m.scripts = ScriptRunner(grab=screen_grab, clock=clock or time.monotonic)
+    m.scripts.clicker = m.clicker
+    m.scripts.timers = parse_timers(config.scripts.timers) if config.scripts else []
+    if config.rotation is None:
+        m.scripts.rotation = None
+    elif m.scripts.rotation is None or not same("rotation"):
+        from moonlight.scripts.rotation import Rotation
+
+        m.scripts.rotation = Rotation(config.rotation, clock=clock or time.monotonic)
+    if config.extras is not None:
+        from moonlight.extras.extras import Extras
+
+        if prev is not None and prev.extras is not None and same("extras"):
+            m.extras = prev.extras  # keeps the player timers
+        else:
+            m.extras = Extras(config.extras, grab=screen_grab, clock=clock or time.monotonic)
     walkers = config.cavebot is not None or config.looting is not None
     if walkers and m.cavebot is None and m.looting is None:
         assert m.clicker is not None
@@ -583,6 +619,8 @@ def build_modules(
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
                 frames=frames,
                 clock=clock,
+                scripts=m.scripts,
+                supplies_low=supplies_low(config.refill, screen_grab),
             )
             if prev is None or prev.cavebot is None:
                 m.cavebot.start()
@@ -603,13 +641,6 @@ def build_modules(
                     else None
                 ),
             )
-    if config.refill is not None and m.refill is None:
-        from moonlight.cavebot.cavebot import RouteFileLoader
-        from moonlight.refill.refill import Refill
-
-        assert m.cavebot is not None and m.looting is not None  # BotConfig.validate
-        m.refill = Refill(config.refill, m.cavebot, RouteFileLoader(), m.looting, state, backend)
-
     return m
 
 
@@ -631,4 +662,5 @@ def capture_providers(
         "roi_provider": grabber.roi,
         "window_origin": origin,
         "on_clicker": grabber.attach,
+        "screen_grab": capture.get_frame,
     }

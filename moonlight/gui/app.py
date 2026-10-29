@@ -111,7 +111,7 @@ class GuiApp:
 
     def __init__(
         self,
-        start_bot: bool = True,
+        start_bot: bool = False,
     ) -> None:
         theme.apply()
 
@@ -465,9 +465,9 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
-        "--no-bot",
+        "--start",
         action="store_true",
-        help="start the GUI without launching the bot loop thread",
+        help="start the bot loop right away (by default the GUI opens Stopped)",
     )
     args = parser.parse_args(argv)
 
@@ -488,6 +488,6 @@ def main(argv: list[str] | None = None) -> int:
     # interval a busy GUI (a row redraw) made a numpy/cv2 tick 6.6x slower;
     # at 0.5 ms 1.2x (measured).
     sys.setswitchinterval(0.0005)
-    app = GuiApp(start_bot=not args.no_bot)
+    app = GuiApp(start_bot=args.start)
     app.root.mainloop()
     return 0

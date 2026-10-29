@@ -24,7 +24,7 @@ JSON format (``moonlight_config.json``)::
       "clicker": {"open_loop": false},     # any ClickerConfig field (F-14)
       "hotkeys": {"utani hur": "F8"},      # buff -> combo
       "monster_name_source": false,        # unused
-      "capacity_source": false,            # F-09: refill needs this true (T34)
+      "capacity_source": false,            # unused
       "buff_icon_source": false,           # F-10: buffs needs this true (T34)
       "modules": {
         "healing":   {"enabled": true, "potion_cooldown_ms": 1000},
@@ -33,16 +33,20 @@ JSON format (``moonlight_config.json``)::
         "alarms":    {"enabled": true},
         "cavebot":   {"enabled": false, "route": "rotworms"},
         "looting":   {"enabled": false},
-        "refill":    {"enabled": false}
+        "refill":    {"enabled": false},  # follows cavebot; 0 = off
+        "scripts":   {"enabled": false, "timers": "eat 60"},
+        "extras":    {"enabled": false, "food": true, "food_hotkey": "F10"},
+        "rotation":  {"enabled": false, "logout_hotkey": "ctrl+l", "accounts": [
+          {"login": "abc", "password": "xyz", "character": 1, "minutes": 60}
+        ]}
       }
     }
 
 Fail closed: ``profile``, ``modules`` and every module's ``enabled`` flag
 are required; unknown keys, wrong types, invalid values, a bad hotkey
-combo, a missing cavebot route file, or refill without cavebot+looting
-all raise :class:`ConfigError`. Refill and buffs additionally require
-their perception source (``capacity_source`` / ``buff_icon_source``) to be
-true (F-09 / F-10).
+combo, a missing cavebot route file, or rotation without the
+cavebot all raise :class:`ConfigError`. Buffs additionally require its perception
+source (``buff_icon_source``) to be true (F-10).
 Fields left out of a module section take the dataclass defaults.
 
 A module that is off keeps its values: ``{"enabled": false, "potion_cooldown_ms":
@@ -65,10 +69,13 @@ from moonlight.alarms.alarms import AlarmConfig
 from moonlight.cavebot.cavebot import Route, RouteError, RouteFileLoader
 from moonlight.core.loop import GameLoop, LoopConfig
 from moonlight.extras.buffs import BuffManagerConfig
+from moonlight.extras.extras import ExtrasConfig
 from moonlight.hardware.clicker import ClickerConfig
 from moonlight.healing.healing import HealingConfig, check_hotkey
 from moonlight.looting.looting import LootingConfig
 from moonlight.refill.refill import RefillConfig
+from moonlight.scripts.rotation import RotationConfig
+from moonlight.scripts.scripts import ScriptsConfig
 from moonlight.targeting.targeting import TargetingConfig
 
 __all__ = [
@@ -91,6 +98,9 @@ MODULES = (
     "cavebot",
     "looting",
     "refill",
+    "scripts",
+    "extras",
+    "rotation",
 )
 
 _TOP_KEYS = {
@@ -159,12 +169,18 @@ class BotConfig:
     cavebot: CavebotConfig | None = None
     looting: LootingConfig | None = None
     refill: RefillConfig | None = None
-    #: Perception sources that are actually wired up (F-09 / F-10). The
-    #: capacity reader and the monster-name resolver are deferred (T34), so
-    #: the corresponding modules would run against *unpopulated* state. Set
-    #: these to true only once a real reader populates the state; ``validate``
-    #: refuses to enable refill / buffs without their source.
-    #: ``monster_name_source`` is unused; kept so saved configs still load.
+    #: Timed scripts; on or off, ``script`` waypoints always run.
+    scripts: ScriptsConfig | None = None
+    #: Food, haste, buff potion, ring, amulet, player timer, PM alarm.
+    extras: ExtrasConfig | None = None
+    #: Accounts played in turn; their logins stay in this gitignored file.
+    rotation: RotationConfig | None = None
+    #: Perception sources that are actually wired up (F-10). The buff-icon
+    #: reader is deferred (T34), so buffs would run against *unpopulated*
+    #: state; ``validate`` refuses to enable buffs without its source.
+    #: ``monster_name_source`` and ``capacity_source`` are unused; kept so
+    #: saved configs still load (refill without a capacity reader triggers
+    #: on Refill now only).
     monster_name_source: bool = False
     capacity_source: bool = False
     buff_icon_source: bool = False
@@ -242,12 +258,17 @@ class BotConfig:
         _reject_unknown(modules, set(MODULES), "modules")
         routes_dir = kwargs.get("routes_dir", Path("data/waypoints"))
         for name in MODULES:
+            if name in ("scripts", "extras", "rotation") and name not in modules:
+                continue  # configs saved before these had a section
             if name not in modules:
                 raise ConfigError(f"modules: missing required section {name!r}")
             section = dict(_require_dict(modules[name], f"modules.{name}"))
             enabled = section.pop("enabled", None)
             if not isinstance(enabled, bool):
                 raise ConfigError(f"modules.{name}.enabled must be true or false")
+            if name == "refill":  # no switch: on with the cavebot, its 0s turn it off
+                cavebot = _require_dict(modules.get("cavebot"), "modules.cavebot")
+                enabled = cavebot.get("enabled") is True
             if not enabled and not section:
                 continue
             if name == "cavebot":
@@ -258,6 +279,12 @@ class BotConfig:
             else:
                 if name == "looting":  # keys of removed loot rules
                     for key in ("move_all_hotkey", "max_items_per_loot", "min_cap_to_loot"):
+                        section.pop(key, None)
+                if name == "refill":  # the refill route file's keys, gone with it
+                    for key in (
+                        "stop_cap", "route_name", "storage_hotkey", "deposit_hotkey", "routes_dir",
+                        "trigger_cap",  # used cap %, now the free cap number cap_below
+                    ):
                         section.pop(key, None)
                 value = _coerce(section, hints[name], f"modules.{name}")
             if enabled:
@@ -310,7 +337,16 @@ class BotConfig:
                 raise ConfigError(f"off: {name!r} is not a module that is off")
         try:
             GameLoop._validate_config(self.loop)
-            for cfg in (self.healing, self.targeting, self.buffs, self.alarms):
+            sections: tuple[Any, ...] = (
+                self.healing,
+                self.targeting,
+                self.buffs,
+                self.alarms,
+                self.scripts,
+                self.extras,
+                self.rotation,
+            )
+            for cfg in sections:
                 if cfg is not None:
                     cfg.validate()
             for name, combo in (self.hotkeys or {}).items():
@@ -323,16 +359,13 @@ class BotConfig:
                 raise ConfigError(
                     f"cavebot start waypoint {self.cavebot.start_index + 1} is outside 1..{n}"
                 )
-        if self.refill is not None and (self.cavebot is None or self.looting is None):
-            raise ConfigError("refill needs the cavebot and looting modules enabled")
-        # F-09: unreachable gates must be honest. Refill reads capacity, which
-        # no reader populates yet. Refuse to enable it until one is wired (T34).
-        if self.refill is not None and not self.capacity_source:
-            raise ConfigError(
-                "refill is enabled but no capacity perception source is "
-                "configured: set 'capacity_source' to true once a capacity "
-                "reader is wired (T34), or disable the refill module"
-            )
+        if self.refill is not None and self.cavebot is None:
+            raise ConfigError("refill needs the cavebot module enabled")
+        if self.rotation is not None and self.cavebot is None:
+            raise ConfigError("rotation needs the cavebot module enabled")
+        if self.rotation is not None and len(self.rotation.accounts) < 2:
+            # checked only when on, so the Settings tab can save the logout hotkey
+            raise ConfigError("rotation needs at least 2 accounts")
         # F-10: the buffs module reads buff-icon state that no reader
         # populates yet; refuse to enable it until one is wired.
         if self.buffs is not None and not self.buff_icon_source:
