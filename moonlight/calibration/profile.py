@@ -42,10 +42,14 @@ class ProfileManager:
         self.shot_path(name).unlink(missing_ok=True)
 
     def list_profiles(self) -> list[str]:
-        """Profile names (file stems), sorted; empty when the directory is missing."""
+        """Profile names (file stems), sorted; empty when the directory is missing.
+
+        Other files there, such as ``<profile>.seen_monsters.json``, have no
+        valid profile name and are left out.
+        """
         if not self.directory.is_dir():
             return []
-        return sorted(p.stem for p in self.directory.glob("*.json"))
+        return sorted(p.stem for p in self.directory.glob("*.json") if self.valid_name(p.stem))
 
     def load(self, name: str) -> CalibrationProfile:
         """Load and validate profile *name*.

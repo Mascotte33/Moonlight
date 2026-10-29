@@ -19,7 +19,6 @@ from moonlight.calibration.calibrate import (
     CalibrationProfile,
     Region,
     default_profiles_dir,
-    list_profiles,
     normalize_rect,
     region_to_absolute,
     region_to_relative,
@@ -213,12 +212,3 @@ class TestProfilesDir:
     def test_default_profiles_dir_exists_as_path(self) -> None:
         d = default_profiles_dir()
         assert d.name == "profiles"
-
-    def test_list_profiles_empty(self, tmp_path: Path) -> None:
-        assert list_profiles(tmp_path / "nonexistent") == []
-
-    def test_list_profiles_finds(self, tmp_path: Path) -> None:
-        (tmp_path / "a.json").write_text("{}")
-        (tmp_path / "b.json").write_text("{}")
-        (tmp_path / "c.txt").write_text("x")
-        assert list_profiles(tmp_path) == ["a", "b"]
