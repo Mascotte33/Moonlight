@@ -67,10 +67,7 @@ class StandTracker:
 
 
 def make_waypoint(action: str, label: str, live: Position) -> Waypoint:
-    """A waypoint for *action* on the character's tile *live*.
-
-    ``label``, ``goto`` and the actions done where the bot stands (``say``,
-    ``key``, ``drag``, ``script``, ``wait``) get no tile; ``check`` gets one.
+    """A waypoint for *action* on the character's tile *live*; the bot walks there first.
 
     Raises:
         RouteError: For a missing label or an unknown position.
@@ -81,11 +78,9 @@ def make_waypoint(action: str, label: str, live: Position) -> Waypoint:
             raise RouteError(f"{action} needs a label")
         if bad := label_error(action, label):
             raise RouteError(bad)
-        if action != "check":
-            return Waypoint(0, 0, 0, action, label)
     if (live.x, live.y, live.z) == (0, 0, 0):
         raise RouteError("Position unknown. Start the bot first.")
-    return Waypoint(live.x, live.y, live.z, action, label if action == "check" else "")
+    return Waypoint(live.x, live.y, live.z, action, label if action in NO_TILE else "")
 
 
 def _last_positioned(waypoints: list[Waypoint]) -> Waypoint | None:
@@ -171,7 +166,7 @@ def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
             {"action": wp.action, "label": wp.label}
             if not has_tile(wp)
             else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action, "label": wp.label}
-            if wp.action in ("step", "check")
+            if wp.action in (*NO_TILE, "step")
             else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action}
             for wp in waypoints
         ],

@@ -49,7 +49,7 @@ def test_bad_routes_are_refused(tmp_path: Path) -> None:
 def test_make_waypoint() -> None:
     live = Position(5, 6, 7)
     assert make_waypoint("shovel", "", live) == Waypoint(5, 6, 7, "shovel")
-    assert make_waypoint("goto", " a ", live) == Waypoint(0, 0, 0, "goto", "a")
+    assert make_waypoint("goto", " a ", live) == Waypoint(5, 6, 7, "goto", "a")
     assert make_waypoint("check", "town", live) == Waypoint(5, 6, 7, "check", "town")
     with pytest.raises(RouteError, match="Position unknown"):
         make_waypoint("walk", "", Position(0, 0, 0))

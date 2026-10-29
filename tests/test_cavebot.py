@@ -329,6 +329,35 @@ def test_a_check_with_a_tile_decides_once_the_bot_stands_on_it() -> None:
         assert sim.route.current == after
 
 
+def test_label_goto_and_say_with_a_tile_wait_for_the_bot_to_stand_there() -> None:
+    wps = [
+        Waypoint(100, 100, 7, "label", "top"),
+        Waypoint(103, 100, 7, "say", "hi"),
+        Waypoint(105, 100, 7, "goto", "top"),
+    ]
+    sim = Sim(wps, Position(101, 100, 7))
+    sim.bot.start()
+    sim.step()
+    assert sim.route.current == 0  # walks to the label first
+    sim.pos = Position(100, 100, 7)
+    sim.step()
+    assert sim.route.current == 1
+    sim.step()
+    assert sim.fake.sent_lines == []  # not on the say tile yet
+    sim.pos = Position(103, 100, 7)
+    for _ in range(5):
+        sim.step()
+    assert sim.fake.sent_lines == ["K enter", "K h", "K i", "K enter"]
+    sim.step(1.0)
+    assert sim.route.current == 2
+    sim.pos = Position(105, 100, 7)
+    sim.step()
+    assert sim.route.current == 1  # goto jumps on its tile: after label "top" is the say
+    assert RouteFileLoader.parse(
+        {"name": "r", "waypoints": [{"x": 1, "y": 2, "z": 7, "action": "label", "label": "a"}]}
+    ).waypoints[0] == Waypoint(1, 2, 7, "label", "a")
+
+
 def test_check_needs_an_existing_label() -> None:
     raw = {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7}, {"action": "check", "label": "x"}]}
     with pytest.raises(RouteError, match="check target"):

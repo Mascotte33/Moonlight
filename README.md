@@ -141,8 +141,10 @@ HP (70 % by default) it holds still and heals first, then loots. It also
 loots while an alarm is up. Set it in Cavebot > Loot.
 
 Every waypoint button in Edit route adds the waypoint on the character's
-tile; there are no typed X, Y, Z fields. `label`, `goto`, `say`, `key`,
-`drag`, `script` and `wait` have no tile: they happen where the bot stands.
+tile; there are no typed X, Y, Z fields. The bot walks onto that tile before
+it does the waypoint: a `label`, `goto`, `say`, `key`, `drag`, `script` or
+`wait` too. Those from older routes have no tile and happen where the bot
+stands.
 
 Refill is part of the waypoint list. A `check` waypoint with label `town`
 is added on the character's tile and the bot walks there. On it, the bot
@@ -150,8 +152,7 @@ jumps to label `town` when the free cap in the side panel's Cap box is under
 the set number (Cavebot > Refill, 0 = off), when the action bar shows fewer
 health or mana potions than set there (0 = off; spirit potions count for
 both), or after **Refill now** is pressed; otherwise it goes on to the next
-waypoint. A `check` from an older route has no tile and decides as soon as
-the route reaches it. The potions are found on the action bar by their
+waypoint. The potions are found on the action bar by their
 picture (`data/templates/potions/<health|mana|spirit>/`), the Cap box by
 `data/templates/cap_label.png`; a cap or count that does not read never
 sends the bot to town, it only writes a line in bot.log.
