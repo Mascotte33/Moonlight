@@ -16,7 +16,6 @@ log line (an unknown digit is logged as its picture, to add to ``DIGITS``).
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -49,8 +48,6 @@ DIGITS = {
     "####/...#/..#./.##./.#../##..": "7",
     "###./#..#/#..#/####/..##/###.": "9",
 }
-#: Seconds a read is reused (a ``check`` lookahead asks more than once).
-READ_EVERY = 5.0
 
 
 def read_count(slot: np.ndarray) -> int | None:
@@ -81,10 +78,8 @@ class PotionCounter:
         self,
         grab: Callable[[], np.ndarray],
         templates_dir: Path = POTION_TEMPLATES_DIR,
-        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._grab = grab
-        self._clock = clock
         #: (type, name, rgb, mask, weight sum)
         self._kinds: list[tuple[str, str, np.ndarray, np.ndarray, float]] = []
         for kind in TYPES:
@@ -97,7 +92,10 @@ class PotionCounter:
                 mask = np.repeat(weight[:, :, None], 3, axis=2)
                 self._kinds.append((kind, path.stem, rgb, mask, float(weight.sum())))
         self._slots: dict[str, tuple[int, int]] = {}  # name -> slot top-left
-        self._last: tuple[float, bool] | None = None
+        #: ``"health"`` / ``"mana"`` -> the slot picture the last
+        #: :meth:`counts` read for it (the first found; a spirit slot counts
+        #: for both).
+        self.crops: dict[str, np.ndarray] = {}
 
     def counts(self) -> dict[str, int | None]:
         """``{"health": n, "mana": n}``; None when unknown (no potion found
@@ -105,38 +103,22 @@ class PotionCounter:
         frame = self._grab()
         totals: dict[str, int | None] = {"health": None, "mana": None}
         unknown: set[str] = set()
+        self.crops = {}
         for kind, name, rgb, mask, weight in self._kinds:
             spot = self._find(frame, name, rgb, mask, weight)
             if spot is None:
                 continue
             x, y = spot
             h, w = rgb.shape[:2]
-            n = read_count(frame[y : y + h, x : x + w])
+            pic = frame[y : y + h, x : x + w].copy()
+            n = read_count(pic)
             for t in ("health", "mana") if kind == "spirit" else (kind,):
+                self.crops.setdefault(t, pic)
                 if n is None:
                     unknown.add(t)
                 else:
                     totals[t] = (totals[t] or 0) + n
         return {t: None if t in unknown else n for t, n in totals.items()}
-
-    def low(self, health_below: int, mana_below: int) -> bool:
-        """True when a known count is under its threshold (0 = off)."""
-        now = self._clock()
-        if self._last is not None and now - self._last[0] < READ_EVERY:
-            return self._last[1]
-        counts = self.counts()
-        due = False
-        for t, below in (("health", health_below), ("mana", mana_below)):
-            n = counts[t]
-            if below <= 0:
-                continue
-            if n is None:
-                logger.info("potions: %s count unknown, no refill for it", t)
-            elif n < below:
-                logger.info("potions: %d %s potions, under %d", n, t, below)
-                due = True
-        self._last = (now, due)
-        return due
 
     def _find(
         self, frame: np.ndarray, name: str, rgb: np.ndarray, mask: np.ndarray, weight: float

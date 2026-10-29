@@ -53,20 +53,7 @@ def test_counts_spirit_for_both_and_refinds_a_moved_slot(tmp_path: Path) -> None
     frame[200:231, 100:135] = spirit
     counter = PotionCounter(lambda: frame, tmp_path)
     assert counter.counts() == {"health": 113, "mana": 8}
+    assert (counter.crops["mana"] == spirit).all()
     frame[:] = 0
     frame[100:131, 300:335] = slot(1, "50")
     assert counter.counts() == {"health": 50, "mana": None}
-
-
-def test_low_needs_a_known_count_under_its_threshold(tmp_path: Path) -> None:
-    save(tmp_path, "mana", slot(3, "88"))
-    frame = np.zeros((100, 100, 3), np.uint8)
-    frame[10:41, 10:45] = slot(3, "88")
-    now = [0.0]
-    counter = PotionCounter(lambda: frame, tmp_path, clock=lambda: now[0])
-    assert not counter.low(0, 50)
-    now[0] = 10.0
-    assert counter.low(500, 100)  # health unknown, mana 88 < 100
-    now[0] = 20.0
-    frame[34:40, 14:40] = 223  # a count that does not read
-    assert not counter.low(0, 100)

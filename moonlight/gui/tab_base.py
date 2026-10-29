@@ -554,8 +554,12 @@ def _control(
             for event in ("<Return>", "<FocusOut>"):
                 box.bind(event, lambda _e: on_submit())
         return get_slider, put_slider
-    entry = ctk.CTkEntry(row, fg_color=theme.NIGHT, border_color=theme.RAISED)
-    entry.pack(side="right")
+    if option.off_at_zero:  # short number box right after the label
+        entry = ctk.CTkEntry(row, width=60, fg_color=theme.NIGHT, border_color=theme.RAISED)
+        entry.pack(side="left", padx=(theme.UNIT, 0))
+    else:
+        entry = ctk.CTkEntry(row, fg_color=theme.NIGHT, border_color=theme.RAISED)
+        entry.pack(side="right")
     off = ctk.CTkLabel(row, text="off", text_color=theme.TEXT_MUTED)
 
     def shade(_e: object = None) -> None:
@@ -565,7 +569,7 @@ def _control(
         zero = entry.get().strip() in ("0", "")
         entry.configure(text_color=theme.TEXT_MUTED if zero else theme.TEXT)
         if zero:
-            off.pack(side="right", padx=theme.UNIT)
+            off.pack(side="left", after=entry, padx=(theme.UNIT, 0))
         else:
             off.pack_forget()
 

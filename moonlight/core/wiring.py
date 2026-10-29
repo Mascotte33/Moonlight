@@ -26,6 +26,7 @@ from moonlight.core.safety import RateLimitedInput, beep_alert
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.input import InputBackend
 from moonlight.perception.status_icons import CONDITION_TEMPLATES_DIR
+from moonlight.refill.refill import supplies_low
 
 if TYPE_CHECKING:
     from moonlight.hardware.clicker import ClickController
@@ -618,7 +619,7 @@ def build_modules(
                 frames=frames,
                 clock=clock,
                 scripts=m.scripts,
-                supplies_low=_supplies_low(config, screen_grab),
+                supplies_low=supplies_low(config.refill, screen_grab),
             )
             if prev is None or prev.cavebot is None:
                 m.cavebot.start()
@@ -630,30 +631,6 @@ def build_modules(
 
             m.looting = Looting(backend, config.looting, clock=clock or time.monotonic)
     return m
-
-
-def _supplies_low(
-    config: BotConfig, grab: Callable[[], np.ndarray] | None
-) -> Callable[[], bool] | None:
-    """The cavebot's cap and potion refill trigger, or None when both are off."""
-    refill = config.refill
-    if refill is None or grab is None:
-        return None
-    cap, hp, mp = refill.cap_below, refill.health_potions_below, refill.mana_potions_below
-    checks: list[Callable[[], bool]] = []
-    if cap > 0:
-        from moonlight.perception.cap import CapReader
-
-        reader = CapReader(grab)
-        checks.append(lambda: reader.low(cap))
-    if hp > 0 or mp > 0:
-        from moonlight.perception.potions import PotionCounter
-
-        counter = PotionCounter(grab)
-        checks.append(lambda: counter.low(hp, mp))
-    if not checks:
-        return None
-    return lambda: any([check() for check in checks])
 
 
 def capture_providers(

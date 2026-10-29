@@ -701,7 +701,10 @@ class Cavebot:
 
     # doc: docs/prs/refill.md#check-waypoint
     def _refill_due(self) -> bool:
-        return self.refill_now or (self._supplies_low is not None and self._supplies_low())
+        if self.refill_now:
+            logger.info("check: Refill now | refill")
+            return True
+        return self._supplies_low is not None and self._supplies_low()
 
     # doc: docs/prs/refill.md#drag-waypoint
     def _hand_sends(self, wp: Waypoint) -> list[Callable[[], object]]:

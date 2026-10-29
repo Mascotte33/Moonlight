@@ -19,6 +19,8 @@ from tkinter import messagebox
 from typing import Any
 
 import customtkinter as ctk
+import numpy as np
+from PIL import Image
 
 from moonlight.cavebot.cavebot import (
     ACTIONS,
@@ -46,6 +48,7 @@ from moonlight.gui import loop_factory, theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.settings_tab import plain_reason
 from moonlight.gui.tab_base import Option, Tab, read_option, section, write_option
+from moonlight.refill.refill import LAST_READ
 from moonlight.scripts.scripts import ScriptRunner
 
 __all__ = [
@@ -105,21 +108,9 @@ LOOT_OPTIONS = [
     Option("Loot only at HP % or above", "looting.min_hp_to_loot", "entry", min=0, max=100),
 ]
 REFILL_OPTIONS = [
-    Option("Refill under free cap (0 off)", "refill.cap_below", "entry", min=0, off_at_zero=True),
-    Option(
-        "Refill under health potions (0 off)",
-        "refill.health_potions_below",
-        "entry",
-        min=0,
-        off_at_zero=True,
-    ),
-    Option(
-        "Refill under mana potions (0 off)",
-        "refill.mana_potions_below",
-        "entry",
-        min=0,
-        off_at_zero=True,
-    ),
+    Option("cap <", "refill.cap_below", "entry", min=0, off_at_zero=True),
+    Option("HP pots <", "refill.health_potions_below", "entry", min=0, off_at_zero=True),
+    Option("MP pots <", "refill.mana_potions_below", "entry", min=0, off_at_zero=True),
 ]
 SCRIPT_OPTIONS = [
     Option("Timed scripts (name seconds, ...)", "scripts.timers", "entry"),
@@ -276,6 +267,8 @@ class CavebotTab(Tab):
             root.grid_columnconfigure(col, weight=weight, uniform="cards")
         root.grid_rowconfigure(0, weight=1)
         self._root, self._locked = root, False
+        self._last_read: dict[str, tuple[ctk.CTkLabel, ctk.CTkLabel]] = {}
+        self._shown_read: dict[str, object] = {}
 
         box = section(root, "Waypoints")
         box.grid(row=0, column=0, sticky="nsew", padx=(0, theme.GAP))
@@ -354,6 +347,14 @@ class CavebotTab(Tab):
             text_color=theme.TEXT_DIM,
         ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.build_options(refill, REFILL_OPTIONS)
+        # doc: docs/prs/potion-count.md#last-read
+        rows = [w for w in refill.winfo_children() if isinstance(w, ctk.CTkFrame)]
+        for option, row in zip(REFILL_OPTIONS, rows, strict=True):
+            text = ctk.CTkLabel(row, text="last read: —", text_color=theme.TEXT_MUTED)
+            text.pack(side="left", padx=(theme.UNIT, 0))
+            picture = ctk.CTkLabel(row, text="")
+            picture.pack(side="left", padx=(theme.UNIT, 0))
+            self._last_read[option.field] = (text, picture)
         _button(refill, "Refill now", self._refill_now).pack(
             anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0)
         )
@@ -731,6 +732,10 @@ class CavebotTab(Tab):
 
     def on_poll(self, snap: WorldState) -> None:
         self.show_paused([SWITCH.field], self.ctx.paused)
+        for field, read in LAST_READ.items():
+            if field in self._last_read and self._shown_read.get(field) is not read:
+                self._shown_read[field] = read
+                self._show_read(field, *read)
         self._pos = pos = snap.position
         self._status = snap.position_status
         if pos != Position(0, 0, 0):
@@ -755,6 +760,14 @@ class CavebotTab(Tab):
                 self._waypoints.append(Waypoint(stood.x, stood.y, stood.z))
                 self._changed()
         self._draw()
+
+    def _show_read(self, field: str, n: int | None, pixels: np.ndarray | None) -> None:
+        text, picture = self._last_read[field]
+        text.configure(text=f"last read: {'?' if n is None else n}")
+        # Not found: a 1x1 dark dot (customtkinter keeps the old picture on image=None).
+        pixels = np.zeros((1, 1, 3), np.uint8) if pixels is None else pixels
+        image = Image.fromarray(np.ascontiguousarray(pixels))
+        picture.configure(image=ctk.CTkImage(image, size=image.size))
 
     def reload_options(self) -> None:
         super().reload_options()
