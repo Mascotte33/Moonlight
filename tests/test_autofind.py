@@ -14,6 +14,7 @@ from moonlight.calibration.autofind import (
     SEARCH_EVERY,
     PlayerListFollower,
     find_game_grid,
+    find_player_list,
     find_regions,
     find_ui_scale,
 )
@@ -46,7 +47,12 @@ def test_finders_match_the_profile_on_golden_screenshots() -> None:
     # One pass over the screenshots, since reading 200 of them per finder is slow.
     expected = json.loads(PROFILE.read_text(encoding="utf-8"))["regions"]
     labels = json.loads((GOLDEN / "labels.json").read_text(encoding="utf-8"))["frames"]
-    finders = [(n, f) for n, f in FINDERS if ANCHORS.is_dir() or n not in IMAGE_FINDERS]
+    # The golden screenshots have no Players window.
+    finders = [
+        (n, f)
+        for n, f in FINDERS
+        if n != "player_list" and (ANCHORS.is_dir() or n not in IMAGE_FINDERS)
+    ]
     off = []
     battle_lists = 0
     for path in sorted(GOLDEN.glob("*.png")):
@@ -98,7 +104,7 @@ def test_players_window_is_followed_when_it_moves() -> None:
     now = [0.0]
     follower = PlayerListFollower(clock=lambda: now[0])
     box = follower.find(shot)
-    assert box == (2212, 719, 156, 207)
+    assert box == find_player_list(shot) == (2212, 719, 156, 207)
     reader = BattleReader(CalibrationProfile())
     assert len(reader.read_battle_list(np.ascontiguousarray(shot[..., ::-1]), box)) == 8
     moved = np.roll(shot, -100, axis=0)

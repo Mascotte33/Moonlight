@@ -28,7 +28,7 @@ from moonlight.calibration.calibrate import (
     Point,
     Rect,
 )
-from moonlight.calibration.calibration_steps import CalibrationSteps
+from moonlight.calibration.calibration_steps import AREAS, CalibrationSteps
 from moonlight.calibration.profile import ProfileManager
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
@@ -74,6 +74,7 @@ AREA_HELP: dict[str, str] = {
     "status_icons": "The row of small condition icons (poisoned, hasted and so on).",
     "game_grid": "The whole game view, 15 x 11 tiles, corner to corner.",
     "chase_buttons": "The Stand While Fighting and Chase Opponent buttons, one above the other.",
+    "player_list": "Optional: the list of the battle list window named Players. → skips it.",
 }
 
 
@@ -514,7 +515,7 @@ class CalibrationTab(Tab):
     def _render_area(self, steps: CalibrationSteps) -> None:
         self.review_bar.pack_forget()
         name = steps.area or ""
-        self.lbl_step.configure(text=f"{REGIONS.index(name) + 1} of {len(REGIONS)}: {name}")
+        self.lbl_step.configure(text=f"{AREAS.index(name) + 1} of {len(AREAS)}: {name}")
         hint = AREA_HELP[name]
         if steps.box is not None:
             self._box(steps.box, theme.MANA)

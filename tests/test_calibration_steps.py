@@ -1,6 +1,7 @@
 """Calibration steps: keep, redraw, back, review jump, saves."""
 
-from moonlight.calibration.calibrate import REGIONS, CalibrationProfile, Region
+from moonlight.calibration.calibrate import CalibrationProfile, Region
+from moonlight.calibration.calibration_steps import AREAS as REGIONS
 from moonlight.calibration.calibration_steps import CalibrationSteps
 
 FOUND = {n: (i, i, 10, 10) for i, n in enumerate(REGIONS)}

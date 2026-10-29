@@ -139,6 +139,11 @@ SEARCH_EVERY = 5.0  # s between full-window searches while the Players window is
 NEAR = 2  # px the header may sit off its last spot and still count as there
 
 
+def find_player_list(screenshot: np.ndarray) -> Rect | None:
+    hit = _match(screenshot, PLAYERS_HEADER)
+    return None if hit is None else _list_below(screenshot, hit)
+
+
 class PlayerListFollower:
     """The Players window's list box, re-found by its title when the window moves.
 
@@ -303,6 +308,7 @@ FINDERS: list[tuple[str, Finder]] = [
     ("game_grid", find_game_grid),
     ("status_icons", find_status_icons),
     ("chase_buttons", find_chase_buttons),
+    ("player_list", find_player_list),
 ]
 
 

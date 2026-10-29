@@ -217,11 +217,11 @@ picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`,
 Not tested in the game yet: the buff potion, the spell buff and the private
 message alarm (their pictures are not cut yet).
 For the player timer, open a second battle list set to players only and name
-it "Players"; the bot finds it by that title (picture
-`data/templates/anchors/player_list_header.png`, cut from the title bar like
-`battle_list_header.png`) and follows it when you move it. The log says
-`Players window at ...` or `Players window not found`. Needs the full-window
-capture (`dxcam`, the Windows default). A player staying there longer than the set
+it "Players". Calibration finds it by that title (last area, `player_list`;
+picture `data/templates/anchors/player_list_header.png`, cut from the title
+bar like `battle_list_header.png`). While running, the bot follows the title
+when you move the window and reads the calibrated box when the title is not
+on screen. The log says `Players window at ...` or `Players window not found`. A player staying there longer than the set
 minutes (0 = at once) sends the character to refill or sounds the
 alarm (Settings > Alarms); players passing by do not alarm.
 
