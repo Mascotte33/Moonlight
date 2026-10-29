@@ -494,6 +494,8 @@ class Cavebot:
         self._last_cmd = float("-inf")
         self._sidesteps = 0
         self._clicker.cancel()  # a click queued before leaving MOVE is stale
+        # A fight chased the character elsewhere: that is no jump to learn.
+        self._last_pos = self._previous_pos = None
 
     def stop(self) -> None:
         """Stop the route (no further input is sent)."""

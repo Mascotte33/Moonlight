@@ -887,6 +887,19 @@ def test_walk_keys_avoid_a_tile_that_moved_the_player() -> None:
     assert pressed(sim)[-1] != "s"
 
 
+
+def test_a_fight_chase_is_no_jump() -> None:
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    assert pressed(sim) == ["s"]
+    sim.bot.resume()  # back from a fight that chased the character away
+    sim.pos = Position(110, 100, 7)
+    sim.step()
+    sim.pos = Position(100, 100, 7)
+    sim.step(1.0)
+    assert pressed(sim)[-1] == "s"  # the tile below is still walkable
+
 def test_walk_keys_hold_the_key_until_the_way_turns_or_stops() -> None:
     sim = Sim([walk(100, 103), walk(96, 102)], Position(100, 100, 7), walk_keys=True)
     sim.bot.start()
