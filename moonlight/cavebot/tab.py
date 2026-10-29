@@ -132,7 +132,7 @@ def drop_route(cfg: BotConfig, name: str) -> BotConfig:
     """*cfg* without route *name*, so the route file can be deleted.
 
     A cavebot on *name* moves to the first other route on disk, from its
-    first waypoint, or turns off (refill with it) when none is left.
+    first waypoint, or turns off when none is left.
     """
     if picked_route(cfg) != name:
         return cfg
@@ -143,7 +143,6 @@ def drop_route(cfg: BotConfig, name: str) -> BotConfig:
         modules["cavebot"].update(route=left[0], start_index=0)
     else:
         modules["cavebot"] = {"enabled": False}
-        modules["refill"]["enabled"] = False
     return BotConfig.from_dict(data)
 
 

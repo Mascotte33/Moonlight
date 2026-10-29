@@ -84,11 +84,10 @@ def test_looting_loads_a_config_saved_with_the_loot_window_keys() -> None:
     assert BotConfig.from_dict(data).looting is not None
 
 
-def test_refill_needs_the_cavebot_and_loads_old_route_file_keys(tmp_path: Path) -> None:
+def test_refill_follows_the_cavebot_and_loads_old_route_file_keys(tmp_path: Path) -> None:
     route_file(tmp_path / "routes")
-    old = {"enabled": True, "route_name": "refill", "stop_cap": 50.0, "deposit_hotkey": "F5"}
-    with pytest.raises(ConfigError, match="refill needs the cavebot"):
-        BotConfig.from_dict(raw(refill=old))
+    old = {"enabled": False, "route_name": "refill", "stop_cap": 50.0, "deposit_hotkey": "F5"}
+    assert BotConfig.from_dict(raw(refill={**old, "enabled": True})).refill is None
     data = raw(cavebot={"enabled": True, "route": "hunt"}, refill=old)
     data["routes_dir"] = str(tmp_path / "routes")
     assert BotConfig.from_dict(data).refill == RefillConfig()
@@ -137,7 +136,6 @@ def test_buffs_refused_without_icon_source() -> None:
         lambda d: d.update(profile=""),
         lambda d: d["modules"].update(cavebot={"enabled": True}),
         lambda d: d["modules"].update(cavebot={"enabled": True, "route": "missing"}),
-        lambda d: d["modules"].update(refill={"enabled": True}),
     ],
 )
 def test_fail_closed(mutate: Any) -> None:

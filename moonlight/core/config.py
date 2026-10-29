@@ -33,7 +33,7 @@ JSON format (``moonlight_config.json``)::
         "alarms":    {"enabled": true},
         "cavebot":   {"enabled": false, "route": "rotworms"},
         "looting":   {"enabled": false},
-        "refill":    {"enabled": false},
+        "refill":    {"enabled": false},  # follows cavebot; 0 = off
         "scripts":   {"enabled": false, "timers": "eat 60"},
         "extras":    {"enabled": false, "food": true, "food_hotkey": "F10"},
         "rotation":  {"enabled": false, "logout_hotkey": "ctrl+l", "accounts": [
@@ -44,7 +44,7 @@ JSON format (``moonlight_config.json``)::
 
 Fail closed: ``profile``, ``modules`` and every module's ``enabled`` flag
 are required; unknown keys, wrong types, invalid values, a bad hotkey
-combo, a missing cavebot route file, or refill or rotation without the
+combo, a missing cavebot route file, or rotation without the
 cavebot all raise :class:`ConfigError`. Buffs additionally require its perception
 source (``buff_icon_source``) to be true (F-10).
 Fields left out of a module section take the dataclass defaults.
@@ -266,6 +266,9 @@ class BotConfig:
             enabled = section.pop("enabled", None)
             if not isinstance(enabled, bool):
                 raise ConfigError(f"modules.{name}.enabled must be true or false")
+            if name == "refill":  # no switch: on with the cavebot, its 0s turn it off
+                cavebot = _require_dict(modules.get("cavebot"), "modules.cavebot")
+                enabled = cavebot.get("enabled") is True
             if not enabled and not section:
                 continue
             if name == "cavebot":

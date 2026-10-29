@@ -126,7 +126,6 @@ def test_no_field_is_shown_by_two_tabs() -> None:
     [
         (BotConfig.default(), "cavebot", "Cavebot needs a route"),
         (BotConfig.default(), "buffs", "Buffs needs a buff-icon reader"),
-        (BotConfig.default(), "refill", "Refill needs Cavebot on"),
     ],
 )
 def test_refused_switch_has_a_plain_reason(cfg: BotConfig, name: str, reason: str) -> None:
