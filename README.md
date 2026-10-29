@@ -78,7 +78,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | `firmware/` | Arduino Leonardo HID firmware and [wire protocol](firmware/README.md) |
 | `tests/` | Unit tests at the top level; golden, replay, safety, perf and hardware-in-the-loop suites ([details](tests/README.md)) |
 | `tools/` | Benchmarks, Arduino verification, labelling and calibration helpers ([details](tools/README.md)) |
-| `docs/` | Client UI layout, hardware budget, [PR docs](docs/prs/) and [task files](docs/tasks/) |
+| `docs/` | Client UI layout, hardware budget, [PR docs](docs/prs/) |
 
 ## Feature status
 
