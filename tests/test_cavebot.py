@@ -1283,3 +1283,47 @@ def test_finddepo_waits_while_every_locker_is_taken_then_alarms(
     sim.pos = Position(100, 99, 7)
     sim.step()
     assert sim.route.current == 1
+
+
+# -- deposit ------------------------------------------------------------------
+
+
+def _deposit_sim(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, seen: dict[str, tuple[int, int]]
+) -> Sim:
+    import moonlight.cavebot.cavebot as cb
+
+    bag = tmp_path / "loot_backpack.png"
+    monkeypatch.setattr(cb, "find_picture", lambda frame, path: seen.get(path.name))
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([Waypoint(0, 0, 0, "deposit"), walk(110, 100)], Position(100, 99, 7),
+              frames=lambda: frame, backpack=bag)  # fmt: skip
+    sim.bot.start()
+    sim.bot.depot_locker = (100, 98, 7)
+    return sim
+
+
+def test_deposit_right_clicks_the_locker_then_drags_the_backpack_onto_the_stash(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: dict[str, tuple[int, int]] = {}
+    sim = _deposit_sim(monkeypatch, tmp_path, seen)
+    sim.step()
+    assert [side for _, side in sim.clicker.clicks] == [ClickSide.RIGHT]
+    seen.update({"depot_stash.png": (300, 400), "loot_backpack.png": (100, 200)})
+    for _ in range(6):  # finds both, then the drag's 4 sends and its start
+        sim.step()
+    a, b = sim.clicker.to_wire((100, 200)), sim.clicker.to_wire((300, 400))
+    assert sim.fake.sent_lines == [f"A {a[0]} {a[1]}", "H L", f"A {b[0]} {b[1]}", "R L"]
+    sim.step(1.0)
+    assert sim.route.current == 1 and sim.bot.alarm is None
+
+
+def test_deposit_clicks_again_and_alarms_while_the_stash_is_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen = {"loot_backpack.png": (100, 200)}
+    sim = _deposit_sim(monkeypatch, tmp_path, seen)
+    run_until(sim, 4)
+    assert len(sim.clicker.clicks) == 2 and sim.bot.alarm == "deposit"
+    assert sim.route.current == 0 and sim.fake.sent_lines == []

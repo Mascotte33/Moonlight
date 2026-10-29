@@ -88,6 +88,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   (:mod:`moonlight.cavebot.town`) and walks to the nearest free tile next to
   one (no creature or player, walkable). All taken: it looks again every
   few seconds, with alarm ``"depot_taken"`` after 5 min.
+* **deposit**: right-clicks the locker ``finddepo`` picked until the stash
+  and the loot backpack (*backpack*) are on screen, then drags the backpack
+  onto the stash. The locker window stays open.
 * **script**: runs the user script named by its label
   (:mod:`moonlight.scripts.scripts`); the route holds until it ends.
 * **End of route**: a hunting route starts over at waypoint 0; a route
@@ -125,7 +128,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from moonlight.cavebot.pathing import CostMap, next_step
-from moonlight.cavebot.town import find_lockers, pick_locker
+from moonlight.cavebot.town import STASH, find_lockers, find_picture, pick_locker
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, InputBackend
@@ -156,12 +159,15 @@ logger = logging.getLogger(__name__)
 ACTIONS = (
     "walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto", "check",
     "say", "key", "drag", "script", "wait", "step", "finddepo",
+    "deposit",
 )  # fmt: skip
 
 #: Actions that need no position (executed immediately).
 _JUMP_ACTIONS = ("label", "goto", "check")
 #: Actions done where the bot stands (one command per tick, then a hold).
-_HAND_ACTIONS = ("say", "key", "drag", "script", "wait")
+_HAND_ACTIONS = ("say", "key", "drag", "script", "wait", "deposit")
+#: Hand actions without a label.
+_NO_LABEL = ("deposit",)
 #: Actions that may have no tile (x, y, z 0: old routes); added in Edit route they have one.
 NO_TILE = _JUMP_ACTIONS + _HAND_ACTIONS
 
@@ -172,7 +178,7 @@ def has_tile(wp: Waypoint) -> bool:
 
 
 #: Seconds the route holds after a hand action (a wait: its label).
-_HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0, "step": 0.5}
+_HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0, "step": 0.5, "deposit": 1.0}
 
 #: Floor change each tile action causes (0 = sky, 15 = deepest).
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
@@ -300,7 +306,7 @@ class RouteFileLoader:
             raise RouteError(f"waypoint {index}: action must be one of {ACTIONS}, got {action!r}")
         label = item.get("label", "")
         if action in NO_TILE:
-            if not isinstance(label, str) or not label:
+            if not isinstance(label, str) or (not label and action not in _NO_LABEL):
                 raise RouteError(f"waypoint {index}: {action} needs a non-empty 'label'")
             if bad := label_error(action, label):
                 raise RouteError(f"waypoint {index}: {bad}")
@@ -367,6 +373,7 @@ class Cavebot:
         on_waypoint_reached: Callable[[int], None] | None = None,
         scripts: ScriptRunner | None = None,
         supplies_low: Callable[[], bool] | None = None,
+        backpack: Path | None = None,
     ) -> None:
         """Create the runner.
 
@@ -398,6 +405,7 @@ class Cavebot:
             scripts: Starts the user scripts of ``script`` waypoints.
             supplies_low: True when free cap or potions are under their
                 Refill settings; a ``check`` then jumps too.
+            backpack: The loot backpack picture a ``deposit`` drags onto the stash.
 
         Raises:
             ValueError: On bad timings, or rope/shovel waypoints or
@@ -406,12 +414,12 @@ class Cavebot:
         self._minimap_region: Rect = minimap_region
         if stuck_timeout <= 0 or reclick_interval <= 0:
             raise ValueError("stuck_timeout and reclick_interval must be > 0")
-        keyed = ("rope", "shovel", "say", "key", "drag", "step")
+        keyed = ("rope", "shovel", "say", "key", "drag", "step", "deposit")
         needs_keys = any(wp.action in keyed for wp in route.waypoints)
         if needs_keys and input_backend is None:
             raise ValueError("rope/shovel/say/key/drag/step waypoints need an input_backend")
-        if any(wp.action == "drag" for wp in route.waypoints) and not clicker.absolute:
-            raise ValueError("drag waypoints need the absolute clicker")
+        if any(wp.action in ("drag", "deposit") for wp in route.waypoints) and not clicker.absolute:
+            raise ValueError("drag and deposit waypoints need the absolute clicker")
         if walk_keys and input_backend is None:
             raise ValueError("walk_keys needs an input_backend for the WSAD keys")
         self.route = route
@@ -462,6 +470,10 @@ class Cavebot:
         self._depot_stand: Waypoint | None = None  # the tile next to it
         self._depot_looked = float("-inf")
         self._depot_wait_since: float | None = None
+        self._backpack = backpack
+        #: ``deposit``: (backpack, stash) frame pixels once both are on screen.
+        self._deposit_drag: tuple[tuple[int, int], tuple[int, int]] | None = None
+        self._locker_clicked = float("-inf")
 
         #: Why the route stopped on its own ("stuck", "lost", "goto_loop"),
         #: or None.
@@ -766,8 +778,12 @@ class Cavebot:
             return [] if scripts is None else [lambda: scripts.start(wp.label)]
         send = self._input
         assert send is not None  # __init__: hand actions need it
-        if wp.action == "drag":
-            x1, y1, x2, y2 = (int(v) for v in wp.label.split())
+        if wp.action in ("drag", "deposit"):
+            if wp.action == "deposit":
+                assert self._deposit_drag is not None  # _hand_action: found first
+                (x1, y1), (x2, y2) = self._deposit_drag
+            else:
+                x1, y1, x2, y2 = (int(v) for v in wp.label.split())
             a, b = self._clicker.to_wire((x1, y1)), self._clicker.to_wire((x2, y2))
             return [
                 lambda: send.mouse_to(*a),
@@ -782,6 +798,9 @@ class Cavebot:
     def _hand_action(self, wp: Waypoint, now: float) -> None:
         """Send the next command of a hand action, then hold before moving on."""
         self._last_move = now  # standing still here is not being stuck
+        if wp.action == "deposit" and self._deposit_drag is None:
+            self._open_locker(now)
+            return
         if self._hand_done_at is None:
             sends = self._hand_sends(wp)
             if self._sends_done < len(sends):
@@ -868,6 +887,7 @@ class Cavebot:
             )
         self.route.current += 1
         self._depot_stand, self._depot_wait_since = None, None
+        self._deposit_drag, self._locker_clicked = None, float("-inf")
         self._expected_z = None
         self._last_cmd = float("-inf")
         self._clicker.cancel()  # the pending click targeted the old waypoint
@@ -918,6 +938,31 @@ class Cavebot:
         self.depot_locker = (lx, ly, pos.z)
         self._depot_stand = Waypoint(sx, sy, pos.z, "stand")
         return self._depot_stand
+
+    # doc: docs/prs/depot.md#deposit-waypoint
+    def _open_locker(self, now: float) -> None:
+        """``deposit``: right-click the picked locker until the stash and the
+        loot backpack are on screen; still missing 3 s later, alarm ``"deposit"``."""
+        frame = self._frames() if self._frames is not None else None
+        bag_file = self._backpack
+        stash = None if frame is None else find_picture(frame, STASH)
+        bag = None if frame is None or bag_file is None else find_picture(frame, bag_file)
+        if stash is not None and bag is not None:
+            if self.alarm == "deposit":
+                self.alarm = None
+            self._deposit_drag = (bag, stash)
+            return
+        if now - self._locker_clicked < _DEPOT_RELOOK:
+            return
+        if self._locker_clicked > float("-inf") and self.alarm != "deposit":
+            found = (("stash", stash), ("backpack", bag))
+            missing = " and ".join(name for name, at in found if at is None)
+            logger.warning("cavebot: deposit: no %s on screen, still trying", missing)
+            self.alarm = "deposit"
+        self._locker_clicked = now
+        locker, pos = self.depot_locker, self._last_pos
+        if locker is not None and pos is not None and locker[2] == pos.z:
+            self._clicker.request(self._tile_pixel(locker[:2], pos), side=ClickSide.RIGHT)
 
     def _resync_floor(self, z: int) -> None:
         """Jump to the next positional waypoint on floor *z* (wrapping)."""

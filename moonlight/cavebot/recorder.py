@@ -73,6 +73,8 @@ def make_waypoint(action: str, label: str, live: Position) -> Waypoint:
         RouteError: For a missing label or an unknown position.
     """
     label = label.strip()
+    if action == "deposit":  # where finddepo left the bot
+        return Waypoint(0, 0, 0, action)
     if action in NO_TILE:
         if not label:
             raise RouteError(f"{action} needs a label")

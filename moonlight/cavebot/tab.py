@@ -362,6 +362,12 @@ class CavebotTab(Tab):
         _button(refill, "Refill now", self._refill_now).pack(
             anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0)
         )
+        # doc: docs/prs/depot.md#deposit-waypoint
+        pick = ctk.CTkFrame(refill, fg_color="transparent")
+        pick.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        _button(pick, "Pick backpack", self._pick_backpack).pack(side="left")
+        self.lbl_backpack = ctk.CTkLabel(pick, text="")
+        self.lbl_backpack.pack(side="left", padx=(theme.UNIT, 0))
         self.build_options(pages["Loot"], LOOT_OPTIONS)
         # doc: docs/prs/scripts.md#script-api
         ctk.CTkLabel(
@@ -580,6 +586,35 @@ class CavebotTab(Tab):
 
     def _refill_now(self) -> None:
         self.lbl_msg.configure(text=refill_now(self.ctx.live_cavebot()))
+
+    def _pick_backpack(self) -> None:
+        """In 3 s, save the item under the mouse as the loot backpack ``deposit`` drags."""
+        self.lbl_msg.configure(text="Point at the middle of the loot backpack (3 s)")
+        self._root.after(3000, self._cut_backpack)
+
+    def _cut_backpack(self) -> None:
+        import cv2
+
+        from moonlight.calibration.calibrate import default_profiles_dir
+        from moonlight.cavebot.town import BACKPACK_FILE, cut_item
+        from moonlight.perception.capture import ScreenCapture
+        from moonlight.perception.cursor import screen_cursor
+
+        cfg = load_real_config()
+        if self._capture is None:
+            self._capture = ScreenCapture(window_title=cfg.window_title)
+        rect, cursor = self._capture.get_window_rect(), screen_cursor()
+        pic = None
+        if rect is not None and cursor is not None:
+            at = (cursor[0] - rect[0], cursor[1] - rect[1])
+            pic = cut_item(self._capture.get_frame(), at)
+        if pic is None:
+            self.lbl_msg.configure(text="Pick backpack: the mouse is not over the client")
+            return
+        cv2.imwrite(str((cfg.profiles_dir or default_profiles_dir()) / BACKPACK_FILE), pic)
+        image = Image.fromarray(np.ascontiguousarray(pic))
+        self.lbl_backpack.configure(image=ctk.CTkImage(image, size=image.size))
+        self.lbl_msg.configure(text="Saved the loot backpack")
 
     def _cursor_text(self) -> str:
         from moonlight.perception.capture import ScreenCapture

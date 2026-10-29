@@ -612,8 +612,10 @@ def build_modules(
         assert m.clicker is not None
         clicker = m.clicker
         if config.cavebot is not None:
+            from moonlight.calibration.calibrate import default_profiles_dir
             from moonlight.cavebot.cavebot import Cavebot
             from moonlight.cavebot.pathing import CostMap
+            from moonlight.cavebot.town import BACKPACK_FILE
 
             cb = config.cavebot
             m.cavebot = Cavebot(
@@ -631,6 +633,7 @@ def build_modules(
                 clock=clock,
                 scripts=m.scripts,
                 supplies_low=supplies_low(config.refill, screen_grab),
+                backpack=(config.profiles_dir or default_profiles_dir()) / BACKPACK_FILE,
             )
             if prev is None or prev.cavebot is None:
                 m.cavebot.start()
