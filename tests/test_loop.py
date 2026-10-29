@@ -889,10 +889,15 @@ def test_a_loot_ring_counts_only_after_a_monster_left_the_battle_list() -> None:
     with ws.lock():
         ws.monsters = [Monster("Rat"), Monster("Rat", battle_list_row=1)]
     checks: list[int] = []
+
+    def ring_due() -> bool:
+        checks.append(1)
+        return False
+
     looting = SimpleNamespace(
         should_loot=lambda s: False,
         loot_first=lambda s: False,
-        ring_due=lambda: checks.append(1) or False,
+        ring_due=ring_due,
         on_target_died=lambda name: None,
     )
     gl, _ = make_loop(ws, FakeInput(), modules=DecisionModules(looting=cast(Looting, looting)))
