@@ -17,3 +17,7 @@ __all__ = ["RefillConfig"]
 class RefillConfig:
     #: Used capacity % at which a ``check`` waypoint jumps to its label.
     trigger_cap: float = 90.0
+    #: A ``check`` also jumps with fewer health / mana potions than this
+    #: on the action bar (0 = off).
+    health_potions_below: int = 0
+    mana_potions_below: int = 0

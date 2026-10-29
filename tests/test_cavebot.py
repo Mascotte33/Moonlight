@@ -290,6 +290,25 @@ def test_check_jumps_to_town_once_on_refill_now() -> None:
     assert sim.route.current == 3  # the jump used it up
 
 
+# doc: docs/prs/potion-count.md#potion-count
+def test_check_jumps_to_town_while_potions_are_low() -> None:
+    wps = [
+        walk(100, 100),
+        Waypoint(0, 0, 0, "check", "town"),
+        walk(110, 100),
+        Waypoint(0, 0, 0, "label", "town"),
+        walk(120, 100),
+    ]
+    low = [True]
+    sim = Sim(wps, Position(100, 100, 7), potions_low=lambda: low[0])
+    sim.bot.start()
+    sim.step()
+    assert sim.route.current == 4
+    low[0], sim.route.current = False, 0
+    sim.step()
+    assert sim.route.current == 2
+
+
 def test_check_needs_an_existing_label() -> None:
     raw = {"name": "r", "waypoints": [{"x": 1, "y": 1, "z": 7}, {"action": "check", "label": "x"}]}
     with pytest.raises(RouteError, match="check target"):

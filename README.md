@@ -52,7 +52,7 @@ moonlight/
 ├── targeting/    target picking, attack hotkeys + its tab
 ├── cavebot/      walking, pathing, route recorder + its tab
 ├── looting/      looting logic
-├── refill/       refill trigger (start %)
+├── refill/       refill trigger (cap %, potions)
 ├── scripts/      user scripts
 ├── extras/       buffs
 ├── alarms/       danger alarms
@@ -103,6 +103,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Account rotation (timed accounts, logout at the depot, next login) | ✅ | ✅ | ❌ |
 | Step waypoints (one walk key from a tile: holes, teleports, stairs) | ✅ | ✅ | ❌ |
 | Cavebot fixes (lone unreachable target pause, blocked path retry) | ✅ | ✅ | ❌ |
+| Potion count refill trigger (action bar digits) | ✅ | ✅ | ❌ |
 | Arduino HID input | ✅ | ✅ | 🟡 |
 | Closed-loop clicking | ✅ | ✅ | 🟡 |
 | Kill switch + safety stops | ✅ | ✅ | ❌ |
@@ -141,7 +142,12 @@ loots while an alarm is up. Set it in Cavebot > Loot.
 
 Refill is part of the waypoint list. A `check` waypoint with label `town`
 jumps to label `town` when used capacity reaches the start % (Cavebot >
-Refill) or after **Refill now** is pressed; otherwise the bot walks past it.
+Refill), when the action bar shows fewer health or mana potions than set
+there (0 = off; spirit potions count for both), or after **Refill now** is
+pressed; otherwise the bot walks past it. The potions are found on the
+action bar by their picture (`data/templates/potions/<health|mana|spirit>/`);
+a potion with no picture yet or a count that does not read never sends the
+bot to town, it only writes a line in bot.log.
 The town section uses `say` (presses Enter to open the chat box, types its label, Enter sends it; chat stays off for WASD; for
 NPC talk like `hi`, `deposit all`, `yes`), `key` (presses its label as a
 hotkey) and `drag` (label `x1 y1 x2 y2` in client pixels: drags the left

@@ -105,6 +105,8 @@ LOOT_OPTIONS = [
 ]
 REFILL_OPTIONS = [
     Option("Start refill at used cap %", "refill.trigger_cap", "entry"),
+    Option("Refill under health potions (0 off)", "refill.health_potions_below", "entry", min=0),
+    Option("Refill under mana potions (0 off)", "refill.mana_potions_below", "entry", min=0),
 ]
 SCRIPT_OPTIONS = [
     Option("Timed scripts (name seconds, ...)", "scripts.timers", "entry"),

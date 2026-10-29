@@ -68,7 +68,8 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
 * **label / goto**: positionless. ``label`` is a jump target; ``goto``
   jumps to the waypoint after the named label (route loops).
 * **check**: positionless. Jumps like ``goto`` when refill is due (used cap
-  at or over ``refill_cap``, or :attr:`Cavebot.refill_now` set, which the
+  at or over ``refill_cap``, too few potions on the action bar
+  (``potions_low``), or :attr:`Cavebot.refill_now` set, which the
   jump clears); otherwise falls through. The town trip is a section behind
   a label that ends in a ``goto`` back to the hunt.
 * **say / key**: positionless, done where the bot stands. ``say`` presses Enter
@@ -340,6 +341,7 @@ class Cavebot:
         on_waypoint_reached: Callable[[int], None] | None = None,
         refill_cap: float | None = None,
         scripts: ScriptRunner | None = None,
+        potions_low: Callable[[], bool] | None = None,
     ) -> None:
         """Create the runner.
 
@@ -371,6 +373,8 @@ class Cavebot:
             refill_cap: Used capacity % at which a ``check`` jumps; None
                 (Refill off) jumps only on :attr:`refill_now`.
             scripts: Starts the user scripts of ``script`` waypoints.
+            potions_low: True when the action bar shows too few potions;
+                a ``check`` then jumps too.
 
         Raises:
             ValueError: On bad timings, or rope/shovel waypoints or
@@ -420,6 +424,7 @@ class Cavebot:
         self._clock = clock if clock is not None else time.monotonic
         self._callback = on_waypoint_reached
         self.refill_cap = refill_cap
+        self._potions_low = potions_low
         #: Refill now: the next ``check`` jumps to town (cleared by the jump).
         self.refill_now = False
         self._scripts = scripts
@@ -685,7 +690,7 @@ class Cavebot:
     def _refill_due(self) -> bool:
         cap = self._state.snapshot().capacity
         full = self.refill_cap is not None and cap.max_weight > 0 and cap.percent >= self.refill_cap
-        return self.refill_now or full
+        return self.refill_now or full or (self._potions_low is not None and self._potions_low())
 
     # doc: docs/prs/refill.md#drag-waypoint
     def _hand_sends(self, wp: Waypoint) -> list[Callable[[], object]]:
