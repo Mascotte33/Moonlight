@@ -99,7 +99,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Looting | ✅ | ✅ | ✅ |
 | Refill (check, say, key, drag waypoints) | ✅ | ✅ | ❌ |
 | User scripts (script and wait waypoints, timers) | ✅ | ✅ | ❌ |
-| Extras (food, haste, buff, ring, amulet, player timer, PM alarm) | ✅ | ✅ | ❌ |
+| Extras (food, haste, buff, ring, amulet, player timer, PM alarm; no switch) | ✅ | ✅ | ❌ |
 | Account rotation (timed accounts, logout at the depot, next login) | ✅ | ✅ | ❌ |
 | Step waypoints (one walk key from a tile: holes, teleports, stairs) | ✅ | ✅ | ❌ |
 | Cavebot fixes (lone unreachable target pause, blocked path retry) | ✅ | ✅ | ❌ |
@@ -207,7 +207,7 @@ def run(bot):
 A running script pauses walking and waits during a fight or looting; healing
 always goes first. An error in a script is logged and stops that script only.
 
-Extras (Settings > Extras) press a hotkey when a picture shows: food when
+Extras (Settings > Extras, no module switch: a ticked extra is on) press a hotkey when a picture shows: food when
 hungry, ring or amulet when its slot is empty, haste while walking without
 haste or a protection zone, the buff potion when its icon is gone. Each extra
 is one row: its hotkey, then its checkbox at the far right (set the hotkey

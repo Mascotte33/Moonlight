@@ -43,7 +43,7 @@ OPTIONS = [
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
     for name in (
-        "healing", "looting", "scripts", "extras", "rotation", "buffs", "alarms"
+        "healing", "looting", "scripts", "rotation", "buffs", "alarms"
     )
 ]
 #: One row per extra: its hotkey and checkbox, then the player limits (docs/prs/extras.md#extras).

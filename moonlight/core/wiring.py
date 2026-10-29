@@ -590,13 +590,12 @@ def build_modules(
         from moonlight.scripts.rotation import Rotation
 
         m.scripts.rotation = Rotation(config.rotation, clock=clock or time.monotonic)
-    if config.extras is not None:
-        from moonlight.extras.extras import Extras
+    from moonlight.extras.extras import Extras
 
-        if prev is not None and prev.extras is not None and same("extras"):
-            m.extras = prev.extras  # keeps the player timers
-        else:
-            m.extras = Extras(config.extras, grab=screen_grab, clock=clock or time.monotonic)
+    if prev is not None and prev.extras is not None and same("extras"):
+        m.extras = prev.extras  # keeps the player timers
+    else:
+        m.extras = Extras(config.extras, grab=screen_grab, clock=clock or time.monotonic)
     walkers = config.cavebot is not None or config.looting is not None
     if walkers and m.cavebot is None and m.looting is None:
         assert m.clicker is not None

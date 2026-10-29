@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from moonlight.core.config import MODULES, BotConfig, ConfigError
+from moonlight.extras.extras import ExtrasConfig
 from moonlight.healing.healing import CureRule, HealingConfig, HealingRule
 from moonlight.refill.refill import RefillConfig
 from moonlight.targeting.targeting import AreaRule
@@ -294,14 +295,15 @@ def test_window_title_roundtrip() -> None:
     assert BotConfig.from_dict(cfg.to_dict()).window_title == "Tibia - Gunzodus"
 
 
-def test_extras_load_and_a_config_without_extras_still_loads() -> None:
+def test_extras_have_no_switch() -> None:
     cfg = BotConfig.from_dict(raw(extras={"enabled": True, "food": True, "food_hotkey": "F10"}))
-    assert cfg.extras is not None and cfg.extras.food_hotkey == "F10"
+    assert cfg.extras.food_hotkey == "F10"  # an old file's "enabled" is ignored
+    assert "enabled" not in cfg.to_dict()["modules"]["extras"]
     old = raw()
     del old["modules"]["extras"]
-    assert BotConfig.from_dict(old).extras is None
+    assert BotConfig.from_dict(old).extras == ExtrasConfig()  # every extra off
     with pytest.raises(ConfigError):
-        BotConfig.from_dict(raw(extras={"enabled": True, "food": True}))
+        BotConfig.from_dict(raw(extras={"food": True}))
 
 
 def test_rotation_accounts_load_round_trip_and_need_the_cavebot(tmp_path: Path) -> None:

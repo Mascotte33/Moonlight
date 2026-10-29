@@ -35,7 +35,7 @@ JSON format (``moonlight_config.json``)::
         "looting":   {"enabled": false},
         "refill":    {"enabled": false},  # follows cavebot; 0 = off
         "scripts":   {"enabled": false, "timers": "eat 60"},
-        "extras":    {"enabled": false, "food": true, "food_hotkey": "F10"},
+        "extras":    {"food": true, "food_hotkey": "F10"},  # no switch: a ticked extra is on
         "rotation":  {"enabled": false, "logout_hotkey": "ctrl+l", "accounts": [
           {"login": "abc", "password": "xyz", "character": 1, "minutes": 60}
         ]}
@@ -79,6 +79,7 @@ from moonlight.scripts.scripts import ScriptsConfig
 from moonlight.targeting.targeting import TargetingConfig
 
 __all__ = [
+    "ALWAYS_ON",
     "DEFAULT_CONFIG_FILE",
     "MODULES",
     "BotConfig",
@@ -88,6 +89,9 @@ __all__ = [
 
 #: Default config file name (looked up in the current directory).
 DEFAULT_CONFIG_FILE = "moonlight_config.json"
+
+#: Modules with no switch: always built, no ``enabled`` key (a missing section = defaults).
+ALWAYS_ON = ("extras",)
 
 #: Module section names, in ``modules`` of the JSON file.
 MODULES = (
@@ -171,8 +175,8 @@ class BotConfig:
     refill: RefillConfig | None = None
     #: Timed scripts; on or off, ``script`` waypoints always run.
     scripts: ScriptsConfig | None = None
-    #: Food, haste, buff potion, ring, amulet, player timer, PM alarm.
-    extras: ExtrasConfig | None = None
+    #: Food, haste, buff potion, ring, amulet, player timer, PM alarm; always built.
+    extras: ExtrasConfig = ExtrasConfig()
     #: Accounts played in turn; their logins stay in this gitignored file.
     rotation: RotationConfig | None = None
     #: Perception sources that are actually wired up (F-10). The buff-icon
@@ -264,7 +268,9 @@ class BotConfig:
                 raise ConfigError(f"modules: missing required section {name!r}")
             section = dict(_require_dict(modules[name], f"modules.{name}"))
             enabled = section.pop("enabled", None)
-            if not isinstance(enabled, bool):
+            if name in ALWAYS_ON:  # old files: the switch is gone
+                enabled = True
+            elif not isinstance(enabled, bool):
                 raise ConfigError(f"modules.{name}.enabled must be true or false")
             if name == "refill":  # no switch: on with the cavebot, its 0s turn it off
                 cavebot = _require_dict(modules.get("cavebot"), "modules.cavebot")
@@ -311,7 +317,9 @@ class BotConfig:
         for name in MODULES:
             cfg = getattr(self, name)
             kept = self.off.get(name)
-            if cfg is not None:
+            if name in ALWAYS_ON:
+                modules[name] = _section(cfg)
+            elif cfg is not None:
                 modules[name] = {"enabled": True, **_section(cfg)}
             elif kept is not None:
                 modules[name] = {"enabled": False, **_section(kept)}

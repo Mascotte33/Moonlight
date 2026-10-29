@@ -48,7 +48,7 @@ def test_check_module_regions_reports_missing() -> None:
     assert report["targeting"] == ["game_grid"]  # targeting scans it for creatures
     assert report["alarms"] == []
     # Only enabled modules appear in the report.
-    assert set(report) == {"healing", "targeting", "cavebot", "alarms"}
+    assert set(report) == {"healing", "targeting", "cavebot", "alarms", "extras"}
 
 
 def test_check_module_regions_all_present() -> None:
