@@ -136,8 +136,9 @@ TIMING_LOG_SECONDS = 10.0
 # Seconds a sent select click waits for the row's red outline before a
 # retry (clicking the attacked row again would stop the attack).
 _SELECT_OUTLINE_WAIT = 1.0
-#: Seconds after a monster left the battle list in which a loot ring counts:
-#: a ring comes from a kill; without one, hits flashing on the player look the same.
+#: Seconds after the target died in which a loot ring counts: a ring comes
+#: from a kill; without one, hits flashing on the player look the same, and
+#: monsters walking out of view drop the battle list count every few seconds.
 RING_AFTER_KILL_SECONDS = 3.0
 
 
@@ -287,7 +288,7 @@ class GameLoop:
         self._targeting_paused_until = 0.0  # a lone unreachable target: walk on
         self._last_target: str | None = None
         self._last_names: Counter[str] = Counter()
-        self._monster_left_at = float("-inf")
+        self._target_died_at = float("-inf")
         self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
@@ -566,10 +567,10 @@ class GameLoop:
                 names[prev] < self._last_names[prev] or (cur is None and not names[prev])
             ):
                 m.looting.on_target_died(prev)
+                self._target_died_at = now
             elif self._last_names and not names:
                 m.looting.on_target_died("")  # the battle list emptied: loot again
-        if names.total() < self._last_names.total():
-            self._monster_left_at = now
+                self._target_died_at = now
         self._last_names = names
         if m.extras is not None:
             m.extras.observe(snap)
@@ -693,7 +694,7 @@ class GameLoop:
             self._task = "Healing"
             return
         looting = self.modules.looting
-        ring_may_show = self._clock() - self._monster_left_at < RING_AFTER_KILL_SECONDS
+        ring_may_show = self._clock() - self._target_died_at < RING_AFTER_KILL_SECONDS
         if looting is not None and ring_may_show and looting.ring_due():
             self._send(snap, looting.press_ring)  # then carry on with this tick
         if self.modules.extras is not None and self._extra(snap):

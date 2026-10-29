@@ -884,10 +884,12 @@ class TestCurrentTask:
 
 
 
-def test_a_loot_ring_counts_only_after_a_monster_left_the_battle_list() -> None:
+def test_a_loot_ring_counts_only_after_the_target_died() -> None:
     ws = make_state()
+    rat = Monster("Rat")
     with ws.lock():
-        ws.monsters = [Monster("Rat"), Monster("Rat", battle_list_row=1)]
+        ws.monsters = [rat, Monster("Cave Rat", battle_list_row=1)]
+        ws.selected_target = rat
     checks: list[int] = []
 
     def ring_due() -> bool:
@@ -904,7 +906,11 @@ def test_a_loot_ring_counts_only_after_a_monster_left_the_battle_list() -> None:
     gl.tick()
     assert checks == []  # rats hitting the player flash like a ring
     with ws.lock():
-        ws.monsters = [Monster("Rat")]  # one died
+        ws.monsters = [rat]  # the cave rat walked out of view
+    gl.tick()
+    assert checks == []
+    with ws.lock():
+        ws.monsters, ws.selected_target = [], None  # the target died
     gl.tick()
     assert checks == [1]
 
