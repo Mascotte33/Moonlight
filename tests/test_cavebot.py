@@ -300,9 +300,10 @@ def test_say_types_one_key_per_tick_then_holds_before_moving_on() -> None:
     wps = [walk(100, 100), Waypoint(0, 0, 0, "say", "Hi Bob"), walk(110, 100)]
     sim = Sim(wps, Position(100, 100, 7))
     sim.bot.start()
-    for _ in range(9):
+    for _ in range(10):
         sim.step()
-    assert sim.fake.sent_lines == ["K h", "K i", "K space", "K b", "K o", "K b", "K enter"]
+    keys = ["K enter", "K h", "K i", "K space", "K b", "K o", "K b", "K enter"]
+    assert sim.fake.sent_lines == keys
     assert sim.route.current == 1
     sim.step(1.0)
     assert sim.route.current == 2
