@@ -5,12 +5,13 @@ its last value. The module switches live in Settings.
 
 "Show what the bot sees" opens a window with the game grid, a red box on
 every creature the health-bar scan finds, the cavebot's path in blue and
-fresh kills in gold. It scans about 5 times a second only while
+fresh kills in gold. It scans 30 times a second, in its own thread, only while
 open, and never sends input.
 """
 
 from __future__ import annotations
 
+import threading
 import time
 import tkinter as tk
 from collections import deque
@@ -38,8 +39,8 @@ def recent_errors(log: LogFeed) -> str:
     return "\n".join(reversed(lines)) or "No errors"
 
 
-#: Debug window refresh, ms (about 5 scans a second).
-SEES_MS = 200
+#: Debug window refresh, ms (30 frames a second).
+SEES_MS = 33
 #: The player's (col, row) on the 15x11 game grid.
 PLAYER_SLOT = (7, 5)
 #: How long a killed monster's tile keeps its gold circle (docs/prs/extras.md#seen-path).
@@ -140,9 +141,9 @@ class DiagnosticsTab(Tab):
         self.log_view = ctk.CTkTextbox(logsec, height=140, wrap="none")
         self.log_view.pack(fill="both", expand=True, padx=10, pady=(6, 4))
         self.log_view.configure(state="disabled")
-        ctk.CTkButton(
-            logsec, text="Reset loop stats", command=self._reset_stats
-        ).pack(anchor="e", padx=10, pady=(0, 8))
+        ctk.CTkButton(logsec, text="Reset loop stats", command=self._reset_stats).pack(
+            anchor="e", padx=10, pady=(0, 8)
+        )
 
         sees = section(parent, "What the bot sees")
         sees.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
@@ -177,7 +178,6 @@ class DiagnosticsTab(Tab):
         try:
             cfg = load_real_config()
             grid = load_profile(cfg.profile, cfg.profiles_dir).get_region("game_grid").to_tuple
-            cap = ScreenCapture(window_title=cfg.window_title)
         except Exception as exc:  # any setup failure is shown, never raised in Tk
             self.lbl_sees.configure(text=plain_reason(str(exc)))
             return
@@ -185,43 +185,73 @@ class DiagnosticsTab(Tab):
         win.title("What the bot sees")
         label = tk.Label(win, bg=theme.NIGHT, fg=theme.TEXT, text="Looking for Tibia...")
         label.pack()
-        scale = SEES_W / grid[2]
+        gx, gy, gw, gh = grid
+        game_view = (0, 0, gw, gh)  # the grid inside the cropped frame
+        scale = SEES_W / gw
+        latest: dict[str, Any] = {"view": None, "error": ""}
+        stop = threading.Event()
 
-        dead: dict[str, Any] = {"count": 0, "seen": set(), "corpses": {}}
-
-        def close() -> None:
-            cap.close()
-            win.destroy()
-
-        def tick() -> None:
-            if not win.winfo_exists():
+        def grab_and_scan() -> None:
+            """Off the Tk thread: a grab and scan take ~25 ms, too long for 30 fps in Tk."""
+            dead: dict[str, Any] = {"count": 0, "seen": set(), "corpses": {}}
+            try:
+                cap = ScreenCapture(window_title=cfg.window_title)  # mss belongs to its thread
+            except Exception as exc:  # shown in the window, never raised in a thread
+                latest["error"] = plain_reason(str(exc))
                 return
             try:
-                frame = np.ascontiguousarray(cap.get_frame([grid])[:, :, ::-1])  # RGB -> BGR
-            except CaptureError as exc:
-                label.configure(image="", text=str(exc))
-                win.after(1000, tick)
+                while not stop.is_set():
+                    started = time.monotonic()
+                    try:
+                        full = cap.get_frame([grid])
+                    except CaptureError as exc:
+                        latest.update(view=None, error=str(exc))
+                        stop.wait(1)
+                        continue
+                    frame = cv2.cvtColor(full[gy : gy + gh, gx : gx + gw], cv2.COLOR_RGB2BGR)
+                    slots = find_creatures(frame, game_view)
+                    snap = self.ctx.state.snapshot()
+                    player, now = snap.position, time.monotonic()
+                    px, py = player.x - PLAYER_SLOT[0], player.y - PLAYER_SLOT[1]
+                    seen = {(c + px, r + py) for c, r in slots}
+                    if (
+                        len(snap.monsters) < dead["count"]
+                    ):  # a kill: its tile is the box that vanished
+                        for tile in dead["seen"] - seen:
+                            dead["corpses"][tile] = now + CORPSE_SECONDS
+                    dead.update(count=len(snap.monsters), seen=seen)
+                    dead["corpses"] = {t: end for t, end in dead["corpses"].items() if end > now}
+                    cavebot = self.ctx.live_cavebot()
+                    path = slots_of(cavebot.planned_path, player) if cavebot is not None else []
+                    corpses = slots_of(dead["corpses"], player)
+                    view = seen_view(frame, game_view, slots, path, corpses)
+                    latest.update(view=view, error="")
+                    stop.wait(max(0.0, SEES_MS / 1000 - (time.monotonic() - started)))
+            finally:
+                cap.close()
+
+        def close() -> None:
+            stop.set()
+            win.destroy()
+
+        shown: list[np.ndarray | None] = [None]
+
+        def show() -> None:
+            if not win.winfo_exists():
                 return
-            slots = find_creatures(frame, grid)
-            snap = self.ctx.state.snapshot()
-            player, now = snap.position, time.monotonic()
-            px, py = player.x - PLAYER_SLOT[0], player.y - PLAYER_SLOT[1]
-            seen = {(c + px, r + py) for c, r in slots}
-            if len(snap.monsters) < dead["count"]:  # a kill: its tile is the box that vanished
-                for tile in dead["seen"] - seen:
-                    dead["corpses"][tile] = now + CORPSE_SECONDS
-            dead.update(count=len(snap.monsters), seen=seen)
-            dead["corpses"] = {t: end for t, end in dead["corpses"].items() if end > now}
-            cavebot = self.ctx.live_cavebot()
-            path = slots_of(cavebot.planned_path, player) if cavebot is not None else []
-            corpses = slots_of(dead["corpses"], player)
-            photo = _photo(seen_view(frame, grid, slots, path, corpses), scale)
-            label.configure(image=photo, text="")
-            label.image = photo  # type: ignore[attr-defined]  # keep it alive
-            win.after(SEES_MS, tick)
+            view = latest["view"]
+            if view is None:
+                label.configure(image="", text=latest["error"] or "Looking for Tibia...")
+            elif view is not shown[0]:
+                shown[0] = view
+                photo = _photo(view, scale)
+                label.configure(image=photo, text="")
+                label.image = photo  # type: ignore[attr-defined]  # keep it alive
+            win.after(SEES_MS, show)
 
         win.protocol("WM_DELETE_WINDOW", close)
-        win.after(0, tick)
+        threading.Thread(target=grab_and_scan, name="what-the-bot-sees", daemon=True).start()
+        win.after(0, show)
 
     # -- helpers -----------------------------------------------------------
 
@@ -276,9 +306,7 @@ class DiagnosticsTab(Tab):
             max_ms = stat_num(stats, "max_tick_time_ms")
             rate = ticks / uptime if uptime > 0 else 0.0
             self.lbl_tick_rate.configure(text=f"Loop tick rate: {rate:.1f} Hz")
-            self.lbl_tick_ms.configure(
-                text=f"Avg / max tick: {avg_ms} / {max_ms} ms"
-            )
+            self.lbl_tick_ms.configure(text=f"Avg / max tick: {avg_ms} / {max_ms} ms")
 
         errors = recent_errors(self.ctx.log)
         if self.lbl_errors.cget("text") != errors:

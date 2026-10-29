@@ -9,7 +9,6 @@ functions below so it is tested without a window (R8).
 
 from __future__ import annotations
 
-import base64
 import dataclasses
 import tkinter as tk
 from collections.abc import Mapping
@@ -187,8 +186,9 @@ def _photo(image: np.ndarray, scale: float) -> tk.PhotoImage:
     h, w = image.shape[:2]
     out = (max(round(w * scale), 1), max(round(h * scale), 1))
     interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_NEAREST
-    png = cv2.imencode(".png", cv2.resize(image, out, interpolation=interp))[1].tobytes()
-    return tk.PhotoImage(data=base64.b64encode(png).decode("ascii"))
+    # PPM: ~1 ms to encode where PNG takes ~14 ms on a game view.
+    ppm = cv2.imencode(".ppm", cv2.resize(image, out, interpolation=interp))[1].tobytes()
+    return tk.PhotoImage(data=ppm)
 
 
 # -- the tab -----------------------------------------------------------------
