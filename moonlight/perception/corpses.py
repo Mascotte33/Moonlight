@@ -43,6 +43,7 @@ def _bright(block: np.ndarray) -> np.ndarray:
 
 def _overlap(n: int, d: int) -> tuple[slice, slice]:
     """Slices of the new and the old look that show the same floor after a *d* px scroll."""
+    d = max(-n, min(n, d))  # a scroll past the block leaves no overlap
     return (slice(d, n), slice(0, n - d)) if d >= 0 else (slice(0, n + d), slice(-d, n))
 
 

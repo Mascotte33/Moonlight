@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from moonlight.perception.corpses import RingWatch
+from moonlight.perception.corpses import RingWatch, _overlap
 
 GRID = (0, 0, 1440, 1056)  # 96 px tiles; the player's tile is x 672-767, y 480-575
 BLUE = (255, 230, 200)  # BGR light blue
@@ -56,3 +56,9 @@ def test_ring_passed_while_walking() -> None:
     after[420:425, 580:588] = BLUE  # the ring turned on the floor that scrolled by
     assert looks(before, after) == [False, True]
     assert looks(before, floor[:, 40:1480].copy()) == [False, False]  # just walking
+
+
+def test_overlap_of_a_scroll_past_the_block_is_empty() -> None:
+    for d in (-300, 300):
+        new, old = _overlap(270, d)
+        assert len(range(270)[new]) == len(range(270)[old]) == 0
