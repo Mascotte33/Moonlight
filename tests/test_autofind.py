@@ -9,7 +9,15 @@ import cv2
 import numpy as np
 import pytest
 
-from moonlight.calibration.autofind import FINDERS, find_game_grid, find_regions, find_ui_scale
+from moonlight.calibration.autofind import (
+    FINDERS,
+    SEARCH_EVERY,
+    PlayerListFollower,
+    find_game_grid,
+    find_player_list,
+    find_regions,
+    find_ui_scale,
+)
 from moonlight.calibration.calibrate import CalibrationProfile, Region
 from moonlight.perception.battle import BattleReader
 
@@ -39,7 +47,12 @@ def test_finders_match_the_profile_on_golden_screenshots() -> None:
     # One pass over the screenshots, since reading 200 of them per finder is slow.
     expected = json.loads(PROFILE.read_text(encoding="utf-8"))["regions"]
     labels = json.loads((GOLDEN / "labels.json").read_text(encoding="utf-8"))["frames"]
-    finders = [(n, f) for n, f in FINDERS if ANCHORS.is_dir() or n not in IMAGE_FINDERS]
+    # The golden screenshots have no Players window.
+    finders = [
+        (n, f)
+        for n, f in FINDERS
+        if n != "player_list" and (ANCHORS.is_dir() or n not in IMAGE_FINDERS)
+    ]
     off = []
     battle_lists = 0
     for path in sorted(GOLDEN.glob("*.png")):
@@ -79,6 +92,29 @@ def test_battle_list_below_shown_filter_buttons() -> None:
     assert box == (2212, 52, 156, 611)
     reader = BattleReader(CalibrationProfile(regions={"battle_list": Region(*box)}))
     assert len(reader.read_battle_list(np.ascontiguousarray(shot[..., ::-1]))) == 4
+
+
+@pytest.mark.skipif(
+    not (ANCHORS / "player_list_header.png").exists(), reason="reference images not present"
+)
+def test_players_window_is_followed_when_it_moves() -> None:
+    shot = cv2.imread(str(GOLDEN / "battle" / "players.png"))
+    if shot is None:
+        pytest.skip("players window screenshot not present")
+    now = [0.0]
+    follower = PlayerListFollower(clock=lambda: now[0])
+    box = follower.find(shot)
+    assert box == find_player_list(shot) == (2212, 719, 156, 207)
+    reader = BattleReader(CalibrationProfile())
+    assert len(reader.read_battle_list(np.ascontiguousarray(shot[..., ::-1]), box)) == 8
+    moved = np.roll(shot, -100, axis=0)
+    assert follower.find(moved) == (2212, 619, 156, 207)  # one search when lost
+    assert follower.find(moved) == (2212, 619, 156, 207)  # then at its spot
+    gone = np.zeros_like(shot)
+    assert follower.find(gone) is None  # lost, searched, not found
+    assert follower.find(moved) is None  # no new search within SEARCH_EVERY
+    now[0] += SEARCH_EVERY
+    assert follower.find(moved) == (2212, 619, 156, 207)
 
 
 @pytest.mark.skipif(

@@ -6,6 +6,7 @@ returns the area's box, or ``None`` when it can't find it.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from functools import cache
 from pathlib import Path
@@ -113,9 +114,12 @@ GRIP_W = 12  # the resize grip in the bottom-left corner breaks the grey row
 
 def find_battle_list(screenshot: np.ndarray) -> Rect | None:
     hit = _match(screenshot, "battle_list_header")
-    if hit is None:
-        return None
-    x, y = hit
+    return None if hit is None else _list_below(screenshot, hit)
+
+
+def _list_below(screenshot: np.ndarray, header: Point) -> Rect | None:
+    """The list box of the battle-list window whose header's top-left is *header*."""
+    x, y = header
     rows = screenshot[y + BATTLE_TOP :, x + GRIP_W : x + BATTLE_W].astype(np.int16)
     bright = (rows.min(axis=(1, 2)) >= 100) & (np.ptp(rows, axis=(1, 2)) <= 30)
     lines = np.flatnonzero(bright) + BATTLE_TOP  # grey rows, from the header's top
@@ -127,6 +131,53 @@ def find_battle_list(screenshot: np.ndarray) -> Rect | None:
         return None
     # The reader's box starts TOP_PADDING above the first creature row.
     return (x, y + start - TOP_PADDING, BATTLE_W, int(lines[0]) - start + TOP_PADDING)
+
+
+# doc: docs/prs/player-list.md#players-window
+PLAYERS_HEADER = "player_list_header"
+SEARCH_EVERY = 5.0  # s between full-window searches while the Players window is lost
+NEAR = 2  # px the header may sit off its last spot and still count as there
+
+
+def find_player_list(screenshot: np.ndarray) -> Rect | None:
+    hit = _match(screenshot, PLAYERS_HEADER)
+    return None if hit is None else _list_below(screenshot, hit)
+
+
+class PlayerListFollower:
+    """The Players window's list box, re-found by its title when the window moves.
+
+    The header is checked at its last spot every call (well under 1 ms); the
+    full-window search (~45 ms) runs when it is no longer there, then once
+    per ``SEARCH_EVERY`` s until found.
+    """
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._header: Point | None = None
+        self._next_search = float("-inf")
+
+    def find(self, screenshot: np.ndarray) -> Rect | None:
+        if self._header is not None:
+            self._header = self._header_near(screenshot, self._header)
+        if self._header is None and self._clock() >= self._next_search:
+            self._header = _match(screenshot, PLAYERS_HEADER)
+            if self._header is None:
+                self._next_search = self._clock() + SEARCH_EVERY
+        return None if self._header is None else _list_below(screenshot, self._header)
+
+    @staticmethod
+    def _header_near(screenshot: np.ndarray, at: Point) -> Point | None:
+        template = _anchor(PLAYERS_HEADER)
+        assert template is not None  # it was found with this image
+        h, w = template.shape
+        x0, y0 = max(0, at[0] - NEAR), max(0, at[1] - NEAR)
+        spot = screenshot[y0 : at[1] + h + NEAR, x0 : at[0] + w + NEAR]
+        if spot.shape[0] < h or spot.shape[1] < w:
+            return None
+        grey = cv2.cvtColor(spot, cv2.COLOR_BGR2GRAY)
+        _, best, _, (x, y) = cv2.minMaxLoc(cv2.matchTemplate(grey, template, cv2.TM_CCOEFF_NORMED))
+        return (x0 + x, y0 + y) if best >= MATCH_MIN else None
 
 
 # The reference image is the zoom-button strip right of the map, since the map
@@ -257,6 +308,7 @@ FINDERS: list[tuple[str, Finder]] = [
     ("game_grid", find_game_grid),
     ("status_icons", find_status_icons),
     ("chase_buttons", find_chase_buttons),
+    ("player_list", find_player_list),
 ]
 
 

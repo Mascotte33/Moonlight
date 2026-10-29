@@ -74,7 +74,7 @@ AREA_HELP: dict[str, str] = {
     "status_icons": "The row of small condition icons (poisoned, hasted and so on).",
     "game_grid": "The whole game view, 15 x 11 tiles, corner to corner.",
     "chase_buttons": "The Stand While Fighting and Chase Opponent buttons, one above the other.",
-    "player_list": "Optional: a second battle list set to show players only. → skips it.",
+    "player_list": "Optional: the list of the battle list window named Players. → skips it.",
 }
 
 
