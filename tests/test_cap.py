@@ -51,6 +51,10 @@ def test_check_logs_each_number_and_keeps_the_last_read(caplog: pytest.LogCaptur
     assert "check: cap ? | continue" in caplog.text
     assert LAST_READ["refill.cap_below"] == (None, None)
     assert supplies_low(RefillConfig(), lambda: frames[0]) is None
+    frames[0] = panel_in_frame(0, 0)
+    high = supplies_low(RefillConfig(cap_below=900), lambda: frames[0])
+    assert high is not None and not high()
+    assert "check: cap 985 >= 900 | continue" in caplog.text
 
 
 def draw(*shapes: str) -> np.ndarray:

@@ -42,7 +42,7 @@ def supplies_low(
     """The cavebot's cap and potion refill trigger, or None when all are off.
 
     Each call reads every number that is on, logs one ``check:`` line per
-    number ending with the verdict, and fills :data:`LAST_READ`.
+    number ending with what that number says, and fills :data:`LAST_READ`.
     """
     if config is None or grab is None:
         return None
@@ -68,16 +68,17 @@ def supplies_low(
             counts = counter.counts()
             for kind in ("health", "mana"):
                 got[f"refill.{kind}_potions_below"] = (counts[kind], counter.crops.get(kind))
-        due = any((n := got[f][0]) is not None and n < below for f, _, below in checks)
-        verdict = "refill" if due else "continue"
+        due = False
         for field, name, below in checks:
             LAST_READ[field] = got[field]
             n = got[field][0]
-            if n is None:
-                logger.info("check: %s ? | %s", name, verdict)
+            if n is None:  # unknown never sends the bot to town
+                logger.info("check: %s ? | continue", name)
+            elif n < below:
+                due = True
+                logger.info("check: %s %d < %d | refill", name, n, below)
             else:
-                sign = "<" if n < below else ">="
-                logger.info("check: %s %d %s %d | %s", name, n, sign, below, verdict)
+                logger.info("check: %s %d >= %d | continue", name, n, below)
         return due
 
     return low
