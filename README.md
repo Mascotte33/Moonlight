@@ -213,6 +213,8 @@ is one row: its hotkey, then its checkbox at the far right (set the hotkey
 first). A hotkey box takes the next key you press and saves it; Escape cancels. Cut each
 picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `spell_buff`, `ring_empty`,
 `amulet_empty`, `pm`, all `.png`); an extra without its picture never presses.
+Not tested in the game yet: the buff potion, the spell buff and the private
+message alarm (their pictures are not cut yet).
 For the player timer, calibrate the optional `player_list` area: a second
 battle list set to players only. A player staying there longer than the set
 minutes (0 = at once) sends the character to refill or sounds the
