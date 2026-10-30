@@ -51,6 +51,7 @@ def test_make_waypoint() -> None:
     assert make_waypoint("shovel", "", live) == Waypoint(5, 6, 7, "shovel")
     assert make_waypoint("goto", " a ", live) == Waypoint(5, 6, 7, "goto", "a")
     assert make_waypoint("check", "town", live) == Waypoint(5, 6, 7, "check", "town")
+    assert make_waypoint("bank", "", live) == Waypoint(5, 6, 7, "bank")
     with pytest.raises(RouteError, match="Position unknown"):
         make_waypoint("walk", "", Position(0, 0, 0))
     with pytest.raises(RouteError):

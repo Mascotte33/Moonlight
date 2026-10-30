@@ -1416,3 +1416,43 @@ def test_find_chat_tells_the_on_button_from_the_off_one(tmp_path: Path) -> None:
     frame[80:92, 10:56] = npc  # the main chat bar's, below the NPC window's
     assert find_chat(frame, anchors=tmp_path) == (True, (33, 86))
     assert find_chat(np.zeros((100, 200, 3), np.uint8), anchors=tmp_path) is None
+
+
+def test_bank_talks_in_the_npcs_tab_with_the_chat_on_then_turns_it_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#bank-deposit
+    import moonlight.cavebot.cavebot as cb
+
+    clicker = SteppedClicker()
+    # The chat starts on; each click on its button flips it.
+    monkeypatch.setattr(cb, "find_chat", lambda frame: (len(clicker.clicks) % 2 == 0, (500, 600)))
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([Waypoint(100, 100, 7, "bank"), walk(110, 100)], Position(100, 100, 7),
+              frames=lambda: frame, clicker=clicker)  # fmt: skip
+    sim.bot.start()
+    run_until(sim, 10)  # 34 keys, the pauses (about 5 s) and 3 clicks
+    assert sim.bot.alarm is None
+    assert sim.route.current == 1
+    chat_clicks = [c for c in clicker.clicks if c[0] == (500, 600)]
+    assert len(chat_clicks) == 3  # off before Shift+F11, on, off at the end
+    keys = [line[2:] for line in sim.fake.sent_lines if line.startswith("K ")]
+    line = ["h", "i", "enter", *"deposit", "space", *"all", "enter", "y", "e", "s", "enter"]
+    assert keys == ["shift+f11", *line, *line]
+
+
+def test_bank_alarms_after_3_min_of_a_chat_that_will_not_turn_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#retry-alarm
+    import moonlight.cavebot.cavebot as cb
+
+    monkeypatch.setattr(cb, "find_chat", lambda frame: (False, (500, 600)))
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([Waypoint(100, 100, 7, "bank"), walk(110, 100)], Position(100, 100, 7),
+              frames=lambda: frame, clicker=SteppedClicker())  # fmt: skip
+    sim.bot.start()
+    run_until(sim, 170)
+    assert sim.bot.alarm is None
+    run_until(sim, 185)
+    assert sim.bot.alarm == "bank" and sim.route.current == 0 and sim.bot.is_active()
