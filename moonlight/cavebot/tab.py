@@ -588,31 +588,32 @@ class CavebotTab(Tab):
         self.lbl_msg.configure(text=refill_now(self.ctx.live_cavebot()))
 
     def _pick_backpack(self) -> None:
-        """In 3 s, save the item under the mouse as the loot backpack ``deposit`` drags."""
-        self.lbl_msg.configure(text="Point at the middle of the loot backpack (3 s)")
+        """In 3 s, grab the client; the owner drags a box around the loot
+        backpack ``deposit`` drags (Enter saves, Esc cancels)."""
+        self.lbl_msg.configure(text="Show the client with the loot backpack (3 s)")
         self._root.after(3000, self._cut_backpack)
 
     def _cut_backpack(self) -> None:
         import cv2
 
         from moonlight.calibration.calibrate import default_profiles_dir
-        from moonlight.cavebot.town import BACKPACK_FILE, cut_item
+        from moonlight.cavebot.town import BACKPACK_FILE
         from moonlight.perception.capture import ScreenCapture
-        from moonlight.perception.cursor import screen_cursor
 
         cfg = load_real_config()
         if self._capture is None:
             self._capture = ScreenCapture(window_title=cfg.window_title)
-        rect, cursor = self._capture.get_window_rect(), screen_cursor()
-        pic = None
-        if rect is not None and cursor is not None:
-            at = (cursor[0] - rect[0], cursor[1] - rect[1])
-            pic = cut_item(self._capture.get_frame(), at)
-        if pic is None:
-            self.lbl_msg.configure(text="Pick backpack: the mouse is not over the client")
+        frame = self._capture.get_frame()
+        title = "Drag a box around the loot backpack, then Enter (Esc cancels)"
+        cv2.namedWindow(title, cv2.WINDOW_NORMAL)
+        x, y, w, h = cv2.selectROI(title, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+        cv2.destroyWindow(title)
+        if w == 0 or h == 0:
+            self.lbl_msg.configure(text="Pick backpack: cancelled")
             return
+        pic = np.ascontiguousarray(frame[y : y + h, x : x + w])
         cv2.imwrite(str((cfg.profiles_dir or default_profiles_dir()) / BACKPACK_FILE), pic)
-        image = Image.fromarray(np.ascontiguousarray(pic))
+        image = Image.fromarray(pic)
         self.lbl_backpack.configure(image=ctk.CTkImage(image, size=image.size))
         self.lbl_msg.configure(text="Saved the loot backpack")
 

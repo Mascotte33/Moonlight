@@ -1327,3 +1327,11 @@ def test_deposit_clicks_again_and_alarms_while_the_stash_is_missing(
     run_until(sim, 4)
     assert len(sim.clicker.clicks) == 2 and sim.bot.alarm == "deposit"
     assert sim.route.current == 0 and sim.fake.sent_lines == []
+
+
+def test_finddepo_looks_as_soon_as_its_tile_is_in_view(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Its tile 100,100 is blocked by a player: the bot is 3 tiles off.
+    sim = _depot_sim(monkeypatch, {(7, 3)})
+    sim.pos = Position(97, 100, 7)
+    sim.step()
+    assert sim.bot.depot_locker == (97, 98, 7)

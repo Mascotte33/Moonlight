@@ -84,10 +84,11 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   hotkey. One key per tick (a key the wire limiter drops is sent again),
   then the route holds 1 s so NPC answers and windows land.
 * **wait**: holds the route for its label's seconds.
-* **finddepo**: on its tile it finds the depot lockers in the game view
-  (:mod:`moonlight.cavebot.town`) and walks to the nearest free tile next to
-  one (no creature or player, walkable). All taken: it looks again every
-  few seconds, with alarm ``"depot_taken"`` after 5 min.
+* **finddepo**: once its tile is in view it finds the depot lockers in the
+  game view (:mod:`moonlight.cavebot.town`) and walks to the nearest free
+  tile next to one (no creature or player, walkable). None free: it walks on
+  to its tile and waits there, looking again every few seconds, with alarm
+  ``"depot_taken"`` after 5 min.
 * **deposit**: right-clicks the locker ``finddepo`` picked until the stash
   and the loot backpack (*backpack*) are on screen, then drags the backpack
   onto the stash. The locker window stays open.
@@ -895,15 +896,19 @@ class Cavebot:
 
     # doc: docs/prs/depot.md#finddepo-waypoint
     def _find_depot(self, wp: Waypoint, pos: Position, now: float) -> Waypoint | None:
-        """Where ``finddepo`` walks: its own tile, then the tile next to the
-        picked locker; None while it looks or waits for a free locker."""
+        """Where ``finddepo`` walks: toward its own tile, looking for lockers
+        once that tile is in view, then the tile next to the picked locker;
+        None while it waits on its tile for a free locker."""
         if self._depot_stand is not None:
             return self._depot_stand
-        if (pos.x, pos.y, pos.z) != (wp.x, wp.y, wp.z):
+        dx, dy = wp.x - pos.x, wp.y - pos.y
+        if pos.z != wp.z or abs(dx) > PLAYER_SLOT[0] or abs(dy) > PLAYER_SLOT[1]:
             return wp  # walk to where the lockers are in view
-        self._last_move = now  # waiting here is not being stuck
+        on_tile = dx == dy == 0
+        if on_tile:
+            self._last_move = now  # waiting here is not being stuck
         if now - self._depot_looked < _DEPOT_RELOOK:
-            return None
+            return None if on_tile else wp
         self._depot_looked = now
         frame = self._frames() if self._frames is not None else None
         picked = None
@@ -924,6 +929,8 @@ class Cavebot:
 
             picked = pick_locker(lockers, (pos.x, pos.y), free)
         if picked is None:
+            if not on_tile:
+                return wp  # lockers taken or not in view yet: keep going
             if self._depot_wait_since is None:
                 logger.info("cavebot: no free depot locker, waiting")
                 self._depot_wait_since = now

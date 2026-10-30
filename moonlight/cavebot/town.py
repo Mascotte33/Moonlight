@@ -18,7 +18,7 @@ import numpy as np
 
 from moonlight.calibration.autofind import ANCHORS_DIR, MATCH_MIN
 
-__all__ = ["BACKPACK_FILE", "STASH", "cut_item", "find_lockers", "find_picture", "pick_locker"]
+__all__ = ["BACKPACK_FILE", "STASH", "find_lockers", "find_picture", "pick_locker"]
 
 #: Tile size (px) the locker picture was cut at.
 _LOCKER_TILE = 96
@@ -28,8 +28,6 @@ _LOCKER_OFFSET = 12
 STASH = ANCHORS_DIR / "depot_stash.png"
 #: The loot backpack picked on the Refill page, in the profiles folder.
 BACKPACK_FILE = "loot_backpack.png"
-#: Side (px) of an item picture, at the client size the pictures were cut at.
-ITEM = 32
 _NEIGHBOURS = ((0, 1), (-1, 0), (1, 0), (0, -1), (-1, 1), (1, 1), (-1, -1), (1, -1))
 
 
@@ -98,11 +96,3 @@ def pick_locker(
                 best = (d, (lx, ly), tile)
     return None if best is None else (best[1], best[2])
 
-
-# doc: docs/prs/depot.md#deposit-waypoint
-def cut_item(frame: np.ndarray, at: tuple[int, int]) -> np.ndarray | None:
-    """The ``ITEM`` x ``ITEM`` picture centred on *at* (the mouse), or None off the frame."""
-    x, y = at[0] - ITEM // 2, at[1] - ITEM // 2
-    if x < 0 or y < 0 or x + ITEM > frame.shape[1] or y + ITEM > frame.shape[0]:
-        return None
-    return frame[y : y + ITEM, x : x + ITEM].copy()
