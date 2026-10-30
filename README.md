@@ -213,9 +213,9 @@ haste or a protection zone, the buff potion or a spell buff (own hotkey) when it
 is one row: its hotkey, then its checkbox at the far right (set the hotkey
 first). A hotkey box takes the next key you press and saves it; Escape cancels. Cut each
 picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `spell_buff`, `ring_empty`,
-`amulet_empty`, `pm`, all `.png`); an extra without its picture never presses.
-Not tested in the game yet: the buff potion, the spell buff and the private
-message alarm (their pictures are not cut yet).
+`amulet_empty`, all `.png`); an extra without its picture never presses. The private
+message alarm needs no picture: it looks for the light blue of a received message.
+Not tested in the game yet: the buff potion and the spell buff (their pictures are not cut yet).
 For the player timer, open a second battle list set to players only and name
 it "Players". Calibration finds it by that title (last area, `player_list`;
 picture `data/templates/anchors/player_list_header.png`, cut from the title

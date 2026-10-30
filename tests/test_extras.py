@@ -11,7 +11,15 @@ import numpy as np
 import pytest
 
 from moonlight.core.state import WorldState
-from moonlight.extras.extras import ICONS, Extras, ExtrasConfig, locate, save_screenshot
+from moonlight.extras.extras import (
+    ICONS,
+    PM_RGB,
+    Extras,
+    ExtrasConfig,
+    locate,
+    pm_shown,
+    save_screenshot,
+)
 
 #: Every extra on but the buff potion and spell buff (they press whenever their icon is missing).
 ALL = ExtrasConfig(
@@ -124,6 +132,16 @@ def test_pm_alarm() -> None:
     clock = Clock()
     assert extras(ExtrasConfig(pm_alarm=True), clock, "pm").alarm() == "private message"
     assert extras(ExtrasConfig(), clock, "pm").alarm() is None
+
+
+def test_a_received_pm_is_found_by_its_light_blue() -> None:
+    frame = np.full((40, 200, 3), 70, np.uint8)
+    assert not pm_shown(frame)
+    frame[30:38, 5:15] = PM_RGB  # 80 pixels: one short chat line has ~490
+    assert pm_shown(frame)
+    e = Extras(ExtrasConfig(pm_alarm=True), grab=lambda: frame, clock=Clock(), pictures={})
+    e.observe(WorldState())
+    assert e.alarm() == "private message"
 
 
 def test_an_extra_on_needs_a_hotkey() -> None:

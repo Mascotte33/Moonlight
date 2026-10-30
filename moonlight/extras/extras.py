@@ -3,7 +3,8 @@
 Each extra has its own switch and presses a client hotkey. They look for
 pictures the owner cuts from a screenshot into ``data/templates/icons/``
 (see :data:`ICONS`), anywhere in the client window, once a second. An extra
-whose picture is missing never presses.
+whose picture is missing never presses. The PM alarm needs no picture: it
+looks for the light blue of a received private message (:data:`PM_RGB`).
 
 # doc: docs/prs/extras.md#extras
 """
@@ -21,7 +22,9 @@ import numpy as np
 from moonlight.core.state import WorldState
 from moonlight.healing.healing import check_hotkey
 
-__all__ = ["ICONS", "ICONS_DIR", "Extras", "ExtrasConfig", "locate", "save_screenshot"]
+__all__ = [
+    "ICONS", "ICONS_DIR", "Extras", "ExtrasConfig", "locate", "pm_shown", "save_screenshot"
+]
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +38,11 @@ ICONS = {
     "spell_buff": "the spell buff's icon in the status icon row",
     "ring_empty": "the empty ring slot",
     "amulet_empty": "the empty amulet slot",
-    "pm": "a private message chat tab",
 }
 MATCH = 0.9
+#: A received private message's text colour, in the chat and the game view
+#: (2026-10-30 grab: nothing else in town, depot or cave is drawn in it).
+PM_RGB, PM_TOLERANCE, PM_PIXELS = (96, 248, 248), 8, 50
 SCAN_GAP = 1.0  # s between picture scans
 #: Around a picture's first spot: the status row shifts sideways as icons come and go.
 SPOT_PAD_X, SPOT_PAD_Y = 100, 10
@@ -118,6 +123,13 @@ def save_screenshot(
     return path
 
 
+# doc: docs/prs/extras.md#extras
+def pm_shown(frame: np.ndarray) -> bool:
+    """A received private message shows in *frame* (RGB): enough :data:`PM_RGB` pixels."""
+    off = np.abs(frame.astype(np.int16) - np.array(PM_RGB, np.int16)).max(axis=2)
+    return int((off <= PM_TOLERANCE).sum()) >= PM_PIXELS
+
+
 class Extras:
     """Decides the extras' presses, times the players and raises their alarms."""
 
@@ -135,12 +147,11 @@ class Extras:
         if pictures is None:
             pictures = load_icons() if grab else {}
         self._pictures = pictures
-        for name in ("food", "haste", "buff", "spell_buff", "ring", "amulet", "pm_alarm"):
+        for name in ("food", "haste", "buff", "spell_buff", "ring", "amulet"):
             picture = {
                 "food": "hungry",
                 "ring": "ring_empty",
                 "amulet": "amulet_empty",
-                "pm_alarm": "pm",
             }.get(name, name)
             if getattr(config, name) and picture not in self._pictures:
                 logger.warning(
@@ -161,7 +172,8 @@ class Extras:
     def observe(self, snap: WorldState) -> None:
         """Scan the pictures (once a second) and time the players."""
         now = self._clock()
-        if self._grab and self._pictures and now - self._scanned >= SCAN_GAP:
+        scan = self._pictures or self.config.pm_alarm
+        if self._grab and scan and now - self._scanned >= SCAN_GAP:
             self._scanned = now
             try:
                 self.icons = self._scan(self._grab())
@@ -201,6 +213,8 @@ class Extras:
             if spot is not None:
                 self._spots[name] = spot
                 found.add(name)
+        if self.config.pm_alarm and pm_shown(frame):
+            found.add("pm")
         return frozenset(found)
 
     @property
