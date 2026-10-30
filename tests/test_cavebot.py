@@ -59,6 +59,38 @@ class RecordingClicker(ClickController):
         self.cancels += 1
 
 
+class SteppedClicker(RecordingClicker):
+    """Like the real one: a click is only sent when :meth:`step` drives it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.queued: list[tuple[tuple[int, int], ClickSide]] = []
+
+    @property
+    def busy(self) -> bool:
+        return bool(self.queued)
+
+    def request(
+        self,
+        target: tuple[int, int],
+        *,
+        tolerance: int = 2,
+        max_iters: int = 5,
+        side: ClickSide = ClickSide.LEFT,
+    ) -> None:
+        self.queued.append((target, side))
+
+    def step(self) -> bool | None:
+        if not self.queued:
+            return None
+        self.clicks.append(self.queued.pop(0))
+        return True
+
+    def cancel(self) -> None:
+        super().cancel()
+        self.queued.clear()
+
+
 class Sim:
     """Player position + clock + the Cavebot wired to synthetic readers."""
 
@@ -1297,7 +1329,7 @@ def _deposit_sim(
     monkeypatch.setattr(cb, "find_picture", lambda frame, path: seen.get(path.name))
     frame = np.zeros((10, 10, 3), np.uint8)
     sim = Sim([Waypoint(0, 0, 0, "deposit"), walk(110, 100)], Position(100, 99, 7),
-              frames=lambda: frame, backpack=bag)  # fmt: skip
+              frames=lambda: frame, backpack=bag, clicker=SteppedClicker())  # fmt: skip
     sim.bot.start()
     sim.bot.depot_locker = (100, 98, 7)
     return sim
@@ -1309,6 +1341,7 @@ def test_deposit_right_clicks_the_locker_then_drags_the_backpack_onto_the_stash(
     seen: dict[str, tuple[int, int]] = {}
     sim = _deposit_sim(monkeypatch, tmp_path, seen)
     sim.step()
+    sim.step()  # queued, then sent
     assert [side for _, side in sim.clicker.clicks] == [ClickSide.RIGHT]
     seen.update({"depot_stash.png": (300, 400), "loot_backpack.png": (100, 200)})
     for _ in range(6):  # finds both, then the drag's 4 sends and its start
@@ -1335,3 +1368,44 @@ def test_finddepo_looks_as_soon_as_its_tile_is_in_view(monkeypatch: pytest.Monke
     sim.pos = Position(97, 100, 7)
     sim.step()
     assert sim.bot.depot_locker == (97, 98, 7)
+
+
+def test_walk_keys_turn_the_chat_off_instead_of_calling_the_tile_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#chat-toggle
+    import moonlight.cavebot.cavebot as cb
+
+    chat: list[tuple[bool, tuple[int, int]]] = [(True, (500, 600))]
+    monkeypatch.setattr(cb, "find_chat", lambda frame: chat[0])
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True, frames=lambda: frame,
+              clicker=SteppedClicker())  # fmt: skip
+    sim.bot.start()
+    for _ in range(_BLOCK_STEPS + 2):  # the keys typed into the chat: click it off
+        sim.step()
+    assert sim.clicker.clicks == [((500, 600), ClickSide.LEFT)]
+    assert pressed(sim)[-1] == "s"  # not walking around a free tile
+    chat[0] = (False, (500, 600))
+    for _ in range(_BLOCK_STEPS):  # the chat is off now: a real block
+        sim.step()
+    assert pressed(sim)[-1] in ("a", "d")
+
+
+def test_find_chat_tells_the_on_button_from_the_off_one(tmp_path: Path) -> None:
+    import cv2
+
+    from moonlight.cavebot.town import find_chat
+
+    rng = np.random.default_rng(0)
+    on = rng.integers(0, 255, (12, 46, 3), np.uint8)
+    off = on.copy()
+    off[:, 20:] = 255 - off[:, 20:]  # alike, but not the same
+    cv2.imwrite(str(tmp_path / "chat_on.png"), on)
+    cv2.imwrite(str(tmp_path / "chat_off.png"), off)
+    frame = np.zeros((100, 200, 3), np.uint8)
+    frame[40:52, 100:146] = off
+    assert find_chat(frame, anchors=tmp_path) == (False, (123, 46))
+    frame[40:52, 100:146] = on
+    assert find_chat(frame, anchors=tmp_path) == (True, (123, 46))
+    assert find_chat(np.zeros((100, 200, 3), np.uint8), anchors=tmp_path) is None

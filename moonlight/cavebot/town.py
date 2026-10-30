@@ -18,7 +18,7 @@ import numpy as np
 
 from moonlight.calibration.autofind import ANCHORS_DIR, MATCH_MIN
 
-__all__ = ["BACKPACK_FILE", "STASH", "find_lockers", "find_picture", "pick_locker"]
+__all__ = ["BACKPACK_FILE", "STASH", "find_chat", "find_lockers", "find_picture", "pick_locker"]
 
 #: Tile size (px) the locker picture was cut at.
 _LOCKER_TILE = 96
@@ -60,6 +60,26 @@ def find_lockers(
         (round((x + _LOCKER_OFFSET * s - gx) / tile), round((y + _LOCKER_OFFSET * s - gy) / tile))
         for x, y in zip(xs.tolist(), ys.tolist(), strict=True)
     }
+
+
+# doc: docs/prs/depot.md#chat-toggle
+def find_chat(
+    frame: np.ndarray, *, anchors: Path = ANCHORS_DIR
+) -> tuple[bool, tuple[int, int]] | None:
+    """``(chat on, button centre)`` from the "Chat On" / "Chat Off" button,
+    or None when it is not found. The two look alike: the better match wins."""
+    best: tuple[float, bool, tuple[int, int]] | None = None
+    for on in (True, False):
+        try:
+            pic = _picture(anchors / ("chat_on.png" if on else "chat_off.png"))
+        except FileNotFoundError:
+            return None  # no pictures: the bot cannot tell, walks as before
+        scores = cv2.matchTemplate(_grey(frame), pic, cv2.TM_CCOEFF_NORMED)
+        _, score, _, (x, y) = cv2.minMaxLoc(scores)
+        if best is None or score > best[0]:
+            best = (score, on, (x + pic.shape[1] // 2, y + pic.shape[0] // 2))
+    assert best is not None
+    return None if best[0] < MATCH_MIN else (best[1], best[2])
 
 
 def find_picture(frame: np.ndarray, path: Path) -> tuple[int, int] | None:

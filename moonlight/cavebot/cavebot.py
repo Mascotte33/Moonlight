@@ -129,7 +129,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from moonlight.cavebot.pathing import CostMap, next_step
-from moonlight.cavebot.town import STASH, find_lockers, find_picture, pick_locker
+from moonlight.cavebot.town import STASH, find_chat, find_lockers, find_picture, pick_locker
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, InputBackend
@@ -639,6 +639,8 @@ class Cavebot:
             return
         if not self._walk_keys:
             self._retry_if_idle(now, lambda: self._walk_toward(wp, pos))
+        elif self._clicker.busy:
+            self._clicker.step()  # the chat button
         elif (
             self._state.selected_target is not None
             and not self.luring()
@@ -662,6 +664,8 @@ class Cavebot:
             if step is not None and target != self._retried_target and step in WALK_KEYS:
                 self._retried_target = target  # a lag looks like a block: press once more
                 self._press_walk_key(step, again=True)
+            elif target is not None and self._chat_turned_off():
+                self._retried_target = None  # the key typed into the chat: press it again
             else:
                 if target is not None:
                     logger.info("cavebot: tile %s,%s,%s blocked, walking around", *target)
@@ -682,6 +686,20 @@ class Cavebot:
         self._bumped_into_creature.clear()
 
     # -- internals ----------------------------------------------------------
+
+    # doc: docs/prs/depot.md#chat-toggle
+    def _chat_turned_off(self) -> bool:
+        """A walk key that did not move: with the chat on it typed a letter,
+        so click the chat button off. True when it was on."""
+        frame = self._frames() if self._frames is not None else None
+        chat = None if frame is None else find_chat(frame)
+        if chat is None or not chat[0]:
+            return False
+        logger.info("cavebot: the chat is on, the walk keys type into it: turning it off")
+        self.release_walk_key()
+        self._clicker.cancel()
+        self._clicker.request(chat[1])
+        return True
 
     def _reset_tracking(self) -> None:
         self._last_pos = None
@@ -800,7 +818,10 @@ class Cavebot:
         """Send the next command of a hand action, then hold before moving on."""
         self._last_move = now  # standing still here is not being stuck
         if wp.action == "deposit" and self._deposit_drag is None:
-            self._open_locker(now)
+            if self._clicker.busy:
+                self._clicker.step()  # the right-click on the locker
+            else:
+                self._open_locker(now)
             return
         if self._hand_done_at is None:
             sends = self._hand_sends(wp)
