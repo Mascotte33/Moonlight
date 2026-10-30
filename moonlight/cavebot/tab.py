@@ -33,8 +33,10 @@ from moonlight.cavebot.cavebot import (
 )
 from moonlight.cavebot.recorder import (
     StandTracker,
+    buy_text,
     cursor_line,
     make_waypoint,
+    parse_buy,
     position_line,
     route_path,
     save_route,
@@ -368,6 +370,21 @@ class CavebotTab(Tab):
         _button(pick, "Pick backpack", self._pick_backpack).pack(side="left")
         self.lbl_backpack = ctk.CTkLabel(pick, text="")
         self.lbl_backpack.pack(side="left", padx=(theme.UNIT, 0))
+        # doc: docs/prs/depot.md#trade-waypoint
+        ctk.CTkLabel(
+            refill,
+            text="Buy at a 'trade' waypoint, one per line: item, percent of the amount slider."
+            " Saved with the route (Save in Edit route).",
+            anchor="w",
+            justify="left",
+            wraplength=260,
+            text_color=theme.TEXT_DIM,
+        ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self.txt_buy = ctk.CTkTextbox(refill, height=90, wrap="none")
+        self.txt_buy.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self.txt_buy.bind("<KeyRelease>", lambda _event: self._buy_edited())
+        self.lbl_buy = ctk.CTkLabel(refill, text="", anchor="w", text_color=theme.TEXT_DIM)
+        self.lbl_buy.pack(fill="x", padx=theme.PAD)
         self.build_options(pages["Loot"], LOOT_OPTIONS)
         # doc: docs/prs/scripts.md#script-api
         ctk.CTkLabel(
@@ -435,6 +452,7 @@ class CavebotTab(Tab):
         #: The route the editor saves to ("" until New or a pick).
         self._name = ""
         self._waypoints: list[Waypoint] = []
+        self._buy: list[tuple[str, int]] = []  # the Refill page's buy list
         #: The editor has edits its route file does not.
         self._dirty = False
         self._error = ""
@@ -445,7 +463,7 @@ class CavebotTab(Tab):
         self._stand = StandTracker()
         self._stood_before: Position | None = None  # for the stairs walked over
         # The cavebot runs this list, saved or not.
-        loop_factory.editor_route = lambda: (self._name, self._waypoints)
+        loop_factory.editor_route = lambda: (self._name, self._waypoints, self._buy)
         self._reload()
 
     def _refresh_names(self) -> list[str]:
@@ -493,6 +511,7 @@ class CavebotTab(Tab):
     def _show_route(self, name: str) -> None:
         """Load route *name* into the editor; unsaved edits are dropped."""
         self._waypoints = []
+        self._buy = []
         self._selected = None
         self._error = ""
         self._name = ""
@@ -500,10 +519,25 @@ class CavebotTab(Tab):
             self._name = name
             try:
                 route = RouteFileLoader.load(self._routes_dir / f"{name}.json")
-                self._waypoints = list(route.waypoints)
+                self._waypoints, self._buy = list(route.waypoints), route.buy
             except RouteError as exc:
                 self._error = str(exc)
+        self.txt_buy.delete("1.0", "end")
+        self.txt_buy.insert("1.0", buy_text(self._buy))
+        self.lbl_buy.configure(text="")
         self._set_dirty(False)
+
+    def _buy_edited(self) -> None:
+        """Take the typed buy list once every line reads; until then keep the last good one."""
+        try:
+            buy = parse_buy(self.txt_buy.get("1.0", "end"))
+        except RouteError as exc:
+            self.lbl_buy.configure(text=str(exc))
+            return
+        self.lbl_buy.configure(text="")
+        if buy != self._buy:
+            self._buy = buy
+            self._set_dirty(True)
 
     def _set_dirty(self, dirty: bool) -> None:
         self._dirty = dirty
@@ -660,7 +694,7 @@ class CavebotTab(Tab):
             return
         first = self._name not in route_names(self._routes_dir)
         try:
-            save_route(self._routes_dir, self._name, self._waypoints)
+            save_route(self._routes_dir, self._name, self._waypoints, self._buy)
         except (OSError, RouteError) as exc:
             self.lbl_msg.configure(text=f"Not saved: {exc}")
             return

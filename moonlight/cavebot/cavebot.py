@@ -265,6 +265,9 @@ class Route:
     waypoints: list[Waypoint] = field(default_factory=list)
     #: Start over at waypoint 0 after the last one (off: the route completes).
     loop: bool = True
+    # doc: docs/prs/depot.md#trade-waypoint
+    #: What a ``trade`` buys, in order: (item name, slider percent 0..100).
+    buy: list[tuple[str, int]] = field(default_factory=list)
     #: Where the bot is on the route, not part of the route itself.
     current: int = field(default=0, compare=False)
 
@@ -313,7 +316,23 @@ class RouteFileLoader:
         for i, wp in enumerate(waypoints):
             if wp.action in ("goto", "check") and wp.label not in labels:
                 raise RouteError(f"waypoint {i}: {wp.action} target {wp.label!r} has no label")
-        return Route(name=name, description=description, waypoints=waypoints)
+        return Route(name=name, description=description, waypoints=waypoints,
+                     buy=RouteFileLoader._buy(raw.get("buy", [])))  # fmt: skip
+
+    @staticmethod
+    def _buy(items: object) -> list[tuple[str, int]]:
+        if not isinstance(items, list):
+            raise RouteError("route 'buy' must be a list")
+        rows = []
+        for i, row in enumerate(items):
+            item = row.get("item") if isinstance(row, dict) else None
+            percent = row.get("percent") if isinstance(row, dict) else None
+            if not isinstance(item, str) or not item.strip():
+                raise RouteError(f"buy row {i}: 'item' must be a non-empty string")
+            if isinstance(percent, bool) or not isinstance(percent, int) or not 0 <= percent <= 100:
+                raise RouteError(f"buy row {i}: 'percent' must be 0..100")
+            rows.append((item.strip(), percent))
+        return rows
 
     @staticmethod
     def _waypoint(index: int, item: object) -> Waypoint:
