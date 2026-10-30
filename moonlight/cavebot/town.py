@@ -26,6 +26,8 @@ _LOCKER_TILE = 96
 _LOCKER_OFFSET = 12
 #: The stash item in the open locker window.
 STASH = ANCHORS_DIR / "depot_stash.png"
+#: The NPC trade window (its "Currency: Gold Coin" label).
+TRADE = ANCHORS_DIR / "npc_trade.png"
 #: The loot backpack picked on the Refill page, in the profiles folder.
 BACKPACK_FILE = "loot_backpack.png"
 _NEIGHBOURS = ((0, 1), (-1, 0), (1, 0), (0, -1), (-1, 1), (1, 1), (-1, -1), (1, -1))

@@ -77,7 +77,7 @@ def make_waypoint(action: str, label: str, live: Position) -> Waypoint:
     label = label.strip()
     if action == "deposit":  # where finddepo left the bot
         return Waypoint(0, 0, 0, action)
-    if action == "bank":
+    if action in ("bank", "trade"):
         label = ""
     elif action in NO_TILE:
         if not label:

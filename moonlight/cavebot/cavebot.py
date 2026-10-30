@@ -96,6 +96,11 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   NPCs tab, chat on): ``hi``, ``deposit all``, ``yes`` with a short random
   pause after each, about 1 s, the three again, then the chat off. A chat
   button that will not switch is clicked again; alarm ``"bank"`` after 3 min.
+* **trade**: on its tile, talks ``hi``, ``trade`` like ``bank`` and waits up
+  to 3 s for the trade window (else talks again), clicks Buy, then buys each
+  row of the route's buy list: search the name, pick the first result, drag
+  the amount slider to the row's percent, Buy. A health or mana potion whose
+  action-bar total did not go up is bought again. Alarm ``"trade"`` after 3 min.
 * **script**: runs the user script named by its label
   (:mod:`moonlight.scripts.scripts`); the route holds until it ends.
 * **End of route**: a hunting route starts over at waypoint 0; a route
@@ -134,7 +139,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from moonlight.cavebot.pathing import CostMap, next_step
-from moonlight.cavebot.town import STASH, find_chat, find_lockers, find_picture, pick_locker
+from moonlight.cavebot.town import STASH, TRADE, find_chat, find_lockers, find_picture, pick_locker
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, InputBackend
@@ -165,15 +170,15 @@ logger = logging.getLogger(__name__)
 ACTIONS = (
     "walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto", "check",
     "say", "key", "drag", "script", "wait", "step", "finddepo",
-    "deposit", "bank",
+    "deposit", "bank", "trade",
 )  # fmt: skip
 
 #: Actions that need no position (executed immediately).
 _JUMP_ACTIONS = ("label", "goto", "check")
 #: Actions done where the bot stands (one command per tick, then a hold).
-_HAND_ACTIONS = ("say", "key", "drag", "script", "wait", "deposit", "bank")
+_HAND_ACTIONS = ("say", "key", "drag", "script", "wait", "deposit", "bank", "trade")
 #: Hand actions without a label.
-_NO_LABEL = ("deposit", "bank")
+_NO_LABEL = ("deposit", "bank", "trade")
 #: Actions that may have no tile (x, y, z 0: old routes); added in Edit route they have one.
 NO_TILE = _JUMP_ACTIONS + _HAND_ACTIONS
 
@@ -231,6 +236,8 @@ _CHAT_CLICK_WAIT = 0.5
 # doc: docs/prs/depot.md#retry-alarm
 #: Seconds an NPC talk keeps failing before its alarm.
 _TALK_ALARM = 180.0
+#: Seconds a trade waits for its window before talking again.
+_TRADE_WAIT = 3.0
 # doc: docs/prs/depot.md#finddepo-waypoint
 #: Seconds between looks for a free locker, and before the alarm when all are taken.
 _DEPOT_RELOOK = 3.0
@@ -386,18 +393,50 @@ def say_keys(text: str) -> list[str]:
     return ["enter"] + [ch if ch != " " else "space" for ch in text.lower()] + ["enter"]
 
 
+#: An NPC talk step (:func:`talk_steps`, :func:`trade_steps`).
+TalkStep = str | bool | float | tuple[str, int, int]
+# Trade window spots from the centre of ``npc_trade.png`` (2026-10-30 grab).
+_BUY_SWITCH = (117, -5)
+_SEARCH, _SEARCH_CLEAR = (38, 264), (129, 265)
+_FIRST_ROW, _BUY = (53, 44), (116, 325)
+#: The amount slider's thumb at amount 1, and how far right it goes.
+_SLIDER_MIN, _SLIDER_SPAN = (-20, 283), 93
+
+
 # doc: docs/prs/depot.md#npc-pacing
-def talk_steps(*rounds: tuple[str, ...]) -> list[str | bool | float]:
+def talk_steps(*rounds: tuple[str, ...]) -> list[TalkStep]:
     """An NPC talk: True / False turns the chat on / off, a float pauses
     that many seconds, a string is a key. Chat off, Shift+F11 (NPCs tab),
     chat on, each line typed with Enter and a random pause, chat off."""
-    steps: list[str | bool | float] = [False, _NPC_TAB, True]
+    steps: list[TalkStep] = [False, _NPC_TAB, True]
     for i, lines in enumerate(rounds):
         if i:
             steps.append(_BANK_ROUNDS_PAUSE)
         for line in lines:
             steps += say_keys(line)[1:]  # the chat is on: no Enter to open it
             steps.append(random.uniform(*_NPC_PAUSE[line]))
+    return [*steps, False]
+
+
+# doc: docs/prs/depot.md#trade-waypoint
+def trade_steps(buy: list[tuple[str, int]]) -> list[TalkStep]:
+    """The ``trade`` talk, then the buy list in the trade window. Tuples are
+    ``(op, a, b)``: ``win`` waits for the window, ``click`` / ``to`` click /
+    move the mouse at (a, b) from the window's ``npc_trade.png``, ``down`` /
+    ``up`` the left button, ``count`` reads the potions, ``health`` / ``mana``
+    goes back to step a when that total did not go up."""
+    steps: list[TalkStep] = [*talk_steps(("hi", "trade")), ("win", 0, 0), ("click", *_BUY_SWITCH)]
+    for item, percent in buy:
+        row = len(steps)
+        steps += [("count", 0, 0), ("click", *_SEARCH_CLEAR), 0.3, ("click", *_SEARCH), 0.3]
+        steps += say_keys(item)[1:-1]  # the search box has the keys: no Enter
+        steps += [0.8, ("click", *_FIRST_ROW), 0.3]
+        if percent:
+            x, y = _SLIDER_MIN
+            right = x + round(percent * _SLIDER_SPAN / 100)
+            steps += [("to", x, y), ("down", 0, 0), ("to", right, y), ("up", 0, 0), 0.3]
+        steps += [("click", *_BUY), 1.0]
+        steps += [(kind, row, 0) for kind in ("health", "mana") if kind in item.lower()]
     return [*steps, False]
 
 
@@ -426,6 +465,7 @@ class Cavebot:
         scripts: ScriptRunner | None = None,
         supplies_low: Callable[[], bool] | None = None,
         backpack: Path | None = None,
+        potion_counts: Callable[[], dict[str, int | None]] | None = None,
     ) -> None:
         """Create the runner.
 
@@ -458,6 +498,7 @@ class Cavebot:
             supplies_low: True when free cap or potions are under their
                 Refill settings; a ``check`` then jumps too.
             backpack: The loot backpack picture a ``deposit`` drags onto the stash.
+            potion_counts: The action-bar health / mana totals a ``trade`` checks.
 
         Raises:
             ValueError: On bad timings, or rope/shovel waypoints or
@@ -466,12 +507,13 @@ class Cavebot:
         self._minimap_region: Rect = minimap_region
         if stuck_timeout <= 0 or reclick_interval <= 0:
             raise ValueError("stuck_timeout and reclick_interval must be > 0")
-        keyed = ("rope", "shovel", "say", "key", "drag", "step", "deposit", "bank")
+        keyed = ("rope", "shovel", "say", "key", "drag", "step", "deposit", "bank", "trade")
         needs_keys = any(wp.action in keyed for wp in route.waypoints)
         if needs_keys and input_backend is None:
             raise ValueError("rope/shovel/say/key/drag/step waypoints need an input_backend")
-        if any(wp.action in ("drag", "deposit") for wp in route.waypoints) and not clicker.absolute:
-            raise ValueError("drag and deposit waypoints need the absolute clicker")
+        hand_drags = ("drag", "deposit", "trade")
+        if any(wp.action in hand_drags for wp in route.waypoints) and not clicker.absolute:
+            raise ValueError("drag, deposit and trade waypoints need the absolute clicker")
         if walk_keys and input_backend is None:
             raise ValueError("walk_keys needs an input_backend for the WSAD keys")
         self.route = route
@@ -527,9 +569,14 @@ class Cavebot:
         self._deposit_drag: tuple[tuple[int, int], tuple[int, int]] | None = None
         self._locker_clicked = float("-inf")
         #: The NPC talk under way (talk_steps), when it started, and no step before.
-        self._talk: list[str | bool | float] | None = None
+        self._talk: list[TalkStep] | None = None
         self._talk_since = 0.0
         self._talk_wait = float("-inf")
+        #: ``trade``: the window's anchor, since when it is awaited, the potions before a row.
+        self._trade_at: tuple[int, int] | None = None
+        self._trade_wait_since: float | None = None
+        self._potions_before: dict[str, int | None] = {}
+        self._potion_counts = potion_counts
 
         #: Why the route stopped on its own ("stuck", "lost", "goto_loop"),
         #: or None.
@@ -879,7 +926,7 @@ class Cavebot:
             else:
                 self._open_locker(now)
             return
-        if wp.action == "bank":
+        if wp.action in ("bank", "trade"):
             self._talk_step(wp, now)
             return
         if self._hand_done_at is None:
@@ -901,7 +948,11 @@ class Cavebot:
     def _talk_step(self, wp: Waypoint, now: float) -> None:
         """One step of an NPC talk (:func:`talk_steps`) per tick, then the route moves on."""
         if self._talk is None:
-            self._talk = talk_steps(("hi", "deposit all", "yes"), ("hi", "deposit all", "yes"))
+            self._talk = (
+                trade_steps(self.route.buy)
+                if wp.action == "trade"
+                else talk_steps(("hi", "deposit all", "yes"), ("hi", "deposit all", "yes"))
+            )
             self._talk_since, self._talk_wait = now, float("-inf")
         if now - self._talk_since >= _TALK_ALARM and self.alarm != wp.action:
             logger.warning("cavebot: %s: no success for 3 min, still trying", wp.action)
@@ -930,12 +981,58 @@ class Cavebot:
         elif isinstance(step, float):
             self._talk_wait = now + step
             self._sends_done += 1
+        elif isinstance(step, tuple):
+            self._trade_op(*step, now)
         else:
             assert self._input is not None  # __init__: bank needs it
             dropped = getattr(self._input, "dropped", 0)
             self._input.press_combo(step)
             if getattr(self._input, "dropped", 0) == dropped:
                 self._sends_done += 1
+
+    # doc: docs/prs/depot.md#trade-waypoint
+    def _trade_op(self, op: str, a: int, b: int, now: float) -> None:
+        """One tuple step of :func:`trade_steps`."""
+        if op == "win":
+            frame = self._frames() if self._frames is not None else None
+            self._trade_at = None if frame is None else find_picture(frame, TRADE)
+            if self._trade_at is not None:
+                self._trade_wait_since = None
+                self._sends_done += 1
+            elif self._trade_wait_since is None:
+                self._trade_wait_since = now
+            elif now - self._trade_wait_since >= _TRADE_WAIT:
+                logger.info("cavebot: trade: no trade window, talking again")
+                self._trade_wait_since, self._sends_done = None, 0
+            return
+        if op in ("count", "health", "mana"):
+            counts = self._potion_counts() if self._potion_counts is not None else {}
+            if op == "count":
+                self._potions_before = counts
+            else:
+                before, after = self._potions_before.get(op), counts.get(op)
+                if before is not None and after is not None and after <= before:
+                    logger.info("cavebot: trade: %s potions did not go up, buying again", op)
+                    self._sends_done = a
+                    return
+            self._sends_done += 1
+            return
+        send = self._input
+        assert self._trade_at is not None and send is not None  # "win" came first
+        point = (self._trade_at[0] + a, self._trade_at[1] + b)
+        if op == "click":
+            self._clicker.request(point)
+            self._sends_done += 1
+            return
+        dropped = getattr(send, "dropped", 0)
+        if op == "to":
+            send.mouse_to(*self._clicker.to_wire(point))
+        elif op == "down":
+            send.mouse_down(ClickSide.LEFT)
+        else:
+            send.mouse_up(ClickSide.LEFT)
+        if getattr(send, "dropped", 0) == dropped:
+            self._sends_done += 1
 
     # doc: docs/prs/steps.md#step-waypoint
     def _stepped(self, wp: Waypoint, pos: Position) -> bool:
@@ -1011,6 +1108,7 @@ class Cavebot:
         self._depot_stand, self._depot_wait_since = None, None
         self._deposit_drag, self._locker_clicked = None, float("-inf")
         self._talk, self._sends_done = None, 0
+        self._trade_at = self._trade_wait_since = None
         self._expected_z = None
         self._last_cmd = float("-inf")
         self._clicker.cancel()  # the pending click targeted the old waypoint
