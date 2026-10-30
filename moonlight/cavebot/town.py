@@ -68,18 +68,32 @@ def find_chat(
 ) -> tuple[bool, tuple[int, int]] | None:
     """``(chat on, button centre)`` from the chat button, or None when it is
     not found. Its looks are alike: the best match wins. ``chat_npc.png`` is
-    the coloured "Chat On" of an NPC talk."""
-    best: tuple[float, bool, tuple[int, int]] | None = None
+    the coloured "Chat On" of an NPC talk, whose window has a second button:
+    the bottom one (the main chat bar's) is taken."""
+    grey = _grey(frame)
+    best: np.ndarray | None = None
     for name, on in (("chat_on.png", True), ("chat_npc.png", True), ("chat_off.png", False)):
         try:
             pic = _picture(anchors / name)
         except FileNotFoundError:
             continue  # no picture: that look is not told apart
-        scores = cv2.matchTemplate(_grey(frame), pic, cv2.TM_CCOEFF_NORMED)
-        _, score, _, (x, y) = cv2.minMaxLoc(scores)
-        if best is None or score > best[0]:
-            best = (score, on, (x + pic.shape[1] // 2, y + pic.shape[0] // 2))
-    return None if best is None or best[0] < MATCH_MIN else (best[1], best[2])
+        scores = cv2.matchTemplate(grey, pic, cv2.TM_CCOEFF_NORMED)
+        if best is None:
+            best, look = scores, np.full(scores.shape, on)
+            half = (pic.shape[1] // 2, pic.shape[0] // 2)
+        else:
+            h, w = min(best.shape[0], scores.shape[0]), min(best.shape[1], scores.shape[1])
+            best, look, scores = best[:h, :w], look[:h, :w], scores[:h, :w]
+            look = np.where(scores > best, on, look)
+            best = np.maximum(best, scores)
+    if best is None:
+        return None
+    ys, _ = np.nonzero(best >= MATCH_MIN)
+    if not len(ys):
+        return None
+    band = np.where(np.arange(best.shape[0])[:, None] >= ys.max() - 6, best, -1.0)
+    y, x = np.unravel_index(int(np.argmax(band)), band.shape)
+    return bool(look[y, x]), (int(x) + half[0], int(y) + half[1])
 
 
 def find_picture(frame: np.ndarray, path: Path) -> tuple[int, int] | None:
