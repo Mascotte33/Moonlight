@@ -1408,4 +1408,9 @@ def test_find_chat_tells_the_on_button_from_the_off_one(tmp_path: Path) -> None:
     assert find_chat(frame, anchors=tmp_path) == (False, (123, 46))
     frame[40:52, 100:146] = on
     assert find_chat(frame, anchors=tmp_path) == (True, (123, 46))
+    npc = on.copy()
+    npc[:, :20] = 255 - npc[:, :20]  # the coloured "Chat On" of an NPC talk
+    cv2.imwrite(str(tmp_path / "chat_npc.png"), npc)
+    frame[40:52, 100:146] = npc
+    assert find_chat(frame, anchors=tmp_path) == (True, (123, 46))
     assert find_chat(np.zeros((100, 200, 3), np.uint8), anchors=tmp_path) is None
