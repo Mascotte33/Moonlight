@@ -214,7 +214,8 @@ is one row: its hotkey, then its checkbox at the far right (set the hotkey
 first). A hotkey box takes the next key you press and saves it; Escape cancels. Cut each
 picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `spell_buff`, `ring_empty`,
 `amulet_empty`, all `.png`); an extra without its picture never presses. The private
-message alarm needs no picture: it looks for the light blue of a received message.
+message alarm needs no picture: it looks for the light blue of a received message,
+or a red (unread) chat tab right of the NPCs tab.
 Not tested in the game yet: the buff potion and the spell buff (their pictures are not cut yet).
 For the player timer, open a second battle list set to players only and name
 it "Players". Calibration finds it by that title (last area, `player_list`;

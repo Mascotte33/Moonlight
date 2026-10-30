@@ -7,13 +7,16 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 
 from moonlight.core.state import WorldState
 from moonlight.extras.extras import (
     ICONS,
+    NPCS_TAB,
     PM_RGB,
+    TAB_RED,
     Extras,
     ExtrasConfig,
     locate,
@@ -142,6 +145,19 @@ def test_a_received_pm_is_found_by_its_light_blue() -> None:
     e = Extras(ExtrasConfig(pm_alarm=True), grab=lambda: frame, clock=Clock(), pictures={})
     e.observe(WorldState())
     assert e.alarm() == "private message"
+
+
+def test_an_unread_pm_tab_is_found_by_its_red_name_right_of_npcs() -> None:
+    npcs = cv2.imread(str(NPCS_TAB), cv2.IMREAD_GRAYSCALE)
+    assert npcs is not None
+    frame = np.full((300, 600, 3), 70, np.uint8)
+    h, w = npcs.shape
+    frame[250 : 250 + h, 300 : 300 + w][np.asarray(npcs) > 0] = 0
+    frame[252:260, 200:290] = TAB_RED  # a channel left of NPCs unread: no alarm
+    assert not pm_shown(frame, npcs)
+    frame[252:260, 380:400] = TAB_RED  # the tab right of NPCs: a new private message
+    assert pm_shown(frame, npcs)
+    assert not pm_shown(frame)
 
 
 def test_an_extra_on_needs_a_hotkey() -> None:

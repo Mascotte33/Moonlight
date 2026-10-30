@@ -4,7 +4,8 @@ Each extra has its own switch and presses a client hotkey. They look for
 pictures the owner cuts from a screenshot into ``data/templates/icons/``
 (see :data:`ICONS`), anywhere in the client window, once a second. An extra
 whose picture is missing never presses. The PM alarm needs no picture: it
-looks for the light blue of a received private message (:data:`PM_RGB`).
+looks for the light blue of a received private message (:data:`PM_RGB`) or
+the red name of an unread private message tab (:data:`NPCS_TAB`).
 
 # doc: docs/prs/extras.md#extras
 """
@@ -43,6 +44,11 @@ MATCH = 0.9
 #: A received private message's text colour, in the chat and the game view
 #: (2026-10-30 grab: nothing else in town, depot or cave is drawn in it).
 PM_RGB, PM_TOLERANCE, PM_PIXELS = (96, 248, 248), 8, 50
+#: The black outline of the NPCs chat tab's name (the same in any name colour).
+#: The owner's client opens a new tab for each private message, right of the NPCs
+#: tab, so a red (unread) name right of it is an unread PM.
+NPCS_TAB = Path("data/templates/npcs_tab.png")
+TAB_RED, PM_TAB_PIXELS = (247, 95, 95), 30
 SCAN_GAP = 1.0  # s between picture scans
 #: Around a picture's first spot: the status row shifts sideways as icons come and go.
 SPOT_PAD_X, SPOT_PAD_Y = 100, 10
@@ -124,10 +130,25 @@ def save_screenshot(
 
 
 # doc: docs/prs/extras.md#extras
-def pm_shown(frame: np.ndarray) -> bool:
-    """A received private message shows in *frame* (RGB): enough :data:`PM_RGB` pixels."""
-    off = np.abs(frame.astype(np.int16) - np.array(PM_RGB, np.int16)).max(axis=2)
-    return int((off <= PM_TOLERANCE).sum()) >= PM_PIXELS
+def pm_shown(frame: np.ndarray, npcs_tab: np.ndarray | None = None) -> bool:
+    """A received private message shows in *frame* (RGB): its text, or its unread tab
+    right of *npcs_tab* (:data:`NPCS_TAB`'s outline, gray)."""
+    if _pixels(frame, PM_RGB) >= PM_PIXELS:
+        return True
+    if npcs_tab is None:
+        return False
+    outline = ((frame.max(axis=2) < 16) * 255).astype(np.uint8)
+    spot = locate(outline, npcs_tab)
+    if spot is None:
+        return False
+    x, y = spot
+    h, w = npcs_tab.shape
+    return _pixels(frame[y : y + h, x + w + 30 :], TAB_RED) >= PM_TAB_PIXELS
+
+
+def _pixels(frame: np.ndarray, rgb: tuple[int, int, int]) -> int:
+    off = np.abs(frame.astype(np.int16) - np.array(rgb, np.int16)).max(axis=2)
+    return int((off <= PM_TOLERANCE).sum())
 
 
 class Extras:
@@ -147,6 +168,11 @@ class Extras:
         if pictures is None:
             pictures = load_icons() if grab else {}
         self._pictures = pictures
+        self._npcs_tab = None
+        if grab and config.pm_alarm:
+            import cv2
+
+            self._npcs_tab = cv2.imread(str(NPCS_TAB), cv2.IMREAD_GRAYSCALE)
         for name in ("food", "haste", "buff", "spell_buff", "ring", "amulet"):
             picture = {
                 "food": "hungry",
@@ -213,7 +239,7 @@ class Extras:
             if spot is not None:
                 self._spots[name] = spot
                 found.add(name)
-        if self.config.pm_alarm and pm_shown(frame):
+        if self.config.pm_alarm and pm_shown(frame, self._npcs_tab):
             found.add("pm")
         return frozenset(found)
 
