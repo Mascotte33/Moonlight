@@ -4,7 +4,8 @@ Area rules are checked top to bottom; the first one with at least
 ``minimum_adjacent_monsters`` creature slots touching the player's slot
 (the 8 squares around it) and MP at least ``minimum_mana_percent`` fires.
 Else the target row's ``hotkey`` fires, with its own mana minimum. Every key
-shares one ``attack_cooldown_ms``. Unknown MP (0.0) is below any mana minimum,
+shares one ``attack_cooldown_ms``; a new target starts it fresh, so its first
+spell goes out at once (``new_target``). Unknown MP (0.0) is below any mana minimum,
 so it blocks every rule that has one.
 
 The loop calls this only while the selection matches targeting's choice and
@@ -67,6 +68,15 @@ class AttackHotkeys:
         if row.hotkey and mana >= row.minimum_mana_percent:
             return row.hotkey
         return None
+
+    # doc: docs/prs/first-spell.md#fresh-cooldown
+    def new_target(self) -> None:
+        """A new target: its first spell need not wait for the last one's cooldown.
+
+        The cooldown carried over from a quick kill made the next monster wait
+        up to 2 s for its first spell (bot.log 2026-10-31: 1.1 s twice in 5 s).
+        """
+        self._last_pressed_at = None
 
     def send(self, hotkey: str, backend: InputBackend, now: float) -> None:
         """Press *hotkey* and start the shared cooldown."""

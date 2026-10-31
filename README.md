@@ -391,9 +391,10 @@ or in the `targeting` section of your profile config:
   creatures stand next to you and MP is at least `minimum_mana_percent`.
   Default: F5 at 3 monsters, 30% mana. A rule is used only while it is
   ticked (`enabled`). A ticked rule is grayed in the tab so it isn't edited
-  by accident. All attack keys share `attack_cooldown_ms` (default 2000).
+  by accident. All attack keys share `attack_cooldown_ms` (default 2000); a new
+  target starts it fresh, so its first spell goes out at once.
 - **Unreachable:** when the target's HP stands still for
-  `unreachable_after_seconds` (default 8), the bot takes one step toward it.
+  `unreachable_after_seconds` (default 4), the bot takes one step toward it.
   After the same time again, it skips that monster for 30 s. With no other
   monster to attack it pauses targeting for 5 s instead (the settings stay
   as they are) and the cavebot walks on; the dashboard shows

@@ -185,8 +185,8 @@ def test_stuck_hp_steps_toward_the_nearest_far_creature() -> None:
     targeting = rows()
     s = stuck_state(((7, 4), (11, 5), (7, 2)))  # (7, 4) is adjacent; (7, 2) is nearest
     assert targeting.decide(s, 0.0) is None
-    assert targeting.decide(s, 7.9) is None
-    assert targeting.decide(s, 8.0) == TargetingAction(
+    assert targeting.decide(s, 3.9) is None
+    assert targeting.decide(s, 4.0) == TargetingAction(
         "step_closer", 0, (0, -1), "Wolf hp stuck at 100, step closer"
     )
 
@@ -195,9 +195,9 @@ def test_still_stuck_after_the_step_ignores_the_target_and_picks_the_next() -> N
     targeting = rows()
     s = stuck_state()
     targeting.decide(s, 0.0)
-    targeting.decide(s, 8.0)
-    assert targeting.decide(s, 15.9) is None
-    assert picked_at(targeting, s, 16.0) == 1
+    targeting.decide(s, 4.0)
+    assert targeting.decide(s, 7.9) is None
+    assert picked_at(targeting, s, 8.0) == 1
     assert targeting.is_unreachable(s.monsters[0])
 
 
@@ -209,9 +209,9 @@ def picked_at(targeting: TargetingDecision, s: WorldState, now: float) -> int | 
 def test_an_hp_change_resets_the_watch() -> None:
     targeting = rows()
     targeting.decide(stuck_state(), 0.0)
-    targeting.decide(stuck_state(hp=90.0), 7.0)  # HP moved: watch restarts
-    assert targeting.decide(stuck_state(hp=90.0), 8.0) is None
-    action = targeting.decide(stuck_state(hp=90.0), 15.0)
+    targeting.decide(stuck_state(hp=90.0), 3.0)  # HP moved: watch restarts
+    assert targeting.decide(stuck_state(hp=90.0), 4.0) is None
+    action = targeting.decide(stuck_state(hp=90.0), 7.0)
     assert action is not None and action.kind == "step_closer"
 
 
@@ -220,10 +220,10 @@ def test_ignored_target_can_be_chosen_again_after_30_seconds() -> None:
     s = stuck_state()
     s.selected_target = None  # the outline is gone: only the rat is chosen meanwhile
     targeting.decide(stuck_state(), 0.0)
-    targeting.decide(stuck_state(), 8.0)
-    targeting.decide(stuck_state(), 16.0)  # ignored until 46.0
-    assert picked_at(targeting, s, 45.9) == 1
-    assert picked_at(targeting, s, 46.0) == 0
+    targeting.decide(stuck_state(), 4.0)
+    targeting.decide(stuck_state(), 8.0)  # ignored until 38.0
+    assert picked_at(targeting, s, 37.9) == 1
+    assert picked_at(targeting, s, 38.0) == 0
 
 
 def test_lone_stuck_target_asks_for_a_pause() -> None:
@@ -231,11 +231,11 @@ def test_lone_stuck_target_asks_for_a_pause() -> None:
     s = stuck_state()
     s.monsters = s.monsters[:1]  # the wolf only
     targeting.decide(s, 0.0)
-    assert targeting.decide(s, 7.9) is None
-    assert targeting.decide(s, 8.0) == TargetingAction(
+    assert targeting.decide(s, 3.9) is None
+    assert targeting.decide(s, 4.0) == TargetingAction(
         "pause", 0, reason="Wolf hp stuck at 100, nothing else to attack"
     )
-    assert targeting.decide(s, 8.1) is None  # the watch starts over
+    assert targeting.decide(s, 4.1) is None  # the watch starts over
 
 
 def test_no_creature_slot_means_no_step() -> None:
@@ -243,7 +243,7 @@ def test_no_creature_slot_means_no_step() -> None:
     for slots in ((), ((7, 4), (8, 5))):  # none, or only adjacent ones
         s = stuck_state(slots)
         targeting.decide(s, 0.0)
-        assert targeting.decide(s, 8.0) is None
+        assert targeting.decide(s, 4.0) is None
 
 
 def test_a_bad_chase_hotkey_is_refused() -> None:
