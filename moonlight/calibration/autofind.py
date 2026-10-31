@@ -209,7 +209,9 @@ def find_floor_indicator(screenshot: np.ndarray) -> Rect | None:
 # the left line, so the height comes from the width and the line only has to
 # be mostly dark and end at the bottom corner.
 GRID_TILES = (15, 11)
-MIN_GRID_W = 600
+#: 15 tiles of 32 px, the client's own tile size. A half-screen client on a
+#: 1920x1080 screen shows a 562 px wide game view (37.5 px tiles).
+MIN_GRID_W = GRID_TILES[0] * 32
 
 
 def find_game_grid(screenshot: np.ndarray) -> Rect | None:
