@@ -58,6 +58,7 @@ POLL_MS = 100
 RETRY_S = 5.0  # seconds between tries to start a bot that is down
 WATCH_S = 0.2  # seconds between position reads while the bot is stopped
 _VK_F12 = 0x7B
+logger = logging.getLogger("moonlight.gui.app")
 _f12_was_down = False
 
 
@@ -417,7 +418,7 @@ class GuiApp:
             loop = build_gui_loop(hardware=self.hardware, state=self.state)
         except Exception as exc:  # noqa: BLE001 - report, don't crash the app
             if repr(exc) != self._start_error:  # the retry repeats it every few seconds
-                self.log.error(f"could not start bot: {exc!r}")
+                logger.error("could not start bot: %r", exc)  # the GUI log and bot.log
             self._start_error = repr(exc)
             return
         self._start_error = ""

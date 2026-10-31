@@ -264,6 +264,16 @@ def test_layout_size_changed_refuses_to_start(
         _start_with_window(tmp_path, monkeypatch, frame, window_size=(1024, 768))
 
 
+# doc: docs/prs/pause-stop.md#size-slack
+def test_layout_a_pixel_or_two_off_still_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, anchors: Path
+) -> None:
+    frame = np.zeros((1008, 1034, 3), dtype=np.uint8)
+    _start_with_window(tmp_path, monkeypatch, frame, window_size=(1034, 1009))
+    with pytest.raises(ValueError, match="Layout changed, recalibrate"):
+        _start_with_window(tmp_path, monkeypatch, frame, window_size=(1034, 1011))
+
+
 def test_layout_same_size_starts_and_logs_the_skipped_stop_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, anchors: Path
 ) -> None:
