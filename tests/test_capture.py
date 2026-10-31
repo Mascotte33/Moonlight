@@ -205,6 +205,35 @@ class TestDxcamStaleFrame:
             cap._grab_dxcam((0, 0, 200, 100))
 
 
+class TestDxcamSingleRelease:
+    """dxcam's release methods drop COM pointers without calling Release()."""
+
+    def test_release_leaves_the_one_release_to_comtypes(self) -> None:
+        import types
+        import unittest.mock as mock
+
+        pytest.importorskip("dxcam")
+        from dxcam.core.dxgi_duplicator import DXGIDuplicator
+        from dxcam.core.stagesurf import StageSurface
+
+        from moonlight.perception.capture import _stop_dxcam_double_release
+
+        _stop_dxcam_double_release()
+        texture = mock.MagicMock()
+        surface = types.SimpleNamespace(width=10, height=10, texture=texture, interface=object())
+        StageSurface.release(surface)
+        assert (surface.texture, surface.interface, surface.width) == (None, None, 0)
+        texture.Release.assert_not_called()
+
+        com_duplicator = mock.MagicMock()
+        release_frame = mock.MagicMock()
+        duplicator = types.SimpleNamespace(duplicator=com_duplicator, release_frame=release_frame)
+        DXGIDuplicator.release(duplicator)
+        assert duplicator.duplicator is None
+        release_frame.assert_called_once_with()
+        com_duplicator.Release.assert_not_called()
+
+
 class TestStats:
     """get_stats() structure and update behaviour."""
 

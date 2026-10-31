@@ -144,6 +144,37 @@ def _find_window_hwnd(title: str) -> int | None:
     return found[0] if found else None
 
 
+# doc: docs/prs/dxcam-crash.md#double-release
+def _stop_dxcam_double_release() -> None:
+    """Make dxcam 0.3 release each COM pointer once, not twice.
+
+    dxcam's ``StageSurface.release`` and ``DXGIDuplicator.release`` call
+    ``.Release()`` and then drop the pointer, whose comtypes ``__del__``
+    releases it again. The second release is an access violation in native
+    code (seen as ``Exception ignored in _compointer_base.__del__``) and can
+    kill python.exe. The staging surface is released on every region change
+    and on ``close()``, the duplicator on ``close()``. These replacements only
+    drop the pointers and leave the one release to comtypes. Patching twice
+    is harmless.
+    """
+    from dxcam.core.dxgi_duplicator import DXGIDuplicator
+    from dxcam.core.stagesurf import StageSurface
+
+    def release_stage_surface(surface: Any) -> None:
+        surface.width = 0
+        surface.height = 0
+        surface.texture = None
+        surface.interface = None
+
+    def release_duplicator(duplicator: Any) -> None:
+        if duplicator.duplicator is not None:
+            duplicator.release_frame()
+            duplicator.duplicator = None
+
+    StageSurface.release = release_stage_surface
+    DXGIDuplicator.release = release_duplicator
+
+
 class _POINT(ctypes.Structure):
     """Win32 POINT structure."""
 
@@ -373,6 +404,8 @@ class ScreenCapture:
             self._dxcam_mod = importlib.import_module("dxcam")
         except ModuleNotFoundError:
             self._dxcam_mod = None
+            return None
+        _stop_dxcam_double_release()
         return self._dxcam_mod
 
     def _get_dxcam_cam(self, mod: Any) -> Any:

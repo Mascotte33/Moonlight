@@ -20,7 +20,7 @@ dependencies = [
     "customtkinter>=5.2,<6",
     "python-xlib>=0.33 ; sys_platform=='linux'",
     # 12x faster capture than mss on Windows (P2, measured live)
-    "dxcam>=0.3.0 ; sys_platform=='win32'",
+    "dxcam>=0.3.0,<0.4 ; sys_platform=='win32'",
 ]
 
 [project.optional-dependencies]
@@ -60,7 +60,7 @@ exclude = ["^tools/"]
 
 
 [[tool.mypy.overrides]]
-module = ["customtkinter", "pytesseract", "Xlib"]
+module = ["customtkinter", "pytesseract", "Xlib", "dxcam.*"]
 ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
