@@ -16,7 +16,8 @@ dependencies = [
     "pyserial>=3.5",
     "mss>=9.0",
     "pytesseract>=0.3.10",
-    "customtkinter>=5.2",
+    # 6.0.0 hangs the GUI: a scrollbar redraw recurses without end
+    "customtkinter>=5.2,<6",
     "python-xlib>=0.33 ; sys_platform=='linux'",
     # 12x faster capture than mss on Windows (P2, measured live)
     "dxcam>=0.3.0 ; sys_platform=='win32'",
