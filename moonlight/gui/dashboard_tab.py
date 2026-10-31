@@ -11,7 +11,7 @@ import customtkinter as ctk
 
 from moonlight.core.state import WorldState
 from moonlight.gui import theme
-from moonlight.gui.tab_base import Tab, dot_color, health, section, stat_num
+from moonlight.gui.tab_base import Tab, dot_color, health, section, set_label, stat_num
 
 __all__ = ["CARDS", "DashboardTab", "card_values", "uptime_text"]
 
@@ -99,6 +99,7 @@ class DashboardTab(Tab):
         self.log_view.pack(fill="both", expand=True, padx=10, pady=(0, 8))
         self.log_view.configure(state="disabled")
         self._last_log: str = ""
+        self._last_battle: str = ""
 
     def _set_text(self, box: ctk.CTkTextbox, text: str) -> None:
         box.configure(state="normal")
@@ -126,7 +127,8 @@ class DashboardTab(Tab):
                 label.configure(text=text)
         arduino = self.ctx.hardware.backend is not None
         for name, ok in health(snap, arduino, self.ctx.bot_running()):
-            self._dots[name].configure(text_color=dot_color(ok))
+            set_label(self._dots[name], color=dot_color(ok))
+        battle = "empty"
         if snap.monsters:
             monsters = snap.monsters[:20]
             lines = [
@@ -134,9 +136,10 @@ class DashboardTab(Tab):
             ]
             if snap.selected_target is not None:
                 lines.insert(0, f"> selected: {snap.selected_target.name}")
-            self._set_text(self.battle_list, "\n".join(lines))
-        elif self.battle_list.get("1.0", "end").strip() != "empty":
-            self._set_text(self.battle_list, "empty")
+            battle = "\n".join(lines)
+        if battle != self._last_battle:
+            self._set_text(self.battle_list, battle)
+            self._last_battle = battle
         log_text = self.ctx.log.text(20)
         if log_text != self._last_log:
             self._set_text(self.log_view, log_text)

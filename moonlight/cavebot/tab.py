@@ -265,6 +265,7 @@ class CavebotTab(Tab):
 
     title = "Cavebot"
     options = OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS + SCRIPT_OPTIONS
+    polls_hidden = True  # recording adds waypoints on each poll
 
     def build(self, parent: ctk.CTkFrame) -> None:
         root = ctk.CTkFrame(parent, fg_color="transparent")

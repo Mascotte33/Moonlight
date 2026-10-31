@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import customtkinter as ctk
 
 from moonlight.gui import sysinfo, theme
-from moonlight.gui.tab_base import Tab, section, stat_label, stat_num
+from moonlight.gui.tab_base import Tab, section, set_bar, set_label, stat_label, stat_num
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.core.state import WorldState
@@ -167,13 +167,13 @@ class StatusTab(Tab):
         self._update_system()
         hp = snap.hp_percent
         mp = snap.mp_percent
-        self.hp_bar.set(max(0.0, min(1.0, hp / 100.0)))
-        self.mp_bar.set(max(0.0, min(1.0, mp / 100.0)))
-        self.lbl_hp.configure(text=f"HP: {hp:.0f}%")
-        self.lbl_mp.configure(text=f"MP: {mp:.0f}%")
+        set_bar(self.hp_bar, hp / 100.0)
+        set_bar(self.mp_bar, mp / 100.0)
+        set_label(self.lbl_hp, f"HP: {hp:.0f}%")
+        set_label(self.lbl_mp, f"MP: {mp:.0f}%")
         screen = "ok" if snap.screen_ok else "missing"
         focus = "focused" if snap.client_focused else "unfocused"
-        self.lbl_screen.configure(text=f"Screen / focus: {screen}, {focus}")
+        set_label(self.lbl_screen, f"Screen / focus: {screen}, {focus}")
 
         target = snap.selected_target
         target_text = (
@@ -198,9 +198,7 @@ class StatusTab(Tab):
         if self.lbl_age.cget("text") != age:
             self.lbl_age.configure(text=age)
         cap = snap.capacity
-        self.lbl_capacity.configure(
-            text=f"Capacity: {cap.weight:.1f} / {cap.max_weight:.1f}"
-        )
+        set_label(self.lbl_capacity, f"Capacity: {cap.weight:.1f} / {cap.max_weight:.1f}")
 
         stats = self._loop_stats()
         if stats:
@@ -212,8 +210,8 @@ class StatusTab(Tab):
                 + stat_num(stats, "actions_dropped_unfocused")
             )
             mm, ss = divmod(int(uptime), 60)
-            self.lbl_state.configure(text=f"Loop state: {stats.get('state', 'idle')}")
-            self.lbl_ticks.configure(text=f"Ticks: {ticks}")
-            self.lbl_uptime.configure(text=f"Uptime: {mm:02d}:{ss:02d}")
-            self.lbl_actions.configure(text=f"Actions sent: {sent}")
-            self.lbl_dropped.configure(text=f"Dropped: {dropped}")
+            set_label(self.lbl_state, f"Loop state: {stats.get('state', 'idle')}")
+            set_label(self.lbl_ticks, f"Ticks: {ticks}")
+            set_label(self.lbl_uptime, f"Uptime: {mm:02d}:{ss:02d}")
+            set_label(self.lbl_actions, f"Actions sent: {sent}")
+            set_label(self.lbl_dropped, f"Dropped: {dropped}")

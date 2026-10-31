@@ -336,10 +336,11 @@ class CalibrationTab(Tab):
 
     def on_poll(self, snap: WorldState) -> None:
         on = not self.ctx.bot_running() and not self._waiting
-        self.btn_start.configure(
-            state="normal" if on else "disabled",
-            **theme.button_colors(on, theme.MANA, theme.MANA_HOVER),
-        )
+        state = "normal" if on else "disabled"
+        if self.btn_start.cget("state") != state:  # a redraw per poll made the GUI stutter
+            self.btn_start.configure(
+                state=state, **theme.button_colors(on, theme.MANA, theme.MANA_HOVER)
+            )
 
     # -- which calibration the bot uses -------------------------------------
 

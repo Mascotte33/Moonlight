@@ -44,7 +44,7 @@ from moonlight.gui.state_bridge import (
 )
 from moonlight.gui.status_tab import StatusTab
 from moonlight.gui.sysinfo import cpu_percent, cpu_times, memory_text
-from moonlight.gui.tab_base import Tab, dot_color, health
+from moonlight.gui.tab_base import Tab, dot_color, health, set_bar, set_label
 from moonlight.hardware.tab import HardwareTab
 from moonlight.healing.tab import HealingTab
 from moonlight.targeting.tab import TargetingTab
@@ -157,6 +157,8 @@ class GuiApp:
         self.tabs: dict[str, Tab] = {}
         self._pages: dict[str, ctk.CTkFrame | ctk.CTkScrollableFrame] = {}
         self._nav: dict[str, ctk.CTkButton] = {}
+        #: The shown tab; only it is polled (a redraw of a hidden tab is wasted).
+        self._current = ""
         for tab_cls in TAB_ORDER:
             tab = tab_cls(self.ctx)
             title = tab.title
@@ -194,8 +196,13 @@ class GuiApp:
         self.root.after(POLL_MS, self._poll)
 
     def select_tab(self, title: str) -> None:
-        """Raise ``title``'s page and highlight its sidebar entry."""
+        """Raise ``title``'s page, highlight its sidebar entry and refresh it."""
         self._pages[title].lift()
+        self._current = title
+        try:
+            self.tabs[title].on_poll(self.ctx.state.snapshot())
+        except Exception as exc:  # noqa: BLE001 - a bad tab must not block the switch
+            self.log.warn(f"poll error: {exc!r}")
         for name, btn in self._nav.items():
             active = name == title
             btn.configure(
@@ -278,7 +285,7 @@ class GuiApp:
     def _update_bottombar(self) -> None:
         snap = self.ctx.state.snapshot()
         for name, ok in health(snap, self.hardware.backend is not None, self.ctx.bot_running()):
-            self._dots[name].configure(text_color=dot_color(ok))
+            set_label(self._dots[name], color=dot_color(ok))
         now = time.monotonic()
         if now - self._res_t >= 1.0:  # CPU/MEM refresh about once a second
             cpu = cpu_times()
@@ -376,22 +383,23 @@ class GuiApp:
         hp, mp, state = topbar_text(
             snap, running, ctrl.state if ctrl is not None else None, self.ctx.paused
         )
-        self.bar_hp.set(min(max(snap.hp_percent / 100, 0.0), 1.0))
-        self.bar_mp.set(min(max(snap.mp_percent / 100, 0.0), 1.0))
-        self.lbl_hp.configure(text=hp)
-        self.lbl_mp.configure(text=mp)
-        self.lbl_state.configure(text=state)
-        self.lbl_dot.configure(text_color=STATE_COLORS[state])
+        set_bar(self.bar_hp, snap.hp_percent / 100)
+        set_bar(self.bar_mp, snap.mp_percent / 100)
+        set_label(self.lbl_hp, hp)
+        set_label(self.lbl_mp, mp)
+        set_label(self.lbl_state, state)
+        set_label(self.lbl_dot, color=STATE_COLORS[state])
         enabled = {
             self.btn_start: not running or self.ctx.paused,
             self.btn_pause: running and not self.ctx.paused,
             self.btn_stop: running,
         }
         for btn, on in enabled.items():
-            btn.configure(
-                state="normal" if on else "disabled",
-                **theme.button_colors(on, *self._btn_colors[btn]),
-            )
+            btn_state = "normal" if on else "disabled"
+            if btn.cget("state") != btn_state:  # a button redraw is the slowest part
+                btn.configure(
+                    state=btn_state, **theme.button_colors(on, *self._btn_colors[btn])
+                )
 
     # -- poll loop -----------------------------------------------------------
 
@@ -402,8 +410,9 @@ class GuiApp:
                 self.resume_bot() if self._held or self.ctx.paused else self.pause_bot()
             self._keep_running()
             snap = self.ctx.state.snapshot()
-            for tab in self.tabs.values():
-                tab.on_poll(snap)
+            for title, tab in self.tabs.items():
+                if title == self._current or tab.polls_hidden:
+                    tab.on_poll(snap)
             self._update_topbar()
             self._update_bottombar()
         except Exception as exc:  # noqa: BLE001 - the poller must survive

@@ -268,6 +268,24 @@ def dot_color(ok: bool) -> str:
     return theme.LIFE if ok else theme.BLOOD
 
 
+# A customtkinter configure redraws the widget even when nothing changed, and
+# 10 polls a second of that made the GUI stutter on a 2-core laptop.
+# doc: docs/prs/gui-smooth.md#redraw-only-on-change
+def set_label(label: ctk.CTkLabel, text: str | None = None, color: str | None = None) -> None:
+    """Configure *label*'s text and/or text color, only where they changed."""
+    if text is not None and label.cget("text") != text:
+        label.configure(text=text)
+    if color is not None and label.cget("text_color") != color:
+        label.configure(text_color=color)
+
+
+def set_bar(bar: ctk.CTkProgressBar, value: float) -> None:
+    """Set *bar* to *value* (clamped to 0-1, to whole percents) when it moved."""
+    value = round(min(max(value, 0.0), 1.0), 2)
+    if round(bar.get(), 2) != value:
+        bar.set(value)
+
+
 class Tab:
     """Base class for all 10 GUI tabs.
 
@@ -280,6 +298,9 @@ class Tab:
     options: ClassVar[Sequence[Option]] = ()
     #: Every tab scrolls, so a short window still reaches the bottom.
     scrolls: ClassVar[bool] = True
+    #: Polled while hidden too (its poll does work, not only drawing).
+    #: doc: docs/prs/gui-smooth.md#poll-only-the-shown-tab
+    polls_hidden: ClassVar[bool] = False
 
     def __init__(self, ctx: GuiContext) -> None:
         self.ctx = ctx
