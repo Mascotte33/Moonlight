@@ -18,6 +18,7 @@ import logging.handlers
 import sys
 import threading
 import time
+import tkinter as tk
 from pathlib import Path
 from typing import Any
 
@@ -106,6 +107,12 @@ def log_crashes() -> None:
     threading.excepthook = other_thread
 
 
+def _outer(page: ctk.CTkFrame | ctk.CTkScrollableFrame) -> tk.Frame:
+    """The widget placed in the content area (a scrollable frame sits in a frame)."""
+    outer: tk.Frame = getattr(page, "_parent_frame", page)
+    return outer
+
+
 SIDEBAR_WIDTH = 200
 
 #: Top-bar state dot color per state text.
@@ -184,8 +191,6 @@ class GuiApp:
         ).pack(anchor="w", padx=theme.PAD, pady=(theme.PAD, theme.GAP))
         content = ctk.CTkFrame(body, fg_color="transparent", corner_radius=0)
         content.pack(side="left", fill="both", expand=True, padx=10, pady=(0, 10))
-        content.grid_columnconfigure(0, weight=1)
-        content.grid_rowconfigure(0, weight=1)
 
         self.tabs: dict[str, Tab] = {}
         self._pages: dict[str, ctk.CTkFrame | ctk.CTkScrollableFrame] = {}
@@ -197,7 +202,6 @@ class GuiApp:
             title = tab.title
             frame = ctk.CTkScrollableFrame if tab.scrolls else ctk.CTkFrame
             page = frame(content, fg_color="transparent")
-            page.grid(row=0, column=0, sticky="nsew")
             page.grid_columnconfigure(0, weight=1)
             page.grid_rowconfigure(0, weight=1)
             tab.build(page)
@@ -215,6 +219,8 @@ class GuiApp:
             )
             self._nav[title].pack(fill="x", padx=theme.UNIT * 2, pady=1)
         self.select_tab(next(iter(self.tabs)))
+        self._size = (0, 0)
+        self.root.bind("<Configure>", self._resized, add="+")
 
         #: Stop or the kill switch hold the bot down until Start.
         self._held = not start_bot
@@ -237,7 +243,12 @@ class GuiApp:
         """
         if title == self._current:
             return
-        self._pages[title].lift()
+        # Pages stay stacked (a switch is a lift), until the window is resized:
+        # then the hidden ones are taken out, so a resize redraws one tab, not
+        # ten (2.2 s a resize step with ten, 0.4-0.6 s with one; 2026-10-31).
+        page = self._pages[title]
+        tk.Place.place_configure(_outer(page), x=0, y=0, relwidth=1, relheight=1)
+        page.lift()
         if self._current:
             self._nav[self._current].configure(**nav_colors(active=False))
         self._nav[title].configure(**nav_colors(active=True))
@@ -246,6 +257,16 @@ class GuiApp:
             self.tabs[title].on_poll(self.ctx.state.snapshot())
         except Exception as exc:  # noqa: BLE001 - a bad tab must not block the switch
             self.log.warn(f"poll error: {exc!r}")
+
+    # doc: docs/prs/gui-log.md#resize-one-tab
+    def _resized(self, event: tk.Event) -> None:
+        """The window changed size: take the hidden pages out until shown again."""
+        if event.widget is not self.root or (event.width, event.height) == self._size:
+            return
+        self._size = (event.width, event.height)
+        for title, page in self._pages.items():
+            if title != self._current:
+                tk.Place.place_forget(_outer(page))
 
     # -- header / bot control ----------------------------------------------
 
