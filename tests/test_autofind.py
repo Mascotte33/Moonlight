@@ -139,3 +139,12 @@ def test_game_grid_with_text_over_its_left_line() -> None:
     shot[574, 37:738] = 120
     shot[61:575, 737] = 115
     assert find_game_grid(shot) == (37, 61, 700, 513)
+
+
+def test_game_grid_of_a_half_screen_client() -> None:
+    # A client snapped to half of a 1920x1080 screen: a 562 x 412 game view.
+    shot = np.full((1008, 1034, 3), 70, np.uint8)
+    shot[61:473, 6:568] = 150
+    shot[60, 5:569] = 24
+    shot[60:474, 5] = 24
+    assert find_game_grid(shot) == (6, 61, 562, 412)
