@@ -404,6 +404,25 @@ class TestGameLoopStates:
         gl.tick()
         assert steps == [1]  # the script ended: walking again
 
+    # doc: docs/prs/scripts-page.md#test-now
+    def test_pause_holds_ticked_scripts_but_runs_test_now(self, tmp_path: Path) -> None:
+        (tmp_path / "s.py").write_text("def run(bot):\n    yield bot.press('f9')\n")
+        (tmp_path / "t.py").write_text("def run(bot):\n    yield bot.press('f8')\n")
+        c = FakeClock()
+        scripts = ScriptRunner(tmp_path, timers=[("s", 60.0)], clock=c)
+        inp = FakeInput()
+        gl, _ = make_loop(make_state(), inp, clock=c, modules=DecisionModules(scripts=scripts))
+        gl.paused = True
+        for _ in range(3):
+            c.advance(1.0)
+            gl.tick()
+        assert inp.sent_lines == []  # paused: the ticked script waits
+        scripts.test_request = "t"
+        for _ in range(3):
+            c.advance(1.0)
+            gl.tick()
+        assert inp.sent_lines == ["K f8"]
+
 
 class TestGameLoopRateLimit:
     def test_actions_capped_at_10_per_second(self) -> None:

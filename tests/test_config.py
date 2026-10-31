@@ -13,6 +13,7 @@ from moonlight.core.config import MODULES, BotConfig, ConfigError
 from moonlight.extras.extras import ExtrasConfig
 from moonlight.healing.healing import CureRule, HealingConfig, HealingRule
 from moonlight.refill.refill import RefillConfig
+from moonlight.scripts.scripts import ScriptsConfig
 from moonlight.targeting.targeting import AreaRule
 
 
@@ -93,12 +94,16 @@ def test_refill_follows_the_cavebot_and_loads_old_route_file_keys(tmp_path: Path
     assert BotConfig.from_dict(data).refill == RefillConfig()
 
 
-def test_scripts_timers_load_and_a_config_without_scripts_still_loads() -> None:
-    cfg = BotConfig.from_dict(raw(scripts={"enabled": True, "timers": "eat 60"}))
-    assert cfg.scripts is not None and cfg.scripts.timers == "eat 60"
+# doc: docs/prs/scripts-page.md#ticked-scripts
+def test_old_script_timers_become_ticks_and_pauses() -> None:
+    cfg = BotConfig.from_dict(raw(scripts={"enabled": True, "timers": "eat 60, rope 2.5"}))
+    assert cfg.scripts == ScriptsConfig(("eat", "rope"), {"eat": 60000, "rope": 2500})
+    off = BotConfig.from_dict(raw(scripts={"enabled": False, "timers": "eat 60"}))
+    assert off.scripts == ScriptsConfig((), {"eat": 60000})  # the switch was off: no ticks
+    assert BotConfig.from_dict(off.to_dict()).scripts == off.scripts
     old = raw()
     del old["modules"]["scripts"]
-    assert BotConfig.from_dict(old).scripts is None
+    assert BotConfig.from_dict(old).scripts == ScriptsConfig()
     with pytest.raises(ConfigError):
         BotConfig.from_dict(raw(scripts={"enabled": True, "timers": "eat"}))
 

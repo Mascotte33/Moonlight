@@ -48,6 +48,7 @@ from moonlight.gui.sysinfo import cpu_percent, cpu_times, memory_text
 from moonlight.gui.tab_base import Label, Tab, dot_color, health, set_bar, set_label
 from moonlight.hardware.tab import HardwareTab
 from moonlight.healing.tab import HealingTab
+from moonlight.scripts.tab import ScriptsTab
 from moonlight.targeting.tab import TargetingTab
 
 #: Poller period in ms (10 Hz — light enough for a low-spec laptop).
@@ -124,6 +125,7 @@ TAB_ORDER = (
     SettingsTab,
     CalibrationTab,
     CavebotTab,
+    ScriptsTab,
     HealingTab,
     TargetingTab,
     HardwareTab,

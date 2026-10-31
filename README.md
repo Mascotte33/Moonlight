@@ -220,10 +220,22 @@ for anything else. Edit route shows the cursor in client pixels for drag
 labels. End the town section with a `goto` back to the hunt. Drag, deposit
 and trade need the firmware's `H` / `R` mouse commands: reflash the Leonardo.
 
-A `wait` waypoint holds the route for its label in seconds. A `script`
-waypoint runs `scripts/<label>.py`; Cavebot > Scripts runs scripts on a timer
-too (`eat 60, rope 5`: name and seconds), while Scripts is on in Settings. A
-script is a Python generator `run(bot)` that yields commands one at a time,
+A `wait` waypoint holds the route for its label in seconds.
+
+**Scripts tab.** Make and edit scripts in the bot: **New**, **Rename**,
+**Delete**, the code box, **Save** and **Test now**. A ticked script runs by
+itself, one at a time, top of the list first; the ms box is its pause after it
+ends (empty = 1000 ms, at least 50). A `script` waypoint picks a script from
+the label dropdown on Edit route, and the route waits until it ends. Save
+checks the code: a broken script is saved but shown red, can't be ticked or
+tested, and its waypoints are skipped (red on the route, a warning in
+`logs/bot.log`). A script that fails while running is unticked and its error
+shown under the code; the bot goes on. Rename and Delete update (or remove)
+the waypoints that use the script. Test now runs the selected script once
+while the bot runs or is paused. Pause holds the ticked scripts. The files
+are kept in `scripts/`.
+
+A script is a Python generator `run(bot)` that yields commands one at a time,
 so the bot heals in between:
 
 ```python
@@ -234,12 +246,13 @@ def run(bot):
     spot = bot.find("rope.png")   # a picture in scripts/, None when not seen
     if spot:
         yield bot.click(*spot)    # client pixels, right=True for a right click
+    if (bot.count("mana") or 0) < 50:  # action-bar potions, None when unknown
+        yield bot.goto("town")    # walk on from route label town
     yield bot.press("f5")
-    yield bot.goto("town")        # walk on from route label town
 ```
 
 A running script pauses walking and waits during a fight or looting; healing
-always goes first. An error in a script is logged and stops that script only.
+always goes first.
 
 Extras (Settings > Extras, no module switch: a ticked extra is on) press a hotkey when a picture shows: food when
 hungry, ring or amulet when its slot is empty, haste while walking without

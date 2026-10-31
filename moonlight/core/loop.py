@@ -334,8 +334,14 @@ class GameLoop:
         """The modules that run this tick (``all_modules`` minus the paused ones)."""
         if not self.paused:
             return self.all_modules
+        scripts = self.all_modules.scripts
         return replace(
-            self.all_modules, cavebot=None, targeting=None, attack_hotkeys=None, scripts=None
+            self.all_modules,
+            cavebot=None,
+            targeting=None,
+            attack_hotkeys=None,
+            # doc: docs/prs/scripts-page.md#test-now
+            scripts=scripts if scripts is not None and scripts.testing else None,
         )
 
     @modules.setter
