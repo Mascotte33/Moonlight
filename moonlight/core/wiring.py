@@ -30,6 +30,7 @@ from moonlight.refill.refill import supplies_low
 
 if TYPE_CHECKING:
     from moonlight.hardware.clicker import ClickController
+    from moonlight.perception.battle import BattleEntry
     from moonlight.perception.capture import ScreenCapture
     from moonlight.perception.worldmap import WorldMap
     from moonlight.targeting.seen_monsters import SeenMonsters
@@ -67,6 +68,11 @@ MODULE_REGIONS: dict[str, tuple[str, ...]] = {
     "alarms": (),
 }
 
+
+#: Ticks between reads of the Players window and the condition icons
+#: (200 ms at 20 Hz): they change slowly, and skipping them saves ~3 ms a tick.
+# doc: docs/prs/tick-speed.md#slow-readers
+SLOW_READ_EVERY_TICKS = 4
 
 #: Regions :func:`make_perceive` reads every tick.
 _PERCEIVE_REGIONS = (
@@ -281,8 +287,12 @@ def make_perceive(
         px_per_sqm=unit,
     )
 
+    ticks_until_slow_read = 0
+    names: list[BattleEntry] = []
+    conditions: frozenset[str] = frozenset()
+
     def perceive() -> None:
-        nonlocal player_box, last_failure
+        nonlocal player_box, ticks_until_slow_read, names, conditions, last_failure
         focused = focus_check() if focus_check is not None else True
         try:
             if not focused:
@@ -292,24 +302,29 @@ def make_perceive(
                 seen_monsters.learns_new_names = client_is_foreground()
             hp, mp = vitals.read_vitals(frame)
             monsters, selected, players = entries_to_state(battle.read_battle_list(frame))
-            found = players_window.find(frame[..., ::-1])
-            box = found or calibrated_box
-            if box != player_box:
-                if found:
-                    logger.info("Players window at %s", box)
-                elif box:
-                    logger.info("Players window title not found, reading the calibrated %s", box)
-                else:
-                    logger.info("Players window not found")
-                player_box = box
-            names = player_list.read_battle_list(frame, box) if box else []
+            if ticks_until_slow_read == 0:
+                ticks_until_slow_read = SLOW_READ_EVERY_TICKS
+                found = players_window.find(frame[..., ::-1])
+                box = found or calibrated_box
+                if box != player_box:
+                    if found:
+                        logger.info("Players window at %s", box)
+                    elif box:
+                        logger.info(
+                            "Players window title not found, reading the calibrated %s", box
+                        )
+                    else:
+                        logger.info("Players window not found")
+                    player_box = box
+                names = player_list.read_battle_list(frame, box) if box else []
+                conditions = (
+                    status_icons.read_active_conditions(frame) if status_icons else frozenset()
+                )
+            ticks_until_slow_read -= 1
             slots = tuple(find_creatures(frame, creature_grid)) if creature_grid else ()
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
             chase_mode = read_chase_mode(frame, chase_buttons) if chase_buttons else None
-            conditions = (
-                status_icons.read_active_conditions(frame) if status_icons else frozenset()
-            )
         except Exception as error:  # noqa: BLE001 - any perception failure = screen not ok
             # One line per new reason, not one per tick (e.g. "HP bar covered").
             if str(error) != last_failure:

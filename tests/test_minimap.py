@@ -426,6 +426,25 @@ class TestMapMatcher:
         assert reader.read_position(frame2, region) is None
         assert reader.lost
 
+    def test_unchanged_radar_skips_the_map_match(self) -> None:
+        calls: list[tuple[int, int] | None] = []
+
+        class _Matcher:
+            def match(
+                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+            ) -> tuple[int, int] | None:
+                calls.append(near)
+                return (100 + len(calls), 100)
+
+        reader = make_reader(map_matcher=_Matcher())
+        frame, region = make_frame(1)
+        assert reader.read_position(frame, region) == Position(101, 100, 0)
+        assert reader.read_position(frame.copy(), region) == Position(101, 100, 0)
+        assert len(calls) == 1
+        moved, _ = make_frame(2)
+        assert reader.read_position(moved, region) == Position(102, 100, 0)
+        assert len(calls) == 2
+
 
 class TestFloorIntegration:
     """z comes from an injected FloorSource (the last floor when unreadable)."""

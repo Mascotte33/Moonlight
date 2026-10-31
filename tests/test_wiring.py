@@ -419,6 +419,31 @@ def test_perceive_writes_active_status_icons(monkeypatch: pytest.MonkeyPatch) ->
     assert state.snapshot().active_status_icons == {"poison"}
 
 
+def test_perceive_reads_status_icons_every_few_ticks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Condition icons change slowly: read on the first tick, then every Nth one."""
+    reads: list[int] = []
+
+    class _Icons:
+        def __init__(self, *args: object) -> None:
+            pass
+
+        def read_active_conditions(self, frame: np.ndarray) -> frozenset[str]:
+            reads.append(1)
+            return frozenset({"poison"} if len(reads) == 1 else set())
+
+    monkeypatch.setattr("moonlight.perception.status_icons.StatusIconReader", _Icons)
+    state = WorldState()
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    perceive = wiring.make_perceive(state, make_profile(), lambda: frame)
+    for _ in range(wiring.SLOW_READ_EVERY_TICKS):
+        perceive()
+        assert state.snapshot().active_status_icons == {"poison"}
+    assert len(reads) == 1
+    perceive()
+    assert len(reads) == 2
+    assert state.snapshot().active_status_icons == frozenset()
+
+
 def test_perceive_fills_names_from_the_seen_monsters_store(tmp_path: Path) -> None:
     from moonlight.targeting.seen_monsters import SeenMonsters
     from tests.test_battle import make_frame

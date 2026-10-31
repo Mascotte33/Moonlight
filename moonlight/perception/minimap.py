@@ -270,6 +270,8 @@ class MinimapReader:
 
         if self._map_matcher is not None:
             z = self._read_z(frame)
+            if self._radar_unchanged_since_last_match(gray, z):
+                return self._position
             near = None if self._lost else (self._position.x, self._position.y)
             xy = self._map_matcher.match(crop, z, near)
             if xy is None and near is not None:
@@ -329,6 +331,22 @@ class MinimapReader:
         self._estimated_since = None
 
     # -- helpers ------------------------------------------------------------
+
+    # doc: docs/prs/tick-speed.md#skip-unchanged-radar
+    def _radar_unchanged_since_last_match(self, gray: np.ndarray, z: int) -> bool:
+        """True when the radar is pixel-identical to the last map-matched one.
+
+        The world-map match is most of a tick's screen reading; standing
+        still or between steps the radar does not change, so the matched
+        position still holds.
+        """
+        return (
+            not self._lost
+            and self._estimated_since is None
+            and self._prev_gray is not None
+            and z == self._prev_z
+            and np.array_equal(gray, self._prev_gray)
+        )
 
     def _lose(self, why: str) -> None:
         """Flag tracking as lost (F-17): positions are unknown until reset."""
