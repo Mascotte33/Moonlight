@@ -60,7 +60,7 @@ exclude = ["^tools/"]
 
 
 [[tool.mypy.overrides]]
-module = ["customtkinter", "pytesseract", "Xlib", "dxcam.*"]
+module = ["customtkinter", "pytesseract", "Xlib", "Xlib.*", "dxcam.*"]
 ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]

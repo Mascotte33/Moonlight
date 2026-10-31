@@ -476,6 +476,8 @@ def build_loop(
 
     loop.reconfigure = reconfigure
     loop.seen_monsters = seen_monsters
+    if client_is_foreground is not None and loop.all_modules.scripts is not None:
+        loop.all_modules.scripts.client_is_foreground = client_is_foreground
     return loop
 
 
@@ -608,14 +610,18 @@ def build_modules(
         if on_clicker is not None:
             on_clicker(m.clicker)
     # One runner for the bot's life: a kept cavebot starts its scripts in it.
-    from moonlight.scripts.scripts import ScriptRunner, parse_timers
+    from moonlight.scripts.scripts import ScriptRunner
 
     if prev is not None and prev.scripts is not None:
         m.scripts = prev.scripts
     else:
         m.scripts = ScriptRunner(grab=screen_grab, clock=clock or time.monotonic)
+        if screen_grab is not None:
+            from moonlight.perception.potions import PotionCounter
+
+            m.scripts.potion_counts = PotionCounter(screen_grab).counts
     m.scripts.clicker = m.clicker
-    m.scripts.timers = parse_timers(config.scripts.timers) if config.scripts else []
+    m.scripts.timers = config.scripts.timers()
     if config.rotation is None:
         m.scripts.rotation = None
     elif m.scripts.rotation is None or not same("rotation"):

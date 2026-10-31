@@ -1,4 +1,4 @@
-"""Cavebot tab: Waypoints, and a Refill / Loot / Scripts / Edit route switch
+"""Cavebot tab: Waypoints, and a Refill / Loot / Edit route switch
 (T3.F1.K1, T3.F7.K1, T3.F8.K1).
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, read by
@@ -51,14 +51,14 @@ from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.settings_tab import plain_reason
 from moonlight.gui.tab_base import Label, Option, Tab, read_option, section, write_option
 from moonlight.refill.refill import LAST_READ
-from moonlight.scripts.scripts import ScriptRunner
+from moonlight.scripts.library import script_names
+from moonlight.scripts.scripts import DEFAULT_SCRIPTS_DIR
 
 __all__ = [
     "LOOT_OPTIONS",
     "OPTIONS",
     "REFILL_OPTIONS",
     "ROUTE",
-    "SCRIPT_OPTIONS",
     "SWITCH",
     "CavebotTab",
     "apply_cavebot",
@@ -119,9 +119,6 @@ REFILL_OPTIONS = [
     Option("HP pots <", "refill.health_potions_below", "entry", min=0, off_at_zero=True),
     Option("MP pots <", "refill.mana_potions_below", "entry", min=0, off_at_zero=True),
 ]
-SCRIPT_OPTIONS = [
-    Option("Timed scripts (name seconds, ...)", "scripts.timers", "entry"),
-]
 
 
 def route_names(routes_dir: Path) -> list[str]:
@@ -168,16 +165,36 @@ def move_waypoint(waypoints: list[Waypoint], index: int, by: int) -> int:
     return to
 
 
-def waypoint_table(route: Route | None, current: int | None = None) -> str:
-    """*route*'s waypoints as a text table, row *current* (0-based) marked ``>``."""
+#: After the label of a ``script`` waypoint whose script is broken or missing.
+BROKEN_MARK = "  (broken script)"
+
+
+def waypoint_table(
+    route: Route | None, current: int | None = None, runs_badly: Callable[[str], bool] = bool
+) -> str:
+    """*route*'s waypoints as a text table, row *current* (0-based) marked ``>``.
+
+    A ``script`` waypoint whose label *runs_badly* gets ``BROKEN_MARK``.
+    """
     if route is None or not route.waypoints:
         return "No waypoints loaded"
     lines = [f" {'#':>3}  {'Type':<7} {'Coordinates':<19} Label"]
     for i, wp in enumerate(route.waypoints):
         mark = ">" if i == current else " "
         where = f"({wp.x}, {wp.y}, {wp.z})" if has_tile(wp) else ""
-        lines.append(f"{mark}{i + 1:>3}  {wp.action:<7} {where:<19} {wp.label}".rstrip())
+        broken = BROKEN_MARK if wp.action == "script" and runs_badly(wp.label) else ""
+        lines.append(f"{mark}{i + 1:>3}  {wp.action:<7} {where:<19} {wp.label}{broken}".rstrip())
     return "\n".join(lines)
+
+
+def renamed_script(waypoints: list[Waypoint], old: str, new: str | None) -> list[Waypoint]:
+    """*waypoints* with script *old*'s waypoints run *new*, or dropped when it is None."""
+    if new is None:
+        return [wp for wp in waypoints if not (wp.action == "script" and wp.label == old)]
+    return [
+        replace(wp, label=new) if wp.action == "script" and wp.label == old else wp
+        for wp in waypoints
+    ]
 
 
 def waypoint_line(current: int | None, total: int) -> str:
@@ -209,7 +226,7 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
                 cfg = write_option(cfg, option, values[option.field])
     if SWITCH.field in values:
         cfg = write_option(cfg, SWITCH, values[SWITCH.field])
-    for option in LOOT_OPTIONS + REFILL_OPTIONS + SCRIPT_OPTIONS:
+    for option in LOOT_OPTIONS + REFILL_OPTIONS:
         if option.field in values:
             cfg = write_option(cfg, option, values[option.field])
     return cfg
@@ -261,10 +278,10 @@ def refill_now(cavebot: Any) -> str:
 
 
 class CavebotTab(Tab):
-    """Waypoints card beside one card switching Refill, Loot, Scripts and Edit route."""
+    """Waypoints card beside one card switching Refill, Loot and Edit route."""
 
     title = "Cavebot"
-    options = OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS + SCRIPT_OPTIONS
+    options = OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS
     polls_hidden = True  # recording adds waypoints on each poll
 
     def build(self, parent: ctk.CTkFrame) -> None:
@@ -305,6 +322,7 @@ class CavebotTab(Tab):
         )
         self.wp_list.pack(fill="both", expand=True, padx=theme.PAD, pady=(theme.UNIT, 0))
         self.wp_list.tag_config("current", foreground=theme.LIFE)
+        self.wp_list.tag_config("broken", foreground=theme.BLOOD)
         self.wp_list.tag_config("selected", background=theme.HOVER)
         self.wp_list.bind("<Button-1>", self._select_waypoint)
         self.wp_list.bind("<Double-Button-1>", self._pick_waypoint)
@@ -319,11 +337,11 @@ class CavebotTab(Tab):
         self.lbl_msg = Label(box, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
-        side = section(root, "Refill / Loot / Scripts / Edit route")
+        side = section(root, "Refill / Loot / Edit route")
         side.grid(row=0, column=1, sticky="nsew")
         pages = {
             name: ctk.CTkFrame(side, fg_color="transparent")
-            for name in ("Refill", "Loot", "Scripts", "Edit route")
+            for name in ("Refill", "Loot", "Edit route")
         }
 
         def show(name: str) -> None:
@@ -387,27 +405,23 @@ class CavebotTab(Tab):
         self.lbl_buy = Label(refill, text="", anchor="w", text_color=theme.TEXT_DIM)
         self.lbl_buy.pack(fill="x", padx=theme.PAD)
         self.build_options(pages["Loot"], LOOT_OPTIONS)
-        # doc: docs/prs/scripts.md#script-api
-        Label(
-            pages["Scripts"],
-            text=(
-                "A script is a .py file in scripts/ with def run(bot). A 'script' waypoint"
-                " runs it by name (label 'example' runs scripts/example.py); timed scripts run"
-                " every N seconds while Scripts is on in Settings. Scripts: "
-                + (", ".join(ScriptRunner().names()) or "none yet")
-            ),
-            anchor="w",
-            justify="left",
-            wraplength=260,
-            text_color=theme.TEXT_DIM,
-        ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        self.build_options(pages["Scripts"], SCRIPT_OPTIONS)
         show("Refill")
 
         edit = pages["Edit route"]
         add = ctk.CTkFrame(edit, fg_color="transparent")
         add.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        self.ent_label = _entry(add, "label", 80)
+        # doc: docs/prs/scripts-page.md#script-dropdown
+        # The label, typed or a script picked for a script waypoint.
+        self.ent_label = ctk.CTkComboBox(
+            add,
+            width=130,
+            values=script_names(DEFAULT_SCRIPTS_DIR),
+            fg_color=theme.NIGHT,
+            border_color=theme.RAISED,
+        )
+        self.ent_label.set("")
+        self.ent_label.pack(side="left", padx=(theme.UNIT, 0))
+        self.ctx.script_listeners.append(self._script_changed)
         # doc: docs/prs/refill.md#drag-waypoint
         self.lbl_cursor = Label(
             edit, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
@@ -566,7 +580,7 @@ class CavebotTab(Tab):
             self._lock(on)
         current = live.current if live is not None and live.name == self._name else None
         route = Route("editor", waypoints=self._waypoints)
-        text = self._error or waypoint_table(route, current)
+        text = self._error or waypoint_table(route, current, self._runs_badly)
         running = "Not running"
         if live:
             running = f"Current: {waypoint_line(live.current, len(live.waypoints))}"
@@ -590,11 +604,28 @@ class CavebotTab(Tab):
         self.wp_list.delete("1.0", "end")
         self.wp_list.insert("1.0", text)
         self.wp_list.yview_moveto(top)  # keep the scroll where it was
+        for line, row in enumerate(text.split("\n"), 1):
+            if row.endswith(BROKEN_MARK):
+                self.wp_list.tag_add("broken", f"{line}.0", f"{line}.end")
         if current is not None and not self._error:  # line 1 is the header
             self.wp_list.tag_add("current", f"{current + 2}.0", f"{current + 2}.end")
             self.wp_list.see(f"{current + 2}.0")
         self._mark_selected()
         self.wp_list.configure(state="disabled")
+
+    def _runs_badly(self, script: str) -> bool:
+        """Script *script* is broken, failed or has no file."""
+        return script in self.ctx.broken_scripts or not (
+            DEFAULT_SCRIPTS_DIR / f"{script}.py"
+        ).exists()
+
+    # doc: docs/prs/scripts-page.md#scripts-tab
+    def _script_changed(self, old: str | None, new: str | None) -> None:
+        """A script was made, renamed or deleted: follow it in the editor's route."""
+        self.ent_label.configure(values=script_names(DEFAULT_SCRIPTS_DIR))
+        if old is not None:
+            self._waypoints = renamed_script(self._waypoints, old, new)
+        self._text = ""  # redraw: a mark may have changed
 
     def _mark_selected(self) -> None:
         self.wp_list.tag_remove("selected", "1.0", "end")

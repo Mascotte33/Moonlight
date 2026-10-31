@@ -13,7 +13,15 @@ from __future__ import annotations
 import threading
 from typing import Any
 
-__all__ = ["active_title", "cursor", "find_window", "vk_down", "window_rect", "window_titles"]
+__all__ = [
+    "activate",
+    "active_title",
+    "cursor",
+    "find_window",
+    "vk_down",
+    "window_rect",
+    "window_titles",
+]
 
 _lock = threading.Lock()  # one Display, used from the loop, F12 and GUI threads
 _display: Any = None
@@ -107,6 +115,31 @@ def window_titles() -> list[str]:
         except Exception:  # noqa: BLE001
             return []
         return sorted(t for t in titles if t)
+
+
+def activate(wid: int) -> bool:
+    """Ask the window manager to focus window *wid* (``_NET_ACTIVE_WINDOW``)."""
+    from Xlib import X
+    from Xlib.protocol import event
+
+    with _lock:
+        d = _d()
+        if d is None:
+            return False
+        try:
+            root = d.screen().root
+            message = event.ClientMessage(
+                window=d.create_resource_object("window", wid),
+                client_type=d.intern_atom("_NET_ACTIVE_WINDOW"),
+                data=(32, [2, X.CurrentTime, 0, 0, 0]),  # 2: asked by a user tool
+            )
+            root.send_event(
+                message, event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask
+            )
+            d.flush()
+        except Exception:  # noqa: BLE001 - the window closed
+            return False
+        return True
 
 
 def active_title() -> str | None:

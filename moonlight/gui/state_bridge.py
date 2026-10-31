@@ -427,6 +427,12 @@ class GuiContext:
     on_config_change: Callable[[bool], None] | None = None
     #: GUI Pause: the Targeting and Cavebot switches show off until Start.
     paused: bool = False
+    # doc: docs/prs/scripts-page.md#scripts-tab
+    #: Scripts that are broken or failed; the route editor shows their waypoints red.
+    broken_scripts: set[str] = field(default_factory=set)
+    #: Called with (old name, new name) when a script is made (None, new),
+    #: renamed (old, new) or deleted (old, None).
+    script_listeners: list[Callable[[str | None, str | None], None]] = field(default_factory=list)
 
     def pick_config(self, name: str) -> Path:
         """Pick named config *name* and tell every listener."""
