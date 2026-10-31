@@ -57,6 +57,15 @@ _VK_F12 = 0x7B
 _f12_was_down = False
 
 
+def nav_colors(active: bool) -> dict[str, str]:
+    """Sidebar button colors: the shown tab's entry is highlighted."""
+    return {
+        "fg_color": theme.MANA if active else "transparent",
+        "text_color": theme.NIGHT if active else theme.TEXT_DIM,
+        "hover_color": theme.MANA_HOVER if active else theme.HOVER,
+    }
+
+
 def f12_pressed() -> bool:
     """True once per F12 press, in any window.
 
@@ -178,6 +187,7 @@ class GuiApp:
                 corner_radius=theme.RADIUS_CONTROL,
                 font=ctk.CTkFont(size=theme.SIZE_BODY),
                 command=lambda t=title: self.select_tab(t),
+                **nav_colors(active=False),
             )
             self._nav[title].pack(fill="x", padx=theme.UNIT * 2, pady=1)
         self.select_tab(next(iter(self.tabs)))
@@ -196,20 +206,22 @@ class GuiApp:
         self.root.after(POLL_MS, self._poll)
 
     def select_tab(self, title: str) -> None:
-        """Raise ``title``'s page, highlight its sidebar entry and refresh it."""
+        """Raise ``title``'s page, highlight its sidebar entry and refresh it.
+
+        Only the two sidebar buttons that change are restyled (a button
+        redraw is slow; all nine cost about 50 ms a switch).
+        """
+        if title == self._current:
+            return
         self._pages[title].lift()
+        if self._current:
+            self._nav[self._current].configure(**nav_colors(active=False))
+        self._nav[title].configure(**nav_colors(active=True))
         self._current = title
         try:
             self.tabs[title].on_poll(self.ctx.state.snapshot())
         except Exception as exc:  # noqa: BLE001 - a bad tab must not block the switch
             self.log.warn(f"poll error: {exc!r}")
-        for name, btn in self._nav.items():
-            active = name == title
-            btn.configure(
-                fg_color=theme.MANA if active else "transparent",
-                text_color=theme.NIGHT if active else theme.TEXT_DIM,
-                hover_color=theme.MANA_HOVER if active else theme.HOVER,
-            )
 
     # -- header / bot control ----------------------------------------------
 
