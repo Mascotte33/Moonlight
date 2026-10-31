@@ -26,7 +26,7 @@ from moonlight.core.state import Position, WorldState
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_profile, load_real_config
 from moonlight.gui.settings_tab import plain_reason
-from moonlight.gui.tab_base import Label, Tab, dot_color, health, section, stat_label, stat_num
+from moonlight.gui.tab_base import Label, Row, Tab, dot_color, health, section, stat_label, stat_num
 from moonlight.perception.creatures import find_creatures
 
 __all__ = ["LOG_LINES", "DiagnosticsTab", "seen_view", "slots_of"]
@@ -104,7 +104,7 @@ class DiagnosticsTab(Tab):
 
         perf = section(parent, "Performance")
         perf.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10, 6))
-        perf_grid = ctk.CTkFrame(perf, fg_color="transparent")
+        perf_grid = Row(perf)
         perf_grid.pack(fill="both", expand=True)
         perf_grid.grid_columnconfigure((0, 1), weight=1)
         self.lbl_poll_rate = stat_label(perf_grid, "GUI poll rate")
@@ -124,7 +124,7 @@ class DiagnosticsTab(Tab):
                 box, text=f"● {name}", anchor="w", text_color=theme.TEXT_MUTED
             )
             self._dots[name].pack(fill="x", padx=theme.PAD)
-        ctk.CTkFrame(box, height=theme.UNIT, fg_color="transparent").pack()
+        Row(box, height=theme.UNIT).pack()
 
         logsec = section(parent, "Bot log (everything; Dashboard shows the problems)")
         logsec.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))

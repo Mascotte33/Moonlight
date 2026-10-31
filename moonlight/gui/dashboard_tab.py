@@ -12,7 +12,7 @@ import customtkinter as ctk
 from moonlight.core.state import WorldState
 from moonlight.gui import theme
 from moonlight.gui.state_bridge import LogFeed
-from moonlight.gui.tab_base import Label, Tab, dot_color, health, section, set_label, stat_num
+from moonlight.gui.tab_base import Label, Row, Tab, dot_color, health, section, set_label, stat_num
 
 __all__ = ["CARDS", "DashboardTab", "card_values", "recent_errors", "uptime_text"]
 
@@ -53,7 +53,7 @@ class DashboardTab(Tab):
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(1, weight=1)
 
-        cards = ctk.CTkFrame(parent, fg_color="transparent")
+        cards = Row(parent)
         cards.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
         self.lbl_task = Label(
             cards,
@@ -80,7 +80,7 @@ class DashboardTab(Tab):
 
         box = section(cards, "Bot health")
         box.grid(row=2, column=0, columnspan=len(CARDS), sticky="ew", pady=(theme.UNIT, 0))
-        dots = ctk.CTkFrame(box, fg_color="transparent")
+        dots = Row(box)
         dots.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
         self._dots: dict[str, Label] = {}
         for name, _ in health(WorldState(), False, False):
@@ -89,7 +89,7 @@ class DashboardTab(Tab):
             )
             self._dots[name].pack(side="left", padx=(0, theme.PAD))
 
-        body = ctk.CTkFrame(parent, fg_color="transparent")
+        body = Row(parent)
         body.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
         body.grid_columnconfigure(0, weight=1)
         body.grid_rowconfigure(1, weight=3)
