@@ -9,8 +9,10 @@ import pytest
 from moonlight.cavebot.cavebot import RouteError, RouteFileLoader, Waypoint
 from moonlight.cavebot.recorder import (
     StandTracker,
+    buy_text,
     cursor_line,
     make_waypoint,
+    parse_buy,
     position_line,
     route_path,
     save_route,
@@ -39,6 +41,21 @@ def test_negative_coordinates_save(tmp_path: Path) -> None:
     assert RouteFileLoader.load(save_route(tmp_path, "minus", wps)).waypoints == wps
 
 
+def test_the_buy_list_is_typed_on_the_refill_page_and_saved_with_the_route(
+    tmp_path: Path,
+) -> None:
+    # doc: docs/prs/depot.md#trade-waypoint
+    buy = parse_buy("strong mana potion, 80\n\n  health potion ,100 \n")
+    assert buy == [("strong mana potion", 80), ("health potion", 100)]
+    assert parse_buy(buy_text(buy)) == buy
+    for bad in ("mana potion", "mana potion, 101", ", 5", "mana, x"):
+        with pytest.raises(RouteError):
+            parse_buy(bad)
+    path = save_route(tmp_path, "town", [Waypoint(1, 1, 7)], buy)
+    assert RouteFileLoader.load(path).buy == buy
+    assert RouteFileLoader.load(save_route(tmp_path, "old", [Waypoint(1, 1, 7)])).buy == []
+
+
 def test_bad_routes_are_refused(tmp_path: Path) -> None:
     with pytest.raises(RouteError):
         save_route(tmp_path, "rotworms", [])
@@ -51,6 +68,8 @@ def test_make_waypoint() -> None:
     assert make_waypoint("shovel", "", live) == Waypoint(5, 6, 7, "shovel")
     assert make_waypoint("goto", " a ", live) == Waypoint(5, 6, 7, "goto", "a")
     assert make_waypoint("check", "town", live) == Waypoint(5, 6, 7, "check", "town")
+    assert make_waypoint("bank", "", live) == Waypoint(5, 6, 7, "bank")
+    assert make_waypoint("trade", "", live) == Waypoint(5, 6, 7, "trade")
     with pytest.raises(RouteError, match="Position unknown"):
         make_waypoint("walk", "", Position(0, 0, 0))
     with pytest.raises(RouteError):

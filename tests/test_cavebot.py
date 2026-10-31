@@ -59,6 +59,38 @@ class RecordingClicker(ClickController):
         self.cancels += 1
 
 
+class SteppedClicker(RecordingClicker):
+    """Like the real one: a click is only sent when :meth:`step` drives it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.queued: list[tuple[tuple[int, int], ClickSide]] = []
+
+    @property
+    def busy(self) -> bool:
+        return bool(self.queued)
+
+    def request(
+        self,
+        target: tuple[int, int],
+        *,
+        tolerance: int = 2,
+        max_iters: int = 5,
+        side: ClickSide = ClickSide.LEFT,
+    ) -> None:
+        self.queued.append((target, side))
+
+    def step(self) -> bool | None:
+        if not self.queued:
+            return None
+        self.clicks.append(self.queued.pop(0))
+        return True
+
+    def cancel(self) -> None:
+        super().cancel()
+        self.queued.clear()
+
+
 class Sim:
     """Player position + clock + the Cavebot wired to synthetic readers."""
 
@@ -1223,3 +1255,236 @@ def test_walk_keys_blocked_alarm_clears_when_the_way_is_free() -> None:
     sim.pos = Position(100, 101, 7)  # the player stepped aside
     sim.step()
     assert sim.bot.is_active() and sim.bot.alarm is None
+
+
+# -- finddepo -----------------------------------------------------------------
+
+
+def test_pick_locker_takes_the_nearest_free_tile_next_to_a_locker() -> None:
+    from moonlight.cavebot.town import pick_locker
+
+    lockers = {(10, 4), (12, 4)}
+    south = {(10, 5), (12, 5)}
+    assert pick_locker(lockers, (12, 6), lambda x, y: (x, y) in south) == ((12, 4), (12, 5))
+    taken = {(12, 5)}
+    free = lambda x, y: (x, y) in south and (x, y) not in taken  # noqa: E731
+    assert pick_locker(lockers, (12, 6), free) == ((10, 4), (10, 5))
+    assert pick_locker(lockers, (12, 6), lambda x, y: False) is None
+
+
+def _depot_sim(monkeypatch: pytest.MonkeyPatch, lockers: set[tuple[int, int]]) -> Sim:
+    import moonlight.cavebot.cavebot as cb
+
+    seen: dict[str, set[tuple[int, int]]] = {"creatures": set()}
+    monkeypatch.setattr(cb, "find_lockers", lambda frame, grid: lockers)
+    monkeypatch.setattr(cb, "find_creatures", lambda frame, grid: sorted(seen["creatures"]))
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([Waypoint(100, 100, 7, "finddepo"), walk(120, 100)], Position(100, 100, 7),
+              frames=lambda: frame)  # fmt: skip
+    sim.seen = seen  # type: ignore[attr-defined]
+    sim.bot.start()
+    return sim
+
+
+def test_finddepo_walks_to_the_free_tile_below_the_nearest_locker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Lockers in slots (7, 3) and (9, 3): the player (slot 7, 5) is at 100,100.
+    sim = _depot_sim(monkeypatch, {(7, 3), (9, 3)})
+    sim.seen["creatures"] = {(7, 4)}  # type: ignore[attr-defined]  # someone at the first
+    sim.step()
+    assert sim.bot.depot_locker == (102, 98, 7)
+    assert sim.clicker.clicks  # walking to 102,99
+    sim.pos = Position(102, 99, 7)
+    sim.step()
+    assert sim.route.current == 1
+
+
+def test_finddepo_waits_while_every_locker_is_taken_then_alarms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sim = _depot_sim(monkeypatch, {(7, 3)})
+    sim.seen["creatures"] = {(7, 4)}  # type: ignore[attr-defined]
+    run_until(sim, 299)
+    assert sim.bot.alarm is None and sim.route.current == 0 and not sim.clicker.clicks
+    run_until(sim, 302)
+    assert sim.bot.alarm == "depot_taken" and sim.bot.is_active()
+    sim.seen["creatures"] = set()  # type: ignore[attr-defined]
+    run_until(sim, 306)
+    assert sim.bot.alarm is None and sim.bot.depot_locker == (100, 98, 7)
+    sim.pos = Position(100, 99, 7)
+    sim.step()
+    assert sim.route.current == 1
+
+
+# -- deposit ------------------------------------------------------------------
+
+
+def _deposit_sim(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, seen: dict[str, tuple[int, int]]
+) -> Sim:
+    import moonlight.cavebot.cavebot as cb
+
+    bag = tmp_path / "loot_backpack.png"
+    monkeypatch.setattr(cb, "find_picture", lambda frame, path: seen.get(path.name))
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([Waypoint(0, 0, 0, "deposit"), walk(110, 100)], Position(100, 99, 7),
+              frames=lambda: frame, backpack=bag, clicker=SteppedClicker())  # fmt: skip
+    sim.bot.start()
+    sim.bot.depot_locker = (100, 98, 7)
+    return sim
+
+
+def test_deposit_right_clicks_the_locker_then_drags_the_backpack_onto_the_stash(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: dict[str, tuple[int, int]] = {}
+    sim = _deposit_sim(monkeypatch, tmp_path, seen)
+    sim.step()
+    sim.step()  # queued, then sent
+    assert [side for _, side in sim.clicker.clicks] == [ClickSide.RIGHT]
+    seen.update({"depot_stash.png": (300, 400), "loot_backpack.png": (100, 200)})
+    for _ in range(6):  # finds both, then the drag's 4 sends and its start
+        sim.step()
+    a, b = sim.clicker.to_wire((100, 200)), sim.clicker.to_wire((300, 400))
+    assert sim.fake.sent_lines == [f"A {a[0]} {a[1]}", "H L", f"A {b[0]} {b[1]}", "R L"]
+    sim.step(1.0)
+    assert sim.route.current == 1 and sim.bot.alarm is None
+
+
+def test_deposit_clicks_again_and_alarms_while_the_stash_is_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen = {"loot_backpack.png": (100, 200)}
+    sim = _deposit_sim(monkeypatch, tmp_path, seen)
+    run_until(sim, 4)
+    assert len(sim.clicker.clicks) == 2 and sim.bot.alarm == "deposit"
+    assert sim.route.current == 0 and sim.fake.sent_lines == []
+
+
+def test_finddepo_looks_as_soon_as_its_tile_is_in_view(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Its tile 100,100 is blocked by a player: the bot is 3 tiles off.
+    sim = _depot_sim(monkeypatch, {(7, 3)})
+    sim.pos = Position(97, 100, 7)
+    sim.step()
+    assert sim.bot.depot_locker == (97, 98, 7)
+
+
+def test_walk_keys_turn_the_chat_off_instead_of_calling_the_tile_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#chat-toggle
+    import moonlight.cavebot.cavebot as cb
+
+    chat: list[tuple[bool, tuple[int, int]]] = [(True, (500, 600))]
+    monkeypatch.setattr(cb, "find_chat", lambda frame: chat[0])
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True, frames=lambda: frame,
+              clicker=SteppedClicker())  # fmt: skip
+    sim.bot.start()
+    for _ in range(_BLOCK_STEPS + 2):  # the keys typed into the chat: click it off
+        sim.step()
+    assert sim.clicker.clicks == [((500, 600), ClickSide.LEFT)]
+    assert pressed(sim)[-1] == "s"  # not walking around a free tile
+    chat[0] = (False, (500, 600))
+    for _ in range(_BLOCK_STEPS):  # the chat is off now: a real block
+        sim.step()
+    assert pressed(sim)[-1] in ("a", "d")
+
+
+def test_find_chat_tells_the_on_button_from_the_off_one(tmp_path: Path) -> None:
+    import cv2
+
+    from moonlight.cavebot.town import find_chat
+
+    rng = np.random.default_rng(0)
+    on = rng.integers(0, 255, (12, 46, 3), np.uint8)
+    off = on.copy()
+    off[:, 20:] = 255 - off[:, 20:]  # alike, but not the same
+    cv2.imwrite(str(tmp_path / "chat_on.png"), on)
+    cv2.imwrite(str(tmp_path / "chat_off.png"), off)
+    frame = np.zeros((100, 200, 3), np.uint8)
+    frame[40:52, 100:146] = off
+    assert find_chat(frame, anchors=tmp_path) == (False, (123, 46))
+    frame[40:52, 100:146] = on
+    assert find_chat(frame, anchors=tmp_path) == (True, (123, 46))
+    npc = on.copy()
+    npc[:, :20] = 255 - npc[:, :20]  # the coloured "Chat On" of an NPC talk
+    cv2.imwrite(str(tmp_path / "chat_npc.png"), npc)
+    frame[40:52, 100:146] = npc
+    assert find_chat(frame, anchors=tmp_path) == (True, (123, 46))
+    frame[80:92, 10:56] = npc  # the main chat bar's, below the NPC window's
+    assert find_chat(frame, anchors=tmp_path) == (True, (33, 86))
+    assert find_chat(np.zeros((100, 200, 3), np.uint8), anchors=tmp_path) is None
+
+
+def test_bank_talks_in_the_npcs_tab_with_the_chat_on_then_turns_it_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#bank-deposit
+    import moonlight.cavebot.cavebot as cb
+
+    clicker = SteppedClicker()
+    # The chat starts on; each click on its button flips it.
+    monkeypatch.setattr(cb, "find_chat", lambda frame: (len(clicker.clicks) % 2 == 0, (500, 600)))
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([Waypoint(100, 100, 7, "bank"), walk(110, 100)], Position(100, 100, 7),
+              frames=lambda: frame, clicker=clicker)  # fmt: skip
+    sim.bot.start()
+    run_until(sim, 10)  # 34 keys, the pauses (about 5 s) and 3 clicks
+    assert sim.bot.alarm is None
+    assert sim.route.current == 1
+    chat_clicks = [c for c in clicker.clicks if c[0] == (500, 600)]
+    assert len(chat_clicks) == 3  # off before Shift+F11, on, off at the end
+    keys = [line[2:] for line in sim.fake.sent_lines if line.startswith("K ")]
+    line = ["h", "i", "enter", *"deposit", "space", *"all", "enter", "y", "e", "s", "enter"]
+    assert keys == ["shift+f11", *line, *line]
+
+
+def test_trade_buys_each_row_and_buys_a_potion_again_when_its_total_did_not_go_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#trade-waypoint
+    import moonlight.cavebot.cavebot as cb
+
+    clicker = SteppedClicker()
+    # The chat starts on; each click on its button flips it.
+    monkeypatch.setattr(cb, "find_chat", lambda frame: (
+        [c[0] for c in clicker.clicks].count((500, 600)) % 2 == 0, (500, 600)))  # fmt: skip
+    looks = iter([None] * 3)  # the window shows on the 4th look
+    monkeypatch.setattr(cb, "find_picture", lambda frame, path: next(looks, (700, 400)))
+    mana = iter([10, 10, 10, 20])  # the first buy did not arrive
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([Waypoint(100, 100, 7, "trade"), walk(110, 100)], Position(100, 100, 7),
+              frames=lambda: frame, clicker=clicker,
+              potion_counts=lambda: {"health": 5, "mana": next(mana, 20)})  # fmt: skip
+    sim.route.buy = [("strong mana potion", 50), ("rope", 0)]
+    sim.bot.start()
+    run_until(sim, 40)
+    assert sim.bot.alarm is None and sim.route.current == 1
+    points = [c[0] for c in clicker.clicks]
+    assert points.count((817, 395)) == 1  # the Buy switch
+    assert points.count((816, 725)) == 3  # Buy: the potion twice, the rope once
+    keys = "".join(line[2:] for line in sim.fake.sent_lines if line.startswith("K "))
+    assert keys.count("strong") == 2 and keys.count("rope") == 1
+    a, b = clicker.to_wire((680, 683)), clicker.to_wire((680 + 46, 683))
+    drag = [f"A {a[0]} {a[1]}", "H L", f"A {b[0]} {b[1]}", "R L"]
+    mouse = [line for line in sim.fake.sent_lines if line[0] in "AHR"]
+    assert mouse == drag * 2  # the rope's 0 % leaves the slider at 1
+
+
+def test_bank_alarms_after_3_min_of_a_chat_that_will_not_turn_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#retry-alarm
+    import moonlight.cavebot.cavebot as cb
+
+    monkeypatch.setattr(cb, "find_chat", lambda frame: (False, (500, 600)))
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([Waypoint(100, 100, 7, "bank"), walk(110, 100)], Position(100, 100, 7),
+              frames=lambda: frame, clicker=SteppedClicker())  # fmt: skip
+    sim.bot.start()
+    run_until(sim, 170)
+    assert sim.bot.alarm is None
+    run_until(sim, 185)
+    assert sim.bot.alarm == "bank" and sim.route.current == 0 and sim.bot.is_active()

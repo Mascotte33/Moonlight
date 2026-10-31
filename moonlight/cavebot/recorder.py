@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from moonlight.cavebot.cavebot import (
@@ -23,7 +23,9 @@ from moonlight.cavebot.cavebot import (
 from moonlight.core.state import Position
 
 __all__ = [
+    "buy_text",
     "make_waypoint",
+    "parse_buy",
     "route_path",
     "StandTracker",
     "save_route",
@@ -73,7 +75,11 @@ def make_waypoint(action: str, label: str, live: Position) -> Waypoint:
         RouteError: For a missing label or an unknown position.
     """
     label = label.strip()
-    if action in NO_TILE:
+    if action == "deposit":  # where finddepo left the bot
+        return Waypoint(0, 0, 0, action)
+    if action in ("bank", "trade"):
+        label = ""
+    elif action in NO_TILE:
         if not label:
             raise RouteError(f"{action} needs a label")
         if bad := label_error(action, label):
@@ -142,6 +148,29 @@ def cursor_line(
     return f"Cursor {x} {y}"
 
 
+# doc: docs/prs/depot.md#trade-waypoint
+def parse_buy(text: str) -> list[tuple[str, int]]:
+    """The Refill page's buy list: one ``item, percent`` per line, blank lines skipped.
+
+    Raises:
+        RouteError: For a line without a 0..100 percent after its last comma.
+    """
+    rows = []
+    for n, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        item, _, percent = line.rpartition(",")
+        if not item.strip() or not percent.strip().isdigit() or int(percent) > 100:
+            raise RouteError(f"buy line {n}: write item, percent (0..100)")
+        rows.append((item.strip(), int(percent)))
+    return rows
+
+
+def buy_text(rows: Sequence[tuple[str, int]]) -> str:
+    """*rows* as the Refill page shows them (:func:`parse_buy` reads it back)."""
+    return "".join(f"{item}, {percent}\n" for item, percent in rows)
+
+
 def route_path(routes_dir: Path, name: str) -> Path:
     """The file of route *name* in *routes_dir*.
 
@@ -153,8 +182,10 @@ def route_path(routes_dir: Path, name: str) -> Path:
     return Path(routes_dir) / f"{name}.json"
 
 
-def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
-    """Write *waypoints* as route *name* in *routes_dir*; the file path.
+def save_route(
+    routes_dir: Path, name: str, waypoints: list[Waypoint], buy: Sequence[tuple[str, int]] = ()
+) -> Path:
+    """Write *waypoints* (and the *buy* list) as route *name* in *routes_dir*; the file path.
 
     Raises:
         RouteError: For a bad name or a route the bot would refuse.
@@ -170,6 +201,7 @@ def save_route(routes_dir: Path, name: str, waypoints: list[Waypoint]) -> Path:
             else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action}
             for wp in waypoints
         ],
+        "buy": [{"item": item, "percent": percent} for item, percent in buy],
     }
     RouteFileLoader.parse(raw)
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -119,9 +119,9 @@ def test_bot_runs_the_cavebot_tabs_waypoint_list(monkeypatch: pytest.MonkeyPatch
     saved = RouteFileLoader.load(save_route(routes, "r", [Waypoint(1, 1, 7)]))
     replace(BotConfig.default(), cavebot=CavebotConfig(route=saved)).save(picked_config())
     shown = [Waypoint(1, 1, 7), Waypoint(2, 2, 7)]
-    monkeypatch.setattr(loop_factory, "editor_route", lambda: ("r", shown))
+    monkeypatch.setattr(loop_factory, "editor_route", lambda: ("r", shown, []))
     cavebot = loop_factory.gui_bot_config().cavebot
     assert cavebot is not None and cavebot.route.waypoints == shown
-    monkeypatch.setattr(loop_factory, "editor_route", lambda: ("other", shown))
+    monkeypatch.setattr(loop_factory, "editor_route", lambda: ("other", shown, []))
     cavebot = loop_factory.gui_bot_config().cavebot
     assert cavebot is not None and cavebot.route.waypoints == [Waypoint(1, 1, 7)]
