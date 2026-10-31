@@ -103,6 +103,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Step waypoints (one walk key from a tile: holes, teleports, stairs) | ✅ | ✅ | ❌ |
 | Cavebot fixes (lone unreachable target pause, blocked path retry) | ✅ | ✅ | ❌ |
 | Potion count refill trigger (action bar digits) | ✅ | ✅ | ❌ |
+| Depot, trade, bank waypoints (finddepo, deposit, trade, bank) | ✅ | ✅ | 🟡 |
 | Arduino HID input | ✅ | ✅ | 🟡 |
 | Closed-loop clicking | ✅ | ✅ | 🟡 |
 | Kill switch + safety stops | ✅ | ✅ | ❌ |
@@ -178,13 +179,46 @@ picture (`data/templates/potions/<health|mana|spirit>/`), the Cap box by
 sends the bot to town. Each `check` logs one line per number that is on, such
 as `check: MP pots 230 >= 200 | continue`, and the Refill rows show the last
 read number and the picture it was read from.
-The town section uses `say` (presses Enter to open the chat box, types its label, Enter sends it; chat stays off for WASD; for
-NPC talk like `hi`, `deposit all`, `yes`), `key` (presses its label as a
-hotkey) and `drag` (label `x1 y1 x2 y2` in client pixels: drags the left
-button from one spot to the other, such as the loot backpack onto the depot
-stash). Edit route shows the cursor in client pixels for drag labels. End
-the town section with a `goto` back to the hunt. Drag needs the firmware's
-`H` / `R` mouse commands: reflash the Leonardo.
+The town section needs no typed screen coordinates. Its waypoints find the
+depot, the trade window and the chat button on screen when they run:
+
+- `finddepo`: record it where the depot lockers are in view. Once that tile
+  is in view, the bot finds every locker in the game view and walks to the
+  nearest free tile next to one (no creature or player on it). None free: it
+  waits on the waypoint's tile and looks again every few seconds; alarm after
+  5 min.
+- `deposit`: right-clicks the locker `finddepo` picked, finds the stash in
+  the locker window and drags the loot backpack onto it (every stashable item
+  goes in, the backpack stays). Pick the backpack once with **Pick backpack**
+  on Cavebot > Refill: drag a box around it on a grab of the client
+  (saved as `loot_backpack.png` in the profiles folder).
+- `trade`: record it on the tile right next to the NPC (NPCs answer within 3
+  sqm and wander). The bot stands on that tile, says `hi`, `trade`, waits up
+  to 3 s for the trade window (else talks again), clicks Buy and buys the
+  route's buy list in order: search the name, pick the first result, drag the
+  amount slider to the row's percent, Buy. A health or mana potion whose
+  action-bar total did not go up is bought again. Write the buy list on
+  Cavebot > Refill, one `item, percent` per line (`strong mana potion, 80`);
+  it is saved in the route file.
+- `bank`: also next to the NPC. Says `hi`, `deposit all`, `yes`, waits about
+  1 s and says the three again. The bot never withdraws.
+
+NPC lines are typed only in the NPCs tab: chat off, Shift+F11 (opens or
+selects the NPCs tab; works only with the chat off), chat on, the lines with
+a short random pause after each, chat off. Bind Shift+F11 to the NPCs tab in
+the client. The chat is always off before the bot walks, and a walk key that
+typed a letter instead of moving turns the chat off. Every step retries until
+it works; the alarm goes off after 3 min without success. Pictures (cut from
+the live client, in `data/templates/anchors/`): `depot_locker.png`,
+`depot_stash.png`, `npc_trade.png`, `chat_on.png`, `chat_off.png`,
+`chat_npc.png`.
+
+`say` (presses Enter to open the chat box, types its label, Enter sends it),
+`key` (presses its label as a hotkey) and `drag` (label `x1 y1 x2 y2` in
+client pixels: drags the left button from one spot to the other) still work
+for anything else. Edit route shows the cursor in client pixels for drag
+labels. End the town section with a `goto` back to the hunt. Drag, deposit
+and trade need the firmware's `H` / `R` mouse commands: reflash the Leonardo.
 
 A `wait` waypoint holds the route for its label in seconds. A `script`
 waypoint runs `scripts/<label>.py`; Cavebot > Scripts runs scripts on a timer
