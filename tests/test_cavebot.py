@@ -1416,6 +1416,7 @@ def test_find_chat_tells_the_on_button_from_the_off_one(tmp_path: Path) -> None:
     frame[80:92, 10:56] = npc  # the main chat bar's, below the NPC window's
     assert find_chat(frame, anchors=tmp_path) == (True, (33, 86))
     assert find_chat(np.zeros((100, 200, 3), np.uint8), anchors=tmp_path) is None
+    assert find_chat(np.zeros((1, 1, 3), np.uint8), anchors=tmp_path) is None  # smaller
 
 
 def test_bank_talks_in_the_npcs_tab_with_the_chat_on_then_turns_it_off(
