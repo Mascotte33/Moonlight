@@ -58,6 +58,7 @@ POLL_MS = 100
 RETRY_S = 5.0  # seconds between tries to start a bot that is down
 WATCH_S = 0.2  # seconds between position reads while the bot is stopped
 _VK_F12 = 0x7B
+logger = logging.getLogger("moonlight.gui.app")
 _f12_was_down = False
 
 
@@ -222,14 +223,13 @@ class GuiApp:
         self._size = (0, 0)
         self.root.bind("<Configure>", self._resized, add="+")
 
-        #: Stop or the kill switch hold the bot down until Start.
+        # doc: docs/prs/pause-stop.md#stop-reads-only
+        #: Stop or the kill switch: the bot only reads the screen until Start.
         self._held = not start_bot
         #: Pause: the bot runs without cavebot and targeting until Start.
         self._retry_at = 0.0
         self._start_error = ""
         f12_pressed()  # drop a press from before the app opened
-        if start_bot:
-            self.start_bot()
         self._closing = threading.Event()
         threading.Thread(target=self._watch_position, name="position", daemon=True).start()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -363,12 +363,17 @@ class GuiApp:
 
     def resume_bot(self) -> None:
         """Start button and F12: undo the last Pause or Stop."""
+        was_stopped = self._held
         self._held = self.ctx.paused = False
         ctrl = self.ctx.controller
         if ctrl is not None and self.ctx.bot_running():
             self.apply_config()  # waypoints edited while paused take effect
             ctrl = self.ctx.controller or ctrl
+            cavebot = ctrl.loop.all_modules.cavebot
+            if was_stopped and cavebot is not None:
+                cavebot.start(nearest=True)  # the character may have moved meanwhile
             ctrl.loop.paused = False
+            ctrl.loop.stopped = False
             self._update_topbar()
         else:
             self.start_bot(resume=ctrl is not None)
@@ -404,8 +409,8 @@ class GuiApp:
         without ``perceive`` (which would stop on the first tick). It reads only
         ``moonlight_config.json``; a missing Arduino requires its explicit
         ``simulation`` flag. There is no silent :class:`FakeInput` fallback (F-13).
+        While Stop holds the bot, it starts stopped: reading only.
         """
-        self._held = False
         if self.ctx.bot_running():
             return
         self._retry_at = time.monotonic() + RETRY_S
@@ -413,29 +418,34 @@ class GuiApp:
             loop = build_gui_loop(hardware=self.hardware, state=self.state)
         except Exception as exc:  # noqa: BLE001 - report, don't crash the app
             if repr(exc) != self._start_error:  # the retry repeats it every few seconds
-                self.log.error(f"could not start bot: {exc!r}")
+                logger.error("could not start bot: %r", exc)  # the GUI log and bot.log
             self._start_error = repr(exc)
             return
         self._start_error = ""
         if resume and loop.modules.cavebot is not None:
             loop.modules.cavebot.start(nearest=True)
         loop.paused = self.ctx.paused  # a restart keeps a Pause
+        loop.stopped = self._held  # and a Stop
         self.ctx.controller = BotController(loop, log=self.log)
         self.ctx.controller.start()
         self._update_topbar()
 
     def stop_bot(self) -> None:
-        """Stop: the whole loop (healing, spells, alarms too) until Start."""
+        """Stop: nothing is pressed (healing, spells, alarms too) until Start.
+
+        The bot keeps reading the screen and the Arduino stays connected.
+        """
         self._held = True
         self.ctx.paused = False
         ctrl = self.ctx.controller
         if ctrl is not None:
-            ctrl.stop()
+            ctrl.loop.paused = False
+            ctrl.loop.stopped = True
         self._update_topbar()
 
     def _update_topbar(self) -> None:
         ctrl = self.ctx.controller
-        running = self.ctx.bot_running()
+        running = self.ctx.bot_running() and not self._held
         snap = self.ctx.state.snapshot()
         hp, mp, state = topbar_text(
             snap, running, ctrl.state if ctrl is not None else None, self.ctx.paused
@@ -481,11 +491,11 @@ class GuiApp:
                 pass
 
     def _keep_running(self) -> None:
-        """Start the bot again when it is down and nobody stopped it."""
+        """Start the bot when it is down: active, or reading only while Stop holds it."""
         ctrl = self.ctx.controller
         if ctrl is not None and ctrl.loop.kill_switch_active:
             self._held = True
-        if self._held or self.ctx.bot_running() or time.monotonic() < self._retry_at:
+        if self.ctx.bot_running() or time.monotonic() < self._retry_at:
             return
         self.start_bot(resume=ctrl is not None)
 
@@ -511,7 +521,8 @@ class GuiApp:
         """Window close: stop the bot and close hardware."""
         self._closing.set()
         try:
-            self.stop_bot()
+            if self.ctx.controller is not None:
+                self.ctx.controller.stop("window closed")
             self.hardware.disconnect()
         finally:
             self.root.destroy()

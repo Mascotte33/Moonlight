@@ -56,8 +56,11 @@ Safety invariants (re-checked on every tick, never just at startup):
 * **Pause on !screen_ok** -- ``screen_ok == False`` (or a tick that
   raised) pauses the loop: inputs are released once on entry, nothing is
   sent, and the loop resumes automatically when perception is healthy.
-  It stops for good after ``pause_timeout`` seconds paused or
+  After ``pause_timeout`` seconds paused it alerts once and keeps waiting
+  (the Arduino stays open); it stops for good after
   ``max_consecutive_errors`` consecutive tick exceptions (operator alert).
+* **Stopped** -- ``stopped`` (the GUI's Stop): the loop keeps reading the
+  screen, presses nothing and raises no alarm; keys are released once.
   The account switch (``rotate``) is no pause: it alone runs on the
   login screen, needing only ``client_focused``.
 * **No input unless focused** -- no action is sent unless the snapshot
@@ -136,6 +139,10 @@ TIMING_LOG_SECONDS = 10.0
 # Seconds a sent select click waits for the row's red outline before a
 # retry (clicking the attacked row again would stop the attack).
 _SELECT_OUTLINE_WAIT = 1.0
+# doc: docs/prs/pause-stop.md#stop-reads-only
+#: While stopped only every 4th tick reads the screen (5 a second at 20 Hz).
+STOPPED_READ_EVERY_TICKS = 4
+
 #: Seconds after the target died in which a loot ring counts: a ring comes
 #: from a kill; without one, hits flashing on the player look the same, and
 #: monsters walking out of view drop the battle list count every few seconds.
@@ -159,7 +166,7 @@ class LoopConfig:
     """Whether :meth:`GameLoop.run` starts the F12 polling thread."""
 
     pause_timeout: float = 30.0
-    """Seconds PAUSED (unfocused / bad frames) before the loop stops for good.
+    """Seconds PAUSED (unfocused / bad frames) before the one operator alert.
     30 s covers an alt-tab or a loading screen; longer means a human took over."""
 
     max_consecutive_errors: int = 5
@@ -297,6 +304,11 @@ class GameLoop:
         self._warned_no_chase_toggle_key = False
         # Pause bookkeeping (reset by every healthy, exception-free tick).
         self._paused_since: float | None = None
+        self._pause_alerted = False
+        # doc: docs/prs/pause-stop.md#stop-reads-only
+        #: The GUI's Stop: read the screen, press nothing, no alarms.
+        self.stopped = False
+        self._stop_released = False
         self._consecutive_errors = 0
         self._f12_monitor = f12_monitor
         if self._f12_monitor is None and cfg.enable_f12_monitor:
@@ -448,11 +460,21 @@ class GameLoop:
         if self.paused and cavebot is not None:
             cavebot.release_walk_key()  # Pause hides the cavebot, so let go here
 
+        if self.stopped and self._tick_count % STOPPED_READ_EVERY_TICKS:
+            self._record_tick_time(t0)
+            return  # stopped: the screen is read 5 times a second, enough to watch
+
         self._perceive_time = 0.0
         if self._perceive is not None:
             self._perceive()
             self._perceive_time = self._clock() - t0
         snap = self.state.snapshot()
+
+        if self.stopped:
+            self._stand_stopped()
+            self._record_tick_time(t0)
+            return
+        self._stop_released = False
 
         if self._switching_account(snap):
             self._record_tick_time(t0)
@@ -491,16 +513,34 @@ class GameLoop:
 
     # -- pause / release / alert ---------------------------------------------
 
+    # doc: docs/prs/pause-stop.md#stop-reads-only
+    def _stand_stopped(self) -> None:
+        """Stopped: let go of every key once, then only read the screen."""
+        self._task = "Stopped"
+        if not self._stop_released:
+            self._stop_released = True
+            cavebot = self.all_modules.cavebot
+            if cavebot is not None:
+                cavebot.release_walk_key()
+            self._release("stop")
+        self._paused_since = None
+
+    # doc: docs/prs/pause-stop.md#pause-keeps-running
     def _pause(self, reason: str) -> None:
-        """Enter (or stay in) PAUSED; stop for good after ``pause_timeout``."""
+        """Enter (or stay in) PAUSED; alert once after ``pause_timeout``, never stop."""
         now = self._clock()
         if self._state is not BotState.PAUSED:
             self._enter_state(BotState.PAUSED, reason)
             self._release("pause")
         if self._paused_since is None:
             self._paused_since = now
-        elif now - self._paused_since > self.config.pause_timeout:
-            self._fail_stop(f"paused for more than {self.config.pause_timeout:.0f}s ({reason})")
+            self._pause_alerted = False
+        elif now - self._paused_since > self.config.pause_timeout and not self._pause_alerted:
+            self._pause_alerted = True
+            self._alert(
+                f"paused for more than {self.config.pause_timeout:.0f}s ({reason}),"
+                " still waiting"
+            )
 
     def _on_tick_error(self) -> None:
         """A tick raised: release + pause; stop after too many in a row."""
@@ -703,18 +743,20 @@ class GameLoop:
         ring_may_show = self._clock() - self._target_died_at < RING_AFTER_KILL_SECONDS
         if looting is not None and ring_may_show and looting.ring_due():
             self._send(snap, looting.press_ring)  # then carry on with this tick
-        if self.modules.extras is not None and self._extra(snap):
-            return
+        # doc: docs/prs/pause-stop.md#action-order
+        # Healing, then the fight and loot, then scripts, extras and walking.
         match self._state:
             case BotState.ATTACK:
                 self._act_attack(snap)
             case BotState.LOOT:
                 self._act_loot(snap)
-            case BotState.MOVE:
-                if not self._act_script(snap):
+            case BotState.MOVE | BotState.IDLE:
+                if self._act_script(snap):
+                    return
+                if self.modules.extras is not None and self._extra(snap):
+                    return
+                if self._state is BotState.MOVE:
                     self._act_move(snap)
-            case BotState.IDLE:
-                self._act_script(snap)
 
     def _send(
         self,

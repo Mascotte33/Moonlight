@@ -349,13 +349,20 @@ def test_14_built_kill_while_unfocused_releases() -> None:
 
 
 @needs_golden
-def test_15_built_screen_not_ok_pauses_then_stop_releases() -> None:
+def test_15_built_screen_not_ok_pauses_alerts_then_stop_releases() -> None:
     b = Built()
     b.frame_error = True  # perception fails -> screen_ok False
-    b.gl.run()  # pauses, then stops after pause_timeout
-    assert b.gl.stop_requested
+    sleep = b.gl._sleep_fn
+
+    def sleep_then_stop(seconds: float) -> None:
+        sleep(seconds)
+        if b.clock() > 3 * 30.0:  # well past the 30 s pause timeout
+            b.gl.stop("operator")
+
+    b.gl._sleep_fn = sleep_then_stop
+    b.gl.run()  # pauses, alerts once, keeps waiting until stopped
+    assert len(b.alerts) == 1 and "still waiting" in b.alerts[0]
     assert set(b.inp.sent_lines) == {"X"} and len(b.inp.sent_lines) >= 2
-    assert len(b.alerts) == 1
 
 
 @needs_golden

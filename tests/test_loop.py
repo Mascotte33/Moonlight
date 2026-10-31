@@ -172,18 +172,51 @@ class TestGameLoopSafety:
         assert gl.get_stats()["state"] == BotState.ATTACK.value
         assert inp.sent_lines == ["X"]  # the client attacks the selection: no key
 
-    def test_pause_stops_after_timeout(self) -> None:
+    # doc: docs/prs/pause-stop.md#pause-keeps-running
+    def test_a_long_pause_alerts_once_and_keeps_waiting(self) -> None:
         ws = make_state(screen_ok=False)
         alerts: list[str] = []
         gl, clock = make_loop(ws, FakeInput(), alert=alerts.append)
         gl.tick()
         clock.advance(LoopConfig().pause_timeout - 1.0)
         gl.tick()
-        assert not gl.stop_requested
-        clock.advance(2.0)
+        assert alerts == []
+        for _ in range(3):
+            clock.advance(2.0)
+            gl.tick()
+        assert not gl.stop_requested  # the loop (and the Arduino) stays up
+        assert len(alerts) == 1 and "still waiting" in alerts[0]
+        with ws.lock():
+            ws.screen_ok = True
         gl.tick()
-        assert gl.stop_requested
-        assert len(alerts) == 1 and "paused" in alerts[0]
+        assert gl.current_state is not BotState.PAUSED
+        with ws.lock():
+            ws.screen_ok = False
+        gl.tick()
+        clock.advance(LoopConfig().pause_timeout + 1.0)
+        gl.tick()
+        assert len(alerts) == 2  # a new long pause alerts again
+
+    # doc: docs/prs/pause-stop.md#stop-reads-only
+    def test_stopped_reads_but_presses_nothing(self) -> None:
+        ws = make_state(hp=10.0, screen_ok=False)
+        inp = FakeInput()
+        alerts: list[str] = []
+        seen: list[int] = []
+        gl, clock = make_loop(ws, inp, alert=alerts.append, perceive=lambda: seen.append(1))
+        gl.stopped = True
+        for _ in range(int(LoopConfig().pause_timeout) * 2):
+            gl.tick()
+            clock.advance(1.0)
+        assert inp.sent_lines == ["X"]  # released once, no heal at 10 % HP
+        assert len(seen) == int(LoopConfig().pause_timeout) * 2 // 4  # read every 4th tick
+        assert alerts == [] and not gl.stop_requested
+        assert gl.get_stats()["current_task"] == "Stopped"
+        gl.stopped = False
+        with ws.lock():
+            ws.screen_ok = True
+        gl.tick()
+        assert "K F2" in inp.sent_lines  # Start: healing again
 
     def test_run_tick_exception_releases_pauses_then_stops(self) -> None:
         ws = make_state(hp=100.0)
@@ -773,15 +806,21 @@ class TestChaseMode:
 
 
 class TestGameLoopRun:
-    def test_run_pauses_then_stops_when_screen_not_ok(self) -> None:
+    def test_run_stays_paused_while_screen_not_ok(self) -> None:
         ws = make_state(screen_ok=False)
         inp = FakeInput()
         gl, clock = make_loop(ws, inp)
+        ticks_wanted = int(LoopConfig().pause_timeout * 20) + 40
+
+        def sleep(seconds: float) -> None:
+            clock.sleep(seconds)
+            if cast(int, gl.get_stats()["tick_count"]) >= ticks_wanted:
+                gl.stop("test over")
+
+        gl._sleep_fn = sleep
         gl.run()
-        assert gl.stop_requested
+        assert cast(int, gl.get_stats()["tick_count"]) == ticks_wanted  # never stopped itself
         assert gl.current_state is BotState.PAUSED
-        # 20 Hz for pause_timeout seconds, then the failure stop.
-        assert cast(int, gl.get_stats()["tick_count"]) > LoopConfig().pause_timeout * 20
         assert set(inp.sent_lines) == {"X"}  # releases only
 
     def test_run_returns_immediately_when_pre_stopped(self) -> None:
@@ -963,6 +1002,31 @@ class TestExtras:
         clock.advance(1.0)
         gl.tick()
         assert gl.current_state is BotState.MOVE and inp.sent_lines == ["K F9", "K F8"]
+
+    # doc: docs/prs/pause-stop.md#action-order
+    def test_extras_wait_for_the_fight_and_for_a_script(self, tmp_path: Path) -> None:
+        clock = FakeClock()
+        extras = self.extras(clock, ExtrasConfig(food=True, food_hotkey="F9"), "hungry")
+        (tmp_path / "s.py").write_text("def run(bot):\n    yield bot.press('f7')\n")
+        scripts = ScriptRunner(tmp_path, timers=[("s", 60.0)], clock=clock)
+        ws = make_state()
+        wolf = Monster("Wolf", 50.0)
+        with ws.lock():
+            ws.monsters = [wolf]
+            ws.selected_target = wolf
+        inp = FakeInput()
+        gl, _ = make_loop(
+            ws, inp, clock=clock, modules=DecisionModules(extras=extras, scripts=scripts)
+        )
+        gl.tick()
+        assert gl.current_state is BotState.ATTACK and inp.sent_lines == []  # no food mid-fight
+        with ws.lock():
+            ws.monsters = []
+            ws.selected_target = None
+        for _ in range(4):
+            clock.advance(0.2)
+            gl.tick()
+        assert inp.sent_lines == ["K f7", "K F9"]  # the script first, then the food
 
     def test_a_player_alarms_only_after_staying_and_sends_to_refill(self) -> None:
         clock = FakeClock()

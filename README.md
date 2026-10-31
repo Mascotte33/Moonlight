@@ -322,6 +322,18 @@ python -m moonlight
 
 The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start` starts it right away.
 
+- **Start** runs everything. Each tick the bot does one thing, in this order:
+  healing, the fight and loot, scripts, extras (food, haste, ring...),
+  walking. Extras wait until the fight and loot are done.
+- **Pause** stops the cavebot, targeting and scripts; healing, extras and
+  alarms go on.
+- **Stop** presses nothing (no healing either) and raises no alarm, but the
+  bot keeps reading the screen (HP, MP, position on the Dashboard, 5 times a
+  second) and the Arduino stays connected. Start goes on from the nearest
+  waypoint.
+- A pause of its own (Tibia covered or not in front) never shuts the bot down:
+  after 30 s it alerts once and resumes when Tibia is readable again.
+
 "Start Moonlight GUI.bat" opens the GUI without a console window. The bot's
 log (state changes, scripts, warnings, errors) is on the Diagnostics tab; the
 Dashboard shows only its warnings and errors, newest first. `logs/bot.log` has
@@ -348,7 +360,8 @@ in the GUI's Healing tab, or in the `healing` section of your profile config:
 - **Keep other windows off the HP bar.** The bot reads the screen, so a window
   over the bar would read as low HP. When the green fill does not start at the
   bar's left edge, the bot pauses (`perception failed: HP bar covered ...` in
-  `logs/bot.log`) and resumes once the bar is clear; after 30 s it stops.
+  `logs/bot.log`) and resumes once the bar is clear; after 30 s it alerts
+  once and keeps waiting.
 - Targeting reads the chase mode from the `chase_buttons` region (auto-find in the Calibration tab).
 
 Default rules: F2 spell below 50% HP, F1 spell below 85% HP, F3 potion below

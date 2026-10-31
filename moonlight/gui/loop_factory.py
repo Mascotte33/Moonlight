@@ -272,6 +272,10 @@ def make_backend(config: BotConfig, hardware: HardwareController) -> InputBacken
 
 LAYOUT_CHANGED = "Layout changed, recalibrate"
 LANDMARK_SLACK = 2  # px the Stop button may drift before it counts as moved
+# doc: docs/prs/pause-stop.md#size-slack
+#: px the client may grow or shrink: a snapped window flips between 1008 and
+#: 1009 px high (2026-11-01), which refused every start and left the Arduino off.
+WINDOW_SLACK = 2
 
 
 # doc: docs/prs/gui-calibration.md#layout-check
@@ -292,8 +296,10 @@ def check_layout(
         return
     rgb = frame()
     h, w = rgb.shape[:2]
-    if profile.window_size is not None and tuple(profile.window_size) != (w, h):
-        raise ValueError(LAYOUT_CHANGED)
+    if profile.window_size is not None:
+        cw, ch = profile.window_size
+        if max(abs(cw - w), abs(ch - h)) > WINDOW_SLACK:
+            raise ValueError(LAYOUT_CHANGED)
     if stop_check:
         at = autofind.find_stop_button(rgb[..., ::-1], profile.ui_scale)
         lx, ly = profile.landmark
