@@ -315,3 +315,10 @@ class TestGameArea:
         monkeypatch.setattr(ctypes, "windll", SimpleNamespace(user32=user32), raising=False)
 
         assert capture._window_rect(1) == (108, 81, 800, 600)
+
+
+# doc: docs/prs/scripts-page.md#test-now
+def test_focus_window_is_false_when_the_window_is_not_there() -> None:
+    from moonlight.perception.capture import focus_window
+
+    assert focus_window("no such window 4c1d") is False

@@ -21,6 +21,7 @@ from moonlight.core.config import BotConfig, ConfigError
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.tab_base import Label, Tab, row_button, row_entry, section
+from moonlight.perception.capture import focus_window
 from moonlight.scripts.library import (
     delete_script,
     new_script,
@@ -40,6 +41,9 @@ if TYPE_CHECKING:  # pragma: no cover
     from moonlight.core.state import WorldState
 
 __all__ = ["ScriptsTab", "with_scripts"]
+
+#: Test now waits this long after bringing the client to the front.
+FOCUS_WAIT_MS = 300
 
 
 def with_scripts(cfg: BotConfig, scripts: ScriptsConfig) -> BotConfig:
@@ -325,8 +329,11 @@ class ScriptsTab(Tab):
             self.lbl_msg.configure(text=f"{name} is broken: fix it and Save first")
         elif runner is None or not self.ctx.bot_running():
             self.lbl_msg.configure(text="Test now works while the bot runs or is paused")
+        elif not focus_window(load_real_config().window_title):
+            self.lbl_msg.configure(text="Tibia window not found")
         else:
-            runner.test_request = name
+            # The keys go to the window in front: start once the client got there.
+            self.txt_code.after(FOCUS_WAIT_MS, lambda: setattr(runner, "test_request", name))
             self.lbl_msg.configure(text=f"Testing {name}")
 
     def on_poll(self, snap: WorldState) -> None:

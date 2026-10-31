@@ -231,8 +231,8 @@ checks the code: a broken script is saved but shown red, can't be ticked or
 tested, and its waypoints are skipped (red on the route, a warning in
 `logs/bot.log`). A script that fails while running is unticked and its error
 shown under the code; the bot goes on. Rename and Delete update (or remove)
-the waypoints that use the script. Test now runs the selected script once
-while the bot runs or is paused. Pause holds the ticked scripts. The files
+the waypoints that use the script. Test now brings the Tibia window to the
+front, then runs the selected script once (while the bot runs or is paused). Pause holds the ticked scripts. The files
 are kept in `scripts/`.
 
 A script is a Python generator `run(bot)` that yields commands one at a time,
