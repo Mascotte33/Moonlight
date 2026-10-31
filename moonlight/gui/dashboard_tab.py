@@ -11,7 +11,7 @@ import customtkinter as ctk
 
 from moonlight.core.state import WorldState
 from moonlight.gui import theme
-from moonlight.gui.tab_base import Tab, dot_color, health, section, set_label, stat_num
+from moonlight.gui.tab_base import Label, Tab, dot_color, health, section, set_label, stat_num
 
 __all__ = ["CARDS", "DashboardTab", "card_values", "uptime_text"]
 
@@ -47,7 +47,7 @@ class DashboardTab(Tab):
 
         cards = ctk.CTkFrame(parent, fg_color="transparent")
         cards.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
-        self.lbl_task = ctk.CTkLabel(
+        self.lbl_task = Label(
             cards,
             text="Current task: Idle",
             anchor="w",
@@ -55,12 +55,12 @@ class DashboardTab(Tab):
             text_color=theme.TEXT,
         )
         self.lbl_task.grid(row=0, column=0, columnspan=len(CARDS), sticky="ew", pady=(0, theme.PAD))
-        self._cards: dict[str, ctk.CTkLabel] = {}
+        self._cards: dict[str, Label] = {}
         for col, name in enumerate(CARDS):
             cards.grid_columnconfigure(col, weight=1, uniform="card")
             box = section(cards, name)
             box.grid(row=1, column=col, sticky="ew", padx=(0 if col == 0 else theme.UNIT, 0))
-            value = ctk.CTkLabel(
+            value = Label(
                 box,
                 text="—",
                 anchor="w",
@@ -74,9 +74,9 @@ class DashboardTab(Tab):
         box.grid(row=2, column=0, columnspan=len(CARDS), sticky="ew", pady=(theme.UNIT, 0))
         dots = ctk.CTkFrame(box, fg_color="transparent")
         dots.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
-        self._dots: dict[str, ctk.CTkLabel] = {}
+        self._dots: dict[str, Label] = {}
         for name, _ in health(WorldState(), False, False):
-            self._dots[name] = ctk.CTkLabel(
+            self._dots[name] = Label(
                 dots, text=f"● {name}", text_color=theme.TEXT_MUTED
             )
             self._dots[name].pack(side="left", padx=(0, theme.PAD))

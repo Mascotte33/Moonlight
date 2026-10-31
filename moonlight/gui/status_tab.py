@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import customtkinter as ctk
 
 from moonlight.gui import sysinfo, theme
-from moonlight.gui.tab_base import Tab, section, set_bar, set_label, stat_label, stat_num
+from moonlight.gui.tab_base import Label, Tab, section, set_bar, set_label, stat_label, stat_num
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.core.state import WorldState
@@ -47,12 +47,12 @@ class StatusTab(Tab):
         self.hp_bar = ctk.CTkProgressBar(vit, progress_color=theme.LIFE)
         self.hp_bar.set(0)
         self.hp_bar.pack(fill="x", padx=10, pady=(6, 0))
-        self.lbl_hp = ctk.CTkLabel(vit, text="HP: --")
+        self.lbl_hp = Label(vit, text="HP: --")
         self.lbl_hp.pack(anchor="w", padx=10, pady=(0, 6))
         self.mp_bar = ctk.CTkProgressBar(vit, progress_color=theme.MANA)
         self.mp_bar.set(0)
         self.mp_bar.pack(fill="x", padx=10, pady=(0, 0))
-        self.lbl_mp = ctk.CTkLabel(vit, text="MP: --")
+        self.lbl_mp = Label(vit, text="MP: --")
         self.lbl_mp.pack(anchor="w", padx=10, pady=(0, 6))
         self.lbl_screen = stat_label(vit, "Screen / focus")
         self.lbl_screen.pack(anchor="w", padx=10, pady=(0, 6))
@@ -74,7 +74,7 @@ class StatusTab(Tab):
         pos_grid.grid_columnconfigure((0, 1), weight=1)
         row = ctk.CTkFrame(pos_grid, fg_color="transparent")
         row.grid(row=0, column=0, sticky="ew", padx=10, pady=(8, 2))
-        self.lbl_position = ctk.CTkLabel(
+        self.lbl_position = Label(
             row, text="--", anchor="w", font=ctk.CTkFont(family=theme.MONO, size=theme.SIZE_HEADING)
         )
         self.lbl_position.pack(side="left")
@@ -86,7 +86,7 @@ class StatusTab(Tab):
             fg_color=theme.RAISED,
             hover_color=theme.HOVER,
         ).pack(side="left", padx=theme.UNIT)
-        self.lbl_age = ctk.CTkLabel(row, text="never", anchor="w", text_color=theme.TEXT_MUTED)
+        self.lbl_age = Label(row, text="never", anchor="w", text_color=theme.TEXT_MUTED)
         self.lbl_age.pack(side="left", padx=theme.UNIT)
         self._parent = parent
         self.lbl_capacity = stat_label(pos_grid, "Capacity")

@@ -32,7 +32,7 @@ from moonlight.calibration.calibration_steps import AREAS, CalibrationSteps
 from moonlight.calibration.profile import ProfileManager
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
-from moonlight.gui.tab_base import Tab
+from moonlight.gui.tab_base import Label, Tab
 from moonlight.perception.capture import CaptureError, ScreenCapture
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -231,7 +231,7 @@ class CalibrationTab(Tab):
         )
         self.btn_start.pack(side="left", padx=(0, theme.GAP))
         ctk.CTkButton(row, text="Load screenshot", command=self.load).pack(side="left")
-        ctk.CTkLabel(row, text="Calibration").pack(side="left", padx=(theme.PAD, theme.UNIT))
+        Label(row, text="Calibration").pack(side="left", padx=(theme.PAD, theme.UNIT))
         self.menu_profile = ctk.CTkOptionMenu(
             row,
             values=[""],
@@ -253,14 +253,14 @@ class CalibrationTab(Tab):
             hover_color=theme.BLOOD_HOVER,
             text_color=theme.NIGHT,
         ).pack(side="left", padx=(theme.UNIT, 0))
-        self.lbl_status = ctk.CTkLabel(self.idle, text="", anchor="w")
+        self.lbl_status = Label(self.idle, text="", anchor="w")
         self.lbl_status.pack(fill="x", padx=theme.PAD)
         anchors = load_real_config().templates_dir / "anchors"
         if not has_reference_images(anchors):
-            ctk.CTkLabel(self.idle, text=NO_REFERENCES, anchor="w", text_color=theme.AMBER).pack(
+            Label(self.idle, text=NO_REFERENCES, anchor="w", text_color=theme.AMBER).pack(
                 fill="x", padx=theme.PAD, pady=(theme.UNIT, 0)
             )
-        self.lbl_summary = ctk.CTkLabel(
+        self.lbl_summary = Label(
             self.idle,
             text="",
             anchor="w",
@@ -278,7 +278,7 @@ class CalibrationTab(Tab):
         self.work.grid(row=0, column=0, sticky="nsew")
         bar = ctk.CTkFrame(self.work, fg_color=theme.RAISED)
         bar.pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0))
-        self.lbl_step = ctk.CTkLabel(
+        self.lbl_step = Label(
             bar,
             text="",
             anchor="w",
@@ -286,7 +286,7 @@ class CalibrationTab(Tab):
             font=ctk.CTkFont(size=theme.SIZE_HEADING, weight="bold"),
         )
         self.lbl_step.pack(fill="x", padx=theme.PAD, pady=(theme.GAP, 0))
-        self.lbl_help = ctk.CTkLabel(
+        self.lbl_help = Label(
             bar,
             text="",
             anchor="w",
@@ -296,7 +296,7 @@ class CalibrationTab(Tab):
             wraplength=900,
         )
         self.lbl_help.pack(fill="x", padx=theme.PAD)
-        ctk.CTkLabel(
+        Label(
             bar,
             text=KEY_HELP,
             anchor="w",
@@ -304,7 +304,7 @@ class CalibrationTab(Tab):
             font=ctk.CTkFont(size=theme.SIZE_BODY),
         ).pack(fill="x", padx=theme.PAD, pady=(0, theme.GAP))
         self.review_bar = ctk.CTkFrame(self.work, fg_color="transparent")
-        ctk.CTkLabel(self.review_bar, text="UI scale").pack(side="left", padx=(0, theme.UNIT))
+        Label(self.review_bar, text="UI scale").pack(side="left", padx=(0, theme.UNIT))
         self.ent_scale = ctk.CTkEntry(self.review_bar, width=64, fg_color=theme.NIGHT)
         self.ent_scale.pack(side="left", padx=(0, theme.GAP))
         self.btn_save = ctk.CTkButton(

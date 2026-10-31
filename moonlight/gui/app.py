@@ -44,7 +44,7 @@ from moonlight.gui.state_bridge import (
 )
 from moonlight.gui.status_tab import StatusTab
 from moonlight.gui.sysinfo import cpu_percent, cpu_times, memory_text
-from moonlight.gui.tab_base import Tab, dot_color, health, set_bar, set_label
+from moonlight.gui.tab_base import Label, Tab, dot_color, health, set_bar, set_label
 from moonlight.hardware.tab import HardwareTab
 from moonlight.healing.tab import HealingTab
 from moonlight.targeting.tab import TargetingTab
@@ -152,7 +152,7 @@ class GuiApp:
         ctk.CTkFrame(body, width=1, fg_color=theme.RAISED, corner_radius=0).pack(
             side="left", fill="y"
         )
-        ctk.CTkLabel(
+        Label(
             sidebar,
             text="MOONLIGHT",
             font=ctk.CTkFont(size=theme.SIZE_HEADING, weight="bold"),
@@ -235,7 +235,7 @@ class GuiApp:
         pad = theme.PAD
 
         def vital(name: str, color: str) -> tuple[ctk.CTkProgressBar, ctk.CTkLabel]:
-            ctk.CTkLabel(bar, text=name, font=mono).pack(
+            Label(bar, text=name, font=mono).pack(
                 side="left", padx=(pad, theme.UNIT), pady=pad
             )
             progress = ctk.CTkProgressBar(bar, width=120, progress_color=color)
@@ -269,9 +269,9 @@ class GuiApp:
             self._btn_colors[btn] = (color, hover)
             made.append(btn)
         self.btn_stop, self.btn_pause, self.btn_start = made
-        self.lbl_state = ctk.CTkLabel(bar, text="Stopped", font=mono)
+        self.lbl_state = Label(bar, text="Stopped", font=mono)
         self.lbl_state.pack(side="right", padx=(theme.UNIT, pad))
-        self.lbl_dot = ctk.CTkLabel(bar, text="●", text_color=theme.TEXT_MUTED)
+        self.lbl_dot = Label(bar, text="●", text_color=theme.TEXT_MUTED)
         self.lbl_dot.pack(side="right")
 
     def _build_bottombar(self) -> None:
@@ -281,15 +281,15 @@ class GuiApp:
             side="bottom", fill="x"
         )
         mono = ctk.CTkFont(family=theme.MONO, size=theme.SIZE_TITLE)
-        self._dots: dict[str, ctk.CTkLabel] = {}
+        self._dots: dict[str, Label] = {}
         for name, _ in health(WorldState(), False, False):
-            self._dots[name] = ctk.CTkLabel(
+            self._dots[name] = Label(
                 bar, text=f"● {name}", font=mono, text_color=theme.TEXT_MUTED
             )
             self._dots[name].pack(side="left", padx=(theme.PAD, 0), pady=theme.UNIT)
-        self.lbl_mem = ctk.CTkLabel(bar, text="MEM —", font=mono)
+        self.lbl_mem = Label(bar, text="MEM —", font=mono)
         self.lbl_mem.pack(side="right", padx=theme.PAD)
-        self.lbl_cpu = ctk.CTkLabel(bar, text="CPU 0%", font=mono)
+        self.lbl_cpu = Label(bar, text="CPU 0%", font=mono)
         self.lbl_cpu.pack(side="right")
         self._res_t = time.monotonic()
         self._cpu = cpu_times()

@@ -49,7 +49,7 @@ from moonlight.core.state import Position, WorldState
 from moonlight.gui import loop_factory, theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.settings_tab import plain_reason
-from moonlight.gui.tab_base import Option, Tab, read_option, section, write_option
+from moonlight.gui.tab_base import Label, Option, Tab, read_option, section, write_option
 from moonlight.refill.refill import LAST_READ
 from moonlight.scripts.scripts import ScriptRunner
 
@@ -274,7 +274,7 @@ class CavebotTab(Tab):
             root.grid_columnconfigure(col, weight=weight, uniform="cards")
         root.grid_rowconfigure(0, weight=1)
         self._root, self._locked = root, False
-        self._last_read: dict[str, tuple[ctk.CTkLabel, ctk.CTkLabel]] = {}
+        self._last_read: dict[str, tuple[Label, ctk.CTkLabel]] = {}
         self._shown_read: dict[str, object] = {}
 
         box = section(root, "Waypoints")
@@ -289,14 +289,14 @@ class CavebotTab(Tab):
             button.pack(side="right", padx=(theme.UNIT, 0))
             if text == "Save":
                 self.btn_save = button
-        self.lbl_pos = ctk.CTkLabel(
+        self.lbl_pos = Label(
             box,
             text=position_line(Position(0, 0, 0)),
             anchor="w",
             font=ctk.CTkFont(family=theme.MONO, size=theme.SIZE_HEADING),
         )
         self.lbl_pos.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        self.lbl_hint = ctk.CTkLabel(
+        self.lbl_hint = Label(
             box, text="", anchor="w", justify="left", wraplength=420, text_color=theme.TEXT_DIM
         )
         self.lbl_hint.pack(fill="x", padx=theme.PAD)
@@ -314,9 +314,9 @@ class CavebotTab(Tab):
             button = _button(moves, arrow, partial(self._move, by))
             button.configure(width=32)
             button.pack(side="left", padx=(0, theme.UNIT))
-        self.lbl_current = ctk.CTkLabel(box, text="Not running", anchor="w")
+        self.lbl_current = Label(box, text="Not running", anchor="w")
         self.lbl_current.pack(fill="x", padx=theme.PAD)
-        self.lbl_msg = ctk.CTkLabel(box, text="", anchor="w", text_color=theme.AMBER)
+        self.lbl_msg = Label(box, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
         side = section(root, "Refill / Loot / Scripts / Edit route")
@@ -340,7 +340,7 @@ class CavebotTab(Tab):
         switch.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         switch.set("Refill")
         refill = pages["Refill"]
-        ctk.CTkLabel(
+        Label(
             refill,
             text=(
                 "Add 'check' with label 'town' on the tile where the bot should decide."
@@ -357,11 +357,11 @@ class CavebotTab(Tab):
         # doc: docs/prs/potion-count.md#last-read
         rows = [w for w in refill.winfo_children() if isinstance(w, ctk.CTkFrame)]
         for option, row in zip(REFILL_OPTIONS, rows, strict=True):
-            text = ctk.CTkLabel(row, text="last read: —", text_color=theme.TEXT_MUTED)
-            text.pack(side="left", padx=(theme.UNIT, 0))
+            last_read_text = Label(row, text="last read: —", text_color=theme.TEXT_MUTED)
+            last_read_text.pack(side="left", padx=(theme.UNIT, 0))
             picture = ctk.CTkLabel(row, text="")
             picture.pack(side="left", padx=(theme.UNIT, 0))
-            self._last_read[option.field] = (text, picture)
+            self._last_read[option.field] = (last_read_text, picture)
         _button(refill, "Refill now", self._refill_now).pack(
             anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0)
         )
@@ -372,7 +372,7 @@ class CavebotTab(Tab):
         self.lbl_backpack = ctk.CTkLabel(pick, text="")
         self.lbl_backpack.pack(side="left", padx=(theme.UNIT, 0))
         # doc: docs/prs/depot.md#trade-waypoint
-        ctk.CTkLabel(
+        Label(
             refill,
             text="Buy at a 'trade' waypoint, one per line: item, percent of the amount slider."
             " Saved with the route (Save in Edit route).",
@@ -384,11 +384,11 @@ class CavebotTab(Tab):
         self.txt_buy = ctk.CTkTextbox(refill, height=90, wrap="none")
         self.txt_buy.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.txt_buy.bind("<KeyRelease>", lambda _event: self._buy_edited())
-        self.lbl_buy = ctk.CTkLabel(refill, text="", anchor="w", text_color=theme.TEXT_DIM)
+        self.lbl_buy = Label(refill, text="", anchor="w", text_color=theme.TEXT_DIM)
         self.lbl_buy.pack(fill="x", padx=theme.PAD)
         self.build_options(pages["Loot"], LOOT_OPTIONS)
         # doc: docs/prs/scripts.md#script-api
-        ctk.CTkLabel(
+        Label(
             pages["Scripts"],
             text=(
                 "A script is a .py file in scripts/ with def run(bot). A 'script' waypoint"
@@ -409,7 +409,7 @@ class CavebotTab(Tab):
         add.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.ent_label = _entry(add, "label", 80)
         # doc: docs/prs/refill.md#drag-waypoint
-        self.lbl_cursor = ctk.CTkLabel(
+        self.lbl_cursor = Label(
             edit, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
         )
         self.lbl_cursor.pack(fill="x", padx=theme.PAD)
@@ -440,10 +440,10 @@ class CavebotTab(Tab):
         self.btn_record = _button(rec, "Start recording", self._toggle)
         self.btn_record.configure(width=130)
         self.btn_record.pack(side="left")
-        ctk.CTkLabel(rec, text="walk every").pack(side="left", padx=(theme.UNIT, 0))
+        Label(rec, text="walk every").pack(side="left", padx=(theme.UNIT, 0))
         self.ent_tiles = _entry(rec, "", 36)
         self.ent_tiles.insert(0, "5")
-        ctk.CTkLabel(rec, text="tiles").pack(side="left", padx=theme.UNIT)
+        Label(rec, text="tiles").pack(side="left", padx=theme.UNIT)
 
         self._pos = Position(0, 0, 0)
         #: The last position read, shown while the reader is lost.

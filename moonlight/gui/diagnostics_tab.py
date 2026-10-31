@@ -27,7 +27,7 @@ from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_profile, load_real_config
 from moonlight.gui.settings_tab import plain_reason
 from moonlight.gui.state_bridge import LogFeed
-from moonlight.gui.tab_base import Tab, dot_color, health, section, stat_label, stat_num
+from moonlight.gui.tab_base import Label, Tab, dot_color, health, section, stat_label, stat_num
 from moonlight.perception.creatures import find_creatures
 
 __all__ = ["DiagnosticsTab", "recent_errors", "seen_view", "slots_of"]
@@ -120,9 +120,9 @@ class DiagnosticsTab(Tab):
 
         box = section(parent, "Health")
         box.grid(row=1, column=0, sticky="nsew", padx=10, pady=6)
-        self._dots: dict[str, ctk.CTkLabel] = {}
+        self._dots: dict[str, Label] = {}
         for name, _ in health(WorldState(), False, False):
-            self._dots[name] = ctk.CTkLabel(
+            self._dots[name] = Label(
                 box, text=f"● {name}", anchor="w", text_color=theme.TEXT_MUTED
             )
             self._dots[name].pack(fill="x", padx=theme.PAD)
@@ -130,7 +130,7 @@ class DiagnosticsTab(Tab):
 
         errs = section(parent, "Recent errors")
         errs.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 6))
-        self.lbl_errors = ctk.CTkLabel(
+        self.lbl_errors = Label(
             errs, text="No errors", anchor="w", justify="left", text_color=theme.BLOOD
         )
         self.lbl_errors.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
@@ -150,7 +150,7 @@ class DiagnosticsTab(Tab):
         ctk.CTkButton(sees, text="Show what the bot sees", command=self._show_sees).pack(
             anchor="w", padx=theme.PAD
         )
-        self.lbl_sees = ctk.CTkLabel(sees, text="", anchor="w", text_color=theme.AMBER)
+        self.lbl_sees = Label(sees, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_sees.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
         self._sees: ctk.CTkToplevel | None = None
         self._root = parent
