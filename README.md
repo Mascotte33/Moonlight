@@ -307,6 +307,11 @@ python -m moonlight
 
 The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start` starts it right away.
 
+The console window it starts from shows the log. The GUI turns off the
+console's click-to-select (QuickEdit) mode, because a selection there blocks
+the log writes and froze the bot. To copy text from the console, use its
+title-bar menu: Edit, then Mark.
+
 ## Healing and cures
 
 Healing presses your action-bar hotkeys. It never types spell names. Set it up
