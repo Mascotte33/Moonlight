@@ -53,6 +53,8 @@ __all__ = [
     "MP_FILL_COLOURS",
     "BAR_BACKGROUND_RGB",
     "DEFAULT_TOLERANCE",
+    "HP_BAR_EDGE_SLACK_COLUMNS",
+    "HpBarCoveredError",
     "VitalsReader",
     "bar_percent",
     "hp_fill_mask",
@@ -90,6 +92,19 @@ BAR_BACKGROUND_RGB: RGB = (95, 95, 95)
 
 #: Default per-channel colour tolerance to absorb compression artifacts.
 DEFAULT_TOLERANCE = 20
+
+#: Columns the HP fill may start right of the region's left edge, for a
+#: calibrated box a pixel or two wider than the bar.
+HP_BAR_EDGE_SLACK_COLUMNS = 2
+
+
+class HpBarCoveredError(ValueError):
+    """The HP fill is not one run from the left edge: a window covers the bar.
+
+    The HP bar always fills from the left, so a fill that starts further in
+    or has gaps means another window hides part of it, and the count would
+    be a made-up HP.
+    """
 
 
 def _clip_region(frame: np.ndarray, region: Rect) -> tuple[np.ndarray, int] | None:
@@ -234,13 +249,26 @@ class VitalsReader:
         Args:
             frame: RGB ``(H, W, 3)`` capture.
             region: HP region to use; defaults to the constructor region.
+
+        Raises:
+            HpBarCoveredError: When another window covers part of the bar.
         """
         region = region if region is not None else self._hp_region
         clipped = _clip_region(frame, region) if region is not None else None
         if clipped is None:
             return 0.0
         crop, width = clipped
-        return 100.0 * float(hp_fill_mask(crop).any(axis=0).sum()) / width
+        filled_columns = np.flatnonzero(hp_fill_mask(crop).any(axis=0))
+        # doc: docs/prs/covered-hp-bar.md#covered-bar
+        if filled_columns.size and (
+            filled_columns[0] > HP_BAR_EDGE_SLACK_COLUMNS
+            or filled_columns[-1] - filled_columns[0] + 1 != filled_columns.size
+        ):
+            raise HpBarCoveredError(
+                f"HP bar covered: fill at columns {filled_columns[0]}..{filled_columns[-1]}"
+                f" of {width} does not start at the left edge"
+            )
+        return 100.0 * float(filled_columns.size) / width
 
     def read_mp(
         self,

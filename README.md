@@ -323,6 +323,10 @@ in the GUI's Healing tab, or in the `healing` section of your profile config:
   (default `shift+F1` to `shift+F5`, all off). A cure never replaces a needed
   heal spell.
 - Healing needs the `status_icons` region in the Calibration tab for cures.
+- **Keep other windows off the HP bar.** The bot reads the screen, so a window
+  over the bar would read as low HP. When the green fill does not start at the
+  bar's left edge, the bot pauses (`perception failed: HP bar covered ...` in
+  `logs/bot.log`) and resumes once the bar is clear; after 30 s it stops.
 - Targeting reads the chase mode from the `chase_buttons` region (auto-find in the Calibration tab).
 
 Default rules: F2 spell below 50% HP, F1 spell below 85% HP, F3 potion below
