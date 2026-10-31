@@ -40,3 +40,47 @@ def test_no_console_changes_nothing() -> None:
     kernel32 = FakeKernel32(None)
     assert not disable_console_quick_edit(kernel32)
     assert kernel32.set_modes == []
+
+
+class BlockedConsole:
+    """A console in Select mode: a write waits until Esc (``esc.set()``)."""
+
+    def __init__(self) -> None:
+        import threading
+
+        self.esc = threading.Event()
+        self.text = ""
+
+    def write(self, text: str) -> None:
+        self.esc.wait()
+        self.text += text
+
+    def flush(self) -> None:
+        pass
+
+
+# doc: docs/prs/console-log.md#console-queue
+def test_a_blocked_console_never_holds_up_the_logging_thread() -> None:
+    import logging
+    import time
+
+    from moonlight.gui.app import console_log_handler
+
+    console = BlockedConsole()
+    logger = logging.getLogger("test.console_queue")
+    logger.propagate = False
+    handler = console_log_handler(console)
+    logger.addHandler(handler)
+    try:
+        started = time.monotonic()
+        for i in range(100):
+            logger.warning("line %d", i)
+        assert time.monotonic() - started < 0.5  # nothing waited for the console
+        console.esc.set()  # Esc: the lines come out, in order
+        deadline = time.monotonic() + 5
+        while "line 99" not in console.text and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert console.text.splitlines()[:2] == ["line 0", "line 1"]
+        assert "line 99" in console.text
+    finally:
+        logger.removeHandler(handler)

@@ -309,7 +309,9 @@ The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start`
 
 The console window it starts from shows the log. The GUI turns off the
 console's click-to-select (QuickEdit) mode, because a selection there blocks
-the log writes and froze the bot. To copy text from the console, use its
+the log writes and froze the bot. Log lines also go to the console through a
+background queue, so even a selection (Edit, then Mark) never stops the bot;
+the lines show once it ends (Esc). To copy text from the console, use its
 title-bar menu: Edit, then Mark.
 
 ## Healing and cures

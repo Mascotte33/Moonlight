@@ -15,6 +15,7 @@ import argparse
 import ctypes
 import logging
 import logging.handlers
+import queue
 import sys
 import threading
 import time
@@ -106,6 +107,23 @@ def disable_console_quick_edit(kernel32: Any = None) -> bool:
         return False
     quick_edit_off = (mode.value & ~_ENABLE_QUICK_EDIT_MODE) | _ENABLE_EXTENDED_FLAGS
     return bool(kernel32.SetConsoleMode(stdin, quick_edit_off))
+
+
+# doc: docs/prs/console-log.md#console-queue
+def console_log_handler(stream: Any = None) -> logging.Handler:
+    """A log handler that never waits for the console.
+
+    The lines go into a queue; a background thread writes them to *stream*
+    (default stderr). A console in Select mode (Ctrl+M, Edit > Mark) blocks
+    every write until Esc, and a direct write froze the GUI and the bot
+    (2026-10-31, even with QuickEdit off). Now only that thread waits; the
+    log file gets every line as before.
+    """
+    console = logging.StreamHandler(stream)
+    console.setFormatter(logging.Formatter("%(message)s"))
+    lines: queue.SimpleQueue[logging.LogRecord] = queue.SimpleQueue()
+    logging.handlers.QueueListener(lines, console).start()  # a daemon thread
+    return logging.handlers.QueueHandler(lines)
 
 
 SIDEBAR_WIDTH = 200
@@ -517,8 +535,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     disable_console_quick_edit()
-    logging.basicConfig(format="%(message)s")  # warnings, as before
-    logging.getLogger().handlers[0].setLevel(logging.INFO)  # debug goes to the file only
+    console = console_log_handler()  # warnings, as before
+    console.setLevel(logging.INFO)  # debug goes to the file only
+    logging.getLogger().addHandler(console)
     # Keys sent or dropped and why the cavebot attacks, for diagnosing in game.
     Path("logs").mkdir(exist_ok=True)
     # Rotating, so the log of the run before a restart is still there.
