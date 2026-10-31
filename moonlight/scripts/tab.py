@@ -33,6 +33,7 @@ from moonlight.scripts.scripts import (
     DEFAULT_PAUSE_MS,
     DEFAULT_SCRIPTS_DIR,
     MIN_PAUSE_MS,
+    TEST_WAIT,
     ScriptsConfig,
     script_error,
 )
@@ -41,9 +42,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from moonlight.core.state import WorldState
 
 __all__ = ["ScriptsTab", "with_scripts"]
-
-#: Test now waits this long after bringing the client to the front.
-FOCUS_WAIT_MS = 300
 
 
 def with_scripts(cfg: BotConfig, scripts: ScriptsConfig) -> BotConfig:
@@ -63,6 +61,8 @@ class ScriptsTab(Tab):
         self._dir: Path = DEFAULT_SCRIPTS_DIR
         self._selected: str | None = None
         self._dirty = False
+        #: The Test now script the message waits on, until it started or was missed.
+        self._test_shown: str | None = None
         #: Script name -> why it fails (Save's check, or an error while running).
         self._errors: dict[str, str] = {}
 
@@ -329,15 +329,32 @@ class ScriptsTab(Tab):
             self.lbl_msg.configure(text=f"{name} is broken: fix it and Save first")
         elif runner is None or not self.ctx.bot_running():
             self.lbl_msg.configure(text="Test now works while the bot runs or is paused")
-        elif not focus_window(load_real_config().window_title):
-            self.lbl_msg.configure(text="Tibia window not found")
         else:
-            # The keys go to the window in front: start once the client got there.
-            self.txt_code.after(FOCUS_WAIT_MS, lambda: setattr(runner, "test_request", name))
-            self.lbl_msg.configure(text=f"Testing {name}")
+            # The keys go to the window in front: the runner starts the test
+            # once the client is there and read (the GUI may cover its HP bar).
+            runner.request_test(name)
+            in_front = focus_window(load_real_config().window_title)
+            self.lbl_msg.configure(
+                text=f"Waiting for Tibia to test {name}..."
+                if in_front
+                else f"Click the Tibia window: {name} waits {TEST_WAIT:g} s for it"
+            )
+            self._test_shown = name
+
+    def _show_test(self, runner: Any) -> None:
+        """Test now: started, or why it did not run."""
+        runner.drop_late_test()
+        if runner.test_missed is not None:
+            self.lbl_msg.configure(text=runner.test_missed)
+            runner.test_missed = self._test_shown = None
+        elif self._test_shown is not None and runner.test_request is None:
+            self.lbl_msg.configure(text=f"Ran {self._test_shown}")
+            self._test_shown = None
 
     def on_poll(self, snap: WorldState) -> None:
         runner = self._runner()
+        if runner is not None:
+            self._show_test(runner)
         failed = getattr(runner, "failed", None)
         if not failed:
             return

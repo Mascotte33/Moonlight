@@ -155,7 +155,7 @@ def test_test_now_starts_before_the_ticked_scripts(tmp_path: Path) -> None:
     src = "def run(bot):\n    yield bot.press('f5')\n"
     r, inp = runner(tmp_path, a=src, t=src), FakeInput()
     r.timers = [("a", 1.0)]
-    r.test_request = "t"
+    r.request_test("t")
     assert r.testing
     assert r.poll() == "t" and r.testing
     ticks(r, inp, 3)
@@ -191,3 +191,31 @@ def run(bot):
         r.start("s")
         ticks(r, inp, 2)
         assert inp.sent_lines == [line]
+
+
+# doc: docs/prs/scripts-page.md#test-now
+def test_test_now_waits_for_the_client_in_front_then_runs(tmp_path: Path) -> None:
+    clock = Clock()
+    r = runner(tmp_path, clock, t="def run(bot):\n    yield bot.press('f5')\n")
+    in_front = [False]
+    r.client_is_foreground = lambda: in_front[0]
+    r.request_test("t")
+    clock.now = 1.0
+    assert r.poll() is None and r.testing  # the bot's window is in front: wait
+    in_front[0] = True
+    assert r.poll() == "t"
+
+
+def test_test_now_is_dropped_when_the_client_never_comes_to_front(tmp_path: Path) -> None:
+    clock = Clock()
+    r = runner(tmp_path, clock, t="def run(bot):\n    yield bot.press('f5')\n")
+    r.client_is_foreground = lambda: False
+    r.request_test("t")
+    clock.now = 4.9
+    r.drop_late_test()
+    assert r.testing and r.test_missed is None
+    clock.now = 5.0
+    r.drop_late_test()  # the Scripts tab does this while the loop is paused
+    assert not r.testing and r.test_missed == "t not tested: Tibia was not in front and readable"
+    r.client_is_foreground = lambda: True
+    assert r.poll() is None  # never runs later by surprise

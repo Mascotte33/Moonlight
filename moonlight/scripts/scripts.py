@@ -78,6 +78,8 @@ _FIND_THRESHOLD = 0.9
 DEFAULT_PAUSE_MS = 1000
 #: The bot reads the screen every 50 ms: a shorter pause does nothing more.
 MIN_PAUSE_MS = 50
+#: Seconds a Test now waits for the client to be in front and read.
+TEST_WAIT = 5.0
 
 Command = Callable[[], object]
 
@@ -262,9 +264,15 @@ class ScriptRunner:
         #: Script name -> why it stopped (``line 3: ZeroDivisionError: ...``);
         #: the Scripts tab unticks it and shows the error.
         self.failed: dict[str, str] = {}
-        #: A script the Scripts tab's Test now asked for; it starts first.
+        #: A script the Scripts tab's Test now asked for, and until when it may
+        #: wait for the client; it starts first. See :meth:`request_test`.
         self.test_request: str | None = None
+        self._test_until = 0.0
         self._testing = False
+        #: Why the last Test now did not run (the tab shows and clears it).
+        self.test_missed: str | None = None
+        #: The client window is in front (the keys go to the window in front).
+        self.client_is_foreground: Callable[[], bool] = lambda: True
         self.running: str | None = None
         self._script: Generator[Any, Any, None] | None = None
         self._commands: Iterator[Command] = iter(())
@@ -314,13 +322,35 @@ class ScriptRunner:
         """A Test now script is asked for or runs (it runs while paused too)."""
         return self.test_request is not None or self._testing
 
+    # doc: docs/prs/scripts-page.md#test-now
+    def request_test(self, name: str) -> None:
+        """Run *name* once as soon as the client is in front and read, within ``TEST_WAIT``."""
+        self.test_request, self.test_missed = name, None
+        self._test_until = self._clock() + TEST_WAIT
+
+    def drop_late_test(self) -> None:
+        """Drop the asked-for test when ``TEST_WAIT`` passed (the loop may be
+        paused all that time, so the Scripts tab calls this too)."""
+        name = self.test_request
+        if name is not None and self._clock() >= self._test_until:
+            self.test_request = None
+            self.test_missed = f"{name} not tested: Tibia was not in front and readable"
+            log.warning("script %s", self.test_missed)
+
+    def _start_test(self) -> None:
+        """Start the asked-for test once the client is in front."""
+        self.drop_late_test()
+        name = self.test_request
+        if name is not None and self.client_is_foreground():
+            self.test_request = None
+            self._testing = self.start(name)
+
     # doc: docs/prs/scripts-page.md#ticked-scripts
     def poll(self) -> str | None:
         """Start the asked-for test, else a ticked script that is due, when none
-        runs; the running script's name."""
+        runs; the running script's name. A pending test holds the ticked ones."""
         if self.running is None and self.test_request is not None:
-            name, self.test_request = self.test_request, None
-            self._testing = self.start(name)
+            self._start_test()
         elif self.running is None:
             now = self._clock()
             for name, _pause in self.timers:

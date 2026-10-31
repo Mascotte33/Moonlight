@@ -417,7 +417,7 @@ class TestGameLoopStates:
             c.advance(1.0)
             gl.tick()
         assert inp.sent_lines == []  # paused: the ticked script waits
-        scripts.test_request = "t"
+        scripts.request_test("t")
         for _ in range(3):
             c.advance(1.0)
             gl.tick()
