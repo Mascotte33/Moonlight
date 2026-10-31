@@ -26,6 +26,7 @@ Connects the GUI to the real bot runtime without touching bot logic:
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections import deque
@@ -83,7 +84,7 @@ class LogFeed:
     Dashboard/Diagnostics tabs render the tail on poll.
     """
 
-    def __init__(self, maxlen: int = 200) -> None:
+    def __init__(self, maxlen: int = 500) -> None:
         self._lock = threading.Lock()
         self._lines: deque[tuple[float, str, str]] = deque(maxlen=maxlen)
 
@@ -118,6 +119,33 @@ class LogFeed:
         with self._lock:
             items = [ln for ln in self._lines if ln[1] == "error"]
         return items[-n:]
+
+
+# doc: docs/prs/gui-log.md#bot-log-in-the-gui
+class LogFeedHandler(logging.Handler):
+    """Puts the bot's log lines (what the console showed) into a :class:`LogFeed`.
+
+    An exception adds its last traceback line; the whole traceback is in
+    ``logs/bot.log``.
+    """
+
+    def __init__(self, feed: LogFeed) -> None:
+        super().__init__(logging.INFO)
+        self.feed = feed
+
+    def emit(self, record: logging.LogRecord) -> None:
+        level = (
+            "error"
+            if record.levelno >= logging.ERROR
+            else "warn"
+            if record.levelno >= logging.WARNING
+            else "info"
+        )
+        message = record.getMessage()
+        if record.exc_info and record.exc_info[1] is not None:
+            error = record.exc_info[1]
+            message += f": {type(error).__name__}: {error}"
+        self.feed.add(level, message)
 
 
 # ---------------------------------------------------------------------------
