@@ -23,7 +23,7 @@ from moonlight.gui.loop_factory import (
     save_config_as,
     window_titles,
 )
-from moonlight.gui.tab_base import Option, Tab, section, write_option
+from moonlight.gui.tab_base import Label, Option, Tab, section, write_option
 
 __all__ = [
     "ALARMS_OPTIONS",
@@ -119,7 +119,7 @@ class SettingsTab(Tab):
             ctk.CTkButton(
                 row, text=text, width=80, command=command, fg_color=color, hover_color=hover
             ).pack(side="left", padx=(theme.UNIT, 0))
-        self.lbl_io = ctk.CTkLabel(io_box, text="", anchor="w", text_color=theme.TEXT_DIM)
+        self.lbl_io = Label(io_box, text="", anchor="w", text_color=theme.TEXT_DIM)
         self.lbl_io.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
 
         self.box_options = section(parent, "Options")
@@ -135,7 +135,7 @@ class SettingsTab(Tab):
         box_scripts.pack(fill="x", padx=10, pady=4)
         self.build_options(box_scripts, ROTATION_OPTIONS)
         rows = [w for w in self.box_options.winfo_children() if isinstance(w, ctk.CTkFrame)]
-        ctk.CTkLabel(
+        Label(
             self.box_options,
             text="MODULES",
             anchor="w",
@@ -155,12 +155,12 @@ class SettingsTab(Tab):
             hover_color=theme.HOVER,
         ).pack(side="right", padx=theme.UNIT)
         self._refresh_windows()
-        self._reasons: dict[str, ctk.CTkLabel] = {}
+        self._reasons: dict[str, Label] = {}
         for option, row in zip([*OPTIONS, *MODULE_SWITCHES], rows, strict=True):
             for switch in row.winfo_children():
                 if isinstance(switch, ctk.CTkSwitch):
                     switch.configure(command=lambda f=option.field: self._check_switch(f))
-                    reason = ctk.CTkLabel(row, text="", anchor="w", text_color=theme.BLOOD)
+                    reason = Label(row, text="", anchor="w", text_color=theme.BLOOD)
                     reason.pack(side="left", padx=theme.UNIT)
                     self._reasons[option.field] = reason
 

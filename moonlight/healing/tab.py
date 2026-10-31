@@ -22,6 +22,7 @@ from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.tab_base import (
     HotkeyBox,
+    Label,
     Option,
     Tab,
     read_option,
@@ -122,7 +123,7 @@ class HealingTab(Tab):
     def build(self, parent: ctk.CTkFrame) -> None:
         rules_box = section(parent, "Rules (checked top to bottom)")
         rules_box.pack(fill="x", padx=10, pady=(10, 0))
-        ctk.CTkLabel(
+        Label(
             rules_box,
             text="A rule presses its key when HP or MP is at or below its %. "
             "Blank % = unused. Min mana % stops it below that MP.",
@@ -145,9 +146,9 @@ class HealingTab(Tab):
         cooldowns_box.pack(fill="x", padx=10, pady=(10, 0))
         self.build_options(cooldowns_box, OPTIONS)
 
-        self.lbl_msg = ctk.CTkLabel(parent, text="", anchor="w", text_color=theme.AMBER)
+        self.lbl_msg = Label(parent, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=10)
-        self.lbl_live = ctk.CTkLabel(
+        self.lbl_live = Label(
             parent, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
         )
         self.lbl_live.pack(fill="x", padx=10)
@@ -227,7 +228,7 @@ class HealingTab(Tab):
                 ("MP <", row.mp_below_percent),
                 ("min mana", row.minimum_mana_percent),
             ):
-                ctk.CTkLabel(line, text=label, text_color=theme.TEXT_DIM).pack(
+                Label(line, text=label, text_color=theme.TEXT_DIM).pack(
                     side="left", padx=(theme.UNIT, 0)
                 )
                 entries.append(row_entry(line, value, 48, self._save))

@@ -17,6 +17,7 @@ the Tk thread while the bot loop thread keeps ticking in the background.
 from __future__ import annotations
 
 import time
+import tkinter as tk
 import types
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -44,6 +45,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 __all__ = [
     "HotkeyBox",
+    "Label",
     "Option",
     "Tab",
     "dot_color",
@@ -164,6 +166,84 @@ def write_option(cfg: BotConfig, option: Option, value: object) -> BotConfig:
     return BotConfig.from_dict(data)
 
 
+# doc: docs/prs/gui-smooth.md#light-labels
+class Label(tk.Label):
+    """A text label that looks like ``ctk.CTkLabel`` but is one Tk window.
+
+    A CTkLabel is a frame, a canvas and a label: three native windows to
+    paint on every tab switch. This one takes the same options the GUI uses
+    (``text``, ``text_color``, ``font``, ``anchor``, ``justify``,
+    ``wraplength``), sits on its parent's color like a transparent CTkLabel,
+    and is at least 28 px tall with the text centered. Labels with a pixel
+    ``width`` or a picture stay CTkLabels.
+    """
+
+    #: CTkLabel's default (and minimum) height in px.
+    HEIGHT = 28
+    #: One transparent 1x1 image per Tk interpreter: with an image, ``height``
+    #: counts pixels instead of text lines.
+    _blank: ClassVar[dict[object, tk.PhotoImage]] = {}
+    _detect_color_of_master = ctk.CTkBaseClass._detect_color_of_master
+
+    def __init__(self, master: Any, **options: Any) -> None:
+        blank = Label._blank.get(master.tk)
+        if blank is None:
+            blank = Label._blank[master.tk] = tk.PhotoImage(master=master, width=1, height=1)
+        super().__init__(
+            master,
+            image=blank,
+            compound="center",
+            borderwidth=0,
+            highlightthickness=0,
+            padx=0,
+            pady=0,
+        )
+        self._text_color: Any = ctk.ThemeManager.theme["CTkLabel"]["text_color"]
+        self._font: Any = ctk.CTkFont()
+        self.configure(bg=self._mode_color(self._detect_color_of_master(master)))
+        self.configure(**{"text_color": self._text_color, "font": self._font, **options})
+
+    def _mode_color(self, color: Any) -> str:
+        """A CTk color (one color, or a light/dark pair) for the current mode."""
+        if isinstance(color, (tuple, list)):
+            return str(color[ctk.AppearanceModeTracker.appearance_mode])
+        return str(color)
+
+    def configure(self, cnf: Any = None, **options: Any) -> Any:
+        if cnf is not None or not options:
+            return super().configure(cnf, **options)
+        scaling = ctk.ScalingTracker.get_widget_scaling(self)
+        if "text_color" in options:
+            self._text_color = options.pop("text_color")
+            options["fg"] = self._mode_color(self._text_color)
+        if "font" in options:
+            self._font = options.pop("font")
+            font = self._font
+            options["font"] = (
+                font.create_scaled_tuple(scaling) if isinstance(font, ctk.CTkFont) else font
+            )
+        if "wraplength" in options:
+            options["wraplength"] = round(options["wraplength"] * scaling)
+        refit = {"text", "font", "wraplength"} & options.keys()
+        super().configure(**options)
+        if refit:
+            # Natural height first; a single line is then raised to HEIGHT.
+            super().configure(height=0)
+            minimum = round(self.HEIGHT * scaling)
+            if self.winfo_reqheight() < minimum:
+                super().configure(height=minimum)
+        return None
+
+    config = configure
+
+    def cget(self, key: str) -> Any:
+        if key == "text_color":
+            return self._text_color
+        if key == "font":
+            return self._font
+        return super().cget(key)
+
+
 def section(parent: ctk.CTkFrame, title: str) -> ctk.CTkFrame:
     """A titled, inset frame (consistent look across tabs)."""
     box = ctk.CTkFrame(
@@ -173,7 +253,7 @@ def section(parent: ctk.CTkFrame, title: str) -> ctk.CTkFrame:
         border_color=theme.RAISED,
         corner_radius=theme.RADIUS_CARD,
     )
-    ctk.CTkLabel(
+    Label(
         box,
         text=title.upper(),
         anchor="w",
@@ -227,9 +307,9 @@ def row_button(
     return button
 
 
-def stat_label(parent: ctk.CTkFrame, title: str) -> ctk.CTkLabel:
+def stat_label(parent: ctk.CTkFrame, title: str) -> Label:
     """A right-aligned stat label (value updated in on_poll)."""
-    return ctk.CTkLabel(
+    return Label(
         parent,
         text=f"{title}: --",
         anchor="w",
@@ -268,6 +348,26 @@ def dot_color(ok: bool) -> str:
     return theme.LIFE if ok else theme.BLOOD
 
 
+# A customtkinter configure redraws the widget even when nothing changed, and
+# 10 polls a second of that made the GUI stutter on a 2-core laptop.
+# doc: docs/prs/gui-smooth.md#redraw-only-on-change
+def set_label(
+    label: Label | ctk.CTkLabel, text: str | None = None, color: str | None = None
+) -> None:
+    """Configure *label*'s text and/or text color, only where they changed."""
+    if text is not None and label.cget("text") != text:
+        label.configure(text=text)
+    if color is not None and label.cget("text_color") != color:
+        label.configure(text_color=color)
+
+
+def set_bar(bar: ctk.CTkProgressBar, value: float) -> None:
+    """Set *bar* to *value* (clamped to 0-1, to whole percents) when it moved."""
+    value = round(min(max(value, 0.0), 1.0), 2)
+    if round(bar.get(), 2) != value:
+        bar.set(value)
+
+
 class Tab:
     """Base class for all 10 GUI tabs.
 
@@ -280,6 +380,9 @@ class Tab:
     options: ClassVar[Sequence[Option]] = ()
     #: Every tab scrolls, so a short window still reaches the bottom.
     scrolls: ClassVar[bool] = True
+    #: Polled while hidden too (its poll does work, not only drawing).
+    #: doc: docs/prs/gui-smooth.md#poll-only-the-shown-tab
+    polls_hidden: ClassVar[bool] = False
 
     def __init__(self, ctx: GuiContext) -> None:
         self.ctx = ctx
@@ -306,7 +409,7 @@ class Tab:
             if option.label:
                 row = ctk.CTkFrame(parent, fg_color="transparent")
                 row.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-                ctk.CTkLabel(
+                Label(
                     row,
                     text=option.label,
                     anchor="w",
@@ -551,7 +654,7 @@ def _control(
     else:
         entry = ctk.CTkEntry(row, fg_color=theme.NIGHT, border_color=theme.RAISED)
         entry.pack(side="right")
-    off = ctk.CTkLabel(row, text="off", text_color=theme.TEXT_MUTED)
+    off = Label(row, text="off", text_color=theme.TEXT_MUTED)
 
     def shade(_e: object = None) -> None:
         # doc: docs/prs/potion-count.md#off-at-zero

@@ -44,7 +44,7 @@ from moonlight.gui.state_bridge import (
 )
 from moonlight.gui.status_tab import StatusTab
 from moonlight.gui.sysinfo import cpu_percent, cpu_times, memory_text
-from moonlight.gui.tab_base import Tab, dot_color, health
+from moonlight.gui.tab_base import Label, Tab, dot_color, health, set_bar, set_label
 from moonlight.hardware.tab import HardwareTab
 from moonlight.healing.tab import HealingTab
 from moonlight.targeting.tab import TargetingTab
@@ -55,6 +55,15 @@ RETRY_S = 5.0  # seconds between tries to start a bot that is down
 WATCH_S = 0.2  # seconds between position reads while the bot is stopped
 _VK_F12 = 0x7B
 _f12_was_down = False
+
+
+def nav_colors(active: bool) -> dict[str, str]:
+    """Sidebar button colors: the shown tab's entry is highlighted."""
+    return {
+        "fg_color": theme.MANA if active else "transparent",
+        "text_color": theme.NIGHT if active else theme.TEXT_DIM,
+        "hover_color": theme.MANA_HOVER if active else theme.HOVER,
+    }
 
 
 def f12_pressed() -> bool:
@@ -143,7 +152,7 @@ class GuiApp:
         ctk.CTkFrame(body, width=1, fg_color=theme.RAISED, corner_radius=0).pack(
             side="left", fill="y"
         )
-        ctk.CTkLabel(
+        Label(
             sidebar,
             text="MOONLIGHT",
             font=ctk.CTkFont(size=theme.SIZE_HEADING, weight="bold"),
@@ -157,6 +166,8 @@ class GuiApp:
         self.tabs: dict[str, Tab] = {}
         self._pages: dict[str, ctk.CTkFrame | ctk.CTkScrollableFrame] = {}
         self._nav: dict[str, ctk.CTkButton] = {}
+        #: The shown tab; only it is polled (a redraw of a hidden tab is wasted).
+        self._current = ""
         for tab_cls in TAB_ORDER:
             tab = tab_cls(self.ctx)
             title = tab.title
@@ -176,6 +187,7 @@ class GuiApp:
                 corner_radius=theme.RADIUS_CONTROL,
                 font=ctk.CTkFont(size=theme.SIZE_BODY),
                 command=lambda t=title: self.select_tab(t),
+                **nav_colors(active=False),
             )
             self._nav[title].pack(fill="x", padx=theme.UNIT * 2, pady=1)
         self.select_tab(next(iter(self.tabs)))
@@ -194,15 +206,22 @@ class GuiApp:
         self.root.after(POLL_MS, self._poll)
 
     def select_tab(self, title: str) -> None:
-        """Raise ``title``'s page and highlight its sidebar entry."""
+        """Raise ``title``'s page, highlight its sidebar entry and refresh it.
+
+        Only the two sidebar buttons that change are restyled (a button
+        redraw is slow; all nine cost about 50 ms a switch).
+        """
+        if title == self._current:
+            return
         self._pages[title].lift()
-        for name, btn in self._nav.items():
-            active = name == title
-            btn.configure(
-                fg_color=theme.MANA if active else "transparent",
-                text_color=theme.NIGHT if active else theme.TEXT_DIM,
-                hover_color=theme.MANA_HOVER if active else theme.HOVER,
-            )
+        if self._current:
+            self._nav[self._current].configure(**nav_colors(active=False))
+        self._nav[title].configure(**nav_colors(active=True))
+        self._current = title
+        try:
+            self.tabs[title].on_poll(self.ctx.state.snapshot())
+        except Exception as exc:  # noqa: BLE001 - a bad tab must not block the switch
+            self.log.warn(f"poll error: {exc!r}")
 
     # -- header / bot control ----------------------------------------------
 
@@ -216,7 +235,7 @@ class GuiApp:
         pad = theme.PAD
 
         def vital(name: str, color: str) -> tuple[ctk.CTkProgressBar, ctk.CTkLabel]:
-            ctk.CTkLabel(bar, text=name, font=mono).pack(
+            Label(bar, text=name, font=mono).pack(
                 side="left", padx=(pad, theme.UNIT), pady=pad
             )
             progress = ctk.CTkProgressBar(bar, width=120, progress_color=color)
@@ -250,9 +269,9 @@ class GuiApp:
             self._btn_colors[btn] = (color, hover)
             made.append(btn)
         self.btn_stop, self.btn_pause, self.btn_start = made
-        self.lbl_state = ctk.CTkLabel(bar, text="Stopped", font=mono)
+        self.lbl_state = Label(bar, text="Stopped", font=mono)
         self.lbl_state.pack(side="right", padx=(theme.UNIT, pad))
-        self.lbl_dot = ctk.CTkLabel(bar, text="●", text_color=theme.TEXT_MUTED)
+        self.lbl_dot = Label(bar, text="●", text_color=theme.TEXT_MUTED)
         self.lbl_dot.pack(side="right")
 
     def _build_bottombar(self) -> None:
@@ -262,15 +281,15 @@ class GuiApp:
             side="bottom", fill="x"
         )
         mono = ctk.CTkFont(family=theme.MONO, size=theme.SIZE_TITLE)
-        self._dots: dict[str, ctk.CTkLabel] = {}
+        self._dots: dict[str, Label] = {}
         for name, _ in health(WorldState(), False, False):
-            self._dots[name] = ctk.CTkLabel(
+            self._dots[name] = Label(
                 bar, text=f"● {name}", font=mono, text_color=theme.TEXT_MUTED
             )
             self._dots[name].pack(side="left", padx=(theme.PAD, 0), pady=theme.UNIT)
-        self.lbl_mem = ctk.CTkLabel(bar, text="MEM —", font=mono)
+        self.lbl_mem = Label(bar, text="MEM —", font=mono)
         self.lbl_mem.pack(side="right", padx=theme.PAD)
-        self.lbl_cpu = ctk.CTkLabel(bar, text="CPU 0%", font=mono)
+        self.lbl_cpu = Label(bar, text="CPU 0%", font=mono)
         self.lbl_cpu.pack(side="right")
         self._res_t = time.monotonic()
         self._cpu = cpu_times()
@@ -278,7 +297,7 @@ class GuiApp:
     def _update_bottombar(self) -> None:
         snap = self.ctx.state.snapshot()
         for name, ok in health(snap, self.hardware.backend is not None, self.ctx.bot_running()):
-            self._dots[name].configure(text_color=dot_color(ok))
+            set_label(self._dots[name], color=dot_color(ok))
         now = time.monotonic()
         if now - self._res_t >= 1.0:  # CPU/MEM refresh about once a second
             cpu = cpu_times()
@@ -376,22 +395,23 @@ class GuiApp:
         hp, mp, state = topbar_text(
             snap, running, ctrl.state if ctrl is not None else None, self.ctx.paused
         )
-        self.bar_hp.set(min(max(snap.hp_percent / 100, 0.0), 1.0))
-        self.bar_mp.set(min(max(snap.mp_percent / 100, 0.0), 1.0))
-        self.lbl_hp.configure(text=hp)
-        self.lbl_mp.configure(text=mp)
-        self.lbl_state.configure(text=state)
-        self.lbl_dot.configure(text_color=STATE_COLORS[state])
+        set_bar(self.bar_hp, snap.hp_percent / 100)
+        set_bar(self.bar_mp, snap.mp_percent / 100)
+        set_label(self.lbl_hp, hp)
+        set_label(self.lbl_mp, mp)
+        set_label(self.lbl_state, state)
+        set_label(self.lbl_dot, color=STATE_COLORS[state])
         enabled = {
             self.btn_start: not running or self.ctx.paused,
             self.btn_pause: running and not self.ctx.paused,
             self.btn_stop: running,
         }
         for btn, on in enabled.items():
-            btn.configure(
-                state="normal" if on else "disabled",
-                **theme.button_colors(on, *self._btn_colors[btn]),
-            )
+            btn_state = "normal" if on else "disabled"
+            if btn.cget("state") != btn_state:  # a button redraw is the slowest part
+                btn.configure(
+                    state=btn_state, **theme.button_colors(on, *self._btn_colors[btn])
+                )
 
     # -- poll loop -----------------------------------------------------------
 
@@ -402,8 +422,9 @@ class GuiApp:
                 self.resume_bot() if self._held or self.ctx.paused else self.pause_bot()
             self._keep_running()
             snap = self.ctx.state.snapshot()
-            for tab in self.tabs.values():
-                tab.on_poll(snap)
+            for title, tab in self.tabs.items():
+                if title == self._current or tab.polls_hidden:
+                    tab.on_poll(snap)
             self._update_topbar()
             self._update_bottombar()
         except Exception as exc:  # noqa: BLE001 - the poller must survive

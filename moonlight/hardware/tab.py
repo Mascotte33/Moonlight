@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import customtkinter as ctk
 
 from moonlight.gui import theme
-from moonlight.gui.tab_base import Option, Tab, section, stat_label
+from moonlight.gui.tab_base import Label, Option, Tab, section, stat_label
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.core.state import WorldState
@@ -71,7 +71,7 @@ class HardwareTab(Tab):
             fg_color=theme.RAISED,
             hover_color=theme.HOVER,
         ).pack(side="right", padx=theme.UNIT)
-        ctk.CTkLabel(
+        Label(
             options,
             text="No Arduino. Actions are only logged.",
             anchor="w",
@@ -100,7 +100,7 @@ class HardwareTab(Tab):
             )
             btns.grid_columnconfigure(col, weight=1)
 
-        self.lbl_ports = ctk.CTkLabel(
+        self.lbl_ports = Label(
             box_grid, text="", anchor="w", justify="left", font=ctk.CTkFont(size=theme.SIZE_TITLE)
         )
         self.lbl_ports.grid(

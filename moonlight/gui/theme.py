@@ -78,6 +78,10 @@ def apply() -> None:
     Call once, before the first widget is created.
     """
     ctk.set_appearance_mode("dark")
+    # Polygon corners draw tab switches and scrolling about 25% faster than
+    # customtkinter's Windows default (font glyphs), measured on an i3-7100U.
+    # doc: docs/prs/gui-smooth.md#faster-tab-switches
+    ctk.DrawEngine.preferred_drawing_method = "polygon_shapes"
     control = {"corner_radius": RADIUS_CONTROL, "text_color": TEXT}
     disabled = {"text_color_disabled": TEXT_MUTED}
     overrides: dict[str, dict[str, object]] = {

@@ -24,6 +24,7 @@ from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.tab_base import (
     HotkeyBox,
+    Label,
     Tab,
     read_option,
     row_button,
@@ -150,7 +151,7 @@ def _card(parent: ctk.CTkFrame, title: str, hint: str = "") -> tuple[ctk.CTkFram
     box = section(parent, title)
     box.pack(fill="x", padx=10, pady=(10, 0))
     if hint:
-        ctk.CTkLabel(
+        Label(
             box, text=hint, anchor="w", justify="left", wraplength=640, text_color=theme.TEXT_DIM
         ).pack(fill="x", padx=theme.PAD)
     rows = ctk.CTkFrame(box, fg_color="transparent")
@@ -161,7 +162,7 @@ def _card(parent: ctk.CTkFrame, title: str, hint: str = "") -> tuple[ctk.CTkFram
 def _header(rows: ctk.CTkFrame, titles: Sequence[str]) -> None:
     """Column titles in grid row 0 of *rows*."""
     for column, title in enumerate(titles):
-        ctk.CTkLabel(rows, text=title, anchor="w", text_color=theme.TEXT_DIM).grid(
+        Label(rows, text=title, anchor="w", text_color=theme.TEXT_DIM).grid(
             row=0, column=column, sticky="w", padx=(0, theme.UNIT)
         )
 
@@ -238,17 +239,17 @@ class TargetingTab(Tab):
         settings_box.pack(fill="x", padx=10, pady=(10, 0))
         line = ctk.CTkFrame(settings_box, fg_color="transparent")
         line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
-        ctk.CTkLabel(line, text="Attack key every (ms)", text_color=theme.TEXT_DIM).pack(
+        Label(line, text="Attack key every (ms)", text_color=theme.TEXT_DIM).pack(
             side="left"
         )
         self._cooldown_entry = row_entry(line, "", 64, self._save)
-        ctk.CTkLabel(
+        Label(
             line, text="Give up on a target after (s)", text_color=theme.TEXT_DIM
         ).pack(side="left", padx=(theme.PAD, 0))
         self._unreachable_entry = row_entry(line, "", 48, self._save)
         chase_line = ctk.CTkFrame(settings_box, fg_color="transparent")
         chase_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
-        ctk.CTkLabel(
+        Label(
             chase_line, text="Client key: Toggle Chase Mode", text_color=theme.TEXT_DIM
         ).pack(side="left")
         self._toggle_chase_hotkey = HotkeyBox(chase_line, self._save)
@@ -280,7 +281,7 @@ class TargetingTab(Tab):
             "Seen monsters",
             "Monsters the battle list showed that have no row yet. Check the name, then add it.",
         )
-        self._seen_empty = ctk.CTkLabel(
+        self._seen_empty = Label(
             self._seen_frame,
             text="nothing new (the running bot adds what it sees)",
             text_color=theme.TEXT_DIM,
@@ -290,9 +291,9 @@ class TargetingTab(Tab):
         self._seen_lines: dict[str, tuple[ctk.CTkEntry, list[Any]]] = {}
         self._seen_last_grid_row = 0
 
-        self.lbl_msg = ctk.CTkLabel(parent, text="", anchor="w", text_color=theme.AMBER)
+        self.lbl_msg = Label(parent, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=10)
-        self.lbl_live = ctk.CTkLabel(
+        self.lbl_live = Label(
             parent, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
         )
         self.lbl_live.pack(fill="x", padx=10)
@@ -489,7 +490,7 @@ class TargetingTab(Tab):
             image = ctk.CTkImage(picture, size=picture.size)
             picture_widget = ctk.CTkLabel(rows, text="", image=image)
         else:
-            picture_widget = ctk.CTkLabel(rows, text=monster.name_hash[:8], anchor="w")
+            picture_widget = Label(rows, text=monster.name_hash[:8], anchor="w")
         entry = row_entry(rows, monster.display_name, 140, lambda: None, pack_left=False)
         rename = partial(self._rename_seen, store, monster.name_hash, entry)
         for event in ("<Return>", "<FocusOut>"):
