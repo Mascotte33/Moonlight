@@ -14,7 +14,16 @@ from typing import TYPE_CHECKING
 import customtkinter as ctk
 
 from moonlight.gui import sysinfo, theme
-from moonlight.gui.tab_base import Label, Tab, section, set_bar, set_label, stat_label, stat_num
+from moonlight.gui.tab_base import (
+    Label,
+    Row,
+    Tab,
+    section,
+    set_bar,
+    set_label,
+    stat_label,
+    stat_num,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.core.state import WorldState
@@ -69,10 +78,10 @@ class StatusTab(Tab):
 
         pos = section(parent, "Position & inventory")
         pos.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=10, pady=6)
-        pos_grid = ctk.CTkFrame(pos, fg_color="transparent")
+        pos_grid = Row(pos)
         pos_grid.pack(fill="both", expand=True)
         pos_grid.grid_columnconfigure((0, 1), weight=1)
-        row = ctk.CTkFrame(pos_grid, fg_color="transparent")
+        row = Row(pos_grid)
         row.grid(row=0, column=0, sticky="ew", padx=10, pady=(8, 2))
         self.lbl_position = Label(
             row, text="--", anchor="w", font=ctk.CTkFont(family=theme.MONO, size=theme.SIZE_HEADING)
@@ -94,7 +103,7 @@ class StatusTab(Tab):
 
         loop = section(parent, "Loop stats")
         loop.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=10, pady=(0, 10))
-        loop_grid = ctk.CTkFrame(loop, fg_color="transparent")
+        loop_grid = Row(loop)
         loop_grid.pack(fill="both", expand=True)
         loop_grid.grid_columnconfigure((0, 1), weight=1)
         self.lbl_state = stat_label(loop_grid, "Loop state")

@@ -23,7 +23,7 @@ from moonlight.gui.loop_factory import (
     save_config_as,
     window_titles,
 )
-from moonlight.gui.tab_base import Label, Option, Tab, section, write_option
+from moonlight.gui.tab_base import Label, Option, Row, Tab, section, write_option
 
 __all__ = [
     "ALARMS_OPTIONS",
@@ -99,7 +99,7 @@ class SettingsTab(Tab):
     def build(self, parent: ctk.CTkFrame) -> None:
         io_box = section(parent, "Config")
         io_box.pack(fill="x", padx=10, pady=(10, 4))
-        row = ctk.CTkFrame(io_box, fg_color="transparent")
+        row = Row(io_box)
         row.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
         self.menu_config = ctk.CTkOptionMenu(
             row,
@@ -134,7 +134,7 @@ class SettingsTab(Tab):
         box_scripts = section(parent, "Scripts")
         box_scripts.pack(fill="x", padx=10, pady=4)
         self.build_options(box_scripts, ROTATION_OPTIONS)
-        rows = [w for w in self.box_options.winfo_children() if isinstance(w, ctk.CTkFrame)]
+        rows = [w for w in self.box_options.winfo_children() if isinstance(w, Row)]
         Label(
             self.box_options,
             text="MODULES",

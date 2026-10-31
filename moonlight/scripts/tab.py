@@ -20,7 +20,7 @@ import customtkinter as ctk
 from moonlight.core.config import BotConfig, ConfigError
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
-from moonlight.gui.tab_base import Label, Tab, row_button, row_entry, section
+from moonlight.gui.tab_base import Label, Row, Tab, row_button, row_entry, section
 from moonlight.perception.capture import focus_window
 from moonlight.scripts.library import (
     delete_script,
@@ -66,7 +66,7 @@ class ScriptsTab(Tab):
         #: Script name -> why it fails (Save's check, or an error while running).
         self._errors: dict[str, str] = {}
 
-        root = ctk.CTkFrame(parent, fg_color="transparent")
+        root = Row(parent)
         root.pack(fill="both", expand=True, padx=10, pady=10)
         for col, weight in enumerate((2, 3)):
             root.grid_columnconfigure(col, weight=weight, uniform="cards")
@@ -82,9 +82,9 @@ class ScriptsTab(Tab):
             wraplength=300,
             text_color=theme.TEXT_DIM,
         ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        self.rows = ctk.CTkFrame(box, fg_color="transparent")
+        self.rows = Row(box)
         self.rows.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        buttons = ctk.CTkFrame(box, fg_color="transparent")
+        buttons = Row(box)
         buttons.pack(fill="x", padx=theme.PAD, pady=theme.PAD)
         for text, command in (
             ("New", self._new),
@@ -104,7 +104,7 @@ class ScriptsTab(Tab):
         self.txt_code.bind("<KeyRelease>", lambda _e: self._set_dirty(True))
         self.lbl_error = Label(code, text="", anchor="w", justify="left", text_color=theme.BLOOD)
         self.lbl_error.pack(fill="x", padx=theme.PAD)
-        actions = ctk.CTkFrame(code, fg_color="transparent")
+        actions = Row(code)
         actions.pack(fill="x", padx=theme.PAD, pady=theme.PAD)
         self.btn_save = row_button(actions, "Save", self._save, width=70)
         self.btn_test = row_button(actions, "Test now", self._test, width=90)
@@ -173,7 +173,7 @@ class ScriptsTab(Tab):
             child.destroy()
         cfg = self._config()
         for name in script_names(self._dir):
-            row = ctk.CTkFrame(self.rows, fg_color="transparent")
+            row = Row(self.rows)
             row.pack(fill="x", pady=(0, theme.UNIT))
             box = ctk.CTkCheckBox(row, text="", width=24)
             if name in cfg.ticked:

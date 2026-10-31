@@ -49,7 +49,7 @@ from moonlight.core.state import Position, WorldState
 from moonlight.gui import loop_factory, theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.settings_tab import plain_reason
-from moonlight.gui.tab_base import Label, Option, Tab, read_option, section, write_option
+from moonlight.gui.tab_base import Label, Option, Row, Tab, read_option, section, write_option
 from moonlight.refill.refill import LAST_READ
 from moonlight.scripts.library import script_names
 from moonlight.scripts.scripts import DEFAULT_SCRIPTS_DIR
@@ -251,7 +251,7 @@ def _menu(box: ctk.CTkFrame, options: list[Option], option: Option) -> ctk.CTkOp
 
 def _row(box: ctk.CTkFrame, options: list[Option], option: Option) -> list[object]:
     """The widgets in the row :meth:`Tab.build_options` made for *option*."""
-    rows = [w for w in box.winfo_children() if isinstance(w, ctk.CTkFrame)]
+    rows = [w for w in box.winfo_children() if isinstance(w, Row)]
     return list(rows[options.index(option)].winfo_children())
 
 
@@ -285,7 +285,7 @@ class CavebotTab(Tab):
     polls_hidden = True  # recording adds waypoints on each poll
 
     def build(self, parent: ctk.CTkFrame) -> None:
-        root = ctk.CTkFrame(parent, fg_color="transparent")
+        root = Row(parent)
         root.pack(fill="both", expand=True, padx=10, pady=10)
         for col, weight in enumerate((3, 2)):
             root.grid_columnconfigure(col, weight=weight, uniform="cards")
@@ -326,7 +326,7 @@ class CavebotTab(Tab):
         self.wp_list.tag_config("selected", background=theme.HOVER)
         self.wp_list.bind("<Button-1>", self._select_waypoint)
         self.wp_list.bind("<Double-Button-1>", self._pick_waypoint)
-        moves = ctk.CTkFrame(box, fg_color="transparent")
+        moves = Row(box)
         moves.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         for arrow, by in (("▲", -1), ("▼", 1)):
             button = _button(moves, arrow, partial(self._move, by))
@@ -340,7 +340,7 @@ class CavebotTab(Tab):
         side = section(root, "Refill / Loot / Edit route")
         side.grid(row=0, column=1, sticky="nsew")
         pages = {
-            name: ctk.CTkFrame(side, fg_color="transparent")
+            name: Row(side)
             for name in ("Refill", "Loot", "Edit route")
         }
 
@@ -373,7 +373,7 @@ class CavebotTab(Tab):
         ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.build_options(refill, REFILL_OPTIONS)
         # doc: docs/prs/potion-count.md#last-read
-        rows = [w for w in refill.winfo_children() if isinstance(w, ctk.CTkFrame)]
+        rows = [w for w in refill.winfo_children() if isinstance(w, Row)]
         for option, row in zip(REFILL_OPTIONS, rows, strict=True):
             last_read_text = Label(row, text="last read: —", text_color=theme.TEXT_MUTED)
             last_read_text.pack(side="left", padx=(theme.UNIT, 0))
@@ -384,7 +384,7 @@ class CavebotTab(Tab):
             anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0)
         )
         # doc: docs/prs/depot.md#deposit-waypoint
-        pick = ctk.CTkFrame(refill, fg_color="transparent")
+        pick = Row(refill)
         pick.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         _button(pick, "Pick backpack", self._pick_backpack).pack(side="left")
         self.lbl_backpack = ctk.CTkLabel(pick, text="")
@@ -408,7 +408,7 @@ class CavebotTab(Tab):
         show("Refill")
 
         edit = pages["Edit route"]
-        add = ctk.CTkFrame(edit, fg_color="transparent")
+        add = Row(edit)
         add.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         # doc: docs/prs/scripts-page.md#script-dropdown
         # The label, typed or a script picked for a script waypoint.
@@ -428,28 +428,28 @@ class CavebotTab(Tab):
         )
         self.lbl_cursor.pack(fill="x", padx=theme.PAD)
         self._capture: Any = None  # ScreenCapture, made on the first draw
-        tools = ctk.CTkFrame(edit, fg_color="transparent")
+        tools = Row(edit)
         tools.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         for text, command in (("Undo", self._undo), ("Clear", self._clear)):
             _button(tools, text, command).pack(side="left", padx=(0, theme.UNIT))
         # T3.F9.K2: one button per waypoint type, at the bot's position.
-        kinds = ctk.CTkFrame(edit, fg_color="transparent")
+        kinds = Row(edit)
         kinds.pack(anchor="w", padx=theme.PAD, pady=(theme.PAD, 0))
-        for row, group in enumerate(KIND_ROWS):
+        for grid_row, group in enumerate(KIND_ROWS):
             for col, action in enumerate(group):
                 button = _button(kinds, action.capitalize(), partial(self._add_action, action))
                 button.configure(width=64)
-                button.grid(row=row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
+                button.grid(row=grid_row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
         # doc: docs/prs/steps.md#step-waypoint
         # A step waypoint on X, Y, Z or the bot's sqm: one key press that way; the middle stands.
-        pad = ctk.CTkFrame(edit, fg_color="transparent")
+        pad = Row(edit)
         pad.pack(anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0))
         for i, (arrow, dx, dy) in enumerate(DIRECTIONS):
             button = _button(pad, arrow, partial(self._add_step, dx, dy))
             button.configure(width=32)
             button.grid(row=i // 3, column=i % 3, padx=1, pady=1)
 
-        rec = ctk.CTkFrame(edit, fg_color="transparent")
+        rec = Row(edit)
         rec.pack(fill="x", padx=theme.PAD, pady=theme.PAD)
         self.btn_record = _button(rec, "Start recording", self._toggle)
         self.btn_record.configure(width=130)

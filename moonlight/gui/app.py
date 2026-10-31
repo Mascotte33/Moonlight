@@ -18,6 +18,7 @@ import logging.handlers
 import sys
 import threading
 import time
+import tkinter as tk
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,7 @@ from moonlight.gui.state_bridge import (
     GuiContext,
     HardwareController,
     LogFeed,
+    LogFeedHandler,
     topbar_text,
 )
 from moonlight.gui.status_tab import StatusTab
@@ -57,9 +59,6 @@ RETRY_S = 5.0  # seconds between tries to start a bot that is down
 WATCH_S = 0.2  # seconds between position reads while the bot is stopped
 _VK_F12 = 0x7B
 _f12_was_down = False
-_STD_INPUT_HANDLE = -10
-_ENABLE_QUICK_EDIT_MODE = 0x0040
-_ENABLE_EXTENDED_FLAGS = 0x0080
 
 
 def nav_colors(active: bool) -> dict[str, str]:
@@ -89,24 +88,29 @@ def f12_pressed() -> bool:
     return bool(ctypes.windll.user32.GetAsyncKeyState(_VK_F12) & 1)
 
 
-def disable_console_quick_edit(kernel32: Any = None) -> bool:
-    """Turn off click-to-select in the console the GUI was started from.
+# doc: docs/prs/gui-log.md#crashes-to-the-log
+def log_crashes() -> None:
+    """Write an uncaught error of any thread to the log (bot.log and the GUI).
 
-    A click in a QuickEdit console starts a selection, and every write to the
-    console then blocks until Esc. The bot thread logs to the console, so one
-    click froze the bot mid-fight (2026-10-31). Returns False when there is
-    no console (pythonw, Linux) and nothing changed.
+    There is no console window to show a traceback, so nothing is lost.
     """
-    if kernel32 is None:
-        if sys.platform != "win32":
-            return False
-        kernel32 = ctypes.windll.kernel32
-    stdin = kernel32.GetStdHandle(_STD_INPUT_HANDLE)
-    mode = ctypes.c_uint32()
-    if not kernel32.GetConsoleMode(stdin, ctypes.byref(mode)):
-        return False
-    quick_edit_off = (mode.value & ~_ENABLE_QUICK_EDIT_MODE) | _ENABLE_EXTENDED_FLAGS
-    return bool(kernel32.SetConsoleMode(stdin, quick_edit_off))
+    crash = logging.getLogger("moonlight.crash")
+
+    def main_thread(kind: Any, error: Any, trace: Any) -> None:
+        crash.critical("crash", exc_info=(kind, error, trace))
+
+    def other_thread(args: threading.ExceptHookArgs) -> None:
+        name = args.thread.name if args.thread is not None else "?"
+        crash.critical("crash in thread %s", name, exc_info=args.exc_value)
+
+    sys.excepthook = main_thread
+    threading.excepthook = other_thread
+
+
+def _outer(page: ctk.CTkFrame | ctk.CTkScrollableFrame) -> tk.Frame:
+    """The widget placed in the content area (a scrollable frame sits in a frame)."""
+    outer: tk.Frame = getattr(page, "_parent_frame", page)
+    return outer
 
 
 SIDEBAR_WIDTH = 200
@@ -147,11 +151,12 @@ class GuiApp:
     def __init__(
         self,
         start_bot: bool = False,
+        log: LogFeed | None = None,
     ) -> None:
         theme.apply()
 
         self.state = WorldState()
-        self.log = LogFeed()
+        self.log = log or LogFeed()
         self.hardware = HardwareController(log=self.log)
         self.ctx = GuiContext(
             state=self.state,
@@ -186,8 +191,6 @@ class GuiApp:
         ).pack(anchor="w", padx=theme.PAD, pady=(theme.PAD, theme.GAP))
         content = ctk.CTkFrame(body, fg_color="transparent", corner_radius=0)
         content.pack(side="left", fill="both", expand=True, padx=10, pady=(0, 10))
-        content.grid_columnconfigure(0, weight=1)
-        content.grid_rowconfigure(0, weight=1)
 
         self.tabs: dict[str, Tab] = {}
         self._pages: dict[str, ctk.CTkFrame | ctk.CTkScrollableFrame] = {}
@@ -199,7 +202,6 @@ class GuiApp:
             title = tab.title
             frame = ctk.CTkScrollableFrame if tab.scrolls else ctk.CTkFrame
             page = frame(content, fg_color="transparent")
-            page.grid(row=0, column=0, sticky="nsew")
             page.grid_columnconfigure(0, weight=1)
             page.grid_rowconfigure(0, weight=1)
             tab.build(page)
@@ -217,6 +219,8 @@ class GuiApp:
             )
             self._nav[title].pack(fill="x", padx=theme.UNIT * 2, pady=1)
         self.select_tab(next(iter(self.tabs)))
+        self._size = (0, 0)
+        self.root.bind("<Configure>", self._resized, add="+")
 
         #: Stop or the kill switch hold the bot down until Start.
         self._held = not start_bot
@@ -239,7 +243,12 @@ class GuiApp:
         """
         if title == self._current:
             return
-        self._pages[title].lift()
+        # Pages stay stacked (a switch is a lift), until the window is resized:
+        # then the hidden ones are taken out, so a resize redraws one tab, not
+        # ten (2.2 s a resize step with ten, 0.4-0.6 s with one; 2026-10-31).
+        page = self._pages[title]
+        tk.Place.place_configure(_outer(page), x=0, y=0, relwidth=1, relheight=1)
+        page.lift()
         if self._current:
             self._nav[self._current].configure(**nav_colors(active=False))
         self._nav[title].configure(**nav_colors(active=True))
@@ -248,6 +257,16 @@ class GuiApp:
             self.tabs[title].on_poll(self.ctx.state.snapshot())
         except Exception as exc:  # noqa: BLE001 - a bad tab must not block the switch
             self.log.warn(f"poll error: {exc!r}")
+
+    # doc: docs/prs/gui-log.md#resize-one-tab
+    def _resized(self, event: tk.Event) -> None:
+        """The window changed size: take the hidden pages out until shown again."""
+        if event.widget is not self.root or (event.width, event.height) == self._size:
+            return
+        self._size = (event.width, event.height)
+        for title, page in self._pages.items():
+            if title != self._current:
+                tk.Place.place_forget(_outer(page))
 
     # -- header / bot control ----------------------------------------------
 
@@ -518,9 +537,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    disable_console_quick_edit()
-    logging.basicConfig(format="%(message)s")  # warnings, as before
-    logging.getLogger().handlers[0].setLevel(logging.INFO)  # debug goes to the file only
+    # doc: docs/prs/gui-log.md#bot-log-in-the-gui
+    # No console window: the lines it showed go to the GUI's log (debug only to the file).
+    feed = LogFeed()
+    logging.getLogger().addHandler(LogFeedHandler(feed))
+    log_crashes()
     # Keys sent or dropped and why the cavebot attacks, for diagnosing in game.
     Path("logs").mkdir(exist_ok=True)
     # Rotating, so the log of the run before a restart is still there.
@@ -536,6 +557,26 @@ def main(argv: list[str] | None = None) -> int:
     # interval a busy GUI (a row redraw) made a numpy/cv2 tick 6.6x slower;
     # at 0.5 ms 1.2x (measured).
     sys.setswitchinterval(0.0005)
-    app = GuiApp(start_bot=args.start)
+    try:
+        app = GuiApp(start_bot=args.start, log=feed)
+    except Exception as exc:
+        logging.getLogger("moonlight.crash").critical("GUI did not start", exc_info=True)
+        show_start_error(exc)
+        return 1
+    app.root.report_callback_exception = lambda kind, error, trace: logging.getLogger(
+        "moonlight.crash"
+    ).error("GUI error", exc_info=(kind, error, trace))
     app.root.mainloop()
     return 0
+
+
+def show_start_error(exc: Exception) -> None:
+    """A message box with why the GUI did not start (no console shows it)."""
+    import tkinter
+    from tkinter import messagebox
+
+    root = tkinter.Tk()
+    root.withdraw()
+    details = f"{type(exc).__name__}: {exc}\n\nThe details are in logs/bot.log."
+    messagebox.showerror("MOONLIGHT did not start", details)
+    root.destroy()

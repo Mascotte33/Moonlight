@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import customtkinter as ctk
 
 from moonlight.gui import theme
-from moonlight.gui.tab_base import Label, Option, Tab, section, stat_label
+from moonlight.gui.tab_base import Label, Option, Row, Tab, section, stat_label
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.core.state import WorldState
@@ -52,7 +52,7 @@ class HardwareTab(Tab):
         options = section(parent, "Connection")
         options.grid(row=4, column=0, sticky="ew", padx=10, pady=(10, 0))
         self.build_options(options)
-        detect = ctk.CTkFrame(options, fg_color="transparent")
+        detect = Row(options)
         detect.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self.menu_ports = ctk.CTkOptionMenu(
             detect,
@@ -81,11 +81,11 @@ class HardwareTab(Tab):
 
         box = section(parent, "Arduino backend")
         box.grid(row=5, column=0, sticky="nsew", padx=10, pady=(10, 10))
-        box_grid = ctk.CTkFrame(box, fg_color="transparent")
+        box_grid = Row(box)
         box_grid.pack(fill="both", expand=True)
         box_grid.grid_columnconfigure(1, weight=1)
 
-        btns = ctk.CTkFrame(box_grid, fg_color="transparent")
+        btns = Row(box_grid)
         btns.grid(row=3, column=0, columnspan=2, sticky="ew", padx=6, pady=(10, 4))
         for col, (text, cmd) in enumerate(
             (

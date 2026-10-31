@@ -11,9 +11,10 @@ import customtkinter as ctk
 
 from moonlight.core.state import WorldState
 from moonlight.gui import theme
-from moonlight.gui.tab_base import Label, Tab, dot_color, health, section, set_label, stat_num
+from moonlight.gui.state_bridge import LogFeed
+from moonlight.gui.tab_base import Label, Row, Tab, dot_color, health, section, set_label, stat_num
 
-__all__ = ["CARDS", "DashboardTab", "card_values", "uptime_text"]
+__all__ = ["CARDS", "DashboardTab", "card_values", "recent_errors", "uptime_text"]
 
 CARDS = ("Uptime", "Ticks", "Creatures", "HP")
 
@@ -36,6 +37,13 @@ def card_values(stats: dict[str, object], snap: WorldState) -> dict[str, str]:
     }
 
 
+# doc: docs/prs/gui-log.md#one-log-each
+def recent_errors(log: LogFeed) -> str:
+    """The last 20 warning and error lines, newest first, or "No errors"."""
+    lines = log.text(20, levels=("warn", "error")).splitlines()
+    return "\n".join(reversed(lines)) or "No errors"
+
+
 class DashboardTab(Tab):
     """Stat cards, battle list and event log."""
 
@@ -45,7 +53,7 @@ class DashboardTab(Tab):
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(1, weight=1)
 
-        cards = ctk.CTkFrame(parent, fg_color="transparent")
+        cards = Row(parent)
         cards.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
         self.lbl_task = Label(
             cards,
@@ -72,7 +80,7 @@ class DashboardTab(Tab):
 
         box = section(cards, "Bot health")
         box.grid(row=2, column=0, columnspan=len(CARDS), sticky="ew", pady=(theme.UNIT, 0))
-        dots = ctk.CTkFrame(box, fg_color="transparent")
+        dots = Row(box)
         dots.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
         self._dots: dict[str, Label] = {}
         for name, _ in health(WorldState(), False, False):
@@ -81,7 +89,7 @@ class DashboardTab(Tab):
             )
             self._dots[name].pack(side="left", padx=(0, theme.PAD))
 
-        body = ctk.CTkFrame(parent, fg_color="transparent")
+        body = Row(parent)
         body.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
         body.grid_columnconfigure(0, weight=1)
         body.grid_rowconfigure(1, weight=3)
@@ -93,7 +101,7 @@ class DashboardTab(Tab):
         self.battle_list.pack(fill="both", expand=True, padx=10, pady=(0, 8))
         self.battle_list.configure(state="disabled")
 
-        self.log_box = section(body, "Event log")
+        self.log_box = section(body, "Warnings and errors (all lines: Diagnostics)")
         self.log_box.grid(row=2, column=0, sticky="nsew")
         self.log_view = ctk.CTkTextbox(self.log_box, height=100, wrap="none")
         self.log_view.pack(fill="both", expand=True, padx=10, pady=(0, 8))
@@ -140,8 +148,7 @@ class DashboardTab(Tab):
         if battle != self._last_battle:
             self._set_text(self.battle_list, battle)
             self._last_battle = battle
-        log_text = self.ctx.log.text(20)
+        log_text = recent_errors(self.ctx.log)
         if log_text != self._last_log:
             self._set_text(self.log_view, log_text)
-            self.log_view.see("end")
             self._last_log = log_text

@@ -32,7 +32,7 @@ from moonlight.calibration.calibration_steps import AREAS, CalibrationSteps
 from moonlight.calibration.profile import ProfileManager
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
-from moonlight.gui.tab_base import Label, Tab
+from moonlight.gui.tab_base import Label, Row, Tab
 from moonlight.perception.capture import CaptureError, ScreenCapture
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -217,9 +217,9 @@ class CalibrationTab(Tab):
 
     def build(self, parent: ctk.CTkFrame) -> None:
         self.parent = parent
-        self.idle = ctk.CTkFrame(parent, fg_color="transparent")
+        self.idle = Row(parent)
         self.idle.grid(row=0, column=0, sticky="nsew")
-        row = ctk.CTkFrame(self.idle, fg_color="transparent")
+        row = Row(self.idle)
         row.pack(anchor="w", padx=theme.PAD, pady=theme.PAD)
         self.btn_start = ctk.CTkButton(
             row,
@@ -274,7 +274,7 @@ class CalibrationTab(Tab):
         self.refill_profiles()
         self.ctx.config_listeners.append(self.refill_profiles)
 
-        self.work = ctk.CTkFrame(parent, fg_color="transparent")
+        self.work = Row(parent)
         self.work.grid(row=0, column=0, sticky="nsew")
         bar = ctk.CTkFrame(self.work, fg_color=theme.RAISED)
         bar.pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0))
@@ -303,7 +303,7 @@ class CalibrationTab(Tab):
             text_color=theme.TEXT,
             font=ctk.CTkFont(size=theme.SIZE_BODY),
         ).pack(fill="x", padx=theme.PAD, pady=(0, theme.GAP))
-        self.review_bar = ctk.CTkFrame(self.work, fg_color="transparent")
+        self.review_bar = Row(self.work)
         Label(self.review_bar, text="UI scale").pack(side="left", padx=(0, theme.UNIT))
         self.ent_scale = ctk.CTkEntry(self.review_bar, width=64, fg_color=theme.NIGHT)
         self.ent_scale.pack(side="left", padx=(0, theme.GAP))

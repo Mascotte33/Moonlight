@@ -167,6 +167,29 @@ def write_option(cfg: BotConfig, option: Option, value: object) -> BotConfig:
 
 
 # doc: docs/prs/gui-smooth.md#light-labels
+def mode_color(color: Any) -> str:
+    """A CTk color (one color, or a light/dark pair) for the current mode."""
+    if isinstance(color, (tuple, list)):
+        return str(color[ctk.AppearanceModeTracker.appearance_mode])
+    return str(color)
+
+
+# doc: docs/prs/gui-log.md#plain-layout-frames
+class Row(tk.Frame):
+    """A layout-only frame: a transparent ``ctk.CTkFrame`` that is one Tk window.
+
+    A CTkFrame is a frame and a canvas, redrawn on every tab switch even when
+    it draws nothing; a tab switch costs about 2 ms per native window. This
+    one takes its parent's color, so nothing on screen changes.
+    """
+
+    _detect_color_of_master = ctk.CTkBaseClass._detect_color_of_master
+
+    def __init__(self, master: Any, **options: Any) -> None:
+        super().__init__(master, borderwidth=0, highlightthickness=0, **options)
+        self.configure(bg=mode_color(self._detect_color_of_master(master)))
+
+
 class Label(tk.Label):
     """A text label that looks like ``ctk.CTkLabel`` but is one Tk window.
 
@@ -204,10 +227,7 @@ class Label(tk.Label):
         self.configure(**{"text_color": self._text_color, "font": self._font, **options})
 
     def _mode_color(self, color: Any) -> str:
-        """A CTk color (one color, or a light/dark pair) for the current mode."""
-        if isinstance(color, (tuple, list)):
-            return str(color[ctk.AppearanceModeTracker.appearance_mode])
-        return str(color)
+        return mode_color(color)
 
     def configure(self, cnf: Any = None, **options: Any) -> Any:
         if cnf is not None or not options:
@@ -407,7 +427,7 @@ class Tab:
         cfg = load_real_config()
         for option in self.options if options is None else options:
             if option.label:
-                row = ctk.CTkFrame(parent, fg_color="transparent")
+                row = Row(parent)
                 row.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
                 Label(
                     row,

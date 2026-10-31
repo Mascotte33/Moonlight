@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from moonlight.gui.diagnostics_tab import recent_errors
+from moonlight.gui.dashboard_tab import recent_errors
 from moonlight.gui.state_bridge import HardwareController, LogFeed
 from moonlight.gui.status_tab import age_text
 

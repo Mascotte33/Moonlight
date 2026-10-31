@@ -24,6 +24,7 @@ from moonlight.gui.tab_base import (
     HotkeyBox,
     Label,
     Option,
+    Row,
     Tab,
     read_option,
     row_button,
@@ -132,14 +133,14 @@ class HealingTab(Tab):
             wraplength=640,
             text_color=theme.TEXT_DIM,
         ).pack(fill="x", padx=theme.PAD)
-        self._rules_frame = ctk.CTkFrame(rules_box, fg_color="transparent")
+        self._rules_frame = Row(rules_box)
         self._rules_frame.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         row_button(rules_box, "Add rule", self._add_rule).configure(width=80)
         rules_box.winfo_children()[-1].pack_configure(padx=theme.PAD, pady=theme.UNIT, anchor="w")
 
         cures_box = section(parent, "Cures (spell slot, after the rules)")
         cures_box.pack(fill="x", padx=10, pady=(10, 0))
-        self._cures_frame = ctk.CTkFrame(cures_box, fg_color="transparent")
+        self._cures_frame = Row(cures_box)
         self._cures_frame.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, theme.UNIT))
 
         cooldowns_box = section(parent, "Cooldowns")
@@ -206,7 +207,7 @@ class HealingTab(Tab):
             child.destroy()
         self._rule_widgets = []
         for index, row in enumerate(rows):
-            line = ctk.CTkFrame(self._rules_frame, fg_color="transparent")
+            line = Row(self._rules_frame)
             line.pack(fill="x", pady=(theme.UNIT, 0))
             kind = ctk.CTkOptionMenu(
                 line,
@@ -242,7 +243,7 @@ class HealingTab(Tab):
             child.destroy()
         self._cure_widgets = []
         for row in rows:
-            line = ctk.CTkFrame(self._cures_frame, fg_color="transparent")
+            line = Row(self._cures_frame)
             line.pack(fill="x", pady=(theme.UNIT, 0))
             check = ctk.CTkCheckBox(line, text=row.condition, width=120, command=self._save)
             if row.enabled:

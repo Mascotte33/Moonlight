@@ -25,6 +25,7 @@ from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.tab_base import (
     HotkeyBox,
     Label,
+    Row,
     Tab,
     read_option,
     row_button,
@@ -154,7 +155,7 @@ def _card(parent: ctk.CTkFrame, title: str, hint: str = "") -> tuple[ctk.CTkFram
         Label(
             box, text=hint, anchor="w", justify="left", wraplength=640, text_color=theme.TEXT_DIM
         ).pack(fill="x", padx=theme.PAD)
-    rows = ctk.CTkFrame(box, fg_color="transparent")
+    rows = Row(box)
     rows.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
     return box, rows
 
@@ -237,7 +238,7 @@ class TargetingTab(Tab):
     def build(self, parent: ctk.CTkFrame) -> None:
         settings_box = section(parent, "Targeting")
         settings_box.pack(fill="x", padx=10, pady=(10, 0))
-        line = ctk.CTkFrame(settings_box, fg_color="transparent")
+        line = Row(settings_box)
         line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
         Label(line, text="Attack key every (ms)", text_color=theme.TEXT_DIM).pack(
             side="left"
@@ -247,7 +248,7 @@ class TargetingTab(Tab):
             line, text="Give up on a target after (s)", text_color=theme.TEXT_DIM
         ).pack(side="left", padx=(theme.PAD, 0))
         self._unreachable_entry = row_entry(line, "", 48, self._save)
-        chase_line = ctk.CTkFrame(settings_box, fg_color="transparent")
+        chase_line = Row(settings_box)
         chase_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
         Label(
             chase_line, text="Client key: Toggle Chase Mode", text_color=theme.TEXT_DIM
@@ -388,7 +389,7 @@ class TargetingTab(Tab):
         hotkey.set(row.hotkey)
         count = row_entry(rows, row.minimum_adjacent_monsters, 40, self._save, pack_left=False)
         mana = row_entry(rows, row.minimum_mana_percent, 48, self._save, pack_left=False)
-        buttons = ctk.CTkFrame(rows, fg_color="transparent")
+        buttons = Row(rows)
         line = _AreaLine(enabled, hotkey, count, mana, [enabled, hotkey, count, mana, buttons])
         row_button(buttons, "↑", partial(self._move_area_rule, line, -1))
         row_button(buttons, "↓", partial(self._move_area_rule, line, 1))

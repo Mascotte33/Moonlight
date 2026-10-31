@@ -322,10 +322,12 @@ python -m moonlight
 
 The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start` starts it right away.
 
-The console window it starts from shows the log. The GUI turns off the
-console's click-to-select (QuickEdit) mode, because a selection there blocks
-the log writes and froze the bot. To copy text from the console, use its
-title-bar menu: Edit, then Mark.
+"Start Moonlight GUI.bat" opens the GUI without a console window. The bot's
+log (state changes, scripts, warnings, errors) is on the Diagnostics tab; the
+Dashboard shows only its warnings and errors, newest first. `logs/bot.log` has
+everything, keys included.
+A crash of any part is written there too, and a GUI that cannot start shows
+a message box with the error.
 
 ## Healing and cures
 
