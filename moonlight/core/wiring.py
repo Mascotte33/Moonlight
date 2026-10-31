@@ -265,6 +265,7 @@ def make_perceive(
         profile.get_region("player_list").to_tuple if "player_list" in profile.regions else None
     )
     player_box: Rect | None = None
+    last_failure = ""
     floor = FloorReader(profile)
     status_icons: StatusIconReader | None = None
     if "status_icons" in profile.regions:
@@ -291,7 +292,7 @@ def make_perceive(
     conditions: frozenset[str] = frozenset()
 
     def perceive() -> None:
-        nonlocal player_box, ticks_until_slow_read, names, conditions
+        nonlocal player_box, ticks_until_slow_read, names, conditions, last_failure
         focused = focus_check() if focus_check is not None else True
         try:
             if not focused:
@@ -324,11 +325,16 @@ def make_perceive(
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
             chase_mode = read_chase_mode(frame, chase_buttons) if chase_buttons else None
-        except Exception:  # noqa: BLE001 - any perception failure = screen not ok
+        except Exception as error:  # noqa: BLE001 - any perception failure = screen not ok
+            # One line per new reason, not one per tick (e.g. "HP bar covered").
+            if str(error) != last_failure:
+                logger.warning("perception failed: %s", error)
+                last_failure = str(error)
             with state.lock():
                 state.client_focused = focused
                 state.screen_ok = False
             return
+        last_failure = ""
         with state.lock():
             state.client_focused = True
             state.screen_ok = True
