@@ -301,9 +301,16 @@ python tools/arduino_verify.py
 # 4. Check the setup (config, Arduino, profile, perception)
 python tools/check_setup.py
 
-# 5. Launch the desktop GUI (or double-click "Start Moonlight GUI.bat")
+# 5. Launch the desktop GUI from a console (shows its output there)
 python -m moonlight
 ```
+
+**Moonlight.exe** opens the GUI with no console window. Build it once with
+`tools/launcher/build.bat` (uses the C# compiler that ships with Windows;
+rebuild only if `tools/launcher/Moonlight.cs` changes), then double-click
+`Moonlight.exe` in the repo root or pin it to the taskbar. It runs
+`pythonw -m moonlight` from the repo root. Without a console, output and
+tracebacks go to `logs/console.log`, and a crash shows a message box.
 
 The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start` starts it right away.
 
