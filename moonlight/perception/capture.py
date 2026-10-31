@@ -144,6 +144,21 @@ def _find_window_hwnd(title: str) -> int | None:
     return found[0] if found else None
 
 
+# doc: docs/prs/scripts-page.md#test-now
+def focus_window(title: str) -> bool:
+    """Bring the window *title* (as :func:`_find_window_hwnd` finds it) to the
+    front, restoring it when minimized; False when it is not found."""
+    hwnd = _find_window_hwnd(title)
+    if hwnd is None:
+        return False
+    if sys.platform == "linux":
+        return x11.activate(hwnd)
+    user32 = ctypes.windll.user32
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    return bool(user32.SetForegroundWindow(hwnd))
+
+
 # doc: docs/prs/dxcam-crash.md#double-release
 def _stop_dxcam_double_release() -> None:
     """Make dxcam 0.3 release each COM pointer once, not twice.

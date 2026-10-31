@@ -31,7 +31,7 @@ JSON format (``moonlight_config.json``)::
         "cavebot":   {"enabled": false, "route": "rotworms"},
         "looting":   {"enabled": false},
         "refill":    {"enabled": false},  # follows cavebot; 0 = off
-        "scripts":   {"enabled": false, "timers": "eat 60"},
+        "scripts":   {"ticked": ["eat"], "pause_ms": {"eat": 60000}},  # no switch
         "extras":    {"food": true, "food_hotkey": "F10"},  # no switch: a ticked extra is on
         "rotation":  {"logout_hotkey": "ctrl+l", "accounts": [
           {"login": "abc", "password": "xyz", "character": 1, "minutes": 60}
@@ -85,7 +85,7 @@ __all__ = [
 DEFAULT_CONFIG_FILE = "moonlight_config.json"
 
 #: Modules with no switch: always built, no ``enabled`` key (a missing section = defaults).
-ALWAYS_ON = ("alarms", "extras")
+ALWAYS_ON = ("alarms", "extras", "scripts")
 
 #: Module section names, in ``modules`` of the JSON file.
 MODULES = (
@@ -163,8 +163,8 @@ class BotConfig:
     cavebot: CavebotConfig | None = None
     looting: LootingConfig | None = None
     refill: RefillConfig | None = None
-    #: Timed scripts; on or off, ``script`` waypoints always run.
-    scripts: ScriptsConfig | None = None
+    #: Ticked scripts and their pauses; always built, ``script`` waypoints always run.
+    scripts: ScriptsConfig = ScriptsConfig()
     #: Food, haste, buff potion, ring, amulet, player timer, PM alarm; always built.
     extras: ExtrasConfig = ExtrasConfig()
     #: Accounts played in turn; their logins stay in this gitignored file.
@@ -248,6 +248,8 @@ class BotConfig:
                 raise ConfigError(f"modules: missing required section {name!r}")
             section = dict(_require_dict(modules[name], f"modules.{name}"))
             enabled = section.pop("enabled", None)
+            if name == "scripts" and isinstance(section.get("timers"), str):
+                section.update(_old_script_timers(section.pop("timers"), enabled is True))
             if name in ALWAYS_ON:  # old files: the switch is gone
                 enabled = True
             elif name == "rotation":  # no switch: on when it has accounts
@@ -411,6 +413,21 @@ def _build(cls: Any, raw: object, where: str) -> Any:
     except (TypeError, ValueError) as exc:
         raise ConfigError(f"{where}: {exc}") from exc
     return obj
+
+
+# doc: docs/prs/scripts-page.md#ticked-scripts
+def _old_script_timers(text: str, enabled: bool) -> dict[str, Any]:
+    """The old timer box (``"eat 60"``, on with the Scripts switch) as ticks and pauses."""
+    from moonlight.scripts.scripts import parse_timers
+
+    try:
+        timers = parse_timers(text)
+    except ValueError as exc:
+        raise ConfigError(f"modules.scripts.timers: {exc}") from exc
+    return {
+        "ticked": [name for name, _ in timers] if enabled else [],
+        "pause_ms": {name: round(seconds * 1000) for name, seconds in timers},
+    }
 
 
 def _coerce(value: object, hint: Any, where: str) -> Any:

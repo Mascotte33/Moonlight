@@ -12,7 +12,7 @@ import pytest
 from moonlight.core.safety import RateLimitedInput, RateLimiter
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import FakeInput
-from moonlight.scripts.scripts import ScriptRunner, ScriptsConfig, parse_timers
+from moonlight.scripts.scripts import ScriptRunner, ScriptsConfig, parse_timers, script_error
 
 
 class Clock:
@@ -45,7 +45,7 @@ def run(bot):
 def test_one_command_per_tick_and_a_wait(tmp_path: Path) -> None:
     clock = Clock()
     r, inp = runner(tmp_path, clock, s=PRESS_WAIT_SAY), FakeInput()
-    assert r.names() == ["s"] and r.start("s")
+    assert r.start("s")
     ticks(r, inp, 5)
     assert inp.sent_lines == ["K f2"]  # waiting
     clock.now = 1.0
@@ -87,22 +87,89 @@ def test_a_broken_script_stops_without_crashing(tmp_path: Path, src: str) -> Non
     assert r.running is None and inp.sent_lines == []
 
 
-def test_timers_run_at_once_then_every_n_seconds(tmp_path: Path) -> None:
+# doc: docs/prs/scripts-page.md#ticked-scripts
+def test_a_ticked_script_runs_at_once_then_its_pause_after_it_ended(tmp_path: Path) -> None:
     clock = Clock()
-    r, inp = runner(tmp_path, clock, eat="def run(bot):\n    yield bot.press('f5')\n"), FakeInput()
-    r.timers = parse_timers("eat 60")
+    src = "def run(bot):\n    yield bot.press('f5')\n    yield 10\n"
+    r, inp = runner(tmp_path, clock, eat=src), FakeInput()
+    r.timers = ScriptsConfig(("eat",), {"eat": 60000}).timers()
     assert r.poll() == "eat"
     ticks(r, inp, 3)
+    clock.now = 10.0
+    ticks(r, inp, 2)  # the wait is over: the script ends at 10 s
     assert r.poll() is None
-    clock.now = 60.0
+    clock.now = 69.0
+    assert r.poll() is None
+    clock.now = 70.0
     assert r.poll() == "eat"
 
 
-def test_parse_timers() -> None:
+def test_ticked_scripts_take_turns_top_first(tmp_path: Path) -> None:
+    src = "def run(bot):\n    yield bot.press('f5')\n"
+    r, inp = runner(tmp_path, a=src, b=src), FakeInput()
+    r.timers = ScriptsConfig(("a", "b")).timers()
+    assert r.poll() == "a"
+    ticks(r, inp, 3)
+    assert r.poll() == "b"
+
+
+def test_scripts_config_checks_names_and_pauses() -> None:
+    assert ScriptsConfig(("eat",)).timers() == [("eat", 1.0)]  # empty pause: 1000 ms
+    for bad in (ScriptsConfig(("my script",)), ScriptsConfig(pause_ms={"eat": 49})):
+        with pytest.raises(ValueError):
+            bad.validate()
+
+
+def test_parse_timers_reads_the_old_timer_box() -> None:
     assert parse_timers(" eat 60, rope 2.5 ,") == [("eat", 60.0), ("rope", 2.5)]
     for bad in ("eat", "eat 0", "eat sixty", "my script 5"):
         with pytest.raises(ValueError):
-            ScriptsConfig(bad).validate()
+            parse_timers(bad)
+
+
+def test_script_error_says_what_is_wrong() -> None:
+    assert script_error("def run(bot):\n    yield 1\n") is None
+    assert script_error("def run(bot):\n    x = (\n") == "line 2: '(' was never closed"
+    assert script_error("x = 1\n") == "no def run(bot)"
+
+
+def test_a_failing_ticked_script_is_unticked_with_its_line(tmp_path: Path) -> None:
+    r, inp = runner(tmp_path, s="def run(bot):\n    yield 1 / 0\n"), FakeInput()
+    r.timers = [("s", 1.0)]
+    assert r.poll() == "s"
+    ticks(r, inp, 1)
+    assert r.running is None and r.timers == []
+    assert r.failed == {"s": "line 2: ZeroDivisionError: division by zero"}
+
+
+def test_a_broken_script_does_not_start_and_is_kept_in_failed(tmp_path: Path) -> None:
+    r = runner(tmp_path, s="x = (")
+    assert not r.start("s")
+    assert r.failed["s"].startswith("line 1: SyntaxError")
+    assert not r.start("missing")
+    assert "missing" in r.failed
+
+
+# doc: docs/prs/scripts-page.md#test-now
+def test_test_now_starts_before_the_ticked_scripts(tmp_path: Path) -> None:
+    src = "def run(bot):\n    yield bot.press('f5')\n"
+    r, inp = runner(tmp_path, a=src, t=src), FakeInput()
+    r.timers = [("a", 1.0)]
+    r.request_test("t")
+    assert r.testing
+    assert r.poll() == "t" and r.testing
+    ticks(r, inp, 3)
+    assert not r.testing
+    assert r.poll() == "a"
+
+
+def test_count_reads_the_action_bar_potions(tmp_path: Path) -> None:
+    src = "def run(bot):\n    yield bot.press(f\"n{bot.count('mana')}\")\n"
+    r, inp = runner(tmp_path, s=src), FakeInput()
+    r.potion_counts = lambda: {"health": 3, "mana": 42}
+    r.start("s")
+    ticks(r, inp, 2)
+    assert inp.sent_lines == ["K n42"]
 
 
 # doc: docs/prs/scripts.md#find-picture
@@ -124,3 +191,31 @@ def run(bot):
         r.start("s")
         ticks(r, inp, 2)
         assert inp.sent_lines == [line]
+
+
+# doc: docs/prs/scripts-page.md#test-now
+def test_test_now_waits_for_the_client_in_front_then_runs(tmp_path: Path) -> None:
+    clock = Clock()
+    r = runner(tmp_path, clock, t="def run(bot):\n    yield bot.press('f5')\n")
+    in_front = [False]
+    r.client_is_foreground = lambda: in_front[0]
+    r.request_test("t")
+    clock.now = 1.0
+    assert r.poll() is None and r.testing  # the bot's window is in front: wait
+    in_front[0] = True
+    assert r.poll() == "t"
+
+
+def test_test_now_is_dropped_when_the_client_never_comes_to_front(tmp_path: Path) -> None:
+    clock = Clock()
+    r = runner(tmp_path, clock, t="def run(bot):\n    yield bot.press('f5')\n")
+    r.client_is_foreground = lambda: False
+    r.request_test("t")
+    clock.now = 4.9
+    r.drop_late_test()
+    assert r.testing and r.test_missed is None
+    clock.now = 5.0
+    r.drop_late_test()  # the Scripts tab does this while the loop is paused
+    assert not r.testing and r.test_missed == "t not tested: Tibia was not in front and readable"
+    r.client_is_foreground = lambda: True
+    assert r.poll() is None  # never runs later by surprise

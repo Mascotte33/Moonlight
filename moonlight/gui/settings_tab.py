@@ -43,7 +43,7 @@ OPTIONS = [
 #: The only switch for each module (T2.F4.K2); cavebot has its own on its tab.
 MODULE_SWITCHES = [
     Option(name.replace("_", " ").capitalize(), f"{name}.enabled", "switch")
-    for name in ("healing", "targeting", "looting", "scripts")
+    for name in ("healing", "targeting", "looting")
 ]
 #: One row per extra: its hotkey and checkbox, then the player limits (docs/prs/extras.md#extras).
 EXTRAS_OPTIONS = [
