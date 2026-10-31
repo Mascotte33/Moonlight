@@ -11,9 +11,10 @@ import customtkinter as ctk
 
 from moonlight.core.state import WorldState
 from moonlight.gui import theme
+from moonlight.gui.state_bridge import LogFeed
 from moonlight.gui.tab_base import Label, Tab, dot_color, health, section, set_label, stat_num
 
-__all__ = ["CARDS", "DashboardTab", "card_values", "uptime_text"]
+__all__ = ["CARDS", "DashboardTab", "card_values", "recent_errors", "uptime_text"]
 
 CARDS = ("Uptime", "Ticks", "Creatures", "HP")
 
@@ -34,6 +35,13 @@ def card_values(stats: dict[str, object], snap: WorldState) -> dict[str, str]:
         "Creatures": str(len(snap.monsters)),
         "HP": f"{snap.hp_percent:.0f}%",
     }
+
+
+# doc: docs/prs/gui-log.md#one-log-each
+def recent_errors(log: LogFeed) -> str:
+    """The last 20 warning and error lines, newest first, or "No errors"."""
+    lines = log.text(20, levels=("warn", "error")).splitlines()
+    return "\n".join(reversed(lines)) or "No errors"
 
 
 class DashboardTab(Tab):
@@ -93,7 +101,7 @@ class DashboardTab(Tab):
         self.battle_list.pack(fill="both", expand=True, padx=10, pady=(0, 8))
         self.battle_list.configure(state="disabled")
 
-        self.log_box = section(body, "Event log")
+        self.log_box = section(body, "Warnings and errors (all lines: Diagnostics)")
         self.log_box.grid(row=2, column=0, sticky="nsew")
         self.log_view = ctk.CTkTextbox(self.log_box, height=100, wrap="none")
         self.log_view.pack(fill="both", expand=True, padx=10, pady=(0, 8))
@@ -140,8 +148,7 @@ class DashboardTab(Tab):
         if battle != self._last_battle:
             self._set_text(self.battle_list, battle)
             self._last_battle = battle
-        log_text = self.ctx.log.text(20)
+        log_text = recent_errors(self.ctx.log)
         if log_text != self._last_log:
             self._set_text(self.log_view, log_text)
-            self.log_view.see("end")
             self._last_log = log_text

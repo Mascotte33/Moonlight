@@ -26,17 +26,15 @@ from moonlight.core.state import Position, WorldState
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_profile, load_real_config
 from moonlight.gui.settings_tab import plain_reason
-from moonlight.gui.state_bridge import LogFeed
 from moonlight.gui.tab_base import Label, Tab, dot_color, health, section, stat_label, stat_num
 from moonlight.perception.creatures import find_creatures
 
-__all__ = ["DiagnosticsTab", "recent_errors", "seen_view", "slots_of"]
+__all__ = ["LOG_LINES", "DiagnosticsTab", "seen_view", "slots_of"]
 
 
-def recent_errors(log: LogFeed) -> str:
-    """The last 20 warning and error lines, newest first, or "No errors"."""
-    lines = log.text(20, levels=("warn", "error")).splitlines()
-    return "\n".join(reversed(lines)) or "No errors"
+# doc: docs/prs/gui-log.md#one-log-each
+#: Lines the full log shows (the feed keeps 500; bot.log has all).
+LOG_LINES = 150
 
 
 #: Debug window refresh, ms (15 frames a second: 30 cost the bot ~5 ms a tick).
@@ -128,17 +126,10 @@ class DiagnosticsTab(Tab):
             self._dots[name].pack(fill="x", padx=theme.PAD)
         ctk.CTkFrame(box, height=theme.UNIT, fg_color="transparent").pack()
 
-        errs = section(parent, "Recent errors")
-        errs.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 6))
-        self.lbl_errors = Label(
-            errs, text="No errors", anchor="w", justify="left", text_color=theme.BLOOD
-        )
-        self.lbl_errors.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
-
-        logsec = section(parent, "Event log (tail)")
+        logsec = section(parent, "Bot log (everything; Dashboard shows the problems)")
         logsec.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
         logsec.grid_columnconfigure(0, weight=1)
-        self.log_view = ctk.CTkTextbox(logsec, height=140, wrap="none")
+        self.log_view = ctk.CTkTextbox(logsec, height=320, wrap="none")
         self.log_view.pack(fill="both", expand=True, padx=10, pady=(6, 4))
         self.log_view.configure(state="disabled")
         ctk.CTkButton(logsec, text="Reset loop stats", command=self._reset_stats).pack(
@@ -308,13 +299,11 @@ class DiagnosticsTab(Tab):
             self.lbl_tick_rate.configure(text=f"Loop tick rate: {rate:.1f} Hz")
             self.lbl_tick_ms.configure(text=f"Avg / max tick: {avg_ms} / {max_ms} ms")
 
-        errors = recent_errors(self.ctx.log)
-        if self.lbl_errors.cget("text") != errors:
-            self.lbl_errors.configure(text=errors)
-        text = self.ctx.log.text(40)
+        text = self.ctx.log.text(LOG_LINES)
         if text != self._log_text:
             self._log_text = text
             self.log_view.configure(state="normal")
             self.log_view.delete("1.0", "end")
             self.log_view.insert("1.0", text)
             self.log_view.configure(state="disabled")
+            self.log_view.see("end")
