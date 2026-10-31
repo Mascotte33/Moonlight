@@ -211,6 +211,23 @@ def test_lost_minimap_clears_state_position(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 
+def test_perceive_fails_closed_on_a_covered_hp_bar(caplog: pytest.LogCaptureFixture) -> None:
+    """A window over the HP bar pauses the bot instead of healing on a made-up HP."""
+    profile = make_profile()
+    x, y, w, h = profile.get_region("hp_bar").to_tuple
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    frame[y : y + h, x + 10 : x + w] = (0, 181, 0)  # the left 10 px are covered
+    state = WorldState()
+    perceive = wiring.make_perceive(state, profile, lambda: frame)
+    perceive()
+    perceive()
+    assert not state.screen_ok
+    assert [r.getMessage() for r in caplog.records if "perception failed" in r.getMessage()] == [
+        "perception failed: HP bar covered: fill at columns 10..29 of 30"
+        " does not start at the left edge"
+    ]
+
+
 def test_tick_grabber_folds_the_cursor_read_into_one_grab_per_tick() -> None:
     """P2 + P5: a clicking tick still makes ONE screen grab (regions + cursor ROI)."""
     from moonlight.hardware.clicker import ClickController

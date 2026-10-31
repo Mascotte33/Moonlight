@@ -18,6 +18,7 @@ from moonlight.perception.vitals import (
     BAR_BACKGROUND_RGB,
     HP_FILL_RGB,
     MP_FILL_RGB,
+    HpBarCoveredError,
     VitalsReader,
     bar_percent,
 )
@@ -179,6 +180,36 @@ class TestOffsetRegion:
         frame = make_bar_frame(42.0, offset=offset)
         region = bar_region(offset)
         assert bar_percent(frame, region, HP_FILL_RGB) == pytest.approx(42.0, abs=0.5)
+
+
+class TestCoveredHpBar:
+    """A window over part of the HP bar fails the read instead of a made-up HP."""
+
+    def test_window_over_the_left_of_a_full_bar_raises(self) -> None:
+        # 2026-10-31 18:01: a console covered columns 0..113 of the 326 px
+        # bar at full HP, the read gave 65 % and F1 was cast for 13 s.
+        frame = make_bar_frame(100.0, fill_rgb=(0, 181, 0), width=326, height=12)
+        frame[:, :114] = (0, 0, 0)
+        reader = VitalsReader(hp_region=(0, 0, 326, 12))
+        with pytest.raises(HpBarCoveredError, match="columns 114..325"):
+            reader.read_hp(frame)
+
+    def test_window_with_matching_pixels_over_the_bar_raises(self) -> None:
+        # 16:49 / 17:00: another app over the whole client had green pixels
+        # scattered in the region, read as 31 % and 12 % HP.
+        frame = make_bar_frame(0.0, width=WIDTH)
+        frame[:, 10:20] = (0, 181, 0)
+        frame[:, 40:60] = (0, 181, 0)
+        with pytest.raises(HpBarCoveredError):
+            VitalsReader(hp_region=FULL_REGION).read_hp(frame)
+
+    def test_fill_starting_inside_the_slack_is_read(self) -> None:
+        frame = make_bar_frame(50.0, fill_rgb=(0, 181, 0))
+        frame[:, :2] = BAR_BACKGROUND_RGB
+        assert VitalsReader(hp_region=FULL_REGION).read_hp(frame) == pytest.approx(48.0)
+
+    def test_empty_bar_reads_unknown(self) -> None:
+        assert VitalsReader(hp_region=FULL_REGION).read_hp(make_bar_frame(0.0)) == 0.0
 
 
 class TestVitalsReader:
