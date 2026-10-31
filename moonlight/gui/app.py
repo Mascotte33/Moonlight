@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import customtkinter as ctk
 
@@ -55,6 +56,9 @@ RETRY_S = 5.0  # seconds between tries to start a bot that is down
 WATCH_S = 0.2  # seconds between position reads while the bot is stopped
 _VK_F12 = 0x7B
 _f12_was_down = False
+_STD_INPUT_HANDLE = -10
+_ENABLE_QUICK_EDIT_MODE = 0x0040
+_ENABLE_EXTENDED_FLAGS = 0x0080
 
 
 def nav_colors(active: bool) -> dict[str, str]:
@@ -82,6 +86,26 @@ def f12_pressed() -> bool:
     if sys.platform != "win32":
         return False
     return bool(ctypes.windll.user32.GetAsyncKeyState(_VK_F12) & 1)
+
+
+def disable_console_quick_edit(kernel32: Any = None) -> bool:
+    """Turn off click-to-select in the console the GUI was started from.
+
+    A click in a QuickEdit console starts a selection, and every write to the
+    console then blocks until Esc. The bot thread logs to the console, so one
+    click froze the bot mid-fight (2026-10-31). Returns False when there is
+    no console (pythonw, Linux) and nothing changed.
+    """
+    if kernel32 is None:
+        if sys.platform != "win32":
+            return False
+        kernel32 = ctypes.windll.kernel32
+    stdin = kernel32.GetStdHandle(_STD_INPUT_HANDLE)
+    mode = ctypes.c_uint32()
+    if not kernel32.GetConsoleMode(stdin, ctypes.byref(mode)):
+        return False
+    quick_edit_off = (mode.value & ~_ENABLE_QUICK_EDIT_MODE) | _ENABLE_EXTENDED_FLAGS
+    return bool(kernel32.SetConsoleMode(stdin, quick_edit_off))
 
 
 SIDEBAR_WIDTH = 200
@@ -492,6 +516,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    disable_console_quick_edit()
     logging.basicConfig(format="%(message)s")  # warnings, as before
     logging.getLogger().handlers[0].setLevel(logging.INFO)  # debug goes to the file only
     # Keys sent or dropped and why the cavebot attacks, for diagnosing in game.
