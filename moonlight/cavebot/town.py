@@ -47,6 +47,14 @@ def _grey(frame: np.ndarray) -> np.ndarray:
     return frame if frame.ndim == 2 else cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
 
+def _match_scores(grey: np.ndarray, picture: np.ndarray) -> np.ndarray:
+    """Match scores of *picture* over *grey*, empty when the picture is larger:
+    OpenCV would then match the frame inside the picture instead."""
+    if picture.shape[0] > grey.shape[0] or picture.shape[1] > grey.shape[1]:
+        return np.empty((0, 0), np.float32)
+    return cv2.matchTemplate(grey, picture, cv2.TM_CCOEFF_NORMED)
+
+
 def find_lockers(
     frame: np.ndarray, grid: tuple[int, int, int, int], *, anchors: Path = ANCHORS_DIR
 ) -> set[tuple[int, int]]:
@@ -54,9 +62,7 @@ def find_lockers(
     gx, gy, gw, _ = grid
     tile = gw / 15
     s = tile / _LOCKER_TILE
-    scores = cv2.matchTemplate(
-        _grey(frame), _picture(anchors / "depot_locker.png", round(s, 3)), cv2.TM_CCOEFF_NORMED
-    )
+    scores = _match_scores(_grey(frame), _picture(anchors / "depot_locker.png", round(s, 3)))
     ys, xs = np.nonzero(scores >= MATCH_MIN)
     return {
         (round((x + _LOCKER_OFFSET * s - gx) / tile), round((y + _LOCKER_OFFSET * s - gy) / tile))
@@ -79,7 +85,9 @@ def find_chat(
             pic = _picture(anchors / name)
         except FileNotFoundError:
             continue  # no picture: that look is not told apart
-        scores = cv2.matchTemplate(grey, pic, cv2.TM_CCOEFF_NORMED)
+        scores = _match_scores(grey, pic)
+        if not scores.size:
+            continue  # a frame smaller than the button holds no button
         if best is None:
             best, look = scores, np.full(scores.shape, on)
             half = (pic.shape[1] // 2, pic.shape[0] // 2)
@@ -104,7 +112,9 @@ def find_picture(frame: np.ndarray, path: Path) -> tuple[int, int] | None:
     pic = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if pic is None:
         return None
-    scores = cv2.matchTemplate(_grey(frame), pic, cv2.TM_CCOEFF_NORMED)
+    scores = _match_scores(_grey(frame), pic)
+    if not scores.size:
+        return None
     _, best, _, (x, y) = cv2.minMaxLoc(scores)
     if best < MATCH_MIN:
         return None
