@@ -113,6 +113,14 @@ def test_off_module_without_kept_values_shows_defaults() -> None:
     assert read_option(cfg, "cavebot.rope_hotkey") is None
 
 
+def test_route_dropdown_shows_the_route_name_only() -> None:
+    # doc: docs/prs/route-menu.md#route-name
+    from moonlight.cavebot.cavebot import Route, Waypoint
+
+    route = Route("amazon_camp", waypoints=[Waypoint(32824, 31936 + i, 7) for i in range(115)])
+    assert str(route) == "amazon_camp"  # not ~40000 px of waypoints in the dropdown
+
+
 def test_no_field_is_shown_by_two_tabs() -> None:
     from moonlight.gui.app import TAB_ORDER
 
