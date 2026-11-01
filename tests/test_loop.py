@@ -612,9 +612,9 @@ class TestSelectClick:
             ws.creature_slots = ((7, 2),)  # three tiles north
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp)
-        ticks(gl, clock, 8 * 20 + 3)  # 8 s on a target whose HP never moves
+        ticks(gl, clock, 4 * 20 + 3)  # 4 s on a target whose HP never moves
         assert inp.sent_lines == ["K w"]
-        ticks(gl, clock, 8 * 20 + 6)  # 8 s more, then the click on the next row
+        ticks(gl, clock, 4 * 20 + 6)  # 4 s more, then the click on the next row
         assert inp.sent_lines == ["K w", "A 189 244", "C L"]
 
 
@@ -634,7 +634,7 @@ class TestSelectClick:
         )
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp, cavebot=cavebot)
-        ticks(gl, clock, 8 * 20 + 3)  # 8 s on a target whose HP never moves
+        ticks(gl, clock, 4 * 20 + 3)  # 4 s on a target whose HP never moves
         assert cavebot.targeting_paused and gl.current_state is not BotState.ATTACK
         assert "(targeting paused 5 s)" in str(gl.get_stats()["current_task"])
         ticks(gl, clock, 5 * 20 + 2)
@@ -691,6 +691,23 @@ class TestAttackHotkeys:
         assert inp.sent_lines == ["K F6"]
         ticks(gl, clock, 25)
         assert inp.sent_lines == ["K F6", "K F6"]
+
+    # doc: docs/prs/first-spell.md#fresh-cooldown
+    def test_the_next_target_after_a_kill_is_attacked_at_once(self) -> None:
+        inp = FakeInput()
+        ws = self._wolf_selected()
+        gl, clock = make_targeting_loop(ws, inp, F6_ROWS)
+        ticks(gl, clock, 2)
+        assert inp.sent_lines.count("K F6") == 1
+        wolf2 = Monster("Wolf", 100.0, battle_list_row=1)
+        with ws.lock():
+            ws.monsters = [wolf2]  # the first wolf died
+            ws.selected_target = None
+        ticks(gl, clock, 1)
+        with ws.lock():
+            ws.selected_target = wolf2  # the select click shows
+        ticks(gl, clock, 6)  # 0.35 s later, well inside the old 2 s cooldown
+        assert inp.sent_lines.count("K F6") == 2
 
     def test_area_rule_before_the_row_hotkey(self) -> None:
         ws = self._wolf_selected()

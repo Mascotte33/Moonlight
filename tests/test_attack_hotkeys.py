@@ -79,3 +79,12 @@ def test_a_turned_off_area_rule_is_skipped() -> None:
         AreaRule("F5", minimum_adjacent_monsters=1),
     )
     assert attack.decide(state(AROUND[:2]), ROW, 0.0) == "F5"
+
+
+# doc: docs/prs/first-spell.md#fresh-cooldown
+def test_a_new_target_gets_its_first_spell_at_once() -> None:
+    keys = hotkeys()
+    keys.send("F6", FakeInput(), 0.0)  # the last spell on the old target
+    assert keys.decide(state(), ROW, 0.5) is None  # same target: wait the 2 s
+    keys.new_target()  # it died, the next one is selected
+    assert keys.decide(state(), ROW, 0.5) == "F6"

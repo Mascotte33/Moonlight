@@ -105,7 +105,9 @@ class TargetingConfig:
     default_monster: MonsterRow = MonsterRow()
     area_rules: tuple[AreaRule, ...] = ()
     attack_cooldown_ms: int = 2000
-    unreachable_after_seconds: float = 8.0
+    # doc: docs/prs/first-spell.md#give-up-sooner
+    #: Owner 2026-11-01: 8 s was "way too much".
+    unreachable_after_seconds: float = 4.0
     #: The client's "Toggle Chase Mode" key; "" = the bot leaves the owner's mode.
     toggle_chase_hotkey: str = ""
 

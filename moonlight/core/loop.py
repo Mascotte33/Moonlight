@@ -614,6 +614,8 @@ class GameLoop:
             ):
                 m.looting.on_target_died(prev)
                 self._target_died_at = now
+                if m.attack_hotkeys is not None:
+                    m.attack_hotkeys.new_target()  # the client may select the next at once
             elif self._last_names and not names:
                 m.looting.on_target_died("")  # the battle list emptied: loot again
                 self._target_died_at = now
@@ -863,6 +865,8 @@ class GameLoop:
         def click() -> bool | None:
             clicker.request(point)
             self._select_click = (row, None)
+            if self.modules.attack_hotkeys is not None:
+                self.modules.attack_hotkeys.new_target()
             return self._step_click(clicker, now)
 
         if self._send(snap, click):
