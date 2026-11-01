@@ -1326,6 +1326,35 @@ def test_walk_keys_skip_unreachable_waypoints_until_one_has_a_way(
     assert sim.bot.is_active()
 
 
+def test_walk_keys_never_skips_back_to_the_waypoint_it_stands_on(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # 2026-11-01 live: the skip wrapped around the looping route onto the waypoint
+    # just reached, which was reached again at once: 12 -> 13 -> 12 ten times a second.
+    tile = np.full((256, 256, 3), 100, np.uint8)
+    tile[99:102, 109:112] = (0, 255, 255)  # walls all around waypoint 2
+    tile[100, 110] = 100
+    cv2.imwrite(str(tmp_path / "0_0_7.png"), tile)
+    sim = Sim(
+        [
+            Waypoint(0, 0, 0, "label", "hunt"),
+            walk(100, 100),
+            walk(110, 100),
+            Waypoint(0, 0, 0, "goto", "hunt"),
+        ],
+        Position(100, 100, 7),
+        walk_keys=True,
+        cost_map=CostMap(tmp_path),
+    )
+    sim.bot.start()
+    with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
+        while sim.now < 30 and "no way past" not in caplog.text:
+            sim.step()
+    assert "skipping to 1" not in caplog.text
+    assert "no way past the blocked tiles" in caplog.text
+    assert sim.bot.is_active()
+
+
 def test_walk_keys_blocked_waits_and_alarms_after_stuck_timeout() -> None:
     sim = Sim([walk(100, 104)], Position(100, 100, 7), walk_keys=True)
     sim.bot.start()

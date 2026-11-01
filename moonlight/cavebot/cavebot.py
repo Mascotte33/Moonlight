@@ -1183,7 +1183,9 @@ class Cavebot:
             index = following
             wp = self.route.waypoints[index]
             goal = (wp.x, wp.y, wp.z)
-            if wp.z == pos.z and (goal == start or next_step(start, goal, walkable) is not None):
+            if max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= _REACH.get(wp.action, 1):
+                continue  # reached at once: straight back to the unreachable one
+            if wp.z == pos.z and next_step(start, goal, walkable) is not None:
                 logger.info(
                     "cavebot: [stuck: unreachable] waypoint %d unreachable, skipping to %d",
                     self.route.current,
