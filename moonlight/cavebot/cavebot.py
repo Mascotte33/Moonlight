@@ -189,6 +189,28 @@ def has_tile(wp: Waypoint) -> bool:
     return wp.action not in NO_TILE or (wp.x, wp.y, wp.z) != (0, 0, 0)
 
 
+# doc: docs/prs/route-trust.md#walked-lines
+def walked_tiles(waypoints: list[Waypoint], loop: bool) -> set[tuple[int, int, int]]:
+    """Tiles on the straight line between neighbouring waypoints on one floor.
+
+    A route is recorded by walking it, so these were walked; the client's
+    cost map can still call one a wall (the Thais sewer row y 32218, 2026-11-01:
+    the bot skipped 10 waypoints). A real wall is still found by bumping it.
+    """
+    tiles: set[tuple[int, int, int]] = set()
+    spots = [(wp.x, wp.y, wp.z) for wp in waypoints if has_tile(wp)]
+    pairs = list(zip(spots, spots[1:], strict=False))
+    if loop and len(spots) > 2:
+        pairs.append((spots[-1], spots[0]))
+    for (x0, y0, z0), (x1, y1, z1) in pairs:
+        if z0 != z1:
+            continue
+        n = max(abs(x1 - x0), abs(y1 - y0))
+        for i in range(n + 1):
+            tiles.add((round(x0 + (x1 - x0) * i / n), round(y0 + (y1 - y0) * i / n), z0))
+    return tiles
+
+
 #: Seconds the route holds after a hand action (a wait: its label).
 _HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0, "step": 0.5, "deposit": 1.0}
 
@@ -528,6 +550,7 @@ class Cavebot:
         self._sidestep_after = float(sidestep_after)
         self._walk_keys = walk_keys
         self._cost_map = cost_map
+        self._walked: tuple[int, set[tuple[int, int, int]]] = (0, set())
         self._blocked: dict[tuple[int, int, int], float] = {}  # tile -> expiry
         self._blocked_wait = False  # no way past the blocked tiles: retrying
         #: Tiles a walk key stepped onto that moved the player elsewhere (a hole, a teleport).
@@ -1248,6 +1271,14 @@ class Cavebot:
         dy = max(-(mh // 2 - 2), min(mh // 2 - 2, wp.y - pos.y))
         self._clicker.request((mx + mw // 2 + dx, my + mh // 2 + dy))
 
+    def _map_walkable(self, x: int, y: int, z: int) -> bool:
+        """The cost map's word, or a tile the route walked between two waypoints."""
+        key = hash((id(self.route.waypoints), len(self.route.waypoints), self.route.loop))
+        if self._walked[0] != key:
+            self._walked = (key, walked_tiles(self.route.waypoints, self.route.loop))
+        assert self._cost_map is not None
+        return self._cost_map.walkable(x, y, z) or (x, y, z) in self._walked[1]
+
     def _step_toward(self, wp: Waypoint, pos: Position, now: float) -> None:
         """Press the walk key of the next step to *wp* around blocked tiles.
 
@@ -1267,7 +1298,7 @@ class Cavebot:
             return (
                 ((x, y, z) not in self._blocked or (x, y) in self._creatures)
                 and (x, y, z) not in danger
-                and (cost is None or cost.walkable(x, y, z))
+                and (cost is None or self._map_walkable(x, y, z))
             )
 
         def walkable(x: int, y: int, z: int) -> bool:
@@ -1277,7 +1308,7 @@ class Cavebot:
             return (
                 (x, y, z) not in self._blocked
                 and (x, y, z) not in danger
-                and (cost is None or cost.walkable(x, y, z))
+                and (cost is None or self._map_walkable(x, y, z))
             )
 
         start, goal = (pos.x, pos.y, pos.z), (wp.x, wp.y, wp.z)
