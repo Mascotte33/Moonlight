@@ -213,7 +213,7 @@ def walked_tiles(waypoints: list[Waypoint], loop: bool) -> set[tuple[int, int, i
     for (x0, y0, z0), (x1, y1, z1) in pairs:
         if z0 != z1:
             continue
-        n = max(abs(x1 - x0), abs(y1 - y0))
+        n = max(abs(x1 - x0), abs(y1 - y0), 1)  # two waypoints on one tile: n would be 0
         for i in range(n + 1):
             tiles.add((round(x0 + (x1 - x0) * i / n), round(y0 + (y1 - y0) * i / n), z0))
     return tiles

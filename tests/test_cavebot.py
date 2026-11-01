@@ -16,7 +16,14 @@ import cv2
 import numpy as np
 import pytest
 
-from moonlight.cavebot.cavebot import Cavebot, Route, RouteError, RouteFileLoader, Waypoint
+from moonlight.cavebot.cavebot import (
+    Cavebot,
+    Route,
+    RouteError,
+    RouteFileLoader,
+    Waypoint,
+    walked_tiles,
+)
 from moonlight.cavebot.pathing import CostMap, next_step
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import RateLimitedInput, RateLimiter
@@ -1640,3 +1647,9 @@ def test_use_waits_for_no_monsters_and_hp(monkeypatch: pytest.MonkeyPatch, unsaf
     sim.step()
     sim.step()
     assert "d" not in pressed(sim)
+
+
+def test_walked_tiles_with_two_waypoints_on_one_tile() -> None:
+    # bot.log 2026-11-01 14:23: a stand and a rope on one tile raised ZeroDivisionError
+    wps = [walk(100, 100), Waypoint(100, 100, 7, "rope"), walk(102, 100)]
+    assert walked_tiles(wps, loop=False) == {(100, 100, 7), (101, 100, 7), (102, 100, 7)}
