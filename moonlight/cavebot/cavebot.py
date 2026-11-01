@@ -551,6 +551,8 @@ class Cavebot:
         self._walk_keys = walk_keys
         self._cost_map = cost_map
         self._walked: tuple[int, set[tuple[int, int, int]]] = (0, set())
+        #: The map shows no way to the waypoint: the route's own lines may cross it.
+        self._trust_route = False
         self._blocked: dict[tuple[int, int, int], float] = {}  # tile -> expiry
         self._blocked_wait = False  # no way past the blocked tiles: retrying
         #: Tiles a walk key stepped onto that moved the player elsewhere (a hole, a teleport).
@@ -1272,12 +1274,21 @@ class Cavebot:
         self._clicker.request((mx + mw // 2 + dx, my + mh // 2 + dy))
 
     def _map_walkable(self, x: int, y: int, z: int) -> bool:
-        """The cost map's word, or a tile the route walked between two waypoints."""
+        """The cost map's word (never a floor change), or, while the map shows no
+        way at all (``_trust_route``), a tile the route walked between two waypoints."""
+        cost = self._cost_map
+        assert cost is not None
+        # doc: docs/prs/avoid-holes.md#floor-change-tiles
+        if cost.floor_change(x, y, z):
+            return False  # only ever the goal tile, which next_step allows
+        if cost.walkable(x, y, z):
+            return True
+        if not self._trust_route:
+            return False
         key = hash((id(self.route.waypoints), len(self.route.waypoints), self.route.loop))
         if self._walked[0] != key:
             self._walked = (key, walked_tiles(self.route.waypoints, self.route.loop))
-        assert self._cost_map is not None
-        return self._cost_map.walkable(x, y, z) or (x, y, z) in self._walked[1]
+        return (x, y, z) in self._walked[1]
 
     def _step_toward(self, wp: Waypoint, pos: Position, now: float) -> None:
         """Press the walk key of the next step to *wp* around blocked tiles.
@@ -1312,6 +1323,12 @@ class Cavebot:
             )
 
         start, goal = (pos.x, pos.y, pos.z), (wp.x, wp.y, wp.z)
+        if cost is not None:
+            # doc: docs/prs/avoid-holes.md#route-lines-last
+            # The route's lines only where the map shows no way at all: a line
+            # can cut over a hole the recording walked around (2026-11-01).
+            self._trust_route = False
+            self._trust_route = next_step(start, goal, self._map_walkable) is None
         path = next_step(start, goal, walkable)
         detour_too_long = False
         if path is not None and self._creatures:

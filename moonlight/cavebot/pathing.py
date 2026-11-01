@@ -3,7 +3,9 @@
 ``data/map/cost/{x}_{y}_{z}.png`` are renamed copies of the client's
 ``Minimap_WaypointCost`` tiles: 256x256 px, 1 px = 1 sqm. Yellow pixels
 (BGR 0, 255, 255) are blocked or unexplored; every other pixel is walkable.
-A missing tile counts as blocked.
+A missing tile counts as blocked. The colour tiles one folder up
+(``data/map/{x}_{y}_{z}.png``) draw holes, stairs, ladders and other floor
+changes yellow too: :meth:`CostMap.floor_change`.
 
 :func:`next_step` runs a shortest-path search in a window around the
 player and the goal and returns the first step and the path cost. A
@@ -49,6 +51,8 @@ class CostMap:
                 x, y, z = (int(v) for v in m.groups())
                 self._paths[(x, y, z)] = path
         self._tiles: dict[tuple[int, int, int], np.ndarray | None] = {}
+        self._colour_dir = directory.parent
+        self._changes: dict[tuple[int, int, int], np.ndarray | None] = {}
 
     @property
     def empty(self) -> bool:
@@ -62,6 +66,17 @@ class CostMap:
             image = cv2.imread(str(path), cv2.IMREAD_COLOR) if path else None
             self._tiles[key] = None if image is None else np.any(image != _YELLOW, axis=2)
         tile = self._tiles[key]
+        return tile is not None and bool(tile[y % _TILE, x % _TILE])
+
+    # doc: docs/prs/avoid-holes.md#floor-change-tiles
+    def floor_change(self, x: int, y: int, z: int) -> bool:
+        """True on a hole, stairs, ladder or other floor change (yellow on the colour map)."""
+        key = (x - x % _TILE, y - y % _TILE, z)
+        if key not in self._changes:
+            path = self._colour_dir / f"{key[0]}_{key[1]}_{z}.png"
+            image = cv2.imread(str(path), cv2.IMREAD_COLOR) if path.exists() else None
+            self._changes[key] = None if image is None else np.all(image == _YELLOW, axis=2)
+        tile = self._changes[key]
         return tile is not None and bool(tile[y % _TILE, x % _TILE])
 
 

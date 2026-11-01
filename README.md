@@ -122,10 +122,14 @@ makes it unknown. If the floor reads as one with no waypoint on the route
 it walks on once the floor reads right again.
 
 Walking with keys finds its way on the client's walkability map
-(`data/map/cost/`). That map can be wrong (a corridor row drawn as a wall), so
-the tiles on the straight line between two neighbouring waypoints of the
-route always count as walkable: the route was recorded by walking it. A real
-wall is still found by bumping into it.
+(`data/map/cost/`). It never walks over a hole, stairs, a ladder or any other
+floor change: the tiles drawn yellow on the colour map (`data/map/`), the
+floor changes on the route and the ones it once fell through. It steps onto
+one only when a waypoint (`stairs`, `ladder`, `step`) is that tile. The map
+can be wrong (a corridor row drawn as a wall): only where it shows no way at
+all, the tiles on the straight line between two neighbouring waypoints count
+as walkable (the route was recorded by walking it). A real wall is still
+found by bumping into it.
 
 The route recorder saves the tile the character stood on, never the one it is
 walking to: a position counts after it held for 0.6 s, or once the character

@@ -975,6 +975,58 @@ def test_walk_keys_trust_the_route_over_a_wrong_wall_on_the_map(tmp_path: Path) 
     assert pressed(sim)[-1] == "s"  # walking south through the row
 
 
+def _step_until_planned(sim: Sim) -> None:
+    for _ in range(5):  # the first step reaches waypoint 0, then the walk is planned
+        sim.step()
+        if sim.bot.planned_path:
+            return
+
+
+def _corridor_map(tmp_path: Path, blocked: tuple[int, int] | None = None,
+                  hole: tuple[int, int] | None = None) -> CostMap:
+    """A 3-wide corridor x 4..6 going south; *blocked* on the cost map, *hole*
+    yellow on the colour map (a floor change)."""
+    cost = np.full((256, 256, 3), (0, 255, 255), np.uint8)
+    cost[0:30, 4:7] = 100
+    colour = np.full((256, 256, 3), 80, np.uint8)
+    if blocked is not None:
+        cost[blocked[1], blocked[0]] = (0, 255, 255)
+    if hole is not None:
+        colour[hole[1], hole[0]] = (0, 255, 255)
+    (tmp_path / "cost").mkdir()
+    cv2.imwrite(str(tmp_path / "cost" / "0_0_7.png"), cost)
+    cv2.imwrite(str(tmp_path / "0_0_7.png"), colour)
+    return CostMap(tmp_path / "cost")
+
+
+# doc: docs/prs/avoid-holes.md#floor-change-tiles
+def test_walk_keys_go_around_a_hole_on_the_straight_way(tmp_path: Path) -> None:
+    costs = _corridor_map(tmp_path, hole=(5, 8))
+    assert costs.floor_change(5, 8, 7) and not costs.floor_change(5, 7, 7)
+    sim = Sim([walk(5, 4), walk(5, 12)], Position(5, 4, 7), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    _step_until_planned(sim)
+    assert sim.bot.planned_path and (5, 8) not in sim.bot.planned_path
+
+
+def test_walk_keys_walk_onto_a_hole_when_it_is_the_waypoint(tmp_path: Path) -> None:
+    costs = _corridor_map(tmp_path, hole=(5, 8))
+    route = [walk(5, 4), Waypoint(5, 8, 7, "stairs")]
+    sim = Sim(route, Position(5, 4, 7), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    _step_until_planned(sim)
+    assert sim.bot.planned_path[-1] == (5, 8)  # the route asks for it: onto it
+
+
+# doc: docs/prs/avoid-holes.md#route-lines-last
+def test_route_lines_only_where_the_map_shows_no_way(tmp_path: Path) -> None:
+    costs = _corridor_map(tmp_path, blocked=(5, 8))  # a way around it exists
+    sim = Sim([walk(5, 4), walk(5, 12)], Position(5, 4, 7), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    _step_until_planned(sim)
+    assert sim.bot.planned_path and (5, 8) not in sim.bot.planned_path
+
+
 def test_walked_tiles_are_the_lines_between_waypoints_on_one_floor() -> None:
     from moonlight.cavebot.cavebot import walked_tiles
 
