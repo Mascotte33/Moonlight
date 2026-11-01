@@ -11,6 +11,7 @@ from moonlight.targeting.targeting import (
     TargetingAction,
     TargetingConfig,
     TargetingDecision,
+    _step_toward_creature,
 )
 
 
@@ -249,3 +250,10 @@ def test_no_creature_slot_means_no_step() -> None:
 def test_a_bad_chase_hotkey_is_refused() -> None:
     with pytest.raises(ValueError, match="toggle_chase_hotkey"):
         TargetingDecision(TargetingConfig(toggle_chase_hotkey="not a key"))
+
+
+def test_step_closer_never_lands_on_an_echo_raid() -> None:
+    # doc: docs/prs/echo-raid.md#avoid
+    assert _step_toward_creature(((9, 3),)) == (1, 0)
+    assert _step_toward_creature(((9, 3),), ((8, 5),)) == (0, -1)  # the other way
+    assert _step_toward_creature(((7, 2),), ((7, 4),)) is None  # no other way

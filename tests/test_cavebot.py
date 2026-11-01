@@ -1574,3 +1574,69 @@ def test_bank_alarms_after_3_min_of_a_chat_that_will_not_turn_on(
     assert sim.bot.alarm is None
     run_until(sim, 185)
     assert sim.bot.alarm == "bank" and sim.route.current == 0 and sim.bot.is_active()
+
+
+# -- echo raids (docs/prs/echo-raid.md) ---------------------------------------
+
+
+def _echo_sim(
+    monkeypatch: pytest.MonkeyPatch,
+    waypoints: list[Waypoint],
+    echo_slots: list[tuple[int, int]],
+    **kw: Any,
+) -> Sim:
+    """Keys mode at 100,100,7 (slot (7, 5)); the scan sees triggers on *echo_slots*."""
+    monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: [])
+    monkeypatch.setattr("moonlight.cavebot.cavebot.find_echo_raids", lambda _f, _g: echo_slots)
+    sim = Sim(
+        waypoints,
+        Position(100, 100, 7),
+        walk_keys=True,
+        frames=lambda: np.zeros((1, 1, 3), np.uint8),
+        **kw,
+    )
+    sim.state.hp_percent = 100.0
+    sim.bot.start()
+    return sim
+
+
+def test_avoid_walks_around_an_echo_raid(monkeypatch: pytest.MonkeyPatch) -> None:
+    sim = _echo_sim(monkeypatch, [walk(100, 104)], [(7, 6)])  # the trigger right below
+    sim.step()
+    assert sim.bot.echo_raids == {(100, 101)}
+    assert pressed(sim)[0] in ("a", "d", "z", "c")  # around, never down onto it
+
+
+def test_avoid_skips_a_waypoint_on_an_echo_raid(monkeypatch: pytest.MonkeyPatch) -> None:
+    sim = _echo_sim(monkeypatch, [walk(100, 103), walk(100, 96)], [(7, 8)])  # on waypoint 0
+    sim.step()  # the scan sees it
+    sim.step()
+    assert sim.route.current == 1
+
+
+def test_use_walks_onto_an_echo_raid_then_back_to_the_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    echo = [(8, 5)]  # right of the player
+    sim = _echo_sim(monkeypatch, [walk(100, 104)], echo, trigger_echo_raids=True)
+    sim.step()  # the scan sees it
+    sim.step()
+    assert pressed(sim)[-1] == "d"
+    echo.clear()  # stepped on: it is gone
+    sim.pos = Position(101, 100, 7)
+    sim.step()
+    assert sim.route.current == 0 and sim.bot._echo_raid_goal is None
+    sim.step()
+    assert pressed(sim)[-1] != "d"  # back toward the route
+
+
+@pytest.mark.parametrize("unsafe", ["monster", "low_hp"])
+def test_use_waits_for_no_monsters_and_hp(monkeypatch: pytest.MonkeyPatch, unsafe: str) -> None:
+    sim = _echo_sim(monkeypatch, [walk(100, 104)], [(8, 5)], trigger_echo_raids=True)
+    if unsafe == "monster":
+        sim.state.monsters = [Monster("Rat", 100.0)]
+    else:
+        sim.state.hp_percent = 79.0
+    sim.step()
+    sim.step()
+    assert "d" not in pressed(sim)

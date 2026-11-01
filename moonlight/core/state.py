@@ -111,6 +111,8 @@ class WorldState:
     players: tuple[str, ...] = ()
     #: Game-grid slots ``(col, row)`` of the creatures on screen (health-bar scan).
     creature_slots: tuple[tuple[int, int], ...] = ()
+    #: Game-grid slots of the echo raid triggers on screen (docs/prs/echo-raid.md#swirl-scan).
+    echo_raid_slots: tuple[tuple[int, int], ...] = ()
 
     # World.
     position: Position = field(default_factory=lambda: Position(0, 0, 0))
