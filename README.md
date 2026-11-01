@@ -154,10 +154,16 @@ for routes next to holes or teleports.
 Echo raid triggers (the red swirl that spawns stronger monsters) are seen on
 the game screen while walking with WSAD keys. Cavebot > **Echo raid** picks
 what the bot does: **avoid** (default) never walks onto one and skips a
-waypoint on one; **use** walks onto the nearest one once no monster is in the
-battle list and HP is 80 % or above, fights what spawns, then goes on from the
-nearest waypoint. A swirl counts only while it is on screen, and the step
-closer to a stuck target never lands on one. Log: `echo raid seen at x,y,z`.
+waypoint on one; **use** walks next to the nearest one once no monster is in
+the battle list and HP is 80 % or above, right-clicks it, waits 1 s, and if it
+is still there left-clicks it (the character steps on), waits 1 s again. Once
+it is gone it fights what spawns, then goes on from the nearest waypoint.
+After 3 such tries, or with no way to it, the swirl is ignored until it was
+off the screen for 30 s. Swirls are read only while the character stands
+still (mid-step the screen is a tile off), and the step closer to a stuck
+target never lands on one. Log: `echo raid seen at x,y,z, triggering`, then
+`triggered`, or `did not trigger after 3 tries, ignoring it` /
+`no way to the echo raid ..., ignoring it`.
 
 Looting presses the loot hotkey (the OTS loots every corpse around on
 Alt+Q) 0.3 s after each kill (also when more monsters of that name are left),
@@ -188,8 +194,10 @@ tile; there are no typed X, Y, Z fields. The bot walks onto that tile before
 it does the waypoint: a `label`, `goto`, `say`, `key`, `drag`, `script` or
 `wait` too. Those from older routes have no tile and happen where the bot
 stands. One click on a row in the waypoint list highlights it; the ▲ and ▼
-buttons under the list move it one row up or down. The list keeps its
-scroll position when it changes.
+buttons under the list move it one row up or down, and ✕ (or the Delete key)
+deletes it, with no popup; the row below is highlighted next. Press Save to
+keep the change. The buttons are grayed out while Cavebot is on. The list
+keeps its scroll position when it changes.
 
 Refill is part of the waypoint list. A `check` waypoint with label `town`
 is added on the character's tile and the bot walks there. On it, the bot
