@@ -53,11 +53,15 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   path), walking on once one is free.
 * **Echo raids** (``walk_keys``): the same scan finds echo raid triggers
   (:mod:`moonlight.perception.echo_raid`). Their tiles are never walked
-  over, and a waypoint on one is skipped. With *trigger_echo_raids*, once
-  no monster is in the battle list and HP is at ``ECHO_RAID_MIN_HP`` or
-  above, the bot walks onto the nearest one instead; when it is gone
-  (stepped on, or someone else did) the route goes on from the nearest
-  waypoint. Nothing is remembered: a tile is blocked only while it is seen.
+  over, and a waypoint on one is skipped. Triggers are read only from a
+  settled view (``_VIEW_SETTLE``), never mid-step. With
+  *trigger_echo_raids*, once no monster is in the battle list and HP is at
+  ``ECHO_RAID_MIN_HP`` or above, the bot walks next to the nearest one,
+  right-clicks it, and ``ECHO_RAID_CLICK_WAIT`` later, still there,
+  left-clicks it (the character steps on). When it is gone (triggered, or
+  someone else did) the route goes on from the nearest waypoint. After
+  ``ECHO_RAID_TRIES`` such tries, or with no way to it, it is ignored until
+  it was off the screen for ``ECHO_RAID_FORGET`` seconds.
 * **Arrival**: within 1 tile (Chebyshev distance) of the waypoint on the
   same floor; ``node`` within 3 tiles, ``stand`` and ``rope`` only on the
   exact tile (a rope after standing still there ``_ROPE_SETTLE`` s).
@@ -144,6 +148,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import cv2
 import numpy as np
 
 from moonlight.cavebot.pathing import CostMap, next_step
@@ -257,6 +262,14 @@ _VIEW_SETTLE = 0.5
 # doc: docs/prs/echo-raid.md#use
 #: HP % at or above which an echo raid trigger is walked onto (with no monster around).
 ECHO_RAID_MIN_HP = 80.0
+#: Seconds after each click on an echo raid trigger before looking whether it is gone.
+ECHO_RAID_CLICK_WAIT = 1.0
+#: Right-click + left-click tries on one trigger before it is ignored.
+ECHO_RAID_TRIES = 3
+#: Seconds off the screen after which an ignored trigger counts as new.
+ECHO_RAID_FORGET = 30.0
+#: Screenshots 1 s after each echo raid click, the clicked pixel circled (bot.log names each).
+ECHO_RAID_SHOTS_DIR = Path("logs") / "echo_raids"
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
 # doc: docs/prs/depot.md#npc-pacing
 #: Seconds paused after each NPC line (owner's ranges: the NPC needs time to react).
@@ -604,8 +617,13 @@ class Cavebot:
         self._trigger_echo_raids = trigger_echo_raids
         #: The trigger being walked onto (x, y, z), or None.
         self._echo_raid_goal: tuple[int, int, int] | None = None
-        #: Triggers with no way to them: not walked to while they stay seen.
-        self._unreachable_echo_raids: set[tuple[int, int]] = set()
+        #: Last click on the goal (right, then left) and when, None before the first.
+        self._echo_raid_click: ClickSide | None = None
+        self._echo_raid_clicked_at = float("-inf")
+        self._echo_raid_clicked_pixel = (0, 0)
+        self._echo_raid_tries = 0
+        #: Triggers given up on (no way, or tries used up) -> when last seen.
+        self._ignored_echo_raids: dict[tuple[int, int], float] = {}
         self._previous_pos: Position | None = None  # where the view still is right after a step
         #: Bumped tiles a scan saw a creature on: free again once it walks off.
         self._bumped_into_creature: set[tuple[int, int, int]] = set()
@@ -790,7 +808,7 @@ class Cavebot:
             logger.info("cavebot: back on floor %d, route goes on", pos.z)
             self.alarm = None
         if self._walk_keys:
-            echo_wp = self._echo_raid_waypoint(wp, pos)
+            echo_wp = self._echo_raid_waypoint(wp, pos, now)
             if echo_wp is None:
                 return
             wp = echo_wp
@@ -854,30 +872,34 @@ class Cavebot:
             self._last_cmd = now
 
     # doc: docs/prs/echo-raid.md#use
-    def _echo_raid_waypoint(self, wp: Waypoint, pos: Position) -> Waypoint | None:
-        """The trigger to walk onto, else *wp*; None when this tick's work is done."""
+    def _echo_raid_waypoint(self, wp: Waypoint, pos: Position, now: float) -> Waypoint | None:
+        """The trigger to walk next to, else *wp*; None when this tick's work is done."""
         goal = self._echo_raid_goal
-        if goal is not None and (goal[:2] not in self.echo_raids or goal[:2] == (pos.x, pos.y)):
-            logger.info(
-                "cavebot: echo raid at %s,%s,%s triggered, back to the nearest waypoint", *goal
-            )
-            self._echo_raid_goal = None
-            self.echo_raids.discard(goal[:2])  # a scan mid-scroll still shows it
-            self.route.current = self._nearest_waypoint()
-            self._plan_again()
+        if goal is not None and goal[:2] not in self.echo_raids:
+            self._echo_raid_gone(goal)
             return None
-        self._unreachable_echo_raids &= self.echo_raids
-        safe = not self._state.monsters and self._state.hp_percent >= ECHO_RAID_MIN_HP
-        reachable = self.echo_raids - self._unreachable_echo_raids
-        if not (self._trigger_echo_raids and safe and reachable):
-            self._echo_raid_goal = None
-        elif goal is None:
-            x, y = min(reachable, key=lambda t: max(abs(t[0] - pos.x), abs(t[1] - pos.y)))
+        safe = (
+            self._trigger_echo_raids
+            and not self._state.monsters
+            and self._state.hp_percent >= ECHO_RAID_MIN_HP
+        )
+        if goal is not None and self._echo_raid_click is not None:
+            self._click_echo_raid(goal, pos, now, safe)  # a spawn after a click: look first
+            return None
+        candidates = self.echo_raids - self._ignored_echo_raids.keys()
+        if not safe:
+            self._drop_echo_raid_goal()
+        elif goal is None and candidates:
+            x, y = min(candidates, key=lambda t: max(abs(t[0] - pos.x), abs(t[1] - pos.y)))
             goal = self._echo_raid_goal = (x, y, pos.z)
             logger.info("cavebot: echo raid seen at %s,%s,%s, triggering", *goal)
             self._plan_again()
-        if self._echo_raid_goal is not None:
-            return Waypoint(*self._echo_raid_goal, "stand")
+        goal = self._echo_raid_goal
+        if goal is not None:
+            if max(abs(goal[0] - pos.x), abs(goal[1] - pos.y)) <= 1:
+                self._click_echo_raid(goal, pos, now, safe)
+                return None
+            return Waypoint(*goal, "stand")
         if (wp.x, wp.y) in self.echo_raids and wp.z == pos.z and has_tile(wp):
             logger.info(
                 "cavebot: echo raid on waypoint %d at %s,%s,%s, skipping it",
@@ -886,6 +908,70 @@ class Cavebot:
             self._advance()
             return None
         return wp
+
+    def _click_echo_raid(
+        self, goal: tuple[int, int, int], pos: Position, now: float, safe: bool
+    ) -> None:
+        """Right-click the trigger next to the player, then left-click it, 1 s apart."""
+        self.release_walk_key()
+        if self._clicker.busy:
+            self._clicker.step()
+            return
+        if now - self._moved_at < _VIEW_SETTLE:
+            return  # mid-scroll a click or a look lands a tile off
+        last_click = self._echo_raid_click
+        if last_click is not None:
+            if now - self._echo_raid_clicked_at < ECHO_RAID_CLICK_WAIT or not self._scan(pos, now):
+                return
+            self._save_echo_raid_shot(goal, last_click)
+            if goal[:2] not in self.echo_raids:
+                self._echo_raid_gone(goal)
+                return
+        if not safe:
+            self._drop_echo_raid_goal()
+            return
+        if last_click is ClickSide.LEFT:
+            self._echo_raid_tries += 1
+            if self._echo_raid_tries >= ECHO_RAID_TRIES:
+                logger.info(
+                    "cavebot: echo raid at %s,%s,%s did not trigger after %d tries, ignoring it",
+                    *goal, ECHO_RAID_TRIES,
+                )  # fmt: skip
+                self._ignored_echo_raids[goal[:2]] = now
+                self._drop_echo_raid_goal()
+                self._plan_again()
+                return
+        side = ClickSide.LEFT if last_click is ClickSide.RIGHT else ClickSide.RIGHT
+        self._echo_raid_clicked_pixel = self._tile_pixel(goal[:2], pos)
+        self._clicker.request(self._echo_raid_clicked_pixel, side=side)
+        self._echo_raid_click, self._echo_raid_clicked_at = side, now
+
+    def _save_echo_raid_shot(self, goal: tuple[int, int, int], side: ClickSide) -> None:
+        """Save the screen 1 s after a click on *goal*, the clicked pixel circled in yellow."""
+        frame = self._frames() if self._frames is not None else None
+        if frame is None:
+            return
+        picture = cv2.cvtColor(np.ascontiguousarray(frame), cv2.COLOR_RGB2BGR)
+        cv2.circle(picture, self._echo_raid_clicked_pixel, 12, (0, 255, 255), 2)
+        ECHO_RAID_SHOTS_DIR.mkdir(parents=True, exist_ok=True)
+        stamp, click = time.strftime("%Y%m%d-%H%M%S"), side.name.lower()
+        path = ECHO_RAID_SHOTS_DIR / f"{stamp}_{goal[0]}_{goal[1]}_{goal[2]}_{click}.png"
+        if not cv2.imwrite(str(path), picture):
+            raise OSError(f"could not save the echo raid screenshot {path}")
+        logger.info("cavebot: echo raid %s-click screenshot: %s", click, path)
+
+    def _echo_raid_gone(self, goal: tuple[int, int, int]) -> None:
+        """The goal left the screen: the route goes on from the nearest waypoint."""
+        how = "triggered" if self._echo_raid_click is not None else "gone"
+        logger.info("cavebot: echo raid at %s,%s,%s %s, back to the nearest waypoint", *goal, how)
+        self._drop_echo_raid_goal()
+        self.route.current = self._nearest_waypoint()
+        self._plan_again()
+
+    def _drop_echo_raid_goal(self) -> None:
+        self._echo_raid_goal = None
+        self._echo_raid_click = None
+        self._echo_raid_tries = 0
 
     def _plan_again(self) -> None:
         """The goal changed: plan the next step this tick, not after the key retry."""
@@ -1440,11 +1526,11 @@ class Cavebot:
             path = next_step(start, goal, not_bumped)
             if path is None and self._echo_raid_goal is not None:
                 logger.info(
-                    "cavebot: no way to the echo raid at %s,%s,%s, walking on",
+                    "cavebot: no way to the echo raid at %s,%s,%s, ignoring it",
                     *self._echo_raid_goal,
                 )
-                self._unreachable_echo_raids.add(self._echo_raid_goal[:2])
-                self._echo_raid_goal = None
+                self._ignored_echo_raids[self._echo_raid_goal[:2]] = now
+                self._drop_echo_raid_goal()
                 self.release_walk_key()
                 return
             if path is None:
@@ -1532,11 +1618,20 @@ class Cavebot:
         view = self._previous_pos if scrolling and self._previous_pos is not None else pos
         px, py = view.x - PLAYER_SLOT[0], view.y - PLAYER_SLOT[1]
         self._creatures = {(px + c, py + r) for c, r in find_creatures(frame, self._game_region)}
+        if scrolling and self._previous_pos is not None:
+            return True  # echo raids only from a settled view: a tile off read as "gone"
         echo_raids = {(px + c, py + r) for c, r in find_echo_raids(frame, self._game_region)}
         if not self._trigger_echo_raids:
             for tile in sorted(echo_raids - self.echo_raids):
                 logger.info("cavebot: echo raid seen at %s,%s,%s, avoiding", *tile, pos.z)
         self.echo_raids = echo_raids
+        for tile in echo_raids & self._ignored_echo_raids.keys():
+            self._ignored_echo_raids[tile] = now
+        self._ignored_echo_raids = {
+            tile: seen
+            for tile, seen in self._ignored_echo_raids.items()
+            if now - seen < ECHO_RAID_FORGET
+        }
         return True
 
     def _press_walk_key(self, step: tuple[int, int], again: bool = False) -> None:
