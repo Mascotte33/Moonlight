@@ -312,6 +312,16 @@ class Route:
     #: Where the bot is on the route, not part of the route itself.
     current: int = field(default=0, compare=False)
 
+    # doc: docs/prs/route-menu.md#route-name
+    def __str__(self) -> str:
+        """The name: the GUI's route dropdown shows a route as text.
+
+        The full dataclass text of a long route is ~40000 px wide; the
+        dropdown grew to it and Windows cannot place child windows past
+        32767 px, so the cavebot page's rows drew on top of each other.
+        """
+        return self.name
+
 
 class RouteFileLoader:
     """Load and validate ``data/waypoints/<route>.json`` files."""
