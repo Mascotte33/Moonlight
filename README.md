@@ -151,6 +151,14 @@ moved the character elsewhere when it walked onto it. Minimap-click walking
 lets the client pick the path and can cross them: turn on WSAD-key walking
 for routes next to holes or teleports.
 
+Echo raid triggers (the red swirl that spawns stronger monsters) are seen on
+the game screen while walking with WSAD keys. Cavebot > **Echo raid** picks
+what the bot does: **avoid** (default) never walks onto one and skips a
+waypoint on one; **use** walks onto the nearest one once no monster is in the
+battle list and HP is 80 % or above, fights what spawns, then goes on from the
+nearest waypoint. A swirl counts only while it is on screen, and the step
+closer to a stuck target never lands on one. Log: `echo raid seen at x,y,z`.
+
 Looting presses the loot hotkey (the OTS loots every corpse around on
 Alt+Q) 0.3 s after each kill (also when more monsters of that name are left),
 before attacking the next monster, and again

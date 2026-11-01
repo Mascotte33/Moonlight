@@ -75,6 +75,7 @@ from moonlight.targeting.targeting import TargetingConfig
 __all__ = [
     "ALWAYS_ON",
     "DEFAULT_CONFIG_FILE",
+    "ECHO_RAID_CHOICES",
     "MODULES",
     "BotConfig",
     "CavebotConfig",
@@ -119,6 +120,10 @@ _TOP_KEYS = {
 }
 
 
+#: What the cavebot does with an echo raid trigger (docs/prs/echo-raid.md#setting).
+ECHO_RAID_CHOICES = ("avoid", "use")
+
+
 class ConfigError(ValueError):
     """The bot config is missing, unreadable or invalid."""
 
@@ -132,6 +137,8 @@ class CavebotConfig:
     shovel_hotkey: str = "F10"
     #: 0-based waypoint the route starts at.
     start_index: int = 0
+    #: ``avoid``: never walk onto an echo raid trigger; ``use``: walk onto it when safe.
+    echo_raid: str = "avoid"
 
 
 @dataclass(frozen=True)
@@ -380,6 +387,7 @@ def _section(cfg: Any) -> dict[str, Any]:
             "rope_hotkey": cfg.rope_hotkey,
             "shovel_hotkey": cfg.shovel_hotkey,
             "start_index": cfg.start_index,
+            "echo_raid": cfg.echo_raid,
         }
     return asdict(cfg)
 
@@ -392,9 +400,11 @@ def _cavebot(section: dict[str, Any], routes_dir: Path) -> CavebotConfig:
         route = RouteFileLoader.load(routes_dir / f"{name}.json")
     except RouteError as exc:
         raise ConfigError(f"modules.cavebot: {exc}") from exc
-    kinds = {"start_index": int, "rope_hotkey": str, "shovel_hotkey": str}
+    kinds = {"start_index": int, "rope_hotkey": str, "shovel_hotkey": str, "echo_raid": str}
     _reject_unknown(section, set(kinds), "modules.cavebot")
     keys = {k: _coerce(v, kinds[k], f"modules.cavebot.{k}") for k, v in section.items()}
+    if keys.get("echo_raid", "avoid") not in ECHO_RAID_CHOICES:
+        raise ConfigError(f"modules.cavebot.echo_raid must be one of {ECHO_RAID_CHOICES}")
     return CavebotConfig(route=route, **keys)
 
 

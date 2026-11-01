@@ -249,6 +249,7 @@ def make_perceive(
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.chase_mode import read_chase_mode
     from moonlight.perception.creatures import find_creatures
+    from moonlight.perception.echo_raid import find_echo_raids
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
     from moonlight.perception.status_icons import StatusIconReader
@@ -322,6 +323,7 @@ def make_perceive(
                 )
             ticks_until_slow_read -= 1
             slots = tuple(find_creatures(frame, creature_grid)) if creature_grid else ()
+            echo_raids = tuple(find_echo_raids(frame, creature_grid)) if creature_grid else ()
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
             chase_mode = read_chase_mode(frame, chase_buttons) if chase_buttons else None
@@ -345,6 +347,7 @@ def make_perceive(
             state.players_on_screen = players
             state.players = tuple(entry.name_hash for entry in names)
             state.creature_slots = slots
+            state.echo_raid_slots = echo_raids
             state.active_status_icons = conditions
             state.chase_mode = chase_mode
             state.position_status = (
@@ -655,6 +658,7 @@ def build_modules(
                 input_backend=backend,
                 rope_hotkey=cb.rope_hotkey,
                 shovel_hotkey=cb.shovel_hotkey,
+                trigger_echo_raids=cb.echo_raid == "use",
                 walk_keys=config.walk_keys,
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
                 frames=frames,

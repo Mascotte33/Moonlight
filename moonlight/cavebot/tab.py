@@ -44,7 +44,7 @@ from moonlight.cavebot.recorder import (
     should_stop_recording,
     stairs_waypoint,
 )
-from moonlight.core.config import BotConfig, ConfigError
+from moonlight.core.config import ECHO_RAID_CHOICES, BotConfig, ConfigError
 from moonlight.core.state import Position, WorldState
 from moonlight.gui import loop_factory, theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
@@ -106,6 +106,8 @@ OPTIONS = [
     START,
     Option("Rope hotkey", "cavebot.rope_hotkey", "hotkey"),
     Option("Shovel hotkey", "cavebot.shovel_hotkey", "hotkey"),
+    # doc: docs/prs/echo-raid.md#setting
+    Option("Echo raid", "cavebot.echo_raid", "dropdown", choices=list(ECHO_RAID_CHOICES)),
 ]
 LOOT_OPTIONS = [
     Option("Loot after every kill", "looting.after_kill", "switch"),

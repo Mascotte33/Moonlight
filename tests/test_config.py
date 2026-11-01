@@ -316,3 +316,16 @@ def test_rotation_is_on_when_it_has_accounts_and_has_no_switch(tmp_path: Path) -
     assert off.off["rotation"].accounts == ()  # no accounts: off, values kept
     saved = off.to_dict()["modules"]["rotation"]
     assert off.rotation is None and saved["logout_hotkey"] == "ctrl+l"
+
+
+def test_echo_raid_setting_loads_and_rejects_others(tmp_path: Path) -> None:
+    # doc: docs/prs/echo-raid.md#setting
+    route_file(tmp_path / "routes")
+    data = raw(cavebot={"enabled": True, "route": "hunt", "echo_raid": "use"})
+    data["routes_dir"] = str(tmp_path / "routes")
+    cfg = BotConfig.from_dict(data)
+    assert cfg.cavebot is not None and cfg.cavebot.echo_raid == "use"
+    assert BotConfig.from_dict(cfg.to_dict()).cavebot == cfg.cavebot
+    data["modules"]["cavebot"]["echo_raid"] = "click"
+    with pytest.raises(ConfigError, match="echo_raid"):
+        BotConfig.from_dict(data)

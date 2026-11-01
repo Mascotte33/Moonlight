@@ -150,16 +150,23 @@ class TargetingAction:
     reason: str = ""
 
 
-def _step_toward_creature(slots: tuple[tuple[int, int], ...]) -> tuple[int, int] | None:
-    """Unit arrow step toward the nearest slot not adjacent to the player, or None."""
+def _step_toward_creature(
+    slots: tuple[tuple[int, int], ...], echo_raid_slots: tuple[tuple[int, int], ...] = ()
+) -> tuple[int, int] | None:
+    """Unit arrow step toward the nearest slot not adjacent to the player, or None.
+
+    The step never lands on an echo raid trigger: the other axis is tried, else None.
+    """
     px, py = PLAYER_SLOT
     far = [(x - px, y - py) for x, y in slots if max(abs(x - px), abs(y - py)) > 1]
     if not far:
         return None
     dx, dy = min(far, key=lambda d: (max(abs(d[0]), abs(d[1])), abs(d[0]) + abs(d[1])))
-    if abs(dx) >= abs(dy):
-        return (1 if dx > 0 else -1, 0)
-    return (0, 1 if dy > 0 else -1)
+    along_x = [(1 if dx > 0 else -1, 0)] if dx else []
+    along_y = [(0, 1 if dy > 0 else -1)] if dy else []
+    steps = along_x + along_y if abs(dx) >= abs(dy) else along_y + along_x
+    # doc: docs/prs/echo-raid.md#avoid
+    return next((s for s in steps if (px + s[0], py + s[1]) not in echo_raid_slots), None)
 
 
 # doc: docs/prs/targeting.md#target-choice
@@ -228,7 +235,7 @@ class TargetingDecision:
             return TargetingAction("pause", selected.battle_list_row, reason=reason)
         if not self._stepped:
             self._stepped = True
-            step = _step_toward_creature(state.creature_slots)
+            step = _step_toward_creature(state.creature_slots, state.echo_raid_slots)
             if step is None:
                 return None
             reason = f"{name} hp stuck at {selected.hp_percent:.0f}, step closer"
