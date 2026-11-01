@@ -426,6 +426,27 @@ class TestMapMatcher:
         assert reader.read_position(frame2, region) is None
         assert reader.lost
 
+    # doc: docs/prs/position-lost.md#keep-estimating
+    def test_no_match_and_no_trusted_shift_keeps_the_estimate(self) -> None:
+        answers: list[tuple[int, int] | None] = [(100, 100)]
+        now = [0.0]
+
+        class _Matcher:
+            def match(
+                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+            ) -> tuple[int, int] | None:
+                return answers.pop() if answers else None
+
+        reader = make_reader(map_matcher=_Matcher(), px_per_sqm=1.0, clock=lambda: now[0])
+        frame, region = make_frame(1)
+        assert reader.read_position(frame, region) == Position(100, 100, 0)
+        other, _ = make_frame(2)  # a radar unlike the last: no trusted shift
+        assert reader.read_position(other, region) == Position(100, 100, 0)
+        assert reader.estimated and not reader.lost  # not lost on one bad frame
+        now[0] = 11.0
+        assert reader.read_position(other, region) is None
+        assert reader.lost  # 10 s without a match still loses it
+
     def test_unchanged_radar_skips_the_map_match(self) -> None:
         calls: list[tuple[int, int] | None] = []
 

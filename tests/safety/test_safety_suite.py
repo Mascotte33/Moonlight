@@ -161,7 +161,11 @@ def test_5_lost_floor_detection_sets_alarm() -> None:
     clock.now = 1.0
     bot.step()
     assert bot.alarm == "lost"
-    assert not bot.is_active()
+    # It waits for the floor to read right again (docs/prs/position-lost.md);
+    # walking blind on that floor is what test_cavebot checks never happens.
+    clock.now = 2.0
+    bot.step()
+    assert bot.alarm == "lost" and bot.is_active()
 
 
 def test_6_release_all_on_normal_stop() -> None:

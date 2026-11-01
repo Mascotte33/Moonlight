@@ -27,7 +27,10 @@ import numpy as np
 __all__ = ["WorldMap", "MATCH_MAX_SCORE"]
 
 #: Good matches score ~0.004-0.03 on the golden frames, wrong ones >= 0.4.
-MATCH_MAX_SCORE = 0.08
+#: The Thais sewer with map marks on the radar scored 0.06-0.08 (2026-11-01),
+#: so 0.08 dropped good matches there.
+# doc: docs/prs/position-lost.md#wider-match
+MATCH_MAX_SCORE = 0.15
 
 _TILE = 256
 _COARSE = 4

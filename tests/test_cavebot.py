@@ -636,13 +636,22 @@ def test_unexpected_floor_change_resyncs_to_waypoint_on_new_floor() -> None:
     assert sim.clicker.clicks[-1][0][0] > MINIMAP[0] + MINIMAP[2] // 2  # walking east
 
 
-def test_floor_change_with_no_matching_waypoint_alarms_lost() -> None:
+# doc: docs/prs/position-lost.md#wait-on-an-unknown-floor
+def test_floor_with_no_waypoint_alarms_lost_and_waits_for_the_floor_back() -> None:
     sim = Sim([walk(110, 100), walk(120, 100)], Position(100, 100, 7))
     sim.bot.start()
     sim.step()
-    sim.pos = Position(100, 100, 9)
+    sim.pos = Position(100, 100, 9)  # a misread floor
     sim.step()
-    assert not sim.bot.is_active() and sim.bot.alarm == "lost"
+    assert sim.bot.is_active() and sim.bot.alarm == "lost"
+    clicks = len(sim.clicker.clicks)
+    sim.step()
+    assert len(sim.clicker.clicks) == clicks  # waits, does not walk blind
+    sim.pos = Position(100, 100, 7)  # the floor reads right again
+    sim.step()
+    assert sim.bot.alarm is None and sim.route.current == 0
+    sim.step(3.0)
+    assert len(sim.clicker.clicks) > clicks  # walking on
 
 
 def test_go_to_walks_to_the_picked_waypoint_next() -> None:
