@@ -148,6 +148,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import cv2
 import numpy as np
 
 from moonlight.cavebot.pathing import CostMap, next_step
@@ -267,6 +268,8 @@ ECHO_RAID_CLICK_WAIT = 1.0
 ECHO_RAID_TRIES = 3
 #: Seconds off the screen after which an ignored trigger counts as new.
 ECHO_RAID_FORGET = 30.0
+#: Screenshots 1 s after each echo raid click, the clicked pixel circled (bot.log names each).
+ECHO_RAID_SHOTS_DIR = Path("logs") / "echo_raids"
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
 # doc: docs/prs/depot.md#npc-pacing
 #: Seconds paused after each NPC line (owner's ranges: the NPC needs time to react).
@@ -617,6 +620,7 @@ class Cavebot:
         #: Last click on the goal (right, then left) and when, None before the first.
         self._echo_raid_click: ClickSide | None = None
         self._echo_raid_clicked_at = float("-inf")
+        self._echo_raid_clicked_pixel = (0, 0)
         self._echo_raid_tries = 0
         #: Triggers given up on (no way, or tries used up) -> when last seen.
         self._ignored_echo_raids: dict[tuple[int, int], float] = {}
@@ -919,6 +923,7 @@ class Cavebot:
         if last_click is not None:
             if now - self._echo_raid_clicked_at < ECHO_RAID_CLICK_WAIT or not self._scan(pos, now):
                 return
+            self._save_echo_raid_shot(goal, last_click)
             if goal[:2] not in self.echo_raids:
                 self._echo_raid_gone(goal)
                 return
@@ -937,8 +942,23 @@ class Cavebot:
                 self._plan_again()
                 return
         side = ClickSide.LEFT if last_click is ClickSide.RIGHT else ClickSide.RIGHT
-        self._clicker.request(self._tile_pixel(goal[:2], pos), side=side)
+        self._echo_raid_clicked_pixel = self._tile_pixel(goal[:2], pos)
+        self._clicker.request(self._echo_raid_clicked_pixel, side=side)
         self._echo_raid_click, self._echo_raid_clicked_at = side, now
+
+    def _save_echo_raid_shot(self, goal: tuple[int, int, int], side: ClickSide) -> None:
+        """Save the screen 1 s after a click on *goal*, the clicked pixel circled in yellow."""
+        frame = self._frames() if self._frames is not None else None
+        if frame is None:
+            return
+        picture = cv2.cvtColor(np.ascontiguousarray(frame), cv2.COLOR_RGB2BGR)
+        cv2.circle(picture, self._echo_raid_clicked_pixel, 12, (0, 255, 255), 2)
+        ECHO_RAID_SHOTS_DIR.mkdir(parents=True, exist_ok=True)
+        stamp, click = time.strftime("%Y%m%d-%H%M%S"), side.name.lower()
+        path = ECHO_RAID_SHOTS_DIR / f"{stamp}_{goal[0]}_{goal[1]}_{goal[2]}_{click}.png"
+        if not cv2.imwrite(str(path), picture):
+            raise OSError(f"could not save the echo raid screenshot {path}")
+        logger.info("cavebot: echo raid %s-click screenshot: %s", click, path)
 
     def _echo_raid_gone(self, goal: tuple[int, int, int]) -> None:
         """The goal left the screen: the route goes on from the nearest waypoint."""

@@ -9,6 +9,7 @@ Clicks go to a recording ClickController; hotkeys go to FakeInput.
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ import cv2
 import numpy as np
 import pytest
 
+import moonlight.cavebot.cavebot as cavebot_module
 from moonlight.cavebot.cavebot import (
     Cavebot,
     Route,
@@ -1624,6 +1626,8 @@ def _echo_sim(
     """Keys mode at 100,100,7 (slot (7, 5)); the scan sees triggers on *echo_slots*."""
     monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: [])
     monkeypatch.setattr("moonlight.cavebot.cavebot.find_echo_raids", lambda _f, _g: echo_slots)
+    shots = Path(tempfile.mkdtemp()) / "echo_raids"
+    monkeypatch.setattr("moonlight.cavebot.cavebot.ECHO_RAID_SHOTS_DIR", shots)
     sim = Sim(
         waypoints,
         Position(100, 100, 7),
@@ -1680,6 +1684,17 @@ def test_use_right_clicks_then_left_clicks_the_echo_raid(monkeypatch: pytest.Mon
     assert len(sim.clicker.clicks) == 1  # waits 1 s
     sim.step(0.6)
     assert sim.clicker.clicks[-1] == (pixel, ClickSide.LEFT)
+
+
+def test_use_saves_a_screenshot_one_second_after_each_echo_raid_click(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sim, _echo = _next_to_echo_raid(monkeypatch)
+    shots = cavebot_module.ECHO_RAID_SHOTS_DIR
+    assert not shots.exists()  # the right-click was just sent
+    sim.step(1.1)
+    (shot,) = shots.iterdir()
+    assert shot.name.endswith("_102_100_7_right.png")
 
 
 def test_use_goes_back_to_the_route_once_the_echo_raid_is_gone(

@@ -163,7 +163,9 @@ off the screen for 30 s. Swirls are read only while the character stands
 still (mid-step the screen is a tile off), and the step closer to a stuck
 target never lands on one. Log: `echo raid seen at x,y,z, triggering`, then
 `triggered`, or `did not trigger after 3 tries, ignoring it` /
-`no way to the echo raid ..., ignoring it`.
+`no way to the echo raid ..., ignoring it`. 1 s after each click the bot saves
+a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
+(`<time>_<x>_<y>_<z>_<right|left>.png`); bot.log names each file.
 
 Looting presses the loot hotkey (the OTS loots every corpse around on
 Alt+Q) 0.3 s after each kill (also when more monsters of that name are left),
