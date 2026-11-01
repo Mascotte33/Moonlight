@@ -114,6 +114,13 @@ full live game session; 🟡 partial: verified on real hardware or real
 screenshots, but not yet in a full session; ❌ not yet verified live. The first
 full live session (2026-10-28) verified looting.
 
+The position comes from matching the minimap against the client's map tiles
+in `data/map/`. A frame that does not match (a map mark or a tooltip over the
+minimap) keeps the last position as an estimate; only 10 s without any match
+makes it unknown. If the floor reads as one with no waypoint on the route
+(for a moment after a pause), the cavebot raises the `lost` alarm and waits;
+it walks on once the floor reads right again.
+
 The route recorder saves the tile the character stood on, never the one it is
 walking to: a position counts after it held for 0.6 s, or once the character
 stepped off it. Recording stops and saves the route when the cavebot starts. Walking

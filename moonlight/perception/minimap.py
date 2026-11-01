@@ -33,9 +33,9 @@ How the position is obtained
 * **(x, y) — absolute**: a pluggable :class:`MapMatcher` (the bot uses
   :class:`moonlight.perception.worldmap.WorldMap`) finds the radar on the
   map, near the last position first. With no match the position is moved
-  by the terrain shift and is :attr:`MinimapReader.estimated`; after
-  ``estimate_for`` seconds without a match the reader is :attr:`lost`
-  until the next match.
+  by the terrain shift (kept when the shift is not trusted either) and is
+  :attr:`MinimapReader.estimated`; after ``estimate_for`` seconds without a
+  match the reader is :attr:`lost` until the next match.
 * **(x, y) — relative tracking** (default, no map matcher): the terrain
   displacement between successive radar frames is estimated with phase
   correlation (:func:`cv2.phaseCorrelate`); player displacement is the
@@ -309,6 +309,12 @@ class MinimapReader:
             dx = -int(round(shift[0] / self._px))
             dy = -int(round(shift[1] / self._px))
         elif self._prev_gray is not None and z == self._prev_z:
+            if self._map_matcher is not None:
+                # doc: docs/prs/position-lost.md#keep-estimating
+                # No match and no trusted shift this frame (a map mark, a
+                # tooltip): keep the last position as the estimate; the
+                # match decides, and estimate_for still ends a real loss.
+                return self._position
             # Radar changed with no floor change: teleport or a big jump.
             self._lose("radar changed with no trusted shift")
             return None

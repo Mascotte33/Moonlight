@@ -116,8 +116,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   :meth:`Cavebot.resume` whenever MOVE is (re)entered, so time spent in a
   fight/loot/pause never counts as "stuck" (F-06).
 * **Unexpected floor change** (z differs from what the route expects): the
-  route re-syncs to the next waypoint on the new floor, or stops with
-  alarm ``"lost"`` when no waypoint is on that floor.
+  route re-syncs to the next waypoint on the new floor. With no waypoint on
+  that floor it raises alarm ``"lost"`` and waits: a misread floor (right
+  after a pause) comes back, and the route goes on from where it was.
 
 Runtime failures never raise from :meth:`step` (an exception would kill
 the loop); they stop the route and set :attr:`alarm`.
@@ -728,6 +729,9 @@ class Cavebot:
             self.release_walk_key()
             self._resync_floor(pos.z)
             return
+        if self.alarm == "lost":
+            logger.info("cavebot: back on floor %d, route goes on", pos.z)
+            self.alarm = None
         if max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= _REACH.get(wp.action, 1):
             if wp.action not in _FLOOR_DELTA:
                 self._advance()
@@ -1220,7 +1224,12 @@ class Cavebot:
                 self._last_cmd = float("-inf")
                 self._clicker.cancel()
                 return
-        self._halt("lost")
+        # doc: docs/prs/position-lost.md#wait-on-an-unknown-floor
+        # The route used to stop here for good: a floor misread for one tick
+        # after a pause (bot.log 2026-10-31 22:44:01) ended the hunt.
+        if self.alarm != "lost":
+            logger.warning("cavebot: [stuck: lost] no waypoint on floor %d, waiting", z)
+            self.alarm = "lost"
 
     def _retry_if_idle(self, now: float, command: Callable[[], None]) -> None:
         """Send *command* first time, then only after standing still a while."""
