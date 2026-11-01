@@ -959,6 +959,30 @@ def test_walk_keys_hold_the_key_until_the_way_turns_or_stops() -> None:
     assert sim.fake.sent_lines[-1] == "U a"  # nothing held twice
 
 
+# doc: docs/prs/route-trust.md#walked-lines
+def test_walk_keys_trust_the_route_over_a_wrong_wall_on_the_map(tmp_path: Path) -> None:
+    tile = np.full((256, 256, 3), (0, 255, 255), np.uint8)  # all wall...
+    tile[0:30, 5:7] = 100  # ...but a 2-wide corridor going south
+    tile[10, 5:7] = (0, 255, 255)  # a row the client's map gets wrong
+    cv2.imwrite(str(tmp_path / "0_0_7.png"), tile)
+    route = [walk(5, 4), walk(5, 16), walk(6, 20)]
+    sim = Sim(route, Position(5, 4, 7), walk_keys=True, cost_map=CostMap(tmp_path))
+    sim.bot.start()
+    sim.bot._stuck_allowed_until = 1e9  # right after a fight, as in the sewer log
+    for _ in range(5):
+        sim.step()
+    assert sim.route.current == 1  # not skipped to a waypoint "with a way"
+    assert pressed(sim)[-1] == "s"  # walking south through the row
+
+
+def test_walked_tiles_are_the_lines_between_waypoints_on_one_floor() -> None:
+    from moonlight.cavebot.cavebot import walked_tiles
+
+    wps = [walk(0, 0), walk(3, 0), walk(3, 0, z=6), walk(3, 2)]
+    # The floor-6 waypoint breaks the line: (3, 0, 7) to (3, 2, 7) are not neighbours.
+    assert walked_tiles(wps, loop=False) == {(0, 0, 7), (1, 0, 7), (2, 0, 7), (3, 0, 7)}
+
+
 def test_walk_keys_follow_the_cost_map_around_a_wall(tmp_path: Path) -> None:
     tile = np.full((256, 256, 3), 100, np.uint8)
     tile[0:10, 4] = (0, 255, 255)  # wall at x = 4, y 0..9; walk around below it
