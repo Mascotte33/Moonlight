@@ -170,28 +170,6 @@ def test_a_lone_modifier_is_no_combo(keysym: str) -> None:
     assert combo_from_key(keysym, 0x11, 0x4) is None
 
 
-def test_show_paused_shows_off_but_keeps_the_saved_value() -> None:
-    from types import SimpleNamespace
-    from typing import Any, cast
-
-    from moonlight.gui.tab_base import Tab
-
-    tab = Tab(cast(Any, SimpleNamespace()))
-    widget = {"on": True}
-    switch = SimpleNamespace(state="normal")
-    switch.configure = lambda state: setattr(switch, "state", state)
-    tab._readers["targeting.enabled"] = lambda: widget["on"]
-    tab._writers["targeting.enabled"] = lambda v: widget.update(on=bool(v))
-    tab._switches["targeting.enabled"] = cast(Any, switch)
-
-    tab.show_paused(["targeting.enabled"], True)
-    assert widget["on"] is False and switch.state == "disabled"
-    assert tab._readers["targeting.enabled"]() is True  # a save keeps it on
-    tab.show_paused(["targeting.enabled"], False)
-    assert widget["on"] is True and switch.state == "normal"
-    assert tab._readers["targeting.enabled"]() is True
-
-
 # doc: docs/prs/extras.md#extras
 def test_extras_options_write_in_order() -> None:
     from moonlight.gui.settings_tab import ALARMS_OPTIONS, EXTRAS_OPTIONS

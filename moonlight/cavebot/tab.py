@@ -839,7 +839,6 @@ class CavebotTab(Tab):
         self.lbl_msg.configure(text=f"Cavebot started, recording stopped. {saved}")
 
     def on_poll(self, snap: WorldState) -> None:
-        self.show_paused([SWITCH.field], self.ctx.paused)
         for field, read in LAST_READ.items():
             if field in self._last_read and self._shown_read.get(field) is not read:
                 self._shown_read[field] = read
