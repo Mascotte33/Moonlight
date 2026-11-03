@@ -127,14 +127,14 @@ STATE_COLORS = {
 #: The tabs in display order.
 TAB_ORDER = (
     DashboardTab,
-    SettingsTab,
-    CalibrationTab,
     CavebotTab,
-    ScriptsTab,
     HealingTab,
     TargetingTab,
+    ScriptsTab,
     HardwareTab,
+    SettingsTab,
     StatusTab,
+    CalibrationTab,
     DiagnosticsTab,
 )
 
