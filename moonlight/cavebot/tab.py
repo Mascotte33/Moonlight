@@ -458,9 +458,11 @@ class CavebotTab(Tab):
         # A step waypoint on X, Y, Z or the bot's sqm: one key press that way; the middle stands.
         pad = Row(edit)
         pad.pack(anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0))
+        # Segoe UI lacks ↖ and ↘, so Windows drew those two from another font.
+        arrow_font = ctk.CTkFont(family="Segoe UI Symbol", size=theme.SIZE_BODY)
         for i, (arrow, dx, dy) in enumerate(DIRECTIONS):
             button = _button(pad, arrow, partial(self._add_step, dx, dy))
-            button.configure(width=32)
+            button.configure(width=32, font=arrow_font)
             button.grid(row=i // 3, column=i % 3, padx=1, pady=1)
 
         # doc: docs/prs/edit-route.md#record-as
