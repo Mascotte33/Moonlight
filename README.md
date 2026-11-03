@@ -133,7 +133,10 @@ found by bumping into it.
 
 The route recorder saves the tile the character stood on, never the one it is
 walking to: a position counts after it held for 0.6 s, or once the character
-stepped off it. Recording stops and saves the route when the cavebot starts. Walking
+stepped off it. In Cavebot > Edit route, "Record [walk / node / stand] every N
+tiles" picks the waypoint kind it adds. Under the waypoint list, ▲ ▼ move the
+clicked waypoint, ✕ (or the Delete key) deletes it, and Clear removes them all
+after asking. Recording stops and saves the route when the cavebot starts. Walking
 over stairs or into a hole records a `stairs` waypoint on that tile, so the
 route plays back across floors; for a ladder (or a sewer grate: Ladder too),
 rope or shovel click its button while standing on the tile you use it from. While recording, every
