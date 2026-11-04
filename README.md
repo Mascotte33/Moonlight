@@ -134,7 +134,7 @@ found by bumping into it.
 The route recorder saves the tile the character stood on, never the one it is
 walking to: a position counts after it held for 0.6 s, or once the character
 stepped off it. In Cavebot > Route, "Record [walk / node / stand] every N
-tiles" picks the waypoint kind it adds. Under the waypoint list, ▲ ▼ move the
+tiles" picks the waypoint kind it adds. Above the waypoint list, ▲ ▼ move the
 clicked waypoint, ✕ (or the Delete key) deletes it, and Clear removes them all
 after asking. Recording stops and saves the route when the cavebot starts. Walking
 over stairs or into a hole records a `stairs` waypoint on that tile, so the
@@ -199,7 +199,7 @@ tile; there are no typed X, Y, Z fields. The bot walks onto that tile before
 it does the waypoint: a `label`, `goto`, `say`, `key`, `drag`, `script` or
 `wait` too. Those from older routes have no tile and happen where the bot
 stands. One click on a row in the waypoint list highlights it; the ▲ and ▼
-buttons under the list move it one row up or down, and ✕ (or the Delete key)
+buttons above the list move it one row up or down, and ✕ (or the Delete key)
 deletes it, with no popup; the row below is highlighted next. Press Save to
 keep the change. The buttons are grayed out while Cavebot is on. The list
 keeps its scroll position when it changes.

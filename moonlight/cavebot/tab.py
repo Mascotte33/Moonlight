@@ -358,7 +358,7 @@ class CavebotTab(Tab):
         self.wp_list.bind("<Double-Button-1>", self._pick_waypoint)
         self.wp_list.bind("<Delete>", self._delete_key)
         moves = Row(box)
-        moves.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        moves.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0), before=self.wp_list)
         for arrow, by in (("▲", -1), ("▼", 1)):
             button = _button(moves, arrow, partial(self._move, by))
             button.configure(width=32)
