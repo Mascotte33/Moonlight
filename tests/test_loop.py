@@ -987,10 +987,7 @@ def test_loot_ring_reach_follows_the_fight() -> None:
     with ws.lock():
         ws.monsters, ws.selected_target = [], None  # the target died
     gl.tick()
-    assert checks == [range(0, 8)]  # nothing to kill: the whole grid
-    clock.now += 3.0
-    gl.tick()
-    assert checks[-1] == range(1, 8)  # long after the kill: not the player's tile
+    assert checks == [range(1, 8)]  # nothing to kill: the whole grid
 
 # doc: docs/prs/extras.md#extras
 class TestExtras:

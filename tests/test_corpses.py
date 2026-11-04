@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import cv2
 import numpy as np
 
 from moonlight.perception.corpses import Ring, RingWatch, _overlap
 
 GRID = (0, 0, 1440, 1056)  # 96 px tiles; the player's tile is x 672-767, y 480-575
-BLUE = (255, 230, 200)  # BGR light blue
+BLUE = (160, 178, 205)  # RGB ring dot
 NW = Ring((624, 432), 1)  # the middle of the tile north-west of the player
 
 
@@ -36,15 +39,19 @@ def test_ring_two_tiles_away_says_so() -> None:
 
 
 def test_rings_come_nearest_first() -> None:
-    far, own = ((20, 20), (40, 40)), ((700, 500), (720, 520))
-    assert looks(frame(far[0], own[0]), frame(far[1], own[1]))[1] == [
-        Ring((720, 528), 0),
+    far, east = ((20, 20), (40, 40)), ((800, 500), (820, 520))
+    assert looks(frame(far[0], east[0]), frame(far[1], east[1]))[1] == [
+        Ring((816, 528), 1),
         Ring((48, 48), 7),
     ]
 
 
+def test_player_tile_is_never_a_ring() -> None:
+    assert looks(frame((700, 500)), frame((720, 520))) == [[], []]  # their outfit sparkles
+
+
 def test_ring_split_over_two_tiles_is_one_ring() -> None:
-    dots = [(x, 470) for x in range(560, 600, 8)]  # 3 dots on the NW tile's row, 2 on its west
+    dots = [(x, 470) for x in range(556, 600, 10)]  # 3 dots on the NW tile's row, 2 on its west
     assert looks(frame(), frame(*dots))[1] == [Ring((624, 432), 1)]
 
 
@@ -80,3 +87,18 @@ def test_overlap_of_a_scroll_past_the_block_is_empty() -> None:
     for d in (-300, 300):
         new, old = _overlap(270, d)
         assert len(range(270)[new]) == len(range(270)[old]) == 0
+
+
+def test_live_ring_is_found_and_the_campfire_is_not() -> None:
+    # tests/loot_ring_live.png: two looks 0.1 s apart (top, bottom) at grid
+    # x 196-687, y 0-343 of a 1473x1080 grid: a ringed amazon corpse at tile
+    # (3, 1) and a campfire at tile (5, 2).
+    saved = cv2.imread(str(Path(__file__).with_name("loot_ring_live.png")))
+    assert saved is not None
+    looks_stacked = saved[..., ::-1]  # saved BGR, the bot sees RGB
+    watch, found = RingWatch((0, 0, 1473, 1080)), list[Ring]()
+    for top in (0, 344):
+        frame = np.zeros((1080, 1473, 3), np.uint8)
+        frame[0:344, 196:688] = looks_stacked[top : top + 344]
+        found = watch.rings(frame, top / 3440)
+    assert found == [Ring((344, 147), 4)]

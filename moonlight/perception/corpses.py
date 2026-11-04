@@ -1,12 +1,19 @@
 """Lootable corpses on the game grid, found by their turning loot ring.
 
-The OTS marks a corpse with loot by a ring of small white and light-blue
-dots that turns and sparkles. One frame cannot tell those dots from light
-stone or gravel, which look the same; but the ring moves and the floor does
-not. :class:`RingWatch` compares the game grid with how it looked ``GAP``
-seconds before and counts the bright dots that are new, tile by tile. While
-the view scrolls (the player walks) the older look is first shifted by the
-scroll (found by phase correlation), so a ring passed on the way is seen too.
+The OTS marks a corpse with loot by a ring of small light-blue dots and
+X sparkles that turns over the corpse. The dots are a pale blue (blue
+20-60 over red, green close to red: RGB about 160, 178, 205), which fire,
+skin, white text, skulls and gravel are not, and neither are the river
+(blue far over red) or a blue orb (green far over red). They are small
+specks; a "puff" cloud has the same color but is one big blob, so blobs
+over ``DOT_PIXELS``, and specks next to one, are dropped. The player's own
+tile never counts: their outfit sparkles the same blue.
+
+The ring moves and the floor does not. :class:`RingWatch` compares the game
+grid with how it looked ``GAP`` seconds before and counts the dots that are
+new, tile by tile. While the view scrolls (the player walks) the older look
+is first shifted by the scroll (found by phase correlation), so a ring
+passed on the way is seen too.
 
 # doc: docs/prs/corpse-loot.md#ring-check
 # doc: docs/prs/client-hotkeys.md#ring-anywhere
@@ -21,7 +28,7 @@ import numpy as np
 
 from moonlight.perception.creatures import PLAYER_SLOT
 
-__all__ = ["FARTHEST", "GAP", "MOVED", "RING_PIXELS", "Ring", "RingWatch"]
+__all__ = ["DOT_PIXELS", "FARTHEST", "GAP", "MOVED", "RING_PIXELS", "Ring", "RingWatch"]
 
 _COLS, _ROWS = 15, 11
 #: Most tiles from the player to the grid's edge (its columns are 7 to each side).
@@ -30,14 +37,26 @@ FARTHEST = 7
 GAP = 0.1
 #: New bright pixels that mean a ring (a real ring gave 41-128, still floor 0).
 RING_PIXELS = 25
+#: Largest blob of ring color that is a dot (dots measured <= 47, puffs >= 250).
+DOT_PIXELS = 60
 #: Mean color change of the block above which the view moved (still <= 2.4, walking >= 10).
 MOVED = 6.0
 
 
 def _bright(block: np.ndarray) -> np.ndarray:
-    """White or light-blue pixels: all channels bright, blue the strongest."""
-    b, g, r = block[..., 0], block[..., 1], block[..., 2]
-    out: np.ndarray = (np.minimum(np.minimum(r, g), b) >= 150) & (b >= g) & (b >= r)
+    """Loot-ring dots in an RGB *block*: pale blue specks, big blobs dropped."""
+    r, g, b = block[..., 0], block[..., 1], block[..., 2]
+    blue_over_red = b - r
+    color = (r >= 110) & (g >= r) & (b >= g) & (blue_over_red >= 20) & (blue_over_red <= 60)
+    color &= g - r <= 35
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(color.astype(np.uint8))
+    is_dot = stats[:, cv2.CC_STAT_AREA] <= DOT_PIXELS
+    is_dot[0] = False  # the background
+    is_blob = ~is_dot
+    is_blob[0] = False
+    # a puff's shading cuts dot-sized bits off its edge: drop what sits by a blob
+    near_blob = cv2.dilate(is_blob[labels].astype(np.uint8), np.ones((15, 15), np.uint8))
+    out: np.ndarray = is_dot[labels] & (near_blob == 0)
     return out
 
 
@@ -72,7 +91,7 @@ class Ring(NamedTuple):
     """A turning loot ring: the middle of its tile and how far it is."""
 
     point: tuple[int, int]  # frame pixel
-    tiles_away: int  # 0 = the player's tile, 1 = the 8 around it
+    tiles_away: int  # 1 = the 8 around the player (their own tile is never one)
 
 
 class RingWatch:
@@ -92,7 +111,7 @@ class RingWatch:
         self._ref_at = 0.0
 
     def rings(self, frame: np.ndarray, now: float) -> list[Ring]:
-        """Rings that turned since the last look, nearest first (BGR *frame*)."""
+        """Rings that turned since the last look, nearest first (*frame* is RGB)."""
         if self._ref is not None and now - self._ref_at < GAP:
             return []
         block = frame[self._box].astype(np.int16)
@@ -104,8 +123,6 @@ class RingWatch:
             block, ref, cut = _unscrolled(block, ref, self._player)  # the view scrolled
             if block.size == 0 or float(np.abs(block - ref).mean()) > MOVED:
                 return []  # scrolled too far, or not a plain scroll
-        # ponytail: a white spell flash or an animated light-blue field counts
-        # too; it costs a loot click on it.
         ys, xs = np.nonzero(_bright(block) & ~_bright(ref))
         if len(xs) < RING_PIXELS:
             return []
@@ -120,6 +137,8 @@ class RingWatch:
         most_here = (counts > 0) & (counts == np.maximum.reduce(around))
         is_ring = most_here & (sum(around) >= RING_PIXELS)
         pc, pr = PLAYER_SLOT
+        # the player's own outfit and the text over it sparkle the same blue
+        is_ring[pr, pc] = False
         found = [
             Ring(
                 (round(gx + (col + 0.5) * tw), round(gy + (row + 0.5) * th)),

@@ -765,14 +765,13 @@ class GameLoop:
         """How many tiles from the player a loot ring counts; None = no ring check.
 
         Mid-fight only the 8 tiles around, within ``RING_AFTER_KILL_SECONDS``
-        of a kill. With nothing to kill, the whole game grid; the player's own
-        tile only after a kill, since hits flash there like a ring.
+        of a kill. With nothing to kill, the whole game grid.
         """
         # doc: docs/prs/client-hotkeys.md#ring-anywhere
-        after_kill = self._clock() - self._target_died_at < RING_AFTER_KILL_SECONDS
         if self._state is not BotState.ATTACK:
-            return range(0 if after_kill else 1, FARTHEST + 1)
-        return range(0, 2) if after_kill else None
+            return range(1, FARTHEST + 1)
+        after_kill = self._clock() - self._target_died_at < RING_AFTER_KILL_SECONDS
+        return range(1, 2) if after_kill else None
 
     def _send(
         self,

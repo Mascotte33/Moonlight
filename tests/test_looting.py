@@ -92,7 +92,7 @@ def test_after_kill_off_ignores_kills() -> None:
 
 GRID = (0, 0, 1440, 1056)  # 96 px tiles; the player's tile is x 672-767, y 480-575
 EAST = (816, 528)  # the middle of the tile east of the player
-NEAR = range(0, 2)  # the player's tile and the 8 around it
+NEAR = range(1, 2)  # the 8 tiles around the player
 
 
 class FakeClicker:
@@ -117,7 +117,7 @@ class FakeClicker:
 
 def ring_frames(still_after: bool = False, x: int = 800) -> Callable[[], np.ndarray]:
     frames = [np.zeros((1056, 1440, 3), np.uint8) for _ in range(2)]
-    frames[0][500:505, x : x + 8] = frames[1][520:525, x + 20 : x + 28] = (255, 230, 200)  # turning
+    frames[0][500:505, x : x + 8] = frames[1][520:525, x + 20 : x + 28] = (160, 178, 205)  # turning
     tick = iter(range(100))
     if still_after:
         frames.append(frames[1])  # then the ring stands still for a look
@@ -214,12 +214,12 @@ def test_far_ring_is_seen_only_in_reach_and_holds_for_the_walk() -> None:
     clock.t = 0.1
     assert not looting.ring_due(NEAR)  # mid-fight: too far
     clock.t = 0.2
-    assert looting.ring_due(range(0, 8))  # nothing to kill: the whole grid
+    assert looting.ring_due(range(1, 8))  # nothing to kill: the whole grid
     looting.press_ring()
     assert clicker.clicks == [((1008, 528), ClickSide.RIGHT)]
     looting.step(ws)
     looting.step(ws)  # landed at 0.2: walks 2 tiles, then wait_ms
     clock.t = 0.2 + 0.4 + 2 * RING_WALK_S_PER_TILE - 0.01
-    assert looting.should_loot(ws) and not looting.ring_due(range(0, 8))
+    assert looting.should_loot(ws) and not looting.ring_due(range(1, 8))
     clock.t += 0.02
     assert not looting.should_loot(ws)
