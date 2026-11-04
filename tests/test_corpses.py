@@ -46,8 +46,8 @@ def test_rings_come_nearest_first() -> None:
     ]
 
 
-def test_player_tile_is_never_a_ring() -> None:
-    assert looks(frame((700, 500)), frame((720, 520))) == [[], []]  # their outfit sparkles
+def test_ring_under_the_player_counts() -> None:
+    assert looks(frame((700, 500)), frame((720, 520)))[1] == [Ring((720, 528), 0)]
 
 
 def test_ring_split_over_two_tiles_is_one_ring() -> None:

@@ -149,10 +149,11 @@ STOPPED_READ_EVERY_TICKS = 4
 CORPSE_LOOKBACK_TICKS = 8
 
 
-#: How many tiles from the player a loot ring counts, at any time (owner
-#: 2026-11-04: far rings confused the bot; 2 tiles is a short walk).
+#: How many tiles from the player a loot ring counts, at any time: the 5x5
+#: around and under the character (owner 2026-11-04: far rings confused the
+#: bot; a corpse under the character is looted too).
 # doc: docs/prs/client-hotkeys.md#ring-anywhere
-RING_REACH = range(1, 3)
+RING_REACH = range(0, 3)
 
 
 def vanished_slot(

@@ -15,7 +15,7 @@ Each trigger has its own switch: ``after_kill`` (the above) and
 ``ringed_corpses``, which right-clicks a corpse whenever its loot ring
 shows (the OTS loots it on that click, walking there first when it is
 far), then stands ``wait_ms`` so the loot lands. The loop says how far a
-ring may be (``reach``): 2 tiles from the player.
+ring may be (``reach``): up to 2 tiles from the player, their own tile too.
 With only ``ringed_corpses`` on, a kill holds the bot still (no walking;
 attacking goes on) for up to ``RING_WAIT`` so the ring can show and be
 clicked before the cavebot walks off: the ring check is blind while the

@@ -94,7 +94,7 @@ class Ring(NamedTuple):
     """A turning loot ring: the middle of its tile and how far it is."""
 
     point: tuple[int, int]  # frame pixel
-    tiles_away: int  # 1 = the 8 around the player (their own tile is never one)
+    tiles_away: int  # 0 = the player's own tile, 1 = the 8 around it
 
 
 def slot_ring(grid: tuple[int, int, int, int], slot: tuple[int, int]) -> Ring:
@@ -148,9 +148,9 @@ class RingWatch:
         around = [padded[r : r + _ROWS, c : c + _COLS] for r in range(3) for c in range(3)]
         most_here = (counts > 0) & (counts == np.maximum.reduce(around))
         is_ring = most_here & (sum(around) >= RING_PIXELS)
-        pc, pr = PLAYER_SLOT
-        # the player's own outfit and the text over it sparkle the same blue
-        is_ring[pr, pc] = False
+        # ponytail: the player's own tile counts (owner 2026-11-04: a corpse
+        # under the character), though their outfit may sparkle the same
+        # blue; mask the outfit if it is clicked with no corpse there.
         found = [
             slot_ring(self._grid, (int(col), int(row)))
             for row, col in zip(*np.nonzero(is_ring), strict=True)

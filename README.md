@@ -193,7 +193,8 @@ Cavebot > Settings has a switch for each loot trigger. **Loot after every kill**
 right-clicks a corpse whenever its turning loot ring shows (the OTS loots on
 that click and walks there first when the corpse is 2 tiles off). A ring up to
 2 tiles from the character is clicked at once, any time, also mid-fight; farther
-rings are ignored. The nearest counts first. The character's own tile never counts. Only the ring's own
+rings are ignored. The nearest counts first, the tile under the character too
+(all 25 tiles around it). Only the ring's own
 light-blue dots count: campfires, the blue orb, water, skulls, white text and
 "puff" clouds do not, and the ring is seen in the blue half of its pulse. The ring is also seen
 while the character walks (the scroll is undone first). After a ring click
