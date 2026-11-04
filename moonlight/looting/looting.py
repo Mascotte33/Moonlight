@@ -9,8 +9,10 @@ sparkles the same blue, loot shots 2026-11-04) the nearest is looted, any
 time, also mid-fight: right-clicked
 (``loot_by_right_click``, the OTS loots on that click and walks there first
 when it is far) or by pressing ``loot_hotkey`` (loots every corpse around).
-Then the bot stands ``wait_ms`` so the loot lands, and the next ring is
-looted, until none is left. Below ``min_hp_to_loot`` it holds still and
+Then the bot stands ``wait_ms`` so the loot lands and until the ring is
+gone (owner 2026-11-04: the ring goes away once looted, then the next
+target), and the next ring is looted, until none is left. Below
+``min_hp_to_loot`` it holds still and
 heals instead.
 """
 
@@ -34,8 +36,8 @@ from moonlight.hardware.input import ClickSide, InputBackend
 from moonlight.perception.corpses import Ring, RingWatch, slot_ring
 
 __all__ = [
-    "LootingConfig", "Looting", "RING_CONFIRM_LOOKS", "RING_CONFIRM_SECONDS", "RING_GAP",
-    "RING_WALK_S_PER_TILE",
+    "LootingConfig", "Looting", "RING_CONFIRM_LOOKS", "RING_CONFIRM_SECONDS",
+    "RING_GONE_SECONDS", "RING_GONE_TIMEOUT", "RING_WALK_S_PER_TILE",
 ]
 
 #: A ring is looted only once seen this many times, up to a tile off ...
@@ -45,8 +47,11 @@ RING_CONFIRM_LOOKS = 3
 RING_CONFIRM_SECONDS = 0.4
 #: Sightings older than this are forgotten.
 RING_FORGET_SECONDS = 1.0
-#: Least seconds between ring loots: the ring stays until the loot lands.
-RING_GAP = 0.3
+#: A looted ring is gone once not seen this long (its dots hide up to about
+#: 0.6 s of each turn) ...
+RING_GONE_SECONDS = 0.8
+#: ... and is looted again when still there this long after its loot landed.
+RING_GONE_TIMEOUT = 3.0
 #: Seconds the character takes per tile walking to a far ring's corpse.
 # ponytail: one fixed walk speed; read the character's speed if fast or
 # slow characters re-click or wait too long.
@@ -97,12 +102,12 @@ class Looting:
         self._ring_sightings: list[tuple[tuple[int, int], float]] = []
         #: The ring's right-click is on its way through the clicker.
         self._ring_clicking = False
-        #: No ring looted before this: the last one's loot lands (and its walk ends).
-        self._ring_hold_until = 0.0
         #: The bot stands still until then so the loot lands (``wait_ms``).
         self._loot_lands_at = 0.0
         #: The looted ring's pixel, shot once more when its loot lands.
         self._landed_shot_point: tuple[int, int] | None = None
+        #: The looted ring's pixel: the bot holds until it is gone.
+        self._looted_point: tuple[int, int] | None = None
 
     def _hp_too_low(self, snap: WorldState) -> bool:
         return 0 < snap.hp_percent < self._config.min_hp_to_loot
@@ -110,8 +115,8 @@ class Looting:
     def ring_due(self, reach: range, snap: WorldState) -> bool:
         """True when a loot ring shows *reach* tiles from the player and HP allows it.
 
-        Loots are ``wait_ms`` (at least ``RING_GAP``) apart after the loot
-        lands, plus the walk to a far ring, so the ring has time to go away.
+        The next ring waits until the looted one is gone (or still there
+        ``RING_GONE_TIMEOUT`` after its loot landed: looted again).
         """
         self._ring = None
         now = self._clock()
@@ -123,12 +128,15 @@ class Looting:
             if now >= self._loot_lands_at:
                 self._save_shot(self._landed_shot_point, "landed")
                 self._landed_shot_point = None
-        if self._ring_clicking or now < self._ring_hold_until:
-            return False
         seen = self._rings.rings(self._frames(), now)
         self._ring_sightings = [
             (point, t) for point, t in self._ring_sightings if now - t <= RING_FORGET_SECONDS
         ] + [(ring.point, now) for ring in seen]
+        if self._looted_point is not None:  # follow it as the view scrolls
+            near = [ring.point for ring in seen if self._near(ring.point, self._looted_point)]
+            self._looted_point = near[0] if near else self._looted_point
+        if self._looted_ring_stays(now):
+            return False
         assert self._game_region is not None
         creatures = {slot_ring(self._game_region, slot).point for slot in snap.creature_slots}
         rings = [
@@ -140,16 +148,34 @@ class Looting:
             self._ring = rings[0]  # the nearest
         return self._ring is not None and not self._hp_too_low(snap)
 
-    def _confirmed(self, ring: Ring, now: float) -> bool:
-        """Seen enough looks for long enough, up to a tile off (the view scrolls as one walks)."""
+    def _near(self, a: tuple[int, int], b: tuple[int, int]) -> bool:
+        """Up to a tile apart (the view scrolls as one walks)."""
         assert self._game_region is not None
         tile = self._game_region[2] / 15  # the grid is 15 tiles wide
-        x, y = ring.point
-        times = [
-            t for (px, py), t in self._ring_sightings
-            if abs(px - x) <= tile and abs(py - y) <= tile
-        ]
+        return abs(a[0] - b[0]) <= tile and abs(a[1] - b[1]) <= tile
+
+    def _confirmed(self, ring: Ring, now: float) -> bool:
+        """Seen enough looks for long enough, up to a tile off."""
+        times = [t for point, t in self._ring_sightings if self._near(point, ring.point)]
         return len(times) >= RING_CONFIRM_LOOKS and now - times[0] >= RING_CONFIRM_SECONDS
+
+    def _looted_ring_stays(self, now: float) -> bool:
+        """True until the looted ring is gone, or still there ``RING_GONE_TIMEOUT`` after."""
+        point = self._looted_point
+        if point is None or self._ring_clicking or now < self._loot_lands_at:
+            return point is not None
+        if not any(
+            self._near(seen, point) and now - t < RING_GONE_SECONDS
+            for seen, t in self._ring_sightings
+        ):
+            log.info("looting: ring at %s gone", point)
+            self._looted_point = None
+            return False
+        if now - self._loot_lands_at >= RING_GONE_TIMEOUT:
+            log.warning("looting: ring at %s still there, looting it again", point)
+            self._looted_point = None
+            return False
+        return True
 
     def press_ring(self) -> None:
         """Loot the seen ring: right-click it (:meth:`step` drives the click) or press the hotkey.
@@ -161,7 +187,7 @@ class Looting:
             raise RuntimeError("press_ring needs a seen ring")
         log.info("loot triggered at %s, %d tiles away", *self._ring)
         self._save_shot(self._ring.point, "ring")
-        self._landed_shot_point = self._ring.point
+        self._landed_shot_point = self._looted_point = self._ring.point
         if self._config.loot_by_right_click:
             if self._clicker is None:
                 raise RuntimeError("right-click looting needs a clicker")
@@ -192,14 +218,14 @@ class Looting:
     def _loot_landing(self, walk: float) -> None:
         wait, now = self._config.wait_ms / 1000, self._clock()
         self._loot_lands_at = now + wait + walk
-        self._ring_hold_until = now + max(wait, RING_GAP) + walk
 
     def should_loot(self, snap: WorldState) -> bool:
-        """True while a ring waits for HP, a right-click is in flight or the loot lands."""
+        """True while a ring waits for HP, a right-click is in flight or the loot lands and goes."""
         return (
             self._ring is not None
             or self._ring_clicking
             or self._clock() < self._loot_lands_at
+            or self._looted_ring_stays(self._clock())
         )
 
     def loot_first(self, snap: WorldState) -> bool:
@@ -211,7 +237,7 @@ class Looting:
         return self.should_loot(snap) and not self._hp_too_low(snap)
 
     def step(self, snap: WorldState) -> bool:
-        """Drive the right-click, then hold for ``wait_ms``; True while looting holds the bot."""
+        """Drive the right-click, then hold for ``wait_ms`` and until the ring is gone."""
         if not (snap.client_focused and snap.screen_ok):
             return False
         if self._ring_clicking:
