@@ -172,7 +172,8 @@ a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 
 Looting right-clicks the killed monster's corpse 0.1 s after each kill (also
 when more monsters of that name are left), before attacking the next monster
-(the OTS loots on that click). The corpse is the tile the monster's health bar
+(the OTS loots on that click). The next attack waits until the click is sent
+and the loot wait is over, also for a ring clicked mid-fight. The corpse is the tile the monster's health bar
 vanished from, the one nearest the character when several did. When no tile
 is known, and when the battle list empties, it presses the loot hotkey
 instead. bot.log shows `looting: right-click the corpse at (x, y)` or

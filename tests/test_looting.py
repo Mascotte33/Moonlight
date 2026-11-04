@@ -247,3 +247,20 @@ def test_hotkey_setting_presses_the_loot_hotkey_instead() -> None:
     clock.t = PRESS_DELAY
     looting.step(WorldState(client_focused=True, screen_ok=True, hp_percent=100.0))
     assert inp.sent_lines == ["K alt+q"] and clicker.clicks == []
+
+
+def test_corpse_click_holds_the_fight_until_the_loot_lands() -> None:
+    clock, clicker = Clock(), FakeClicker(steps=2)
+    config = LootingConfig(wait_ms=400)
+    looting = Looting(FakeInput(), config, clock=clock, game_region=GRID, clicker=clicker)  # type: ignore[arg-type]
+    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
+    looting.on_target_died("Wolf", (8, 5))
+    clock.t = PRESS_DELAY
+    looting.step(ws)  # the right-click is asked for
+    assert looting.loot_first(ws)  # the next target waits for the click
+    looting.step(ws)
+    looting.step(ws)  # sent
+    looting.step(ws)
+    assert looting.loot_first(ws)  # and for the loot to land
+    clock.t = PRESS_DELAY + 0.41
+    assert not looting.loot_first(ws)

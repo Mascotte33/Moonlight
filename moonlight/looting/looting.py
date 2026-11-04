@@ -144,10 +144,18 @@ class Looting:
         )
 
     def loot_first(self, snap: WorldState) -> bool:
-        """True when a press is queued and HP allows it: loot before the next attack."""
-        return self._pending is not None and not (
-            0 < snap.hp_percent < self._config.min_hp_to_loot
+        """True while a kill or ring is looted and HP allows it: before the next attack.
+
+        That is a queued press, a right-click in flight and its wait after
+        (bot.log 2026-11-04: the fight took the mouse and walked off right
+        after the corpse click, and nothing was looted).
+        """
+        looting = (
+            self._pending is not None
+            or self._ring_clicking
+            or self._clock() < self._ring_hold_until
         )
+        return looting and not (0 < snap.hp_percent < self._config.min_hp_to_loot)
 
     def ring_due(self, reach: range) -> bool:
         """True when a loot ring shows *reach* tiles from the player and a click is due.
