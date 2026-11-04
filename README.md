@@ -170,7 +170,7 @@ target never lands on one. Log: `echo raid seen at x,y,z, triggering`, then
 a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 (`<time>_<x>_<y>_<z>_<right|left>.png`); bot.log names each file.
 
-Looting right-clicks the killed monster's corpse 0.3 s after each kill (also
+Looting right-clicks the killed monster's corpse 0.1 s after each kill (also
 when more monsters of that name are left), before attacking the next monster
 (the OTS loots on that click). The corpse is the tile the monster's health bar
 vanished from, the one nearest the character when several did. When no tile
@@ -187,14 +187,14 @@ hold all their keys down together. Reflash the Leonardo after updating.
 Cavebot > Settings has a switch for each loot trigger. **Loot after every kill**
 (on by default) is the above. **Loot ringed corpses** (off by default)
 right-clicks a corpse whenever its turning loot ring shows (the OTS loots on
-that click and walks there first when the corpse is far). Mid-fight only a
-ring on the 8 tiles around the character counts, within 3 s of the target
-dying, also while the kill is looted. With nothing to kill, a ring anywhere on the game grid counts, the
+that click and walks there first when the corpse is far). Mid-fight (attacking,
+walking to the next target, looting a kill) a ring on the 8 tiles around the
+character is clicked at once, any time. With nothing to kill, a ring anywhere on the game grid counts, the
 nearest first. The character's own tile never counts. Only the ring's own
 light-blue dots count: campfires, the blue orb, water, skulls, white text and
 "puff" clouds do not, and the ring is seen in the blue half of its pulse. The ring is also seen
 while the character walks (the scroll is undone first). After a ring click
-the cavebot stands for the set wait (at least 0.5 s), plus 0.3 s per tile of
+the cavebot stands for the set wait (at least 0.3 s), plus 0.3 s per tile of
 the walk to a far corpse, so the loot lands. With only this switch on, the
 cavebot stands still for up to 1 s after a kill (attacking goes on) until the
 ring click. bot.log shows `loot triggered at (x, y), N tiles away` when a ring

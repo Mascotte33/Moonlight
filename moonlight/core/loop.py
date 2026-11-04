@@ -145,10 +145,6 @@ _SELECT_OUTLINE_WAIT = 1.0
 #: While stopped only every 4th tick reads the screen (5 a second at 20 Hz).
 STOPPED_READ_EVERY_TICKS = 4
 
-#: Seconds after the target died in which a loot ring counts: a ring comes
-#: from a kill; without one, hits flashing on the player look the same, and
-#: monsters walking out of view drop the battle list count every few seconds.
-RING_AFTER_KILL_SECONDS = 3.0
 #: Ticks of creature tiles kept to find a kill's corpse: the battle list is
 #: read every 4th tick, so the health bar may vanish a few ticks earlier.
 CORPSE_LOOKBACK_TICKS = 8
@@ -320,7 +316,6 @@ class GameLoop:
         self._recent_creature_slots: deque[tuple[tuple[int, int], ...]] = deque(
             maxlen=CORPSE_LOOKBACK_TICKS
         )
-        self._target_died_at = float("-inf")
         self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
@@ -639,12 +634,10 @@ class GameLoop:
             ):
                 corpse = vanished_slot(self._recent_creature_slots, snap.creature_slots)
                 m.looting.on_target_died(prev, corpse)
-                self._target_died_at = now
                 if m.attack_hotkeys is not None:
                     m.attack_hotkeys.new_target()  # the client may select the next at once
             elif self._last_names and not names:
                 m.looting.on_target_died("")  # the battle list emptied: loot again
-                self._target_died_at = now
         self._last_names = names
         self._recent_creature_slots.append(snap.creature_slots)
         if m.extras is not None:
@@ -769,8 +762,7 @@ class GameLoop:
             self._task = "Healing"
             return
         looting = self.modules.looting
-        reach = self._ring_reach()
-        if looting is not None and reach is not None and looting.ring_due(reach):
+        if looting is not None and looting.ring_due(self._ring_reach()):
             self._send(snap, looting.press_ring)  # then carry on with this tick
         # doc: docs/prs/pause-stop.md#action-order
         # Healing, then the fight and loot, then scripts, extras and walking.
@@ -787,18 +779,17 @@ class GameLoop:
                 if self._state is BotState.MOVE:
                     self._act_move(snap)
 
-    def _ring_reach(self) -> range | None:
-        """How many tiles from the player a loot ring counts; None = no ring check.
+    def _ring_reach(self) -> range:
+        """How many tiles from the player a loot ring counts.
 
-        Mid-fight only the 8 tiles around, within ``RING_AFTER_KILL_SECONDS``
-        of a kill (also while a kill is looted). With nothing to kill, the
-        whole game grid.
+        Mid-fight (attacking, walking to a target or looting a kill) the 8
+        tiles around, so the character does not walk off; with nothing to
+        kill, the whole game grid.
         """
         # doc: docs/prs/client-hotkeys.md#ring-anywhere
-        if self._state not in (BotState.ATTACK, BotState.LOOT):
-            return range(1, FARTHEST + 1)
-        after_kill = self._clock() - self._target_died_at < RING_AFTER_KILL_SECONDS
-        return range(1, 2) if after_kill else None
+        if self._state in (BotState.ATTACK, BotState.LOOT):
+            return range(1, 2)
+        return range(1, FARTHEST + 1)
 
     def _send(
         self,

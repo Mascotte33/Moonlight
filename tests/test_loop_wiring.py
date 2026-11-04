@@ -185,7 +185,7 @@ def test_ring_press_does_not_stop_the_attack() -> None:
         ws.selected_target, ws.monsters = None, [Monster(name="m1")]  # the wolf died
     clock.now += 1.0
     gl.tick()
-    looting.press_ring.assert_called_once()
+    looting.press_ring.assert_called()  # a ring next to the player, any time
     assert gl.current_state is BotState.ATTACK
     clicker.request.assert_called_with((5, 6))
 

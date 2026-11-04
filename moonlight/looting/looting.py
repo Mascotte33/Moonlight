@@ -46,11 +46,11 @@ __all__ = [
 ]
 
 #: Seconds between the kill and the press; a press on the kill tick is ignored.
-PRESS_DELAY = 0.3
+PRESS_DELAY = 0.1
 #: Seconds the bot stands still after a kill looking for its corpse's ring.
 RING_WAIT = 1.0
 #: Least seconds between ring clicks: the ring stays until the loot lands.
-RING_GAP = 0.5
+RING_GAP = 0.3
 #: Seconds the character takes per tile walking to a far ring's corpse.
 # ponytail: one fixed walk speed; read the character's speed if fast or
 # slow characters re-click or wait too long.

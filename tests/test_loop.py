@@ -979,15 +979,11 @@ def test_loot_ring_reach_follows_the_fight() -> None:
     )
     gl, clock = make_loop(ws, FakeInput(), modules=DecisionModules(looting=cast(Looting, looting)))
     gl.tick()
-    assert checks == []  # rats hitting the player flash like a ring
-    with ws.lock():
-        ws.monsters = [rat]  # the cave rat walked out of view
-    gl.tick()
-    assert checks == []
+    assert checks == [range(1, 2)]  # mid-fight: the 8 tiles around, so it does not walk off
     with ws.lock():
         ws.monsters, ws.selected_target = [], None  # the target died
     gl.tick()
-    assert checks == [range(1, 8)]  # nothing to kill: the whole grid
+    assert checks == [range(1, 2), range(1, 8)]  # nothing to kill: the whole grid
 
 # doc: docs/prs/extras.md#extras
 class TestExtras:

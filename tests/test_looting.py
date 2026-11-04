@@ -148,10 +148,8 @@ def test_ring_click_is_a_right_click_wait_ms_apart_and_only_when_switched_on() -
     assert looting.step(ws) is True  # the click goes out
     assert looting.step(ws) is True  # the loot lands
     clock.t = 0.3
-    assert not looting.ring_due(NEAR)  # wait_ms after the click
+    assert not looting.ring_due(NEAR)  # wait_ms (at least RING_GAP) after the click
     clock.t = 0.5
-    assert not looting.ring_due(NEAR)  # and at least RING_GAP
-    clock.t = 0.6
     assert looting.ring_due(NEAR)
 
 
