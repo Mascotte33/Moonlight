@@ -157,10 +157,43 @@ class TestDxcamStaleFrame:
     """
 
     def _cap_with_cam(self, monkeypatch: pytest.MonkeyPatch, cam: object) -> ScreenCapture:
+        """*cam* on every monitor: the main 2560x1440 one and a 1680x1050 one left of it."""
+        import types
+
+        def monitor(left: int, top: int, right: int, bottom: int) -> object:
+            box = types.SimpleNamespace(left=left, top=top, right=right, bottom=bottom)
+            return types.SimpleNamespace(desc=types.SimpleNamespace(DesktopCoordinates=box))
+
+        factory = types.SimpleNamespace(
+            outputs=[[monitor(0, 0, 2560, 1440), monitor(-1680, 2, 0, 1052)]]
+        )
+        mod = types.SimpleNamespace(create=lambda **kw: cam, __factory=factory)
+        mod.__dict__["__factory"] = factory
         cap = ScreenCapture()
-        monkeypatch.setattr(cap, "_load_dxcam", lambda: "dummy_mod")
-        monkeypatch.setattr(cap, "_dxcam_cam", cam)
+        monkeypatch.setattr(cap, "_load_dxcam", lambda: mod)
         return cap
+
+    def test_a_window_on_the_left_monitor_is_grabbed_there(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import unittest.mock as mock
+
+        cam = mock.MagicMock()
+        cam.grab.return_value = np.zeros((1027, 1680, 3), dtype=np.uint8)
+        cap = self._cap_with_cam(monkeypatch, cam)
+        cap._grab_dxcam((-1680, 25, 1680, 1027))
+        # bot.log 2026-11-04: "Region should be in 2560x1440"
+        cam.grab.assert_called_once_with(region=(0, 23, 1680, 1050), new_frame_only=True)
+        assert cap._dxcam_output == 1
+
+    def test_a_window_across_two_monitors_is_an_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import unittest.mock as mock
+
+        cap = self._cap_with_cam(monkeypatch, mock.MagicMock())
+        with pytest.raises(CaptureError, match="not on one monitor"):
+            cap._grab_dxcam((-500, 25, 1680, 1027))
 
     def test_new_frame_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import unittest.mock as mock

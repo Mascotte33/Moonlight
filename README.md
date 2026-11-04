@@ -390,6 +390,9 @@ everything, keys included.
 A crash of any part is written there too, and a GUI that cannot start shows
 a message box with the error.
 
+The client can be on any monitor, fully on one. Calibrate on the monitor you
+play on: a profile made on another one stops with "Layout changed, recalibrate".
+
 The window and its taskbar button show the Moonlight logo
 (`moonlight/gui/icon.ico`). For a desktop icon, right-click
 "Start Moonlight GUI.bat" > Show more options > Create shortcut, move the
