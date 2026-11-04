@@ -184,10 +184,11 @@ Cavebot > Settings has a switch for each loot trigger. **Loot after every kill**
 (on by default) is the above. **Loot ringed corpses** (off by default)
 right-clicks a corpse whenever its turning loot ring shows (the OTS loots on
 that click and walks there first when the corpse is far). Mid-fight only a
-ring on the character's tile or the 8 around it counts, within 3 s of the
-target dying (monsters hitting the character flash the same way). With
-nothing to kill, a ring anywhere on the game grid counts, the nearest first;
-the character's own tile only within 3 s of a kill. The ring is also seen
+ring on the 8 tiles around the character counts, within 3 s of the target
+dying. With nothing to kill, a ring anywhere on the game grid counts, the
+nearest first. The character's own tile never counts. Only the ring's own
+light-blue dots count: campfires, the blue orb, water, skulls, white text and
+"puff" clouds do not, and the ring is seen in the blue half of its pulse. The ring is also seen
 while the character walks (the scroll is undone first). After a ring click
 the cavebot stands for the set wait (at least 0.5 s), plus 0.3 s per tile of
 the walk to a far corpse, so the loot lands. With only this switch on, the

@@ -17,6 +17,7 @@ passed on the way is seen too.
 
 # doc: docs/prs/corpse-loot.md#ring-check
 # doc: docs/prs/client-hotkeys.md#ring-anywhere
+# doc: docs/prs/client-hotkeys.md#ring-color
 """
 
 from __future__ import annotations
