@@ -1,4 +1,4 @@
-"""Unit tests for moonlight.looting.looting: one loot-all press, then a wait."""
+"""Unit tests for moonlight.looting.looting: loot each ringed corpse, then wait."""
 
 from __future__ import annotations
 
@@ -9,13 +9,7 @@ import pytest
 
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import ClickSide, FakeInput
-from moonlight.looting.looting import (
-    PRESS_DELAY,
-    RING_WAIT,
-    RING_WALK_S_PER_TILE,
-    Looting,
-    LootingConfig,
-)
+from moonlight.looting.looting import RING_WALK_S_PER_TILE, Looting, LootingConfig
 
 
 class Clock:
@@ -26,73 +20,10 @@ class Clock:
         return self.t
 
 
-def make(**cfg: object) -> tuple[Looting, FakeInput, Clock, WorldState]:
-    inp, clock = FakeInput(), Clock()
-    looting = Looting(inp, LootingConfig(**cfg), clock=clock)  # type: ignore[arg-type]
-    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
-    return looting, inp, clock, ws
-
-
-def test_press_once_then_hold_for_wait_ms() -> None:
-    looting, inp, clock, ws = make(wait_ms=400)
-    looting.on_target_died("Wolf")
-    assert looting.should_loot(ws)
-    assert looting.step(ws) is True  # too soon after the kill: no press yet
-    assert inp.sent_lines == []
-    clock.t = PRESS_DELAY
-    assert looting.step(ws) is True
-    clock.t = PRESS_DELAY + 0.3
-    assert looting.step(ws) is True
-    clock.t = PRESS_DELAY + 0.41
-    assert looting.step(ws) is False
-    assert inp.sent_lines == ["K alt+q"] and looting.pending is None
-
-
-def test_battle_list_emptied_queues_a_press() -> None:
-    looting, inp, clock, ws = make()
-    looting.on_target_died("")
-    clock.t = PRESS_DELAY
-    looting.step(ws)
-    assert inp.sent_lines == ["K alt+q"]
-
-
-def test_low_hp_waits_for_hp_then_loots() -> None:
-    looting, inp, clock, ws = make(min_hp_to_loot=70.0)
-    ws.hp_percent = 50.0
-    looting.on_target_died("Wolf")
-    clock.t = PRESS_DELAY
-    assert looting.step(ws) is True  # holds the bot while it heals
-    assert inp.sent_lines == [] and looting.pending == "Wolf"
-    ws.hp_percent = 70.0
-    assert looting.step(ws) is True
-    assert inp.sent_lines == ["K alt+q"]
-
-
-def test_nothing_queued_does_nothing() -> None:
-    looting, inp, _, ws = make()
-    assert not looting.should_loot(ws) and looting.step(ws) is False
-    assert inp.sent_lines == []
-
-
-def test_loot_first_unless_hp_low() -> None:
-    looting, _, _, ws = make(min_hp_to_loot=70.0)
-    assert not looting.loot_first(ws)
-    looting.on_target_died("Wolf")
-    assert looting.loot_first(ws)
-    ws.hp_percent = 50.0
-    assert not looting.loot_first(ws)  # keep fighting; loot after
-
-
-def test_after_kill_off_ignores_kills() -> None:
-    looting, inp, _, ws = make(after_kill=False)
-    looting.on_target_died("Wolf")
-    assert not looting.should_loot(ws) and looting.step(ws) is False
-    assert inp.sent_lines == []
-
-
 GRID = (0, 0, 1440, 1056)  # 96 px tiles; the player's tile is x 672-767, y 480-575
 EAST = (816, 528)  # the middle of the tile east of the player
 NEAR = range(1, 2)  # the 8 tiles around the player
+WS = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
 
 
 class FakeClicker:
@@ -126,190 +57,139 @@ def ring_frames(still_after: bool = False, x: int = 800) -> Callable[[], np.ndar
 
 
 def make_ring(
-    clock: Clock, clicker: FakeClicker, still_after: bool = False, x: int = 800, **cfg: object
+    clock: Clock, clicker: FakeClicker | None = None, still_after: bool = False, x: int = 800,
+    inp: FakeInput | None = None, **cfg: object,
 ) -> Looting:
     config = LootingConfig(**{"wait_ms": 400, **cfg})  # type: ignore[arg-type]
     return Looting(
-        FakeInput(), config, clock=clock, frames=ring_frames(still_after, x), game_region=GRID,
-        clicker=clicker,  # type: ignore[arg-type]
+        inp or FakeInput(), config, clock=clock, frames=ring_frames(still_after, x),
+        game_region=GRID, clicker=clicker,  # type: ignore[arg-type]
     )
 
 
-def test_ring_click_is_a_right_click_wait_ms_apart_and_only_when_switched_on() -> None:
+def see_ring(looting: Looting, clock: Clock, reach: range = NEAR) -> None:
+    """Two looks: the ring is seen turning."""
+    looting.ring_due(reach, WS)
+    clock.t += 0.1
+    assert looting.ring_due(reach, WS)
+
+
+def test_ring_is_right_clicked_at_once_then_wait_ms() -> None:
     clock, clicker = Clock(), FakeClicker(steps=1)
-    assert not make_ring(clock, clicker).ring_due(NEAR)  # off by default
-    looting = make_ring(clock, clicker, ringed_corpses=True)
-    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
-    assert not looting.ring_due(NEAR)  # the first look
+    looting = make_ring(clock, clicker)
+    assert not looting.ring_due(NEAR, WS)  # the first look
     clock.t = 0.1
-    assert looting.ring_due(NEAR)
+    assert looting.ring_due(NEAR, WS)
     looting.press_ring()
     assert clicker.clicks == [(EAST, ClickSide.RIGHT)]
-    assert looting.step(ws) is True  # the click goes out
-    assert looting.step(ws) is True  # the loot lands
-    clock.t = 0.3
-    assert not looting.ring_due(NEAR)  # wait_ms (at least RING_GAP) after the click
-    clock.t = 0.5
-    assert looting.ring_due(NEAR)
+    assert looting.loot_first(WS)  # the next attack waits
+    assert looting.step(WS) is True  # the click goes out at 0.1
+    assert looting.step(WS) is True  # the loot lands
+    clock.t = 0.49
+    assert looting.loot_first(WS) and not looting.ring_due(NEAR, WS)
+    clock.t = 0.51
+    assert not looting.loot_first(WS) and looting.step(WS) is False
 
 
-def test_ring_click_holds_the_bot_until_it_is_sent_then_wait_ms() -> None:
-    clock, clicker = Clock(), FakeClicker(steps=3)
-    looting = make_ring(clock, clicker, ringed_corpses=True, after_kill=False)
-    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
-    looting.ring_due(NEAR)
-    clock.t = 5.0
-    assert looting.ring_due(NEAR)
-    looting.press_ring()  # a ring passed on the way, no kill
-    for _ in range(3):
-        assert looting.should_loot(ws) and not looting.ring_due(NEAR)
-        assert looting.step(ws) is True  # the clicker moves, then clicks
-    assert not clicker.busy
-    assert looting.step(ws) is True  # the loot lands
-    clock.t = 5.39
-    assert looting.should_loot(ws)
-    clock.t = 5.41
-    assert not looting.should_loot(ws) and looting.step(ws) is False
-
-
-def test_ring_only_kill_holds_still_while_it_looks_for_the_ring() -> None:
-    looting, inp, clock, ws = make(after_kill=False, ringed_corpses=True, wait_ms=400)
-    looting.on_target_died("Wolf")
-    assert looting.should_loot(ws) and not looting.loot_first(ws)  # attacking goes on
-    assert looting.step(ws) is True and inp.sent_lines == []  # stands still, no kill press
-
-
-def test_ring_only_kill_without_a_ring_walks_on_after_ring_wait() -> None:
-    looting, _, clock, ws = make(after_kill=False, ringed_corpses=True)
-    looting.on_target_died("Wolf")
-    clock.t = RING_WAIT
-    assert not looting.should_loot(ws) and looting.step(ws) is False
-
-
-def test_seen_ring_stays_due_until_its_click_is_asked_for() -> None:
-    clock, clicker = Clock(), FakeClicker()
-    looting = make_ring(clock, clicker, still_after=True, ringed_corpses=True)
-    assert not looting.ring_due(NEAR)
-    clock.t = 0.1
-    assert looting.ring_due(NEAR)  # the input limit drops this click
-    clock.t = 0.2
-    assert looting.ring_due(NEAR)  # still due, though this look sees no change
+def test_next_ring_is_looted_after_the_wait_until_none_is_left() -> None:
+    clock, clicker = Clock(), FakeClicker(steps=1)
+    looting = make_ring(clock, clicker)
+    see_ring(looting, clock)
     looting.press_ring()
-    assert not looting.ring_due(NEAR)
+    looting.step(WS)
+    looting.step(WS)
+    clock.t += 0.41
+    assert looting.ring_due(NEAR, WS)  # another corpse: looted too
+    looting.press_ring()
+    assert len(clicker.clicks) == 2
+
+
+def test_hotkey_setting_presses_the_loot_hotkey_for_a_ring() -> None:
+    inp, clock, clicker = FakeInput(), Clock(), FakeClicker()
+    looting = make_ring(clock, clicker, inp=inp, loot_by_right_click=False)
+    see_ring(looting, clock)
+    looting.press_ring()
+    assert inp.sent_lines == ["K alt+q"] and clicker.clicks == []
+    clock.t += 0.39
+    assert looting.step(WS) is True  # wait_ms
+    clock.t += 0.02
+    assert looting.step(WS) is False
+
+
+def test_no_ring_does_nothing() -> None:
+    inp, clock = FakeInput(), Clock()
+    looting = Looting(inp, LootingConfig(), clock=clock)
+    assert not looting.ring_due(NEAR, WS)
+    assert not looting.should_loot(WS) and looting.step(WS) is False
+    assert inp.sent_lines == []
+
+
+def test_low_hp_holds_still_and_loots_once_hp_is_back() -> None:
+    clock, clicker = Clock(), FakeClicker(steps=1)
+    looting = make_ring(clock, clicker, min_hp_to_loot=70.0)
+    low = WorldState(client_focused=True, screen_ok=True, hp_percent=50.0)
+    looting.ring_due(NEAR, low)
+    clock.t = 0.1
+    assert not looting.ring_due(NEAR, low)  # seen, but HP first
+    assert looting.should_loot(low) and not looting.loot_first(low)  # a fight goes on
+    assert looting.step(low) is True  # else it stands still and heals
+    clock.t = 0.2
+    assert looting.ring_due(NEAR, WS)
+
+
+def test_no_ring_loot_while_the_client_is_unfocused() -> None:
+    clock, clicker = Clock(), FakeClicker()
+    looting = make_ring(clock, clicker)
+    unfocused = WorldState(client_focused=False, screen_ok=True, hp_percent=100.0)
+    looting.ring_due(NEAR, unfocused)
+    clock.t = 0.1
+    assert not looting.ring_due(NEAR, unfocused)
+
+
+def test_ring_click_holds_the_bot_until_it_is_sent() -> None:
+    clock, clicker = Clock(), FakeClicker(steps=3)
+    looting = make_ring(clock, clicker)
+    see_ring(looting, clock)
+    looting.press_ring()
+    for _ in range(3):
+        assert looting.should_loot(WS) and not looting.ring_due(NEAR, WS)
+        assert looting.step(WS) is True  # the clicker moves, then clicks
+    assert not clicker.busy
 
 
 def test_ring_click_without_a_clicker_is_refused() -> None:
-    looting, *_ = make(ringed_corpses=True)
+    clock = Clock()
+    looting = make_ring(clock)
+    see_ring(looting, clock)
     with pytest.raises(RuntimeError, match="needs a clicker"):
         looting.press_ring()
 
 
 def test_far_ring_is_seen_only_in_reach_and_holds_for_the_walk() -> None:
     clock, clicker = Clock(), FakeClicker(steps=1)
-    looting = make_ring(clock, clicker, x=1000, ringed_corpses=True)  # 3 tiles east
-    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
-    looting.ring_due(NEAR)
+    looting = make_ring(clock, clicker, x=1000)  # 3 tiles east
+    looting.ring_due(NEAR, WS)
     clock.t = 0.1
-    assert not looting.ring_due(NEAR)  # mid-fight: too far
+    assert not looting.ring_due(NEAR, WS)  # too far
     clock.t = 0.2
-    assert looting.ring_due(range(1, 8))  # nothing to kill: the whole grid
+    assert looting.ring_due(range(1, 8), WS)
     looting.press_ring()
     assert clicker.clicks == [((1008, 528), ClickSide.RIGHT)]
-    looting.step(ws)
-    looting.step(ws)  # landed at 0.2: walks 2 tiles, then wait_ms
+    looting.step(WS)
+    looting.step(WS)  # landed at 0.2: walks 2 tiles, then wait_ms
     clock.t = 0.2 + 0.4 + 2 * RING_WALK_S_PER_TILE - 0.01
-    assert looting.should_loot(ws) and not looting.ring_due(range(1, 8))
+    assert looting.should_loot(WS) and not looting.ring_due(range(1, 8), WS)
     clock.t += 0.02
-    assert not looting.should_loot(ws)
-
-
-
-
-def test_hotkey_setting_presses_the_loot_hotkey_instead() -> None:
-    inp, clock, clicker = FakeInput(), Clock(), FakeClicker()
-    config = LootingConfig(loot_by_right_click=False)
-    looting = Looting(inp, config, clock=clock, game_region=GRID, clicker=clicker)  # type: ignore[arg-type]
-    looting.on_target_died("Wolf")
-    clock.t = PRESS_DELAY
-    looting.step(WorldState(client_focused=True, screen_ok=True, hp_percent=100.0))
-    assert inp.sent_lines == ["K alt+q"] and clicker.clicks == []
-
-
-
-
-def test_kill_without_a_tile_holds_the_fight_for_its_ring() -> None:
-    clock, clicker = Clock(), FakeClicker(steps=1)
-    looting = make_ring(clock, clicker, ringed_corpses=True)
-    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
-    looting.ring_due(NEAR)
-    looting.on_target_died("Wolf")  # no corpse tile known
-    assert looting.loot_first(ws) and looting.step(ws) is True  # no Alt+Q, stands still
-    clock.t = 0.5
-    assert looting.ring_due(NEAR)
-    looting.press_ring()
-    looting.step(ws)
-    looting.step(ws)  # clicked at 0.5: wait_ms, then the fight goes on
-    clock.t = 0.91
-    assert not looting.loot_first(ws)
-    assert clicker.clicks == [(EAST, ClickSide.RIGHT)]
-
-
-def test_kill_without_a_tile_or_a_ring_fights_on_after_ring_wait() -> None:
-    clock, clicker = Clock(), FakeClicker(steps=1)
-    looting = make_ring(clock, clicker, ringed_corpses=True)
-    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
-    looting.on_target_died("Wolf")
-    clock.t = RING_WAIT
-    assert not looting.loot_first(ws) and not looting.should_loot(ws)
-
-
-def test_right_click_looting_finds_the_corpse_by_its_ring_without_the_ring_switch() -> None:
-    clock, clicker = Clock(), FakeClicker(steps=1)
-    inp = FakeInput()
-    looting = Looting(
-        inp, LootingConfig(), clock=clock, frames=ring_frames(), game_region=GRID,
-        clicker=clicker,  # type: ignore[arg-type]
-    )
-    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
-    assert not looting.ring_due(NEAR)  # "Loot ringed corpses" off: no ring watch
-    looting.on_target_died("Wolf")  # no corpse tile known
-    looting.step(ws)
-    looting.ring_due(NEAR)  # the first look
-    clock.t = 0.1
-    assert looting.ring_due(NEAR)
-    looting.press_ring()
-    assert clicker.clicks == [(EAST, ClickSide.RIGHT)] and inp.sent_lines == []
-
-
-
-
-
-
-def test_ring_seen_just_before_the_kill_wait_ends_is_still_clicked() -> None:
-    clock, clicker = Clock(), FakeClicker(steps=1)
-    looting = make_ring(clock, clicker)  # right-click looting, ring switch off
-    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
-    looting.on_target_died("Wolf")
-    looting.ring_due(NEAR)  # the first frame of the turn
-    clock.t = RING_WAIT - 0.01
-    assert looting.ring_due(NEAR)  # seen, but the input limit held the click
-    clock.t = RING_WAIT + 0.01
-    assert looting.ring_due(NEAR) and looting.loot_first(ws)
-    looting.press_ring()
-    looting.step(ws)
-    assert clicker.clicks == [(EAST, ClickSide.RIGHT)]
+    assert not looting.should_loot(WS)
 
 
 def test_short_wait_ms_lets_the_fight_go_on_before_the_ring_gap() -> None:
     clock, clicker = Clock(), FakeClicker(steps=1)
     looting = make_ring(clock, clicker, wait_ms=100)
-    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
-    looting.on_target_died("Wolf")
-    looting.ring_due(NEAR)
-    clock.t = 0.5
-    assert looting.ring_due(NEAR)
+    see_ring(looting, clock)
     looting.press_ring()
-    looting.step(ws)
-    looting.step(ws)  # sent at 0.5
-    clock.t = 0.61
-    assert not looting.loot_first(ws)  # RING_GAP (0.3 s) only spaces ring clicks
+    looting.step(WS)
+    looting.step(WS)  # sent at 0.1
+    clock.t = 0.21
+    assert not looting.loot_first(WS)  # RING_GAP (0.3 s) only spaces ring loots
+    assert not looting.ring_due(NEAR, WS)

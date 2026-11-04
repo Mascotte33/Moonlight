@@ -286,7 +286,10 @@ class BotConfig:
                 value = _cavebot(section, routes_dir)
             else:
                 if name == "looting":  # keys of removed loot rules
-                    for key in ("move_all_hotkey", "max_items_per_loot", "min_cap_to_loot"):
+                    for key in (
+                        "move_all_hotkey", "max_items_per_loot", "min_cap_to_loot",
+                        "after_kill", "ringed_corpses",  # looting is by the ring only now
+                    ):
                         section.pop(key, None)
                 if name == "refill":  # the refill route file's keys, gone with it
                     for key in (

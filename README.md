@@ -171,40 +171,25 @@ a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 (`<time>_<x>_<y>_<z>_<right|left>.png`); bot.log names each file.
 
 Looting runs only while the cavebot is on and the bot is not paused (F12 or
-Pause). After each kill (also when more monsters of that name are left) and
-when the battle list empties, looting waits up to 1.5 s (no attacking, no
-walking) for the corpse's loot ring and right-clicks it (the OTS loots on that
-click); a corpse with no ring has no loot. It only clicks rings, never guesses
-the tile (also with **Loot ringed corpses** off); a ring found just as the wait
-ends is still clicked. The next attack waits until the click is sent and the
-loot wait is over, also for a ring clicked mid-fight. A kill counts only when
-the target is gone or the selection moves to another monster, not when some
-other monster walks out of the battle list. It never presses the loot hotkey
-while right-clicking is on. bot.log shows `looting: right-click at (x, y)` or
-`looting` (the hotkey). Switch **Right-click the corpse (off: loot hotkey)**
-off for a server that loots on its hotkey. Then it stands
-still for the set wait (400 ms by default) before walking on. Below the set
-HP (70 % by default) it holds still and heals first, then loots. It also
-loots while an alarm is up. Set it in Cavebot > Settings. Every key tap and
-mouse click holds 60 ms, like a real press; combo hotkeys (Alt+Q, Shift+F1)
-hold all their keys down together. Reflash the Leonardo after updating.
-
-Cavebot > Settings has a switch for each loot trigger. **Loot after every kill**
-(on by default) is the above. **Loot ringed corpses** (off by default)
-right-clicks a corpse whenever its turning loot ring shows (the OTS loots on
-that click and walks there first when the corpse is 2 tiles off). A ring up to
-2 tiles from the character is clicked at once, any time, also mid-fight; farther
-rings are ignored. The nearest counts first, the tile under the character too
-(all 25 tiles around it). Only the ring's own
-light-blue dots count: campfires, the blue orb, water, skulls, white text and
-"puff" clouds do not, and the ring is seen in the blue half of its pulse. The ring is also seen
-while the character walks (the scroll is undone first). After a ring click
-the cavebot stands for the set wait (the next ring click waits at least 0.3 s), plus 0.3 s per tile of
-the walk to a far corpse, so the loot lands. With only this switch on, the
-cavebot stands still for up to 1.5 s after a kill (attacking goes on) until the
-ring click. bot.log shows `loot triggered at (x, y), N tiles away` when a ring
-is found and `looting: right-click at (x, y)` at each click. A ring whose
-click could not go out at once is clicked on the next free slot.
+Pause). It looks for the corpse's turning loot ring every tick: the ring shows
+the moment the monster dies, so there is no wait after a kill. A ring up to 2
+tiles from the character (the tile under it too) is looted at once, any time,
+also mid-fight; farther rings are ignored, and a corpse with no ring has no
+loot. The nearest goes first, then the next one, until none is left. Only the
+ring's own light-blue dots count: campfires, the blue orb, water, skulls, white
+text and "puff" clouds do not, and the ring is also seen while the character
+walks. **Right-click the loot ring (off: loot hotkey)** in Cavebot > Settings
+(on by default) picks how: right-click the ring (the OTS loots on that click
+and walks there first when it is 2 tiles off), or press the loot hotkey
+(Alt+Q, loots every corpse around). After each loot the bot stands still for
+the set wait (400 ms by default, at least 0.3 s between rings, plus 0.3 s per
+tile of the walk to a far corpse) so the loot lands; the next attack waits
+too. Below the set HP (70 % by default) it holds still and heals first, then
+loots. It also loots while an alarm is up. bot.log shows `loot triggered at
+(x, y), N tiles away` for each ring, then `looting: right-click at (x, y)` or
+`looting: press alt+q`. Every key tap and mouse click holds 60 ms, like a real
+press; combo hotkeys (Alt+Q, Shift+F1) hold all their keys down together.
+Reflash the Leonardo after updating.
 
 Every waypoint button in Route adds the waypoint on the character's
 tile; there are no typed X, Y, Z fields. The bot walks onto that tile before

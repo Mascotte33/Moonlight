@@ -127,19 +127,17 @@ def test_stuck_cavebot_hands_over_to_stuck_targeting_until_a_kill() -> None:
 
 def test_kill_detection_and_loot_state() -> None:
     ws = make_state(target="Wolf", monsters=0)
-    looting = idle_module()
-    gl, clock = make_loop(ws, FakeInput(), looting=looting)
+    looting, hotkeys = idle_module(), idle_module()
+    gl, clock = make_loop(ws, FakeInput(), looting=looting, attack_hotkeys=hotkeys)
     gl.tick()
     with ws.lock():
         ws.selected_target = None  # Wolf vanished from the battle list
     looting.should_loot.return_value = True
     clock.now += 1.0
     gl.tick()
-    looting.on_target_died.assert_called_once_with("Wolf")
+    hotkeys.new_target.assert_called_once()
     assert gl.current_state is BotState.LOOT
     looting.step.assert_called_once()
-
-
 
 
 def test_kill_detected_while_a_same_named_monster_remains() -> None:
@@ -147,15 +145,15 @@ def test_kill_detected_while_a_same_named_monster_remains() -> None:
     with ws.lock():
         ws.monsters = [Monster(name="Wolf"), Monster(name="Wolf")]
         ws.selected_target = Monster(name="Wolf", hp_percent=20.0)
-    looting = idle_module()
-    gl, clock = make_loop(ws, FakeInput(), looting=looting)
+    hotkeys = idle_module()
+    gl, clock = make_loop(ws, FakeInput(), attack_hotkeys=hotkeys)
     gl.tick()
     with ws.lock():
         ws.monsters = [Monster(name="Wolf")]  # one died, the client selects the other
         ws.selected_target = Monster(name="Wolf")
     clock.now += 1.0
     gl.tick()
-    looting.on_target_died.assert_called_once_with("Wolf")
+    hotkeys.new_target.assert_called_once()
 
 
 def test_monster_leaving_while_the_target_stays_selected_is_no_kill() -> None:
@@ -164,8 +162,8 @@ def test_monster_leaving_while_the_target_stays_selected_is_no_kill() -> None:
         ws.monsters = [Monster(name="Wolf"), Monster(name="Wolf")]
         ws.selected_target = Monster(name="Wolf", hp_percent=60.0)
         ws.creature_slots = ((8, 5), (9, 7))
-    looting = idle_module()
-    gl, clock = make_loop(ws, FakeInput(), looting=looting)
+    hotkeys = idle_module()
+    gl, clock = make_loop(ws, FakeInput(), attack_hotkeys=hotkeys)
     gl.tick()
     with ws.lock():
         ws.monsters = [Monster(name="Wolf")]  # the far one walked off screen
@@ -173,9 +171,7 @@ def test_monster_leaving_while_the_target_stays_selected_is_no_kill() -> None:
         ws.creature_slots = ((8, 5),)
     clock.now += 1.0
     gl.tick()
-    looting.on_target_died.assert_not_called()
-
-
+    hotkeys.new_target.assert_not_called()
 
 
 def test_kill_mid_fight_loots_before_next_target() -> None:
@@ -218,19 +214,6 @@ def test_no_looting_with_the_cavebot_off_or_paused() -> None:
     clock.now += 1.0
     gl.tick()
     looting.ring_due.assert_not_called()
-    looting.on_target_died.assert_not_called()
-
-
-def test_emptied_battle_list_queues_a_loot() -> None:
-    ws = make_state(monsters=2)
-    looting = idle_module()
-    gl, clock = make_loop(ws, FakeInput(), looting=looting)
-    gl.tick()
-    with ws.lock():
-        ws.monsters = []
-    clock.now += 1.0
-    gl.tick()
-    looting.on_target_died.assert_called_once_with("")
 
 
 def test_cavebot_is_default_move_provider() -> None:

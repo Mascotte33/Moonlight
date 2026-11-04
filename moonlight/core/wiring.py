@@ -90,14 +90,13 @@ def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect
 
     ``None`` (grab the full window) when any of them is not calibrated.
     ``game_grid`` is left out unless targeting or the cavebot (walking with
-    keys) scans it for creatures; for clicks it is only geometry, and the
+    keys) scans it for creatures, or looting for loot rings; for clicks it is only geometry, and the
     clicker grabs its own small cursor ROI.
     """
     names = set(_PERCEIVE_REGIONS) | {n for n in OPTIONAL_REGIONS if n in profile.regions}
     for module in _enabled_modules(config):
         names.update(MODULE_REGIONS.get(module, ()))
-    rings = config.looting is not None and config.looting.ringed_corpses
-    if not config.walk_keys and config.targeting is None and not rings:
+    if not config.walk_keys and config.targeting is None and config.looting is None:
         names.discard("game_grid")
     if any(name not in profile.regions for name in names):
         return None

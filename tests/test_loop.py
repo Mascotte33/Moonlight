@@ -950,7 +950,7 @@ class TestCurrentTask:
         looting = SimpleNamespace(
             should_loot=lambda s: True,
             loot_first=lambda s: True,
-            ring_due=lambda reach: False,
+            ring_due=lambda reach, snap: False,
             step=lambda s: None,
         )
         cavebot = cast(Cavebot, IDLE_CAVEBOT)
@@ -980,7 +980,7 @@ def test_loot_ring_reach_is_two_tiles() -> None:
         ws.selected_target = rat
     checks: list[range] = []
 
-    def ring_due(reach: range) -> bool:
+    def ring_due(reach: range, snap: WorldState) -> bool:
         checks.append(reach)
         return False
 
@@ -988,7 +988,6 @@ def test_loot_ring_reach_is_two_tiles() -> None:
         should_loot=lambda s: False,
         loot_first=lambda s: False,
         ring_due=ring_due,
-        on_target_died=lambda name, corpse_slot=None: None,
     )
     modules = DecisionModules(looting=cast(Looting, looting), cavebot=cast(Cavebot, IDLE_CAVEBOT))
     gl, clock = make_loop(ws, FakeInput(), modules=modules)

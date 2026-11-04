@@ -29,7 +29,7 @@ from moonlight.core.wiring import build_loop
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.healing.healing import HealingConfig, HealingDecision, HealingRule
-from moonlight.looting.looting import PRESS_DELAY, Looting, LootingConfig
+from moonlight.looting.looting import Looting, LootingConfig
 
 pytestmark = pytest.mark.safety
 
@@ -264,14 +264,22 @@ def test_11_loot_key_only_when_focused() -> None:
     inp = FakeInput()
     ws = make_state()
     now = [0.0]
-    looting = Looting(inp, LootingConfig(loot_hotkey="alt+q"), clock=lambda: now[0])
-    looting.on_target_died("Wolf")
-    now[0] = PRESS_DELAY
+    frames = [np.zeros((1056, 1440, 3), np.uint8) for _ in range(2)]
+    frames[0][500:505, 800:808] = frames[1][520:525, 820:828] = (160, 178, 205)  # a turning ring
+    tick = iter(range(100))
+    looting = Looting(
+        inp, LootingConfig(loot_hotkey="alt+q", loot_by_right_click=False),
+        clock=lambda: now[0], frames=lambda: frames[next(tick) % 2], game_region=(0, 0, 1440, 1056),
+    )
     ws.client_focused = False
-    assert looting.step(ws) is False
-    assert inp.sent_lines == []
+    for now[0] in (0.0, 0.1):
+        assert not looting.ring_due(range(0, 3), ws)
+    assert looting.step(ws) is False and inp.sent_lines == []
     ws.client_focused = True
-    looting.step(ws)
+    looting.ring_due(range(0, 3), ws)
+    now[0] = 0.2
+    assert looting.ring_due(range(0, 3), ws)
+    looting.press_ring()
     assert inp.sent_lines == ["K alt+q"]
 
 

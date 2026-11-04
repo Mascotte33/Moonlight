@@ -11,7 +11,7 @@ state the bot is in, using a strict priority order (highest wins):
                    once perception is healthy again.
 3. ATTACK          A target is selected (or, with targeting wired, the
                    targeting module chose one).
-4. LOOT            A kill is waiting to be looted (looting wired).
+4. LOOT            A loot ring's corpse is looted (looting wired).
 5. MOVE            A waypoint route is active (cavebot / move_provider);
                    the town trip is part of the route (refill).
 6. IDLE            Nothing to do.
@@ -42,9 +42,8 @@ without it the loop keeps its built-in behaviour.
   first in every non-KILL state; a heal
   sent this tick skips the rest of the dispatch.
   # doc: docs/prs/healing.md#healing-rules
-* **looting** -- a selected target that vanishes from the battle list is
-  reported via ``Looting.on_target_died``; ``should_loot`` -> LOOT,
-  which runs ``Looting.step``.
+* **looting** -- ``Looting.ring_due`` every tick loots a ringed corpse
+  (``press_ring``); ``should_loot`` -> LOOT, which runs ``Looting.step``.
 * **cavebot** -- default ``move_provider``/``move_action``
   (``is_active`` / ``step``).
 
@@ -608,13 +607,12 @@ class GameLoop:
         if m.cavebot is not None:
             m.cavebot.targeting_paused = self._targeting_paused(now)
         names = Counter(mon.name for mon in snap.monsters)
-        if m.looting is not None:
+        if m.attack_hotkeys is not None:
             # ponytail: one fewer monster named like the target while the
             # selection went, changed name or jumped to more HP (the client
             # may select the next one at once) = kill. A monster leaving the
-            # battle list while the target stays selected is none (bot.log
-            # 2026-11-04: those looted random tiles). Use the server-log OCR
-            # (perception/logocr.py) if false loot attempts still matter.
+            # battle list while the target stays selected is none. Use the
+            # server-log OCR (perception/logocr.py) if it misfires.
             prev = self._last_target
             cur = snap.selected_target
             self._last_target = cur
@@ -628,11 +626,7 @@ class GameLoop:
                 (names[prev.name] < self._last_names[prev.name] and target_changed)
                 or (cur is None and not names[prev.name])
             ):
-                m.looting.on_target_died(prev.name)
-                if m.attack_hotkeys is not None:
-                    m.attack_hotkeys.new_target()  # the client may select the next at once
-            elif self._last_names and not names:
-                m.looting.on_target_died("")  # the battle list emptied: loot again
+                m.attack_hotkeys.new_target()  # the client may select the next at once
         self._last_names = names
         if m.extras is not None:
             m.extras.observe(snap)
@@ -660,7 +654,7 @@ class GameLoop:
         """
         m = self.modules
         if m.looting is not None and m.looting.loot_first(snap):
-            return BotState.LOOT  # loot each kill before the next target
+            return BotState.LOOT  # loot each ringed corpse before the next target
         targeting = self._targeting()
         if m.cavebot is not None and m.cavebot.luring():
             pass  # a lure waypoint walks past monsters
@@ -756,7 +750,7 @@ class GameLoop:
             self._task = "Healing"
             return
         looting = self.modules.looting
-        if looting is not None and looting.ring_due(RING_REACH):
+        if looting is not None and looting.ring_due(RING_REACH, snap):
             self._send(snap, looting.press_ring)  # then carry on with this tick
         # doc: docs/prs/pause-stop.md#action-order
         # Healing, then the fight and loot, then scripts, extras and walking.
