@@ -276,8 +276,9 @@ def test_11_loot_key_only_when_focused() -> None:
         assert not looting.ring_due(range(0, 3), ws)
     assert looting.step(ws) is False and inp.sent_lines == []
     ws.client_focused = True
-    looting.ring_due(range(0, 3), ws)
-    now[0] = 0.2
+    for now[0] in (0.25, 0.375, 0.5, 0.625, 0.75):
+        assert not looting.ring_due(range(0, 3), ws)  # the ring turns a while first
+    now[0] = 0.875
     assert looting.ring_due(range(0, 3), ws)
     looting.press_ring()
     assert inp.sent_lines == ["K alt+q"]

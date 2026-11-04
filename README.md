@@ -173,8 +173,9 @@ a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 Looting runs only while the cavebot is on and the bot is not paused (F12 or
 Pause). It looks for the corpse's turning loot ring every tick: the ring shows
 the moment the monster dies, so there is no wait after a kill. A ring up to 2
-tiles from the character (the tile under it too) is looted at once, any time,
-also mid-fight; farther rings are ignored, and a corpse with no ring has no
+tiles from the character (the tile under it too) is looted once it has turned
+for 0.4 s (spell clouds do not) and no creature with a health bar stands on its
+tile (a live amazon's outfit sparkles the same blue), any time, also mid-fight; farther rings are ignored, and a corpse with no ring has no
 loot. The nearest goes first, then the next one, until none is left. Only the
 ring's own light-blue dots count: campfires, the blue orb, water, skulls, white
 text and "puff" clouds do not, and the ring is also seen while the character

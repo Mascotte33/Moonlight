@@ -2,8 +2,11 @@
 
 Each tick the loop asks :meth:`Looting.ring_due` for a turning loot ring up
 to ``reach`` tiles from the player (their own tile too). One shows the
-instant its monster dies (owner 2026-11-04: no waiting after the kill), so
-the nearest is looted at once, any time, also mid-fight: right-clicked
+instant its monster dies (owner 2026-11-04: no waiting after the kill); once
+it has turned on its tile for ``RING_CONFIRM_SECONDS`` (a spell flash or a
+rock does not) and no creature stands on it (a live amazon's outfit
+sparkles the same blue, loot shots 2026-11-04) the nearest is looted, any
+time, also mid-fight: right-clicked
 (``loot_by_right_click``, the OTS loots on that click and walks there first
 when it is far) or by pressing ``loot_hotkey`` (loots every corpse around).
 Then the bot stands ``wait_ms`` so the loot lands, and the next ring is
@@ -28,10 +31,20 @@ import numpy as np
 from moonlight.core.state import WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, InputBackend
-from moonlight.perception.corpses import Ring, RingWatch
+from moonlight.perception.corpses import Ring, RingWatch, slot_ring
 
-__all__ = ["LootingConfig", "Looting", "RING_GAP", "RING_WALK_S_PER_TILE"]
+__all__ = [
+    "LootingConfig", "Looting", "RING_CONFIRM_LOOKS", "RING_CONFIRM_SECONDS", "RING_GAP",
+    "RING_WALK_S_PER_TILE",
+]
 
+#: A ring is looted only once seen on its tile this many times ...
+RING_CONFIRM_LOOKS = 3
+#: ... over at least this many seconds: a real ring turns for seconds, a spell
+#: flash or a rock caught mid-scroll shows once (loot shots 2026-11-04).
+RING_CONFIRM_SECONDS = 0.4
+#: Sightings older than this are forgotten.
+RING_FORGET_SECONDS = 1.0
 #: Least seconds between ring loots: the ring stays until the loot lands.
 RING_GAP = 0.3
 #: Seconds the character takes per tile walking to a far ring's corpse.
@@ -74,11 +87,16 @@ class Looting:
         self._config = config or LootingConfig()
         self._clock = clock
         self._frames = frames
+        self._game_region = game_region
         self._rings = RingWatch(game_region) if game_region is not None else None
         self._clicker = clicker
         #: The ring seen this tick, not looted yet.
         self._ring: Ring | None = None
         self._ring_clicked: Ring | None = None
+        #: When each tile's ring was seen lately (its pixel -> look times).
+        # ponytail: keyed by screen pixel, so a ring is confirmed only while
+        # the view stands still; track map tiles if walking misses rings.
+        self._ring_sightings: dict[tuple[int, int], list[float]] = {}
         #: The ring's right-click is on its way through the clicker.
         self._ring_clicking = False
         #: No ring looted before this: the last one's loot lands (and its walk ends).
@@ -110,10 +128,26 @@ class Looting:
         if self._ring_clicking or now < self._ring_hold_until:
             return False
         seen = self._rings.rings(self._frames(), now)
-        rings = [ring for ring in seen if ring.tiles_away in reach]
+        for ring in seen:
+            self._ring_sightings.setdefault(ring.point, []).append(now)
+        for point, times in list(self._ring_sightings.items()):
+            times[:] = [t for t in times if now - t <= RING_FORGET_SECONDS]
+            if not times:
+                del self._ring_sightings[point]
+        assert self._game_region is not None
+        creatures = {slot_ring(self._game_region, slot).point for slot in snap.creature_slots}
+        rings = [
+            ring for ring in seen
+            if ring.tiles_away in reach and ring.point not in creatures
+            and self._confirmed(ring, now)
+        ]
         if rings:
             self._ring = rings[0]  # the nearest
         return self._ring is not None and not self._hp_too_low(snap)
+
+    def _confirmed(self, ring: Ring, now: float) -> bool:
+        times = self._ring_sightings[ring.point]
+        return len(times) >= RING_CONFIRM_LOOKS and now - times[0] >= RING_CONFIRM_SECONDS
 
     def press_ring(self) -> None:
         """Loot the seen ring: right-click it (:meth:`step` drives the click) or press the hotkey.
