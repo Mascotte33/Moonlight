@@ -371,6 +371,9 @@ The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start`
   bot keeps reading the screen (HP, MP, position on the Dashboard, 5 times a
   second) and the Arduino stays connected. Start goes on from the nearest
   waypoint.
+- The Arduino connects on its own (found by its USB id, whatever the COM
+  port). When none answers, the GUI tries again every 30 s, so plug it in
+  and wait.
 - The Cavebot switch can be turned on or off while paused or stopped; the
   cavebot walks only after Start.
 - A pause of its own (Tibia covered or not in front) never shuts the bot down:

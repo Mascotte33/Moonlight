@@ -48,6 +48,7 @@ from moonlight.gui.state_bridge import (
 from moonlight.gui.status_tab import StatusTab
 from moonlight.gui.sysinfo import cpu_percent, cpu_times, memory_text
 from moonlight.gui.tab_base import Label, Tab, dot_color, health, set_bar, set_label
+from moonlight.hardware.input import NoArduinoFoundError
 from moonlight.hardware.tab import HardwareTab
 from moonlight.healing.tab import HealingTab
 from moonlight.scripts.tab import ScriptsTab
@@ -56,6 +57,7 @@ from moonlight.targeting.tab import TargetingTab
 #: Poller period in ms (10 Hz — light enough for a low-spec laptop).
 POLL_MS = 100
 RETRY_S = 5.0  # seconds between tries to start a bot that is down
+ARDUINO_RETRY_S = 30.0  # seconds between tries while no Arduino answers
 WATCH_S = 0.2  # seconds between position reads while the bot is stopped
 _VK_F12 = 0x7B
 logger = logging.getLogger("moonlight.gui.app")
@@ -417,8 +419,12 @@ class GuiApp:
         try:
             loop = build_gui_loop(hardware=self.hardware, state=self.state)
         except Exception as exc:  # noqa: BLE001 - report, don't crash the app
+            if isinstance(exc, NoArduinoFoundError):
+                self._retry_at = time.monotonic() + ARDUINO_RETRY_S
             if repr(exc) != self._start_error:  # the retry repeats it every few seconds
                 logger.error("could not start bot: %r", exc)  # the GUI log and bot.log
+                if isinstance(exc, NoArduinoFoundError):
+                    logger.info("trying the Arduino again every %.0f s", ARDUINO_RETRY_S)
             self._start_error = repr(exc)
             return
         self._start_error = ""
