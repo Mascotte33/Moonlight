@@ -231,13 +231,12 @@ class _AreaLine:
 
 
 class TargetingTab(Tab):
-    """Targeting rows, area rules and settings, saved into the picked config."""
+    """Monsters, area spells, seen monsters, then Settings; saved into the picked config."""
 
     title = "Targeting"
 
     def build(self, parent: ctk.CTkFrame) -> None:
-        settings_box = section(parent, "Targeting")
-        settings_box.pack(fill="x", padx=10, pady=(10, 0))
+        settings_box = section(parent, "Settings")  # packed below Seen monsters
         line = Row(settings_box)
         line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
         Label(line, text="Attack key every (ms)", text_color=theme.TEXT_DIM).pack(
@@ -291,6 +290,7 @@ class TargetingTab(Tab):
         #: Name hash -> (name box, the line's widgets) of each shown seen monster.
         self._seen_lines: dict[str, tuple[ctk.CTkEntry, list[Any]]] = {}
         self._seen_last_grid_row = 0
+        settings_box.pack(fill="x", padx=10, pady=(10, 0))
 
         self.lbl_msg = Label(parent, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=10)

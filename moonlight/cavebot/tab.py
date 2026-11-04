@@ -488,7 +488,7 @@ class CavebotTab(Tab):
             button.configure(width=32, font=arrow_font)
             button.grid(row=i // 3, column=i % 3, padx=1, pady=1)
 
-        # doc: docs/prs/edit-route.md#record-as
+        # doc: docs/prs/GUI_visual_changes.md#record-as
         rec = Row(edit)
         rec.pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0))
         Label(rec, text="Record").pack(side="left")
@@ -944,7 +944,7 @@ class CavebotTab(Tab):
     def apply(self) -> BotConfig:
         path = picked_config()
         values = {field: read() for field, read in self._readers.items()}
-        # doc: docs/prs/edit-route.md#start-from-selected
+        # doc: docs/prs/GUI_visual_changes.md#start-from-selected
         values[START.field] = 1 if self._selected is None else self._selected + 1
         cfg = apply_cavebot(load_real_config(path), values)
         cfg.save(path)
