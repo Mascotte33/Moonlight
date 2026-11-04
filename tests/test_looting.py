@@ -16,6 +16,7 @@ from moonlight.looting.looting import (
     Looting,
     LootingConfig,
 )
+from tests.loot_ring_pictures import paint_ring
 
 
 class Clock:
@@ -53,8 +54,8 @@ class FakeClicker:
 
 
 def ring_frames(still_after: bool = False, x: int = 800) -> Callable[[], np.ndarray]:
-    frames = [np.zeros((1056, 1440, 3), np.uint8) for _ in range(2)]
-    frames[0][500:505, x : x + 8] = frames[1][520:525, x + 20 : x + 28] = (160, 178, 205)  # turning
+    tile_x = x // 96 * 96
+    frames = [paint_ring(np.zeros((1056, 1440, 3), np.uint8), tile_x, 480, p) for p in (0, 1)]
     tick = iter(range(100))
     if still_after:
         frames.append(frames[1])  # then the ring stands still for a look

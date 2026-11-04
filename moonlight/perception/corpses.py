@@ -15,6 +15,12 @@ new, tile by tile. While the view scrolls (the player walks) the older look
 is first shifted by the scroll (found by phase correlation), so a ring
 passed on the way is seen too.
 
+Turning blue specks are not enough: a live amazon's outfit and the smoke of a
+spell sparkle the same blue (loot shots 2026-11-04). The ring is one known
+32 px animation of 16 frames, a circle of dots around the tile's middle
+(the owner's Loot_Effect.gif, kept in ``loot_ring.png``), so a tile counts
+only when its specks match one of those frames (:func:`ring_shape`).
+
 # doc: docs/prs/corpse-loot.md#ring-check
 # doc: docs/prs/client-hotkeys.md#ring-anywhere
 # doc: docs/prs/client-hotkeys.md#ring-color
@@ -22,6 +28,7 @@ passed on the way is seen too.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import NamedTuple
 
 import cv2
@@ -30,7 +37,8 @@ import numpy as np
 from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
-    "DOT_PIXELS", "FARTHEST", "GAP", "MOVED", "RING_PIXELS", "Ring", "RingWatch", "slot_ring"
+    "DOT_PIXELS", "FARTHEST", "GAP", "MOVED", "RING_PIXELS", "RING_SHAPE", "Ring", "RingWatch",
+    "ring_shape", "slot_ring",
 ]
 
 _COLS, _ROWS = 15, 11
@@ -44,6 +52,16 @@ RING_PIXELS = 25
 DOT_PIXELS = 60
 #: Mean color change of the block above which the view moved (still <= 2.4, walking >= 10).
 MOVED = 6.0
+#: Least match of a tile's specks with a ring frame (a live ring 0.53, spell
+#: smoke 0.26-0.34, loot shots 2026-11-04; its weakest frame 0.41).
+RING_SHAPE = 0.40
+#: The ring's 16 animation frames, 32 px each, side by side.
+_RING_STRIP = cv2.imread(str(Path(__file__).with_name("loot_ring.png")), cv2.IMREAD_GRAYSCALE)
+if _RING_STRIP is None:
+    raise FileNotFoundError("moonlight/perception/loot_ring.png is missing")
+_RING_FRAMES = [
+    (_RING_STRIP[:, x : x + 32] > 0).astype(np.float32) for x in range(0, _RING_STRIP.shape[1], 32)
+]
 
 
 def _bright(block: np.ndarray) -> np.ndarray:
@@ -61,6 +79,16 @@ def _bright(block: np.ndarray) -> np.ndarray:
     near_blob = cv2.dilate(is_blob[labels].astype(np.uint8), np.ones((15, 15), np.uint8))
     out: np.ndarray = is_dot[labels] & (near_blob == 0)
     return out
+
+
+def ring_shape(specks: np.ndarray) -> float:
+    """How well *specks* (a 2x2-tile mask centred on a tile) match a ring frame, up to 1."""
+    small = cv2.resize(specks.astype(np.float32), (64, 64), interpolation=cv2.INTER_AREA)
+    if not small.any():
+        return 0.0
+    return max(
+        float(cv2.matchTemplate(small, ring, cv2.TM_CCOEFF_NORMED).max()) for ring in _RING_FRAMES
+    )
 
 
 def _overlap(n: int, d: int) -> tuple[slice, slice]:
@@ -128,6 +156,7 @@ class RingWatch:
             return []
         block = frame[self._box].astype(np.int16)
         ref, self._ref, self._ref_at = self._ref, block, now
+        whole = block
         if ref is None or ref.shape != block.shape:
             return []
         cut = (0, 0)
@@ -154,5 +183,14 @@ class RingWatch:
         found = [
             slot_ring(self._grid, (int(col), int(row)))
             for row, col in zip(*np.nonzero(is_ring), strict=True)
+            if ring_shape(_bright(self._around(whole, int(col), int(row)))) >= RING_SHAPE
         ]
         return sorted(found, key=lambda ring: ring.tiles_away)
+
+    def _around(self, block: np.ndarray, col: int, row: int) -> np.ndarray:
+        """The 2x2 tiles of *block* centred on tile (*col*, *row*)."""
+        # ponytail: cut short at the grid's edge, so a ring there matches
+        # worse; pad the block if rings at the edge are missed.
+        tw, th = self._tile_size
+        x, y = round((col - 0.5) * tw), round((row - 0.5) * th)
+        return block[max(y, 0) : round(y + 2 * th), max(x, 0) : round(x + 2 * tw)]

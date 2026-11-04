@@ -176,8 +176,10 @@ the moment the monster dies, so there is no wait after a kill. A ring up to 2
 tiles from the character (the tile under it too) is looted once it has turned
 for 0.4 s (spell clouds do not) and no creature with a health bar stands on its
 tile (a live amazon's outfit sparkles the same blue), any time, also mid-fight; farther rings are ignored, and a corpse with no ring has no
-loot. The nearest goes first, then the next one, until none is left. Only the
-ring's own light-blue dots count: campfires, the blue orb, water, skulls, white
+loot. The nearest goes first, then the next one, until none is left. The dots
+must form the ring's own circle (its 16 animation frames are kept in
+`moonlight/perception/loot_ring.png`), so a monster's outfit or spell smoke
+sparkling the same blue does not count. Only the ring's own light-blue dots count: campfires, the blue orb, water, skulls, white
 text and "puff" clouds do not, and the ring is also seen while the character
 walks. **Right-click the loot ring (off: loot hotkey)** in Cavebot > Settings
 (on by default) picks how: right-click the ring (the OTS loots on that click

@@ -30,6 +30,7 @@ from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.healing.healing import HealingConfig, HealingDecision, HealingRule
 from moonlight.looting.looting import Looting, LootingConfig
+from tests.loot_ring_pictures import paint_ring
 
 pytestmark = pytest.mark.safety
 
@@ -264,8 +265,9 @@ def test_11_loot_key_only_when_focused() -> None:
     inp = FakeInput()
     ws = make_state()
     now = [0.0]
-    frames = [np.zeros((1056, 1440, 3), np.uint8) for _ in range(2)]
-    frames[0][500:505, 800:808] = frames[1][520:525, 820:828] = (160, 178, 205)  # a turning ring
+    frames = [  # a turning ring east of the player
+        paint_ring(np.zeros((1056, 1440, 3), np.uint8), 768, 480, phase) for phase in (0, 1)
+    ]
     tick = iter(range(100))
     looting = Looting(
         inp, LootingConfig(loot_hotkey="alt+q", loot_by_right_click=False),
