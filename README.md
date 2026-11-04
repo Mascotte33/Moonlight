@@ -383,6 +383,29 @@ everything, keys included.
 A crash of any part is written there too, and a GUI that cannot start shows
 a message box with the error.
 
+## Client hotkeys
+
+Settings > Client hotkeys puts the bot's keys into the game client, so the
+client does what the bot expects on every key it presses.
+
+1. **Client file**: the client's `conf/clientoptions.json`. Empty means the
+   official client (`%LOCALAPPDATA%\Tibia\packages\Tibia\conf`). For another
+   server, press Browse and pick the file in that client's `conf` folder. Each
+   bot config remembers its own file.
+2. One row per key the bot uses (healing, cures, attack and area spells,
+   rope, shovel, ticked extras). Type the spell words (`exura vita`), an item
+   name (`great mana potion`, `sudden death rune`, `rope`...) or an item id
+   number. Logout, loot and toggle chase need nothing: they are client
+   actions. A row left empty is skipped.
+3. Close the game client, then press **Write Moonlight hotkeys**.
+
+It writes a hotkey set named **Moonlight**: a copy of the set in use (or the
+Moonlight set from last time) with the bot's keys changed, so your other keys
+stay. Spells and items go on free buttons of action bar 1; a key that already
+had a button keeps it. The client opens with the Moonlight set and stops
+switching sets per character. The old file is kept as
+`clientoptions.json.bak`. The log lists each key and its button.
+
 ## Healing and cures
 
 Healing presses your action-bar hotkeys. It never types spell names. Set it up

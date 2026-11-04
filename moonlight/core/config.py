@@ -24,6 +24,8 @@ JSON format (``moonlight_config.json``)::
       "clicker": {"open_loop": false},     # any ClickerConfig field (F-14)
       "monster_name_source": false,        # unused
       "capacity_source": false,            # unused
+      "client_options_file": null,         # null = the official client's clientoptions.json
+      "client_hotkeys": {"F1": "exura vita"},  # what the Client hotkeys button puts on each key
       "modules": {
         "healing":   {"enabled": true, "potion_cooldown_ms": 1000},
         "targeting": {"enabled": true},
@@ -114,6 +116,8 @@ _TOP_KEYS = {
     "routes_dir",
     "monster_name_source",
     "capacity_source",
+    "client_options_file",
+    "client_hotkeys",
     "loop",
     "clicker",
     "modules",
@@ -180,6 +184,11 @@ class BotConfig:
     #: reader triggers on Refill now only).
     monster_name_source: bool = False
     capacity_source: bool = False
+    #: The client's ``conf/clientoptions.json`` for the Client hotkeys button
+    #: (docs/prs/client-hotkeys.md#moonlight-set); None = the official client's.
+    client_options_file: Path | None = None
+    #: Spell words or item typed per bot combo for that button.
+    client_hotkeys: dict[str, str] = field(default_factory=dict)
     #: Kept values of modules that are off, by module name (T0.F1.K4).
     off: dict[str, Any] = field(default_factory=dict)
 
@@ -235,6 +244,8 @@ class BotConfig:
             "routes_dir",
             "monster_name_source",
             "capacity_source",
+            "client_options_file",
+            "client_hotkeys",
         ):
             if key in data:
                 kwargs[key] = _coerce(data[key], hints[key], key)
