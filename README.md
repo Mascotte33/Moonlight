@@ -182,7 +182,8 @@ out of the battle list. When the battle list drops the kill before the health ba
 looking for the tile for 0.5 s and right-clicks it as soon as the bar goes
 (`looting: corpse tile found after the kill`). When no tile is known, and when the battle list
 empties, it waits up to 1.5 s (no attacking, no walking) for the corpse's loot
-ring and right-clicks that (also with **Loot ringed corpses** off). It never
+ring and right-clicks that (also with **Loot ringed corpses** off); a ring
+found just as the wait ends is still clicked. It never
 presses the loot hotkey while right-clicking is on. bot.log shows `looting: right-click the corpse at (x, y)` or
 `looting` (the hotkey). Switch **Right-click the corpse (off: loot hotkey)**
 off for a server that loots on its hotkey. Then it stands

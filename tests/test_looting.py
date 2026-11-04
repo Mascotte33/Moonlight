@@ -334,3 +334,18 @@ def test_short_wait_ms_lets_the_fight_go_on_before_the_ring_gap() -> None:
         looting.step(ws)
     clock.t = 0.11
     assert not looting.loot_first(ws)  # RING_GAP (0.3 s) only spaces ring clicks
+
+
+def test_ring_seen_just_before_the_kill_wait_ends_is_still_clicked() -> None:
+    clock, clicker = Clock(), FakeClicker(steps=1)
+    looting = make_ring(clock, clicker)  # right-click looting, ring switch off
+    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
+    looting.on_target_died("Wolf")
+    looting.ring_due(NEAR)  # the first frame of the turn
+    clock.t = RING_WAIT - 0.01
+    assert looting.ring_due(NEAR)  # seen, but the input limit held the click
+    clock.t = RING_WAIT + 0.01
+    assert looting.ring_due(NEAR) and looting.loot_first(ws)
+    looting.press_ring()
+    looting.step(ws)
+    assert clicker.clicks == [(EAST, ClickSide.RIGHT)]

@@ -173,10 +173,12 @@ class Looting:
 
         That is a queued press, a right-click in flight and its wait after
         (bot.log 2026-11-04: the fight took the mouse and walked off right
-        after the corpse click, and nothing was looted).
+        after the corpse click, and nothing was looted), and a seen ring not
+        clicked yet (13:10:28: found 3 ms before the kill's wait ran out).
         """
         looting = (
             self._pending is not None
+            or self._ring is not None
             or self._ring_clicking
             or self._clock() < max(self._loot_lands_at, self._kill_ring_wait_until)
         )
@@ -190,13 +192,13 @@ class Looting:
         a ring that stays does not take every input slot. A seen ring stays due
         until :meth:`press_ring` runs.
         """
+        if self._ring is not None:
+            return True  # seen: clicked even when the kill's wait ran out meanwhile
         now = self._clock()
         if not (self._config.ringed_corpses or now < self._kill_ring_wait_until):
             return False  # rings only for a kill's corpse unless "Loot ringed corpses"
         if self._frames is None or self._rings is None:
             return False
-        if self._ring is not None:
-            return True
         if self._ring_clicking or now < self._ring_hold_until:
             return False
         seen = self._rings.rings(self._frames(), now)
