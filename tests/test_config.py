@@ -169,15 +169,23 @@ def test_area_rules_load_from_json() -> None:
         targeting={
             "enabled": True,
             "area_rules": [
-                {"hotkey": "F5", "minimum_adjacent_monsters": 3, "minimum_mana_percent": 30}
+                {"hotkey": "F5", "minimum_adjacent_monsters": 3, "minimum_mana": 30}
             ],
             "attack_cooldown_ms": 1500,
         }
     )
     targeting = BotConfig.from_dict(data).targeting
     assert targeting is not None
-    assert targeting.area_rules == (AreaRule("F5", 3, 30.0),)
+    assert targeting.area_rules == (AreaRule("F5", 3, 30),)
     assert targeting.attack_cooldown_ms == 1500
+
+
+def test_an_old_percent_mana_minimum_is_dropped() -> None:
+    data = raw(targeting={"enabled": True, "area_rules": [
+        {"hotkey": "F5", "minimum_mana_percent": 30.0}
+    ]})
+    targeting = BotConfig.from_dict(data).targeting
+    assert targeting is not None and targeting.area_rules == (AreaRule("F5"),)
 
 
 @pytest.mark.parametrize(
@@ -185,10 +193,10 @@ def test_area_rules_load_from_json() -> None:
     [
         {"area_rules": [{"hotkey": "F5", "minimum_adjacent_monsters": 0}]},
         {"area_rules": [{"hotkey": "", "minimum_adjacent_monsters": 2}]},
-        {"area_rules": [{"hotkey": "F5", "minimum_mana_percent": 120}]},
+        {"area_rules": [{"hotkey": "F5", "minimum_mana": 1.5}]},
         {"area_rules": [{"minimum_adjacent_monsters": 2}]},
         {"attack_cooldown_ms": -1},
-        {"default_monster": {"minimum_mana_percent": -5}},
+        {"default_monster": {"minimum_mana": -5}},
     ],
 )
 def test_bad_attack_settings_rejected(targeting: dict[str, Any]) -> None:

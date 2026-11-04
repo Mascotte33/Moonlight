@@ -73,6 +73,8 @@ MODULE_REGIONS: dict[str, tuple[str, ...]] = {
 #: (200 ms at 20 Hz): they change slowly, and skipping them saves ~3 ms a tick.
 # doc: docs/prs/tick-speed.md#slow-readers
 SLOW_READ_EVERY_TICKS = 4
+#: Seconds between two reads of the max mana text (a Tesseract run, about 95 ms).
+MAX_MP_READ_SECONDS = 30.0
 
 #: Regions :func:`make_perceive` reads every tick.
 _PERCEIVE_REGIONS = (
@@ -288,11 +290,14 @@ def make_perceive(
     )
 
     ticks_until_slow_read = 0
+    max_mp: int | None = None
+    max_mp_read_at = float("-inf")
     names: list[BattleEntry] = []
     conditions: frozenset[str] = frozenset()
 
     def perceive() -> None:
         nonlocal player_box, ticks_until_slow_read, names, conditions, last_failure
+        nonlocal max_mp, max_mp_read_at
         focused = focus_check() if focus_check is not None else True
         try:
             if not focused:
@@ -301,6 +306,13 @@ def make_perceive(
             if seen_monsters is not None and client_is_foreground is not None:
                 seen_monsters.learns_new_names = client_is_foreground()
             hp, mp = vitals.read_vitals(frame)
+            # doc: docs/prs/client-hotkeys.md#mana-points
+            if time.monotonic() - max_mp_read_at >= (MAX_MP_READ_SECONDS if max_mp else 1.0):
+                max_mp_read_at = time.monotonic()
+                read_max = vitals.read_max_mp(frame)
+                if read_max != max_mp:
+                    logger.info("max mana: %s", read_max)
+                max_mp = read_max or max_mp
             monsters, selected, players = entries_to_state(battle.read_battle_list(frame))
             if ticks_until_slow_read == 0:
                 ticks_until_slow_read = SLOW_READ_EVERY_TICKS
@@ -341,6 +353,7 @@ def make_perceive(
             state.screen_ok = True
             state.hp_percent = float(hp) if hp is not None else 0.0
             state.mp_percent = float(mp) if mp is not None else 0.0
+            state.mp_points = round(state.mp_percent * max_mp / 100) if max_mp else 0
             state.monsters = monsters
             state.selected_target = selected
             state.players_on_screen = players

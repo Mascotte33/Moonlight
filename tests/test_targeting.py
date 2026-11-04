@@ -184,12 +184,12 @@ def test_old_config_keys_raise(key: str, value: object) -> None:
 def test_rows_load_from_json() -> None:
     data = BotConfig.default().to_dict()
     data["modules"]["targeting"]["monsters"] = [
-        {"name": "cyclops", "priority": 3, "hotkey": "F6", "minimum_mana_percent": 10},
+        {"name": "cyclops", "priority": 3, "hotkey": "F6", "minimum_mana": 10},
         {"name": "rat", "ignore": True},
     ]
     cfg = BotConfig.from_dict(data)
     assert cfg.targeting is not None
-    assert cfg.targeting.monsters[0] == MonsterRow("cyclops", 3, False, "F6", 10.0, "follow")
+    assert cfg.targeting.monsters[0] == MonsterRow("cyclops", 3, False, "F6", 10, "follow")
     assert cfg.targeting.monsters[1].ignore
 
 

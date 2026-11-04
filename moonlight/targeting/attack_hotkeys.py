@@ -2,11 +2,11 @@
 
 Area rules are checked top to bottom; the first one with at least
 ``minimum_adjacent_monsters`` creature slots touching the player's slot
-(the 8 squares around it) and MP at least ``minimum_mana_percent`` fires.
+(the 8 squares around it) and MP at least ``minimum_mana`` fires.
 Else the target row's ``hotkey`` fires, with its own mana minimum. Every key
 shares one ``attack_cooldown_ms``; a new target starts it fresh, so its first
-spell goes out at once (``new_target``). Unknown MP (0.0) is below any mana minimum,
-so it blocks every rule that has one.
+spell goes out at once (``new_target``). Mana is in points (``mp_points``);
+unknown MP (0) is below any mana minimum, so it blocks every rule that has one.
 
 The loop calls this only while the selection matches targeting's choice and
 never while a lure pulls; focus gating and the rate limit are its job too.
@@ -56,16 +56,16 @@ class AttackHotkeys:
             and (now - self._last_pressed_at) * 1000 < self.config.attack_cooldown_ms
         ):
             return None
-        mana = state.mp_percent
+        mana = state.mp_points
         adjacent_creatures = count_adjacent_creatures(state.creature_slots)
         for rule in self.config.area_rules:
             if (
                 rule.enabled
                 and adjacent_creatures >= rule.minimum_adjacent_monsters
-                and mana >= rule.minimum_mana_percent
+                and mana >= rule.minimum_mana
             ):
                 return rule.hotkey
-        if row.hotkey and mana >= row.minimum_mana_percent:
+        if row.hotkey and mana >= row.minimum_mana:
             return row.hotkey
         return None
 

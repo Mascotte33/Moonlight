@@ -102,6 +102,8 @@ class WorldState:
     # Vitals, in percent (only meaningful while ``screen_ok``).
     hp_percent: float = 0.0
     mp_percent: float = 0.0
+    #: Mana points: ``mp_percent`` of the max mana read off the MP bar's text, 0 = unknown.
+    mp_points: int = 0
 
     # Combat.
     monsters: list[Monster] = field(default_factory=list)

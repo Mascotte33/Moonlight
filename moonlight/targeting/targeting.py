@@ -66,7 +66,8 @@ class MonsterRow:
     priority: int = 1
     ignore: bool = False
     hotkey: str = ""
-    minimum_mana_percent: float = 0.0
+    #: Mana points (not percent) needed to press the hotkey; 0 = none.
+    minimum_mana: int = 0
     movement: str = "follow"
 
     def validate(self) -> None:
@@ -78,8 +79,8 @@ class MonsterRow:
             raise ValueError(f"{where}: movement must be one of {MOVEMENTS}, got {self.movement!r}")
         if self.hotkey:
             check_hotkey(self.hotkey, where)
-        if not 0.0 <= self.minimum_mana_percent <= 100.0:
-            raise ValueError(f"{where}: minimum_mana_percent must be within 0..100")
+        if isinstance(self.minimum_mana, bool) or self.minimum_mana < 0:
+            raise ValueError(f"{where}: minimum_mana must be 0 or more mana points")
 
 
 # doc: docs/prs/targeting.md#area-rules
@@ -89,7 +90,8 @@ class AreaRule:
 
     hotkey: str
     minimum_adjacent_monsters: int = 1
-    minimum_mana_percent: float = 0.0
+    #: Mana points (not percent) needed to press the hotkey; 0 = none.
+    minimum_mana: int = 0
     enabled: bool = True
 
     def validate(self) -> None:
@@ -98,8 +100,8 @@ class AreaRule:
         check_hotkey(self.hotkey, where)
         if isinstance(self.minimum_adjacent_monsters, bool) or self.minimum_adjacent_monsters < 1:
             raise ValueError(f"{where}: minimum_adjacent_monsters must be >= 1")
-        if not 0.0 <= self.minimum_mana_percent <= 100.0:
-            raise ValueError(f"{where}: minimum_mana_percent must be within 0..100")
+        if isinstance(self.minimum_mana, bool) or self.minimum_mana < 0:
+            raise ValueError(f"{where}: minimum_mana must be 0 or more mana points")
 
 
 @dataclass(frozen=True)

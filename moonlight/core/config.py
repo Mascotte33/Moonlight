@@ -57,6 +57,7 @@ The default profile is ``moonlight_user`` (F-11); the GUI and
 from __future__ import annotations
 
 import json
+import logging
 import types
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from pathlib import Path
@@ -73,6 +74,8 @@ from moonlight.refill.refill import RefillConfig
 from moonlight.scripts.rotation import RotationConfig
 from moonlight.scripts.scripts import ScriptsConfig
 from moonlight.targeting.targeting import TargetingConfig
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ALWAYS_ON",
@@ -292,6 +295,8 @@ class BotConfig:
                         "loot_by_right_click",  # the loot hotkey only now
                     ):
                         section.pop(key, None)
+                if name == "targeting":
+                    _drop_mana_percent(section)
                 if name == "refill":  # the refill route file's keys, gone with it
                     for key in (
                         "stop_cap", "route_name", "storage_hotkey", "deposit_hotkey", "routes_dir",
@@ -386,6 +391,17 @@ def _require_dict(value: object, where: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ConfigError(f"{where}: must be a JSON object")
     return value
+
+
+def _drop_mana_percent(targeting: dict[str, Any]) -> None:
+    """Old files: a percent mana floor is no mana-point floor, so it is dropped, with a warning."""
+    rows = [targeting.get("default_monster"), *targeting.get("monsters", ()),
+            *targeting.get("area_rules", ())]
+    for row in rows:
+        if isinstance(row, dict) and row.pop("minimum_mana_percent", 0):
+            logger.warning(
+                "targeting: a min mana %% was dropped (it is mana points now): set it again"
+            )
 
 
 def _reject_unknown(data: dict[str, Any], known: set[str], where: str) -> None:

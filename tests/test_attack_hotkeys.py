@@ -9,13 +9,13 @@ from moonlight.targeting.targeting import AreaRule, MonsterRow, TargetingConfig
 
 #: The 8 slots around the player's (7, 5).
 AROUND = ((6, 4), (7, 4), (8, 4), (6, 5), (8, 5), (6, 6), (7, 6), (8, 6))
-ROW = MonsterRow(name="cyclops", hotkey="F6", minimum_mana_percent=10.0)
+ROW = MonsterRow(name="cyclops", hotkey="F6", minimum_mana=10)
 
 
-def state(slots: tuple[tuple[int, int], ...] = (), mana: float = 80.0) -> WorldState:
+def state(slots: tuple[tuple[int, int], ...] = (), mana: int = 80) -> WorldState:
     ws = WorldState()
     ws.creature_slots = slots
-    ws.mp_percent = mana
+    ws.mp_points = mana
     return ws
 
 
@@ -47,17 +47,23 @@ def test_first_due_rule_wins_and_area_comes_before_the_row() -> None:
     assert attack.decide(state(AROUND[:1]), ROW, 0.0) == "F8"
 
 
+def test_mana_minimum_is_in_mana_points() -> None:
+    attack = hotkeys(AreaRule("F5", minimum_adjacent_monsters=1, minimum_mana=200))
+    assert attack.decide(state(AROUND[:1], mana=199), ROW, 0.0) == "F6"
+    assert attack.decide(state(AROUND[:1], mana=200), ROW, 0.0) == "F5"
+
+
 def test_mana_minimum_blocks_a_rule_and_the_row() -> None:
-    attack = hotkeys(AreaRule("F5", minimum_adjacent_monsters=1, minimum_mana_percent=30.0))
-    assert attack.decide(state(AROUND[:1], mana=29.0), ROW, 0.0) == "F6"
-    assert attack.decide(state(AROUND[:1], mana=5.0), ROW, 0.0) is None
+    attack = hotkeys(AreaRule("F5", minimum_adjacent_monsters=1, minimum_mana=30))
+    assert attack.decide(state(AROUND[:1], mana=29), ROW, 0.0) == "F6"
+    assert attack.decide(state(AROUND[:1], mana=5), ROW, 0.0) is None
 
 
 def test_unknown_mana_blocks_rules_with_a_minimum_only() -> None:
-    attack = hotkeys(AreaRule("F5", minimum_adjacent_monsters=1, minimum_mana_percent=1.0))
-    assert attack.decide(state(AROUND[:1], mana=0.0), ROW, 0.0) is None
+    attack = hotkeys(AreaRule("F5", minimum_adjacent_monsters=1, minimum_mana=1))
+    assert attack.decide(state(AROUND[:1], mana=0), ROW, 0.0) is None
     melee_free = MonsterRow(hotkey="F6")
-    assert attack.decide(state(mana=0.0), melee_free, 0.0) == "F6"
+    assert attack.decide(state(mana=0), melee_free, 0.0) == "F6"
 
 
 def test_empty_row_hotkey_is_melee_only() -> None:

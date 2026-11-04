@@ -42,6 +42,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import cv2
 import numpy as np
 
 __all__ = [
@@ -285,6 +286,32 @@ class VitalsReader:
         if region is None:
             return 0.0
         return bar_percent(frame, region, MP_FILL_COLOURS, self.tolerance)
+
+    # doc: docs/prs/client-hotkeys.md#mana-points
+    def read_max_mp(self, frame: np.ndarray) -> int | None:
+        """The max mana from the ``115/295`` text on the MP bar, or None when unread.
+
+        One Tesseract run (about 95 ms), so the caller reads it seldom: the
+        max only changes on a level up or an item swap.
+        """
+        import pytesseract
+
+        clipped = _clip_region(frame, self._mp_region) if self._mp_region else None
+        if clipped is None:
+            return None
+        crop, _ = clipped
+        white = cv2.cvtColor(np.ascontiguousarray(crop), cv2.COLOR_RGB2GRAY) > 200
+        columns = np.flatnonzero(white.any(axis=0))
+        if not columns.size:
+            return None
+        dark_text = (~white[:, max(columns[0] - 4, 0) : columns[-1] + 5]).astype(np.uint8) * 255
+        big = cv2.resize(dark_text, None, fx=4, fy=4, interpolation=cv2.INTER_LINEAR)
+        padded = cv2.copyMakeBorder(big, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
+        read = pytesseract.image_to_string(
+            padded, config="--psm 7 -c tessedit_char_whitelist=0123456789/"
+        ).strip()
+        _, slash, max_mp = read.partition("/")
+        return int(max_mp) if slash and max_mp.isdigit() and int(max_mp) > 0 else None
 
     def read_vitals(
         self,

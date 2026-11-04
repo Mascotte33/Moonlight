@@ -449,12 +449,13 @@ or in the `targeting` section of your profile config:
 
 - **Monster rows** match a battle-list name (ignoring case). Each has a
   priority (1-5, higher first), `ignore` ("never attack" in the tab), an
-  attack `hotkey` (empty = melee only), a mana floor (`minimum_mana_percent`)
-  and a `movement`: `follow` (chase) or `none` (stand still). Players are
+  attack `hotkey` (empty = melee only), a mana floor in mana points
+  (`minimum_mana`, e.g. 200) and a `movement`: `follow` (chase) or `none`
+  (stand still). Players are
   never targeted.
 - **`default_monster`** is the row for every monster without its own row, so
   everything is attacked unless you ignore it. The tab shows it as "all others".
-  Default: priority 1, F6, 10% mana, follow.
+  Default: priority 1, no mana floor, follow.
 - The bot picks the highest priority first. Among the same priority,
   Targeting > Settings > **Same priority: attack first the** picks:
   **lowest hp** (default), **highest hp** or **battle list** (the top row;
@@ -463,11 +464,15 @@ or in the `targeting` section of your profile config:
   comes, and never clicks it twice (a second click untargets). A selected
   "never attack" monster is left for the next one.
 - **Area rules** press a hotkey when at least `minimum_adjacent_monsters`
-  creatures stand next to you and MP is at least `minimum_mana_percent`.
-  Default: F5 at 3 monsters, 30% mana. A rule is used only while it is
+  creatures stand next to you and MP is at least `minimum_mana` mana points.
+  Default: no mana floor. A rule is used only while it is
   ticked (`enabled`). A ticked rule is grayed in the tab so it isn't edited
   by accident. All attack keys share `attack_cooldown_ms` (default 2000); a new
   target starts it fresh, so its first spell goes out at once.
+- **Mana points**: the bot reads your max mana off the `115/295` text on the
+  MP bar (Tesseract) every 30 s and logs `max mana: 295`. Until it is read,
+  MP counts as 0, so a hotkey with a mana floor waits. An old
+  `minimum_mana_percent` in a config is dropped with a warning: set it again.
 - **Unreachable:** when the target's HP stands still for
   `unreachable_after_seconds` (default 4), the bot takes one step toward it.
   After the same time again, it skips that monster for 30 s. With no other
