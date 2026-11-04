@@ -311,3 +311,17 @@ def test_watch_layout_pauses_until_the_layout_fits_again(anchors: Path) -> None:
     now[0] = 2 * LAYOUT_EVERY
     assert focused()
     assert logged == ["Layout changed, recalibrate, bot paused", "Layout fits again, resuming"]
+
+
+def test_the_absolute_pointer_is_used_on_the_main_monitor() -> None:
+    from moonlight.core.wiring import _pointer_screen
+
+    assert _pointer_screen(lambda: (100, 25)) == (0, 0, 1920, 1080)
+
+
+def test_a_client_on_another_monitor_moves_the_mouse_relative() -> None:
+    """Windows maps the HID absolute pointer to the main monitor only."""
+    from moonlight.core.wiring import _pointer_screen
+
+    assert _pointer_screen(lambda: (-1680, 25)) is None
+    assert _pointer_screen(None) is None

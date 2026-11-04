@@ -393,7 +393,11 @@ a message box with the error.
 The client can be on any monitor, fully on one. Calibrate on the monitor you
 play on: a profile made on another one stops with "Layout changed, recalibrate".
 Calibration works while the bot is stopped (Stop); it is grayed only while
-the bot runs.
+the bot runs. Clicks are fastest with the client on the main monitor: Windows
+points the Arduino's jump-to-spot mouse at the main monitor only, so on another
+monitor the mouse moves step by step (bot.log: `client is not on the main
+monitor`). To keep fast clicks on the other monitor, make it the main display
+(Windows Settings > Display > "Make this my main display").
 
 The window and its taskbar button show the Moonlight logo
 (`moonlight/gui/icon.ico`). For a desktop icon, right-click

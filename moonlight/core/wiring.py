@@ -405,6 +405,26 @@ def _absolute_screen() -> tuple[int, int, int, int]:
     return (mon["left"], mon["top"], mon["width"], mon["height"])
 
 
+def _pointer_screen(
+    window_origin: Callable[[], tuple[int, int]] | None,
+) -> tuple[int, int, int, int] | None:
+    """The absolute pointer's screen, or None (relative moves) when it can't reach the client.
+
+    # doc: docs/prs/client-hotkeys.md#second-monitor
+    """
+    if window_origin is None:
+        return None
+    left, top, width, height = screen = _absolute_screen()
+    x, y = window_origin()
+    if left <= x < left + width and top <= y < top + height:
+        return screen
+    logger.warning(
+        "client is not on the main monitor: the mouse moves step by step (slower)."
+        " Move the client to the main monitor for fast clicks"
+    )
+    return None
+
+
 def build_loop(
     config: BotConfig,
     profile: CalibrationProfile,
@@ -617,7 +637,7 @@ def build_modules(
             config=config.clicker,
             roi_provider=roi_provider,
             window_origin=window_origin,
-            screen=_absolute_screen() if config.clicker.absolute and window_origin else None,
+            screen=_pointer_screen(window_origin) if config.clicker.absolute else None,
             park_region=(
                 profile.regions["minimap"].to_tuple if "minimap" in profile.regions else None
             ),
