@@ -461,11 +461,11 @@ class CavebotTab(Tab):
         self.lbl_cursor.pack(fill="x", padx=theme.PAD)
         self._capture: Any = None  # ScreenCapture, made on the first draw
         # T3.F9.K2: one button per waypoint type, at the bot's position.
-        for heading, rows in KIND_SECTIONS:
+        for heading, button_rows in KIND_SECTIONS:
             _kind_heading(edit, heading)
             kinds = Row(edit)
             kinds.pack(anchor="w", padx=theme.PAD)
-            for grid_row, group in enumerate(rows):
+            for grid_row, group in enumerate(button_rows):
                 for col, action in enumerate(group):
                     button = _button(kinds, action.capitalize(), partial(self._add_action, action))
                     button.configure(width=64)
