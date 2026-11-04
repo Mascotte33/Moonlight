@@ -178,7 +178,9 @@ and the loot wait is over, also for a ring clicked mid-fight. The corpse is the 
 vanished from, the one nearest the character when several did; only the 8
 tiles around the character count. A kill counts only when the target is gone
 or the selection moves to another monster, not when some other monster walks
-out of the battle list. When no tile is known, and when the battle list
+out of the battle list. When the battle list drops the kill before the health bar goes, it keeps
+looking for the tile for 0.5 s and right-clicks it as soon as the bar goes
+(`looting: corpse tile found after the kill`). When no tile is known, and when the battle list
 empties, it waits up to 1.5 s (no attacking, no walking) for the corpse's loot
 ring and right-clicks that (also with **Loot ringed corpses** off). It never
 presses the loot hotkey while right-clicking is on. bot.log shows `looting: right-click the corpse at (x, y)` or
@@ -200,7 +202,7 @@ rings are ignored. The nearest counts first, the tile under the character too
 light-blue dots count: campfires, the blue orb, water, skulls, white text and
 "puff" clouds do not, and the ring is seen in the blue half of its pulse. The ring is also seen
 while the character walks (the scroll is undone first). After a ring click
-the cavebot stands for the set wait (at least 0.3 s), plus 0.3 s per tile of
+the cavebot stands for the set wait (the next ring click waits at least 0.3 s), plus 0.3 s per tile of
 the walk to a far corpse, so the loot lands. With only this switch on, the
 cavebot stands still for up to 1.5 s after a kill (attacking goes on) until the
 ring click. bot.log shows `loot triggered at (x, y), N tiles away` when a ring

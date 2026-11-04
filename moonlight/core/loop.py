@@ -147,6 +147,8 @@ STOPPED_READ_EVERY_TICKS = 4
 #: Ticks of creature tiles kept to find a kill's corpse: the battle list is
 #: read every 4th tick, so the health bar may vanish a few ticks earlier.
 CORPSE_LOOKBACK_TICKS = 8
+#: Seconds after a kill with no corpse tile to keep looking for its vanished bar.
+CORPSE_SEARCH_S = 0.5
 
 
 #: How many tiles from the player a loot ring counts, at any time: the 5x5
@@ -324,6 +326,8 @@ class GameLoop:
         self._target: TargetingAction | None = None
         self._targeting_paused_until = 0.0  # a lone unreachable target: walk on
         self._last_target: Monster | None = None
+        #: A kill with no corpse tile yet: its health bar may go a few ticks later.
+        self._looking_for_corpse_until = 0.0
         self._last_names: Counter[str] = Counter()
         self._recent_creature_slots: deque[tuple[tuple[int, int], ...]] = deque(
             maxlen=CORPSE_LOOKBACK_TICKS
@@ -661,10 +665,16 @@ class GameLoop:
             ):
                 corpse = vanished_slot(self._recent_creature_slots, snap.creature_slots)
                 m.looting.on_target_died(prev.name, corpse)
+                self._looking_for_corpse_until = now + CORPSE_SEARCH_S if corpse is None else 0.0
                 if m.attack_hotkeys is not None:
                     m.attack_hotkeys.new_target()  # the client may select the next at once
             elif self._last_names and not names:
                 m.looting.on_target_died("")  # the battle list emptied: loot again
+            elif now < self._looking_for_corpse_until:
+                corpse = vanished_slot(self._recent_creature_slots, snap.creature_slots)
+                if corpse is not None:
+                    m.looting.on_corpse_found(corpse)
+                    self._looking_for_corpse_until = 0.0
         self._last_names = names
         self._recent_creature_slots.append(snap.creature_slots)
         if m.extras is not None:

@@ -115,6 +115,8 @@ class Looting:
         self._ring_wait_until = 0.0
         #: A kill with no known corpse tile: the fight waits for its ring until then.
         self._kill_ring_wait_until = 0.0
+        #: The fight waits for a right-click's loot to land until then (``wait_ms``).
+        self._loot_lands_at = 0.0
 
     @property
     def pending(self) -> str | None:
@@ -143,8 +145,20 @@ class Looting:
         self._pending = target_name
         if corpse_slot is not None and can_click and self._grid is not None:
             self._corpse = slot_ring(self._grid, corpse_slot)
-        self._pressed_at = None
-        self._died_at = self._clock()
+
+    def on_corpse_found(self, corpse_slot: tuple[int, int]) -> None:
+        """The corpse tile of a kill still waiting for its ring: right-click it now.
+
+        The battle list may drop a kill before its health bar goes, so the
+        loop finds the tile a few ticks later (bot.log 2026-11-04: most kills
+        waited ~1.4 s for the ring).
+        """
+        if self._clock() >= self._kill_ring_wait_until or self._grid is None:
+            return
+        log.info("looting: corpse tile found after the kill")
+        self._kill_ring_wait_until = 0.0
+        self._pending, self._pressed_at = "", None
+        self._corpse = slot_ring(self._grid, corpse_slot)
 
     def should_loot(self, snap: WorldState) -> bool:
         """True when a press is queued, a ring is being clicked, or the bot waits for a ring."""
@@ -164,7 +178,7 @@ class Looting:
         looting = (
             self._pending is not None
             or self._ring_clicking
-            or self._clock() < max(self._ring_hold_until, self._kill_ring_wait_until)
+            or self._clock() < max(self._loot_lands_at, self._kill_ring_wait_until)
         )
         return looting and not (0 < snap.hp_percent < self._config.min_hp_to_loot)
 
@@ -221,7 +235,7 @@ class Looting:
             self._ring_clicking = False
             self._kill_ring_wait_until = 0.0  # the kill's ring is clicked
             wait, now = self._config.wait_ms / 1000, self._clock()
-            self._ring_wait_until = now + wait + walk
+            self._ring_wait_until = self._loot_lands_at = now + wait + walk
             self._ring_hold_until = now + max(wait, RING_GAP) + walk
             return True
         if self._pending is None:

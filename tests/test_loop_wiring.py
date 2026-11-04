@@ -289,3 +289,22 @@ def test_perceive_runs_before_snapshot() -> None:
     )
     gl.tick()
     assert gl.current_state is BotState.IDLE  # perceive set screen_ok, so not PAUSED
+
+
+def test_corpse_tile_found_ticks_after_the_kill() -> None:
+    ws = make_state(target="Wolf", monsters=0)
+    with ws.lock():
+        ws.creature_slots = ((8, 5),)
+    looting = idle_module()
+    gl, clock = make_loop(ws, FakeInput(), looting=looting)
+    gl.tick()
+    with ws.lock():
+        ws.selected_target = None  # the battle list drops it, the bar is still up
+    clock.now += 0.05
+    gl.tick()
+    looting.on_target_died.assert_called_once_with("Wolf", None)
+    with ws.lock():
+        ws.creature_slots = ()
+    clock.now += 0.05
+    gl.tick()
+    looting.on_corpse_found.assert_called_once_with((8, 5))

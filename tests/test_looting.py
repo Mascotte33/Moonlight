@@ -307,3 +307,30 @@ def test_right_click_looting_finds_the_corpse_by_its_ring_without_the_ring_switc
     assert looting.ring_due(NEAR)
     looting.press_ring()
     assert clicker.clicks == [(EAST, ClickSide.RIGHT)] and inp.sent_lines == []
+
+
+def test_corpse_found_after_the_kill_is_clicked_at_once_then_wait_ms() -> None:
+    clock, clicker = Clock(), FakeClicker(steps=1)
+    looting = make_ring(clock, clicker, ringed_corpses=True)
+    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
+    looting.on_target_died("Wolf")  # no tile yet: waits for the ring
+    clock.t = 0.2
+    looting.on_corpse_found((8, 5))  # the bar went a few ticks later
+    looting.step(ws)
+    assert clicker.clicks == [(EAST, ClickSide.RIGHT)]
+    looting.step(ws)
+    looting.step(ws)  # landed at 0.2: wait_ms 400, not the ring gap
+    clock.t = 0.61
+    assert not looting.loot_first(ws)
+
+
+def test_short_wait_ms_lets_the_fight_go_on_before_the_ring_gap() -> None:
+    clock, clicker = Clock(), FakeClicker(steps=1)
+    config = LootingConfig(wait_ms=100)
+    looting = Looting(FakeInput(), config, clock=clock, game_region=GRID, clicker=clicker)  # type: ignore[arg-type]
+    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
+    looting.on_target_died("Wolf", (8, 5))
+    for _ in range(3):
+        looting.step(ws)
+    clock.t = 0.11
+    assert not looting.loot_first(ws)  # RING_GAP (0.3 s) only spaces ring clicks
