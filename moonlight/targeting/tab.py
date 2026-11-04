@@ -233,7 +233,7 @@ class _AreaLine:
 
 
 class TargetingTab(Tab):
-    """Monsters, area spells, seen monsters, then Settings; saved into the picked config."""
+    """Targeting (monster rows), area spells, seen monsters, then Settings; saved to the config."""
 
     title = "Targeting"
 
@@ -273,13 +273,7 @@ class TargetingTab(Tab):
         )
         self._target_order.pack(side="left", padx=(theme.UNIT, 0))
 
-        monsters_box, self._monsters_frame = _card(
-            parent,
-            "Monsters",
-            "The first row is every monster without a row of its own. A higher priority "
-            "is attacked first. No key = melee only. The key is not pressed below its "
-            "min mana %.",
-        )
+        monsters_box, self._monsters_frame = _card(parent, "Targeting")
         _header(
             self._monsters_frame,
             ["Monster", "Priority", "", "Attack key", "Min mana %", "Movement", ""],
@@ -289,7 +283,6 @@ class TargetingTab(Tab):
         area_box, self._area_frame = _card(
             parent,
             "Area spells (the first matching rule is used)",
-            "Tick a rule to use it. A used rule is grayed so it is not changed by accident.",
         )
         _header(self._area_frame, ["Use", "Key", "Monsters next to you", "Min mana %", ""])
         _add_button(area_box, "+ Add area spell", self._add_area_rule)
