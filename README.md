@@ -139,7 +139,7 @@ clicked waypoint, ✕ (or the Delete key) deletes it, and Clear removes them all
 after asking. Recording stops and saves the route when the cavebot starts. Walking
 over stairs or into a hole records a `stairs` waypoint on that tile, so the
 route plays back across floors; for a ladder (or a sewer grate: Ladder too),
-rope or shovel click its button while standing on the tile you use it from. While recording, every
+rope or shovel click its button while standing on the tile you use it from (the rope and shovel hotkeys are on Cavebot > Options). While recording, every
 waypoint button adds a waypoint on the character's tile.
 
 The arrow pad in Cavebot > Edit route adds a `step` waypoint on the
@@ -155,7 +155,7 @@ lets the client pick the path and can cross them: turn on WSAD-key walking
 for routes next to holes or teleports.
 
 Echo raid triggers (the red swirl that spawns stronger monsters) are seen on
-the game screen while walking with WSAD keys. Cavebot > **Echo raid** picks
+the game screen while walking with WSAD keys. Cavebot > Options > **Echo raid** picks
 what the bot does: **avoid** (default) never walks onto one and skips a
 waypoint on one; **use** walks next to the nearest one once no monster is in
 the battle list and HP is 80 % or above, right-clicks it, waits 1 s, and if it

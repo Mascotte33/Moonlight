@@ -55,6 +55,7 @@ from moonlight.scripts.library import script_names
 from moonlight.scripts.scripts import DEFAULT_SCRIPTS_DIR
 
 __all__ = [
+    "CAVEBOT_PAGE_OPTIONS",
     "LOOT_OPTIONS",
     "OPTIONS",
     "REFILL_OPTIONS",
@@ -110,6 +111,9 @@ OPTIONS = [
     SWITCH,
     ROUTE,
     START,
+]
+#: Cavebot options on the Options page, kept off the Waypoints card.
+CAVEBOT_PAGE_OPTIONS = [
     Option("Rope hotkey", "cavebot.rope_hotkey", "hotkey"),
     Option("Shovel hotkey", "cavebot.shovel_hotkey", "hotkey"),
     # doc: docs/prs/echo-raid.md#setting
@@ -236,7 +240,7 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
                 values = {**values, START.field: int(str(start)) - 1}
             except ValueError:
                 raise ConfigError(f"start waypoint {start!r} is not a whole number") from None
-        for option in sorted(OPTIONS, key=lambda o: o is not ROUTE):
+        for option in sorted(OPTIONS + CAVEBOT_PAGE_OPTIONS, key=lambda o: o is not ROUTE):
             if option is not SWITCH and values.get(option.field, "") != "":
                 cfg = write_option(cfg, option, values[option.field])
     if SWITCH.field in values:
@@ -307,7 +311,7 @@ class CavebotTab(Tab):
     """Waypoints card beside one card switching Refill, Loot and Edit route."""
 
     title = "Cavebot"
-    options = OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS
+    options = OPTIONS + CAVEBOT_PAGE_OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS
     polls_hidden = True  # recording adds waypoints on each poll
 
     def build(self, parent: ctk.CTkFrame) -> None:
@@ -368,11 +372,11 @@ class CavebotTab(Tab):
         self.lbl_msg = Label(box, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
-        side = section(root, "Refill / Loot / Edit route")
+        side = section(root, "Refill / Loot / Options / Edit route")
         side.grid(row=0, column=1, sticky="nsew")
         pages = {
             name: Row(side)
-            for name in ("Refill", "Loot", "Edit route")
+            for name in ("Refill", "Loot", "Options", "Edit route")
         }
 
         def show(name: str) -> None:
@@ -436,6 +440,7 @@ class CavebotTab(Tab):
         self.lbl_buy = Label(refill, text="", anchor="w", text_color=theme.TEXT_DIM)
         self.lbl_buy.pack(fill="x", padx=theme.PAD)
         self.build_options(pages["Loot"], LOOT_OPTIONS)
+        self.build_options(pages["Options"], CAVEBOT_PAGE_OPTIONS)
         show("Refill")
 
         edit = pages["Edit route"]
