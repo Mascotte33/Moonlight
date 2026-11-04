@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import customtkinter as ctk
+from PIL import Image
 
 from moonlight import x11
 from moonlight.calibration.tab import CalibrationTab
@@ -148,6 +149,12 @@ __all__ = [
 ]
 
 
+#: The moon-eye logo (owner 2026-11-04): white on clear for the sidebar ...
+LOGO = Path(__file__).with_name("logo.png")
+#: ... and white on black for the window and taskbar.
+ICON = Path(__file__).with_name("icon.ico")
+
+
 class GuiApp:
     """customtkinter shell hosting the tabs and the state poller."""
 
@@ -168,8 +175,13 @@ class GuiApp:
         )
         self.ctx.on_config_change = self.apply_config
 
+        if sys.platform == "win32":
+            # Its own taskbar button with the Moonlight icon, not pythonw's.
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("moonlight.bot")
         self.root = ctk.CTk()
         self.root.title("MOONLIGHT — Tibia automation")
+        if sys.platform == "win32":
+            self.root.iconbitmap(default=str(ICON))  # also replaces customtkinter's icon
         self.root.geometry("1100x740")
         self.root.minsize(880, 580)
 
@@ -186,9 +198,11 @@ class GuiApp:
         ctk.CTkFrame(body, width=1, fg_color=theme.RAISED, corner_radius=0).pack(
             side="left", fill="y"
         )
-        Label(
+        ctk.CTkLabel(  # a CTkLabel: tab_base.Label shows no picture
             sidebar,
-            text="MOONLIGHT",
+            text=" MOONLIGHT",
+            image=ctk.CTkImage(Image.open(LOGO), size=(36, 36)),
+            compound="left",
             font=ctk.CTkFont(size=theme.SIZE_HEADING, weight="bold"),
             text_color=theme.TEXT,
         ).pack(anchor="w", padx=theme.PAD, pady=(theme.PAD, theme.GAP))

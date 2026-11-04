@@ -46,3 +46,6 @@ configs/
 moonlight/profiles/
 moonlight/data/
 
+
+# A local shortcut with the Moonlight icon
+*.lnk

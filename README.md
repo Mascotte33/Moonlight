@@ -390,6 +390,12 @@ everything, keys included.
 A crash of any part is written there too, and a GUI that cannot start shows
 a message box with the error.
 
+The window and its taskbar button show the Moonlight logo
+(`moonlight/gui/icon.ico`). For a desktop icon, right-click
+"Start Moonlight GUI.bat" > Show more options > Create shortcut, move the
+shortcut to the desktop, then Properties > Change Icon > Browse to
+`moonlight\gui\icon.ico`.
+
 ## Client hotkeys
 
 Settings > Client hotkeys puts the bot's keys into the game client, so the
