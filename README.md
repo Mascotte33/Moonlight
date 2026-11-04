@@ -392,6 +392,8 @@ a message box with the error.
 
 The client can be on any monitor, fully on one. Calibrate on the monitor you
 play on: a profile made on another one stops with "Layout changed, recalibrate".
+Calibration works while the bot is stopped (Stop); it is grayed only while
+the bot runs.
 
 The window and its taskbar button show the Moonlight logo
 (`moonlight/gui/icon.ico`). For a desktop icon, right-click

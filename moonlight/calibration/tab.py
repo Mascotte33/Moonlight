@@ -334,8 +334,18 @@ class CalibrationTab(Tab):
             self.canvas.bind(event, handler)
         self.idle.tkraise()
 
+    def _bot_acting(self) -> bool:
+        """True while the bot runs and is not held by Stop.
+
+        Stop keeps the loop reading the screen and pressing nothing, so
+        calibrating then is safe (owner 2026-11-04: "why is start
+        calibration greyed out?" after Stop).
+        """
+        controller = self.ctx.controller
+        return self.ctx.bot_running() and not (controller and controller.loop.stopped)
+
     def on_poll(self, snap: WorldState) -> None:
-        on = not self.ctx.bot_running() and not self._waiting
+        on = not self._bot_acting() and not self._waiting
         state = "normal" if on else "disabled"
         if self.btn_start.cget("state") != state:  # a redraw per poll made the GUI stutter
             self.btn_start.configure(
@@ -429,7 +439,7 @@ class CalibrationTab(Tab):
     # -- getting a screenshot ------------------------------------------------
 
     def start(self) -> None:
-        if self.ctx.bot_running() or self._waiting:
+        if self._bot_acting() or self._waiting:
             return
         self._waiting = True
         self.lbl_status.configure(text="Switch to Tibia, screenshot in 3 seconds...")
