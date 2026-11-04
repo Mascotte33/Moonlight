@@ -228,14 +228,13 @@ def test_kill_with_a_known_tile_right_clicks_its_corpse() -> None:
     looting = Looting(FakeInput(), LootingConfig(), clock=clock, game_region=GRID, clicker=clicker)  # type: ignore[arg-type]
     ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
     looting.on_target_died("Wolf", (8, 5))
-    clock.t = PRESS_DELAY
-    assert looting.step(ws) is True
+    assert looting.step(ws) is True  # at once, no PRESS_DELAY
     assert clicker.clicks == [(EAST, ClickSide.RIGHT)]
     assert looting.step(ws) is True  # the click goes out
     assert looting.step(ws) is True  # the loot lands: wait_ms
-    clock.t = PRESS_DELAY + 0.39
+    clock.t = 0.39
     assert looting.should_loot(ws)
-    clock.t = PRESS_DELAY + 0.41
+    clock.t = 0.41
     assert not looting.should_loot(ws)
 
 

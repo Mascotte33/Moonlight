@@ -972,7 +972,7 @@ class TestCurrentTask:
 
 
 
-def test_loot_ring_reach_follows_the_fight() -> None:
+def test_loot_ring_reach_is_two_tiles() -> None:
     ws = make_state()
     rat = Monster("Rat")
     with ws.lock():
@@ -993,11 +993,10 @@ def test_loot_ring_reach_follows_the_fight() -> None:
     modules = DecisionModules(looting=cast(Looting, looting), cavebot=cast(Cavebot, IDLE_CAVEBOT))
     gl, clock = make_loop(ws, FakeInput(), modules=modules)
     gl.tick()
-    assert checks == [range(1, 2)]  # mid-fight: the 8 tiles around, so it does not walk off
     with ws.lock():
         ws.monsters, ws.selected_target = [], None  # the target died
     gl.tick()
-    assert checks == [range(1, 2), range(1, 8)]  # nothing to kill: the whole grid
+    assert checks == [range(1, 3), range(1, 3)]  # 2 tiles, mid-fight or not
 
 # doc: docs/prs/extras.md#extras
 class TestExtras:

@@ -107,7 +107,6 @@ from moonlight.cavebot.cavebot import WALK_KEYS
 from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import Monster, WorldState
 from moonlight.hardware.input import InputBackend
-from moonlight.perception.corpses import FARTHEST
 from moonlight.perception.creatures import PLAYER_SLOT
 from moonlight.targeting.targeting import PAUSE_SECONDS
 
@@ -148,6 +147,12 @@ STOPPED_READ_EVERY_TICKS = 4
 #: Ticks of creature tiles kept to find a kill's corpse: the battle list is
 #: read every 4th tick, so the health bar may vanish a few ticks earlier.
 CORPSE_LOOKBACK_TICKS = 8
+
+
+#: How many tiles from the player a loot ring counts, at any time (owner
+#: 2026-11-04: far rings confused the bot; 2 tiles is a short walk).
+# doc: docs/prs/client-hotkeys.md#ring-anywhere
+RING_REACH = range(1, 3)
 
 
 def vanished_slot(
@@ -783,7 +788,7 @@ class GameLoop:
             self._task = "Healing"
             return
         looting = self.modules.looting
-        if looting is not None and looting.ring_due(self._ring_reach()):
+        if looting is not None and looting.ring_due(RING_REACH):
             self._send(snap, looting.press_ring)  # then carry on with this tick
         # doc: docs/prs/pause-stop.md#action-order
         # Healing, then the fight and loot, then scripts, extras and walking.
@@ -799,18 +804,6 @@ class GameLoop:
                     return
                 if self._state is BotState.MOVE:
                     self._act_move(snap)
-
-    def _ring_reach(self) -> range:
-        """How many tiles from the player a loot ring counts.
-
-        Mid-fight (attacking, walking to a target or looting a kill) the 8
-        tiles around, so the character does not walk off; with nothing to
-        kill, the whole game grid.
-        """
-        # doc: docs/prs/client-hotkeys.md#ring-anywhere
-        if self._state in (BotState.ATTACK, BotState.LOOT):
-            return range(1, 2)
-        return range(1, FARTHEST + 1)
 
     def _send(
         self,

@@ -1,12 +1,12 @@
 """Looting: right-click the corpse after a kill (else the loot-all hotkey).
 
-A kill or the battle list going empty queues a loot; the bot holds still
-``PRESS_DELAY`` (the corpse is not lootable the instant the monster leaves
-the battle list), then right-clicks the corpse's tile when the loop knows it
+A kill or the battle list going empty queues a loot; the bot right-clicks
+the corpse's tile at once when the loop knows it
 (the tile the killed creature's health bar vanished from; the OTS loots on
 that click, walking there first when it is far) and ``loot_by_right_click``
-is on, else presses the loot-all
-hotkey (Alt+Q) once, then holds
+is on, else presses the loot-all hotkey (Alt+Q) once after ``PRESS_DELAY``
+(the corpse is not lootable the instant the monster leaves the battle
+list), then holds
 still for ``wait_ms`` so the loot lands and late monsters show up before it
 walks on. Below ``min_hp_to_loot`` the press waits (the bot holds still and
 heals) until HP is back up.
@@ -15,8 +15,7 @@ Each trigger has its own switch: ``after_kill`` (the above) and
 ``ringed_corpses``, which right-clicks a corpse whenever its loot ring
 shows (the OTS loots it on that click, walking there first when it is
 far), then stands ``wait_ms`` so the loot lands. The loop says how far a
-ring may be (``reach``): mid-fight only the 8 tiles around the player, with
-nothing to kill the whole game grid.
+ring may be (``reach``): 2 tiles from the player.
 With only ``ringed_corpses`` on, a kill holds the bot still (no walking;
 attacking goes on) for up to ``RING_WAIT`` so the ring can show and be
 clicked before the cavebot walks off: the ring check is blind while the
@@ -45,7 +44,9 @@ __all__ = [
     "LootingConfig", "Looting", "PRESS_DELAY", "RING_GAP", "RING_WAIT", "RING_WALK_S_PER_TILE"
 ]
 
-#: Seconds between the kill and the press; a press on the kill tick is ignored.
+#: Seconds between the kill and the hotkey press; a press on the kill tick is
+#: ignored. The corpse right-click goes at once: the health bar vanished
+#: ticks before the battle list showed the kill.
 PRESS_DELAY = 0.1
 #: Seconds the bot stands still after a kill looking for its corpse's ring.
 RING_WAIT = 1.0
@@ -214,8 +215,6 @@ class Looting:
             return self._clock() < self._ring_wait_until  # stand still, the ring check runs
         now = self._clock()
         if self._pressed_at is None:
-            if now - self._died_at < PRESS_DELAY:
-                return True
             if 0 < snap.hp_percent < self._config.min_hp_to_loot:
                 return True  # low HP: hold still and heal, loot after
             if self._corpse is not None:
@@ -224,6 +223,8 @@ class Looting:
                 self._clicker.request(self._corpse.point, side=ClickSide.RIGHT)
                 self._ring_clicked, self._ring_clicking = self._corpse, True
                 self._pending = self._corpse = None
+                return True
+            if now - self._died_at < PRESS_DELAY:
                 return True
             log.info("looting")
             self._input.press_combo(self._config.loot_hotkey)

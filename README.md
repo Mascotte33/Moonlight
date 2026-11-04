@@ -171,7 +171,7 @@ a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 (`<time>_<x>_<y>_<z>_<right|left>.png`); bot.log names each file.
 
 Looting runs only while the cavebot is on and the bot is not paused (F12 or
-Pause). Looting right-clicks the killed monster's corpse 0.1 s after each kill (also
+Pause). Looting right-clicks the killed monster's corpse right after each kill (also
 when more monsters of that name are left), before attacking the next monster
 (the OTS loots on that click). The next attack waits until the click is sent
 and the loot wait is over, also for a ring clicked mid-fight. The corpse is the tile the monster's health bar
@@ -191,10 +191,9 @@ hold all their keys down together. Reflash the Leonardo after updating.
 Cavebot > Settings has a switch for each loot trigger. **Loot after every kill**
 (on by default) is the above. **Loot ringed corpses** (off by default)
 right-clicks a corpse whenever its turning loot ring shows (the OTS loots on
-that click and walks there first when the corpse is far). Mid-fight (attacking,
-walking to the next target, looting a kill) a ring on the 8 tiles around the
-character is clicked at once, any time. With nothing to kill, a ring anywhere on the game grid counts, the
-nearest first. The character's own tile never counts. Only the ring's own
+that click and walks there first when the corpse is 2 tiles off). A ring up to
+2 tiles from the character is clicked at once, any time, also mid-fight; farther
+rings are ignored. The nearest counts first. The character's own tile never counts. Only the ring's own
 light-blue dots count: campfires, the blue orb, water, skulls, white text and
 "puff" clouds do not, and the ring is seen in the blue half of its pulse. The ring is also seen
 while the character walks (the scroll is undone first). After a ring click
