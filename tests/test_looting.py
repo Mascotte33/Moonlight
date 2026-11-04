@@ -7,6 +7,7 @@ from collections.abc import Callable
 import numpy as np
 import pytest
 
+import moonlight.looting.looting as looting_module
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.looting.looting import RING_WALK_S_PER_TILE, Looting, LootingConfig
@@ -89,6 +90,9 @@ def test_ring_is_right_clicked_at_once_then_wait_ms() -> None:
     assert looting.loot_first(WS) and not looting.ring_due(NEAR, WS)
     clock.t = 0.51
     assert not looting.loot_first(WS) and looting.step(WS) is False
+    looting.ring_due(NEAR, WS)
+    shots = sorted(p.name for p in looting_module.LOOT_SHOTS_DIR.glob("*.png"))
+    assert [name.split("_")[1] for name in shots] == ["ring.png", "landed.png"]
 
 
 def test_next_ring_is_looted_after_the_wait_until_none_is_left() -> None:

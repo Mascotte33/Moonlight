@@ -187,7 +187,10 @@ tile of the walk to a far corpse) so the loot lands; the next attack waits
 too. Below the set HP (70 % by default) it holds still and heals first, then
 loots. It also loots while an alarm is up. bot.log shows `loot triggered at
 (x, y), N tiles away` for each ring, then `looting: right-click at (x, y)` or
-`looting: press alt+q`. Every key tap and mouse click holds 60 ms, like a real
+`looting: press alt+q`. Each looted ring is also saved as a screenshot (the
+ring circled in yellow) in `logs/loot_rings/`, `<time>_ring.png` when it is
+seen and `<time>_landed.png` once its loot wait is over; the newest 40 stay.
+Every key tap and mouse click holds 60 ms, like a real
 press; combo hotkeys (Alt+Q, Shift+F1) hold all their keys down together.
 Reflash the Leonardo after updating.
 

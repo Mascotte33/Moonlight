@@ -20,7 +20,9 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
+import cv2
 import numpy as np
 
 from moonlight.core.state import WorldState
@@ -36,6 +38,12 @@ RING_GAP = 0.3
 # ponytail: one fixed walk speed; read the character's speed if fast or
 # slow characters re-click or wait too long.
 RING_WALK_S_PER_TILE = 0.3
+#: A screenshot of each looted ring and one as its loot lands, the ring circled.
+# ponytail: a diagnosis aid (owner 2026-11-04: "it didnt loot"); delete it
+# once ring looting is trusted.
+LOOT_SHOTS_DIR = Path("logs") / "loot_rings"
+#: Only the newest shots stay.
+KEEP_LOOT_SHOTS = 40
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +85,8 @@ class Looting:
         self._ring_hold_until = 0.0
         #: The bot stands still until then so the loot lands (``wait_ms``).
         self._loot_lands_at = 0.0
+        #: The looted ring's pixel, shot once more when its loot lands.
+        self._landed_shot_point: tuple[int, int] | None = None
 
     def _hp_too_low(self, snap: WorldState) -> bool:
         return 0 < snap.hp_percent < self._config.min_hp_to_loot
@@ -93,6 +103,10 @@ class Looting:
             return False
         if not (snap.client_focused and snap.screen_ok):
             return False  # no input to an unfocused client
+        if self._landed_shot_point is not None and not self._ring_clicking:
+            if now >= self._loot_lands_at:
+                self._save_shot(self._landed_shot_point, "landed")
+                self._landed_shot_point = None
         if self._ring_clicking or now < self._ring_hold_until:
             return False
         seen = self._rings.rings(self._frames(), now)
@@ -110,6 +124,8 @@ class Looting:
         if self._ring is None:
             raise RuntimeError("press_ring needs a seen ring")
         log.info("loot triggered at %s, %d tiles away", *self._ring)
+        self._save_shot(self._ring.point, "ring")
+        self._landed_shot_point = self._ring.point
         if self._config.loot_by_right_click:
             if self._clicker is None:
                 raise RuntimeError("right-click looting needs a clicker")
@@ -121,6 +137,21 @@ class Looting:
             self._input.press_combo(self._config.loot_hotkey)
             self._loot_landing(walk=0.0)
         self._ring = None
+
+    def _save_shot(self, point: tuple[int, int], label: str) -> None:
+        """Save this tick's frame with *point* circled in yellow to ``LOOT_SHOTS_DIR``."""
+        assert self._frames is not None
+        picture = cv2.cvtColor(np.ascontiguousarray(self._frames()), cv2.COLOR_RGB2BGR)
+        cv2.circle(picture, point, 40, (0, 255, 255), 2)
+        LOOT_SHOTS_DIR.mkdir(parents=True, exist_ok=True)
+        now = time.time()
+        stamp = time.strftime("%H%M%S", time.localtime(now)) + f"{now % 1:.3f}"[1:]
+        path = LOOT_SHOTS_DIR / f"{stamp}_{label}.png"
+        if not cv2.imwrite(str(path), picture):
+            raise OSError(f"could not save the loot screenshot {path}")
+        log.info("looting: %s screenshot: %s", label, path)
+        for old in sorted(LOOT_SHOTS_DIR.glob("*.png"))[:-KEEP_LOOT_SHOTS]:
+            old.unlink()
 
     def _loot_landing(self, walk: float) -> None:
         wait, now = self._config.wait_ms / 1000, self._clock()
