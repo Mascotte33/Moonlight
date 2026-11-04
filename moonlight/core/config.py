@@ -289,6 +289,7 @@ class BotConfig:
                     for key in (
                         "move_all_hotkey", "max_items_per_loot", "min_cap_to_loot",
                         "after_kill", "ringed_corpses",  # looting is by the ring only now
+                        "loot_by_right_click",  # the loot hotkey only now
                     ):
                         section.pop(key, None)
                 if name == "refill":  # the refill route file's keys, gone with it

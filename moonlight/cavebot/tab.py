@@ -117,7 +117,6 @@ CAVEBOT_PAGE_OPTIONS = [
     Option("Echo raid", "cavebot.echo_raid", "dropdown", choices=list(ECHO_RAID_CHOICES)),
 ]
 LOOT_OPTIONS = [
-    Option("Right-click the loot ring (off: loot hotkey)", "looting.loot_by_right_click", "switch"),
     Option("Loot hotkey", "looting.loot_hotkey", "hotkey"),
     Option("Wait after looting (ms)", "looting.wait_ms", "entry"),
     Option("Loot only at HP % or above", "looting.min_hp_to_loot", "entry", min=0, max=100),

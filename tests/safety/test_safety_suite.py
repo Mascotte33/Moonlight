@@ -270,18 +270,18 @@ def test_11_loot_key_only_when_focused() -> None:
     ]
     tick = iter(range(100))
     looting = Looting(
-        inp, LootingConfig(loot_hotkey="alt+q", loot_by_right_click=False),
+        inp, LootingConfig(loot_hotkey="alt+q"),
         clock=lambda: now[0], frames=lambda: frames[next(tick) % 2], game_region=(0, 0, 1440, 1056),
     )
     ws.client_focused = False
     for now[0] in (0.0, 0.1):
-        assert not looting.ring_due(range(0, 3), ws)
+        assert not looting.ring_due(range(0, 2), ws)
     assert looting.step(ws) is False and inp.sent_lines == []
     ws.client_focused = True
     for now[0] in (0.25, 0.375, 0.5, 0.625):
-        assert not looting.ring_due(range(0, 3), ws)  # the ring shows a while first
+        assert not looting.ring_due(range(0, 2), ws)  # the ring shows a while first
     now[0] = 0.75
-    assert looting.ring_due(range(0, 3), ws)
+    assert looting.ring_due(range(0, 2), ws)
     looting.press_ring()
     assert inp.sent_lines == ["K alt+q"]
 

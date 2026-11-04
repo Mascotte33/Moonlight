@@ -143,11 +143,11 @@ _SELECT_OUTLINE_WAIT = 1.0
 STOPPED_READ_EVERY_TICKS = 4
 
 
-#: How many tiles from the player a loot ring counts, at any time: the 5x5
-#: around and under the character (owner 2026-11-04: far rings confused the
-#: bot; a corpse under the character is looted too).
-# doc: docs/prs/client-hotkeys.md#ring-anywhere
-RING_REACH = range(0, 3)
+#: The tiles the loot hotkey loots, at any time: the 3x3 around and under the
+#: character (owner 2026-11-04: back to the hotkey; a ring one tile farther
+#: is walked to when no fight is on).
+# doc: docs/prs/client-hotkeys.md#hotkey-loot
+RING_REACH = range(0, 2)
 
 
 @dataclass(frozen=True)

@@ -681,7 +681,6 @@ def build_modules(
                 clock=clock or time.monotonic,
                 frames=frames,
                 game_region=profile.get_region("game_grid").to_tuple,
-                clicker=m.clicker,
             )
     return m
 

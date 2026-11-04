@@ -172,29 +172,28 @@ a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 
 Looting runs only while the cavebot is on and the bot is not paused (F12 or
 Pause). It looks for the corpse's loot ring every tick: the ring shows the
-moment the monster dies, so there is no wait after a kill. A ring up to 2
-tiles from the character (the tile under it too) is looted once it has been
-seen for 0.4 s (a spell flash is not) and no creature with a health bar stands
-on its tile (a live amazon's outfit sparkles the same blue), any time, also
-mid-fight and while walking; farther rings are ignored, and a corpse with no
-ring has no loot. The nearest goes first, then the next one, until none is
-left. The ring's light-blue dots must form its own circle (its 16 animation
-frames are kept in `moonlight/perception/loot_ring.png`), so outfits, spell
-smoke, fire fields, grass, campfires, water, skulls, white text and "puff"
-clouds do not count. **Right-click the loot ring (off: loot hotkey)** in Cavebot > Settings
-(on by default) picks how: right-click the ring (the OTS loots on that click
-and walks there first when it is 2 tiles off), or press the loot hotkey
-(Alt+Q, loots every corpse around). After each loot the bot stands still for
-the set wait (400 ms by default, plus 0.3 s per tile of the walk to a far
-corpse) so the loot lands, and then until the ring is gone (unseen for
-0.8 s, bot.log `looting: ring at (x, y) gone`); the next attack and the walk
-wait too. A ring still there 3 s after its loot landed is looted again
-(`looting: ring at (x, y) still there, looting it again`). Below the set HP (70 % by default) it holds still and heals first, then
-loots. It also loots while an alarm is up. bot.log shows `loot triggered at
-(x, y), N tiles away` for each ring, then `looting: right-click at (x, y)` or
-`looting: press alt+q`. Each looted ring is also saved as a screenshot (the
-ring circled in yellow) in `logs/loot_rings/`, `<time>_ring.png` when it is
-seen and `<time>_landed.png` once its loot wait is over; the newest 40 stay.
+moment the monster dies, so there is no wait after a kill. When a ring shows
+on the character's tile or one of the 8 around it, for 0.4 s (a spell flash
+does not) and with no creature with a health bar on its tile (a live
+amazon's outfit sparkles the same blue), the bot presses the loot hotkey
+(Alt+Q by default, set it in Cavebot > Settings), any time, also mid-fight.
+The client's quick loot takes every corpse in that 3x3 at once. The ring's
+light-blue dots must form its own circle (its 16 animation frames are kept in
+`moonlight/perception/loot_ring.png`), so outfits, spell smoke, fire fields,
+grass, campfires, water, skulls, white text and "puff" clouds do not count; a
+corpse with no ring has no loot. After the press the bot stands still for the
+set wait (400 ms by default) and then until no ring shows around it for 0.8 s
+(bot.log `looting: rings around the player gone`); the next attack and the
+walk wait too. Rings still there 1.5 s after a press get one more press
+(`looting: rings still there, pressing again`); after that they are left until
+the character moves (`... left here`, e.g. a full backpack). With no fight
+on, a ring 2 tiles away is walked to one step at a time and then looted
+(`looting: ring at (x, y) 2 tiles away: step d`); after 3 steps that do not
+bring it in reach it is left. Farther rings are ignored. Below the set HP (70 %
+by default) it holds still and heals first, then loots. It also loots while an
+alarm is up. bot.log shows `looting: ring at (x, y), N tiles away: press
+alt+q` for each press, and each press is saved as a screenshot (the ring
+circled in yellow) in `logs/loot_rings/<time>_ring.png`; the newest 40 stay.
 Every key tap and mouse click holds 60 ms, like a real
 press; combo hotkeys (Alt+Q, Shift+F1) hold all their keys down together.
 Reflash the Leonardo after updating.

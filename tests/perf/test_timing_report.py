@@ -120,7 +120,7 @@ def _decision_stats(tmp: Path) -> dict[str, Stats]:
     looting = Looting(inp, clock=clock)
 
     def loot_step(_: int) -> None:
-        looting.ring_due(range(0, 3), ws.snapshot())
+        looting.ring_due(range(0, 2), ws.snapshot())
         looting.step(ws.snapshot())
 
     return {
