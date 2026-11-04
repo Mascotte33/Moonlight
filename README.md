@@ -180,8 +180,8 @@ tiles around the character count. A kill counts only when the target is gone
 or the selection moves to another monster, not when some other monster walks
 out of the battle list. When no tile is known, and when the battle list
 empties, it waits up to 1.5 s (no attacking, no walking) for the corpse's loot
-ring and right-clicks that; with **Loot ringed corpses** off it presses the loot
-hotkey instead. bot.log shows `looting: right-click the corpse at (x, y)` or
+ring and right-clicks that (also with **Loot ringed corpses** off). It never
+presses the loot hotkey while right-clicking is on. bot.log shows `looting: right-click the corpse at (x, y)` or
 `looting` (the hotkey). Switch **Right-click the corpse (off: loot hotkey)**
 off for a server that loots on its hotkey. Then it stands
 still for the set wait (400 ms by default) before walking on. Below the set

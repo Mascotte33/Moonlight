@@ -289,3 +289,21 @@ def test_kill_without_a_tile_or_a_ring_fights_on_after_ring_wait() -> None:
     looting.on_target_died("Wolf")
     clock.t = RING_WAIT
     assert not looting.loot_first(ws) and not looting.should_loot(ws)
+
+
+def test_right_click_looting_finds_the_corpse_by_its_ring_without_the_ring_switch() -> None:
+    clock, clicker = Clock(), FakeClicker(steps=1)
+    inp = FakeInput()
+    looting = Looting(
+        inp, LootingConfig(), clock=clock, frames=ring_frames(), game_region=GRID,
+        clicker=clicker,  # type: ignore[arg-type]
+    )
+    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
+    assert not looting.ring_due(NEAR)  # "Loot ringed corpses" off: no ring watch
+    looting.on_target_died("Wolf")  # no corpse tile known
+    looting.step(ws)
+    looting.ring_due(NEAR)  # the first look
+    clock.t = 0.1
+    assert looting.ring_due(NEAR)
+    looting.press_ring()
+    assert clicker.clicks == [(EAST, ClickSide.RIGHT)] and inp.sent_lines == []

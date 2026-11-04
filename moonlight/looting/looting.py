@@ -2,8 +2,8 @@
 
 A kill or the battle list going empty queues a loot; the bot right-clicks
 the corpse's tile at once when the loop knows it; when it does not and the
-ring watch is on, the fight waits up to ``RING_WAIT`` for the corpse's ring
-and right-clicks that. Else it
+fight waits up to ``RING_WAIT`` for the corpse's ring and right-clicks that
+(right-click looting never presses the hotkey: the OTS ignores it). Else it
 (the tile the killed creature's health bar vanished from; the OTS loots on
 that click, walking there first when it is far) and ``loot_by_right_click``
 is on, else presses the loot-all hotkey (Alt+Q) once after ``PRESS_DELAY``
@@ -94,10 +94,10 @@ class Looting:
         self._clock = clock
         self._frames = frames
         self._grid = game_region
+        # right-click looting finds a kill's corpse by its ring when no tile is known
+        watches_rings = self._config.ringed_corpses or self._config.loot_by_right_click
         self._rings = (
-            RingWatch(game_region)
-            if game_region is not None and self._config.ringed_corpses
-            else None
+            RingWatch(game_region) if game_region is not None and watches_rings else None
         )
         self._clicker = clicker
         #: No ring click before this: the last one's loot lands (and its walk ends).
@@ -176,11 +176,13 @@ class Looting:
         a ring that stays does not take every input slot. A seen ring stays due
         until :meth:`press_ring` runs.
         """
-        if not self._config.ringed_corpses or self._frames is None or self._rings is None:
+        now = self._clock()
+        if not (self._config.ringed_corpses or now < self._kill_ring_wait_until):
+            return False  # rings only for a kill's corpse unless "Loot ringed corpses"
+        if self._frames is None or self._rings is None:
             return False
         if self._ring is not None:
             return True
-        now = self._clock()
         if self._ring_clicking or now < self._ring_hold_until:
             return False
         seen = self._rings.rings(self._frames(), now)
