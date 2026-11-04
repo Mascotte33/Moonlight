@@ -79,12 +79,15 @@ NO_ROUTES_HINT = "No routes yet. Press New, then add waypoints in Edit route."
 #: The cavebot's only on/off switch (Settings has none for it).
 SWITCH = Option("Cavebot on", "cavebot.enabled", "switch")
 ROUTE = Option("Route", "cavebot.route", "dropdown")
-#: Waypoint buttons, one row each: walking, changing floor, jumping, hand actions, scripts,
-#: town (depot, NPCs).
+#: Waypoint buttons under a heading each, one tuple per button row.
 #: Stairs are walked over like any tile, so they get no button.
-KIND_ROWS = (
-    ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:11], ACTIONS[11:14], ACTIONS[14:16], ACTIONS[17:],
-)  # fmt: skip
+KIND_SECTIONS = (
+    ("Movement", (ACTIONS[:4],)),
+    ("Tools", (ACTIONS[4:7],)),
+    ("Route flow", (ACTIONS[8:11],)),
+    ("Actions", (ACTIONS[11:14], ACTIONS[14:16])),
+    ("Town", (ACTIONS[17:],)),
+)
 #: Waypoint kinds recording adds every N tiles; "walk" first, the default.
 RECORD_AS = ("walk", "node", "stand")
 #: Shown under the position while the minimap matches no map tile.
@@ -275,6 +278,17 @@ def _entry(parent: ctk.CTkFrame, hint: str, width: int) -> ctk.CTkEntry:
     return entry
 
 
+def _kind_heading(parent: ctk.CTkFrame, text: str) -> None:
+    """A small heading over a group of waypoint buttons on Edit route."""
+    Label(
+        parent,
+        text=text,
+        anchor="w",
+        text_color=theme.TEXT_DIM,
+        font=ctk.CTkFont(size=theme.SIZE_TITLE, weight="bold"),
+    ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+
+
 def _button(parent: ctk.CTkFrame, text: str, command: Callable[[], None]) -> ctk.CTkButton:
     return ctk.CTkButton(
         parent, text=text, width=90, command=command, fg_color=theme.RAISED, hover_color=theme.HOVER
@@ -447,17 +461,20 @@ class CavebotTab(Tab):
         self.lbl_cursor.pack(fill="x", padx=theme.PAD)
         self._capture: Any = None  # ScreenCapture, made on the first draw
         # T3.F9.K2: one button per waypoint type, at the bot's position.
-        kinds = Row(edit)
-        kinds.pack(anchor="w", padx=theme.PAD, pady=(theme.PAD, 0))
-        for grid_row, group in enumerate(KIND_ROWS):
-            for col, action in enumerate(group):
-                button = _button(kinds, action.capitalize(), partial(self._add_action, action))
-                button.configure(width=64)
-                button.grid(row=grid_row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
+        for heading, rows in KIND_SECTIONS:
+            _kind_heading(edit, heading)
+            kinds = Row(edit)
+            kinds.pack(anchor="w", padx=theme.PAD)
+            for grid_row, group in enumerate(rows):
+                for col, action in enumerate(group):
+                    button = _button(kinds, action.capitalize(), partial(self._add_action, action))
+                    button.configure(width=64)
+                    button.grid(row=grid_row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
         # doc: docs/prs/steps.md#step-waypoint
         # A step waypoint on X, Y, Z or the bot's sqm: one key press that way; the middle stands.
+        _kind_heading(edit, "Step (one key)")
         pad = Row(edit)
-        pad.pack(anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0))
+        pad.pack(anchor="w", padx=theme.PAD)
         # Segoe UI lacks ↖ and ↘, so Windows drew those two from another font.
         arrow_font = ctk.CTkFont(family="Segoe UI Symbol", size=theme.SIZE_BODY)
         for i, (arrow, dx, dy) in enumerate(DIRECTIONS):

@@ -127,10 +127,11 @@ def test_switch_on_without_route_refused(tmp_path: Path) -> None:
 
 def test_every_waypoint_type_has_a_button() -> None:
     from moonlight.cavebot.cavebot import ACTIONS
-    from moonlight.cavebot.tab import KIND_ROWS
+    from moonlight.cavebot.tab import KIND_SECTIONS
 
+    buttons = tuple(a for _, rows in KIND_SECTIONS for row in rows for a in row)
     # stairs is recorded, step comes from the direction pad
-    assert sum(KIND_ROWS, ()) == tuple(a for a in ACTIONS if a not in ("stairs", "step"))
+    assert buttons == tuple(a for a in ACTIONS if a not in ("stairs", "step"))
 
 
 def test_direction_pad_is_every_neighbour_and_the_middle() -> None:
