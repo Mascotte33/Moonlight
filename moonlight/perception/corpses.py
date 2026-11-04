@@ -52,9 +52,9 @@ RING_PIXELS = 25
 DOT_PIXELS = 60
 #: Mean color change of the block above which the view moved (still <= 2.4, walking >= 10).
 MOVED = 6.0
-#: Least match of a tile's specks with a ring frame (a live ring 0.53, spell
-#: smoke 0.26-0.34, loot shots 2026-11-04; its weakest frame 0.41).
-RING_SHAPE = 0.40
+#: Least match of a tile's specks with a ring frame (rings 0.52-0.63, fire,
+#: grass and spell smoke 0.0-0.44, loot shots 2026-11-04).
+RING_SHAPE = 0.48
 #: The ring's 16 animation frames, 32 px each, side by side.
 _RING_STRIP = cv2.imread(str(Path(__file__).with_name("loot_ring.png")), cv2.IMREAD_GRAYSCALE)
 if _RING_STRIP is None:
@@ -86,8 +86,10 @@ def ring_shape(specks: np.ndarray) -> float:
     small = cv2.resize(specks.astype(np.float32), (64, 64), interpolation=cv2.INTER_AREA)
     if not small.any():
         return 0.0
+    # Plain correlation: the mean-removed kind scored fire and bare grass 1.0
+    # where a spot had no specks at all (loot shots 2026-11-04).
     return max(
-        float(cv2.matchTemplate(small, ring, cv2.TM_CCOEFF_NORMED).max()) for ring in _RING_FRAMES
+        float(cv2.matchTemplate(small, ring, cv2.TM_CCORR_NORMED).max()) for ring in _RING_FRAMES
     )
 
 

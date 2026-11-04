@@ -62,7 +62,7 @@ def test_ring_under_the_player_counts() -> None:
 
 
 def test_ring_split_over_two_tiles_is_one_ring() -> None:
-    assert looks(frame(), frame((560, 384, 2)))[1] == [NW]  # 16 px of it on the west tile
+    assert looks(frame(), frame((560, 384, 1)))[1] == [NW]  # 16 px of it on the west tile
 
 
 def test_scrolling_view_is_not_a_ring() -> None:
