@@ -425,8 +425,11 @@ or in the `targeting` section of your profile config:
 - **`default_monster`** is the row for every monster without its own row, so
   everything is attacked unless you ignore it. The tab shows it as "all others".
   Default: priority 1, F6, 10% mana, follow.
-- The bot picks the highest priority, then the lowest HP, then the closest
-  row. It finishes the current target even when a higher priority monster
+- The bot picks the highest priority first. Among the same priority,
+  Targeting > Settings > **Same priority: attack first the** picks:
+  **lowest hp** (default), **highest hp** or **battle list** (the top row;
+  the nearest monster when the client's battle list is sorted by distance).
+  A tie goes to the top row. It finishes the current target even when a higher priority monster
   comes, and never clicks it twice (a second click untargets). A selected
   "never attack" monster is left for the next one.
 - **Area rules** press a hotkey when at least `minimum_adjacent_monsters`

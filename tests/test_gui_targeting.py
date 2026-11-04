@@ -53,6 +53,14 @@ def test_chase_toggle_key_is_saved() -> None:
     assert cfg.targeting.toggle_chase_hotkey == "F9"
 
 
+def test_target_order_is_saved() -> None:
+    settings = TargetingSettings("1500", "6", "", "battle list")
+    cfg = apply_targeting(BotConfig.default(), [DEFAULT_ROW], [], settings)
+    assert cfg.targeting is not None
+    assert cfg.targeting.target_order == "battle list"
+    assert BotConfig.from_dict(cfg.to_dict()).targeting == cfg.targeting
+
+
 def test_a_turned_off_targeting_module_stays_off() -> None:
     cfg = write_option(BotConfig.default(), Option("on", "targeting.enabled", "switch"), False)
     cfg = apply_targeting(cfg, [DEFAULT_ROW], [AreaRuleFields("F7", "2", "")], SETTINGS)

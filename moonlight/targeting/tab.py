@@ -33,7 +33,7 @@ from moonlight.gui.tab_base import (
     section,
 )
 from moonlight.targeting.seen_monsters import SeenMonster, SeenMonsters
-from moonlight.targeting.targeting import TargetingConfig
+from moonlight.targeting.targeting import TARGET_ORDERS, TargetingConfig
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.core.state import WorldState
@@ -77,6 +77,7 @@ class TargetingSettings(NamedTuple):
     attack_cooldown_ms: str
     unreachable_after_seconds: str
     toggle_chase_hotkey: str = ""
+    target_order: str = "lowest hp"
 
 
 def _number(text: str, cast: Callable[[str], float], where: str) -> float:
@@ -143,6 +144,7 @@ def apply_targeting(
             settings.unreachable_after_seconds, float, "unreachable time"
         ),
         toggle_chase_hotkey=settings.toggle_chase_hotkey.strip(),
+        target_order=settings.target_order,
     )
     return BotConfig.from_dict(data)
 
@@ -254,6 +256,22 @@ class TargetingTab(Tab):
         ).pack(side="left")
         self._toggle_chase_hotkey = HotkeyBox(chase_line, self._save)
         self._toggle_chase_hotkey.pack(side="left", padx=(theme.UNIT, 0))
+        # doc: docs/prs/GUI_visual_changes.md#target-order
+        order_line = Row(settings_box)
+        order_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
+        Label(
+            order_line, text="Same priority: attack first the", text_color=theme.TEXT_DIM
+        ).pack(side="left")
+        self._target_order = ctk.CTkOptionMenu(
+            order_line,
+            values=list(TARGET_ORDERS),
+            width=120,
+            fg_color=theme.RAISED,
+            button_color=theme.RAISED,
+            button_hover_color=theme.HOVER,
+            command=lambda _v: self._save(),
+        )
+        self._target_order.pack(side="left", padx=(theme.UNIT, 0))
 
         monsters_box, self._monsters_frame = _card(
             parent,
@@ -342,6 +360,7 @@ class TargetingTab(Tab):
             entry.delete(0, "end")
             entry.insert(0, value)
         self._toggle_chase_hotkey.set(targeting.toggle_chase_hotkey)
+        self._target_order.set(targeting.target_order)
 
     def _next_grid_row(self) -> int:
         self._last_grid_row += 1
@@ -444,6 +463,7 @@ class TargetingTab(Tab):
             self._cooldown_entry.get(),
             self._unreachable_entry.get(),
             self._toggle_chase_hotkey.get(),
+            self._target_order.get(),
         )
 
     def _save(self) -> None:

@@ -34,6 +34,7 @@ from moonlight.perception.creatures import PLAYER_SLOT
 __all__ = [
     "MOVEMENTS",
     "PAUSE_SECONDS",
+    "TARGET_ORDERS",
     "AreaRule",
     "MonsterRow",
     "TargetingAction",
@@ -42,6 +43,10 @@ __all__ = [
 ]
 
 MOVEMENTS = ("follow", "none")
+# doc: docs/prs/GUI_visual_changes.md#target-order
+#: Which of the highest-priority monsters is attacked first. "battle list"
+#: is the client's order: nearest first when its battle list sorts by distance.
+TARGET_ORDERS = ("lowest hp", "highest hp", "battle list")
 
 Rect = tuple[int, int, int, int]
 
@@ -110,6 +115,7 @@ class TargetingConfig:
     unreachable_after_seconds: float = 4.0
     #: The client's "Toggle Chase Mode" key; "" = the bot leaves the owner's mode.
     toggle_chase_hotkey: str = ""
+    target_order: str = "lowest hp"
 
     def validate(self) -> None:
         """Raise ValueError on a bad row or rule, a duplicate name or a bad delay."""
@@ -130,6 +136,10 @@ class TargetingConfig:
             raise ValueError("targeting.attack_cooldown_ms must be >= 0")
         if self.unreachable_after_seconds <= 0:
             raise ValueError("targeting.unreachable_after_seconds must be > 0")
+        if self.target_order not in TARGET_ORDERS:
+            raise ValueError(
+                f"targeting.target_order must be one of {TARGET_ORDERS}, got {self.target_order!r}"
+            )
         if self.toggle_chase_hotkey:
             check_hotkey(self.toggle_chase_hotkey, "targeting.toggle_chase_hotkey")
 
@@ -263,13 +273,19 @@ class TargetingDecision:
         if self._attack_top_row_first:
             best = min(candidates, key=lambda m: m.battle_list_row)
         else:
-            best = min(
-                candidates,
-                key=lambda m: (-self.row_for(m).priority, m.hp_percent, m.battle_list_row),
-            )
+            best = min(candidates, key=self._target_order_key)
         priority = self.row_for(best).priority
         reason = f"{best.name or '?'} priority {priority}, hp {best.hp_percent:.0f}"
         return TargetingAction("select", best.battle_list_row, reason=reason)
+
+    def _target_order_key(self, monster: Monster) -> tuple[float, ...]:
+        """Sort key: highest priority first, then ``target_order``, then the top row."""
+        priority = -self.row_for(monster).priority
+        order = self.config.target_order
+        if order == "battle list":
+            return (priority, monster.battle_list_row)
+        hp = monster.hp_percent if order == "lowest hp" else -monster.hp_percent
+        return (priority, hp, monster.battle_list_row)
 
     def row_center(self, battle_list_row: int) -> tuple[int, int]:
         """Frame pixel at the middle of *battle_list_row*'s name.

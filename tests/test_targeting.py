@@ -50,6 +50,28 @@ def test_hp_wins_over_row() -> None:
     assert picked(rows(), state(monsters)) == 1
 
 
+# doc: docs/prs/GUI_visual_changes.md#target-order
+@pytest.mark.parametrize(
+    ("target_order", "expected_row"), [("lowest hp", 1), ("highest hp", 2), ("battle list", 0)]
+)
+def test_target_order_picks_among_the_same_priority(target_order: str, expected_row: int) -> None:
+    monsters = [
+        Monster("Rat", 50.0, battle_list_row=0),
+        Monster("Rat", 20.0, battle_list_row=1),
+        Monster("Rat", 80.0, battle_list_row=2),
+    ]
+    targeting = TargetingDecision(TargetingConfig(target_order=target_order))
+    assert picked(targeting, state(monsters)) == expected_row
+    boss = TargetingConfig(monsters=(MonsterRow("cyclops", priority=3),), target_order=target_order)
+    with_boss = [*monsters, Monster("Cyclops", 99.0, battle_list_row=3)]
+    assert picked(TargetingDecision(boss), state(with_boss)) == 3  # priority still first
+
+
+def test_unknown_target_order_is_refused() -> None:
+    with pytest.raises(ValueError, match="target_order"):
+        TargetingDecision(TargetingConfig(target_order="closest"))
+
+
 def test_lowest_row_breaks_a_tie() -> None:
     monsters = [Monster("Rat", 50.0, battle_list_row=2), Monster("Rat", 50.0, battle_list_row=1)]
     assert picked(rows(), state(monsters)) == 1
