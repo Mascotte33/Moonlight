@@ -39,6 +39,8 @@ class Clock:
 
 def make_loop(ws: WorldState, inp: FakeInput, **modules: object) -> tuple[GameLoop, Clock]:
     clock = Clock()
+    if "looting" in modules:
+        modules.setdefault("cavebot", idle_module())  # looting runs with the cavebot on
     gl = GameLoop(
         ws,
         inp,
@@ -59,6 +61,7 @@ def idle_module(**overrides: object) -> mock.Mock:
     m.ring_due.return_value = False
     m.loot_first.return_value = False
     m.is_active.return_value = False
+    m.luring.return_value = False
     m.send.return_value = True
     m.alarm = None
     m.route.current = 0
@@ -188,6 +191,23 @@ def test_ring_press_does_not_stop_the_attack() -> None:
     looting.press_ring.assert_called()  # a ring next to the player, any time
     assert gl.current_state is BotState.ATTACK
     clicker.request.assert_called_with((5, 6))
+
+
+def test_no_looting_with_the_cavebot_off_or_paused() -> None:
+    ws = make_state(target="Wolf", monsters=2)
+    looting = idle_module(**{"ring_due.return_value": True})
+    gl, clock = make_loop(ws, FakeInput(), looting=looting, cavebot=None)
+    gl.tick()
+    assert gl.modules.looting is None
+    gl.modules = DecisionModules(looting=looting, cavebot=idle_module())
+    gl.paused = True
+    gl.tick()
+    with ws.lock():
+        ws.selected_target, ws.monsters = None, [Monster(name="m1")]  # the wolf died
+    clock.now += 1.0
+    gl.tick()
+    looting.ring_due.assert_not_called()
+    looting.on_target_died.assert_not_called()
 
 
 def test_emptied_battle_list_queues_a_loot() -> None:

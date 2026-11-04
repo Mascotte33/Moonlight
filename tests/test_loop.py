@@ -916,6 +916,18 @@ class TestGameLoopStats:
         assert gl.get_stats()["actions_sent"] == 0
 
 
+#: A cavebot that is on but walks nowhere: looting runs only with the cavebot on.
+IDLE_CAVEBOT = SimpleNamespace(
+    route=SimpleNamespace(current=0),
+    release_walk_key=lambda: None,
+    is_active=lambda: False,
+    luring=lambda: False,
+    stuck_on_creatures=False,
+    on_target_killed=lambda: None,
+    alarm=None,
+)
+
+
 class TestCurrentTask:
     def _task(self, ws: WorldState, modules: DecisionModules | None = None) -> object:
         if modules is None:
@@ -941,7 +953,8 @@ class TestCurrentTask:
             ring_due=lambda reach: False,
             step=lambda s: None,
         )
-        modules = DecisionModules(looting=cast(Looting, looting))
+        cavebot = cast(Cavebot, IDLE_CAVEBOT)
+        modules = DecisionModules(looting=cast(Looting, looting), cavebot=cavebot)
         assert self._task(make_state(), modules=modules) == "Looting"
 
     def test_walking_to_waypoint(self) -> None:
@@ -977,7 +990,8 @@ def test_loot_ring_reach_follows_the_fight() -> None:
         ring_due=ring_due,
         on_target_died=lambda name, corpse_slot=None: None,
     )
-    gl, clock = make_loop(ws, FakeInput(), modules=DecisionModules(looting=cast(Looting, looting)))
+    modules = DecisionModules(looting=cast(Looting, looting), cavebot=cast(Cavebot, IDLE_CAVEBOT))
+    gl, clock = make_loop(ws, FakeInput(), modules=modules)
     gl.tick()
     assert checks == [range(1, 2)]  # mid-fight: the 8 tiles around, so it does not walk off
     with ws.lock():

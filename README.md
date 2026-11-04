@@ -170,7 +170,8 @@ target never lands on one. Log: `echo raid seen at x,y,z, triggering`, then
 a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 (`<time>_<x>_<y>_<z>_<right|left>.png`); bot.log names each file.
 
-Looting right-clicks the killed monster's corpse 0.1 s after each kill (also
+Looting runs only while the cavebot is on and the bot is not paused (F12 or
+Pause). Looting right-clicks the killed monster's corpse 0.1 s after each kill (also
 when more monsters of that name are left), before attacking the next monster
 (the OTS loots on that click). The next attack waits until the click is sent
 and the loot wait is over, also for a ring clicked mid-fight. The corpse is the tile the monster's health bar

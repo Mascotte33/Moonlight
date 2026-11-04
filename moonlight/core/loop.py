@@ -363,8 +363,13 @@ class GameLoop:
 
     @property
     def modules(self) -> DecisionModules:
-        """The modules that run this tick (``all_modules`` minus the paused ones)."""
+        """The modules that run this tick (``all_modules`` minus the paused ones).
+
+        Looting runs only with the cavebot on and not paused (owner 2026-11-04).
+        """
         if not self.paused:
+            if self.all_modules.cavebot is None and self.all_modules.looting is not None:
+                return replace(self.all_modules, looting=None)
             return self.all_modules
         scripts = self.all_modules.scripts
         return replace(
@@ -372,6 +377,7 @@ class GameLoop:
             cavebot=None,
             targeting=None,
             attack_hotkeys=None,
+            looting=None,
             # doc: docs/prs/scripts-page.md#test-now
             scripts=scripts if scripts is not None and scripts.testing else None,
         )
