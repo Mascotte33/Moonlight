@@ -263,3 +263,29 @@ def test_corpse_click_holds_the_fight_until_the_loot_lands() -> None:
     assert looting.loot_first(ws)  # and for the loot to land
     clock.t = PRESS_DELAY + 0.41
     assert not looting.loot_first(ws)
+
+
+def test_kill_without_a_tile_holds_the_fight_for_its_ring() -> None:
+    clock, clicker = Clock(), FakeClicker(steps=1)
+    looting = make_ring(clock, clicker, ringed_corpses=True)
+    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
+    looting.ring_due(NEAR)
+    looting.on_target_died("Wolf")  # no corpse tile known
+    assert looting.loot_first(ws) and looting.step(ws) is True  # no Alt+Q, stands still
+    clock.t = 0.5
+    assert looting.ring_due(NEAR)
+    looting.press_ring()
+    looting.step(ws)
+    looting.step(ws)  # clicked at 0.5: wait_ms, then the fight goes on
+    clock.t = 0.91
+    assert not looting.loot_first(ws)
+    assert clicker.clicks == [(EAST, ClickSide.RIGHT)]
+
+
+def test_kill_without_a_tile_or_a_ring_fights_on_after_ring_wait() -> None:
+    clock, clicker = Clock(), FakeClicker(steps=1)
+    looting = make_ring(clock, clicker, ringed_corpses=True)
+    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
+    looting.on_target_died("Wolf")
+    clock.t = RING_WAIT
+    assert not looting.loot_first(ws) and not looting.should_loot(ws)

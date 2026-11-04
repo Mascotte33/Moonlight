@@ -1,7 +1,9 @@
 """Looting: right-click the corpse after a kill (else the loot-all hotkey).
 
 A kill or the battle list going empty queues a loot; the bot right-clicks
-the corpse's tile at once when the loop knows it
+the corpse's tile at once when the loop knows it; when it does not and the
+ring watch is on, the fight waits up to ``RING_WAIT`` for the corpse's ring
+and right-clicks that. Else it
 (the tile the killed creature's health bar vanished from; the OTS loots on
 that click, walking there first when it is far) and ``loot_by_right_click``
 is on, else presses the loot-all hotkey (Alt+Q) once after ``PRESS_DELAY``
@@ -48,8 +50,9 @@ __all__ = [
 #: ignored. The corpse right-click goes at once: the health bar vanished
 #: ticks before the battle list showed the kill.
 PRESS_DELAY = 0.1
-#: Seconds the bot stands still after a kill looking for its corpse's ring.
-RING_WAIT = 1.0
+#: Seconds the bot stands still after a kill looking for its corpse's ring
+#: (bot.log 2026-11-04: rings showed 0.2-1.3 s after the kill was seen).
+RING_WAIT = 1.5
 #: Least seconds between ring clicks: the ring stays until the loot lands.
 RING_GAP = 0.3
 #: Seconds the character takes per tile walking to a far ring's corpse.
@@ -110,6 +113,8 @@ class Looting:
         self._pressed_at: float | None = None
         self._died_at = 0.0
         self._ring_wait_until = 0.0
+        #: A kill with no known corpse tile: the fight waits for its ring until then.
+        self._kill_ring_wait_until = 0.0
 
     @property
     def pending(self) -> str | None:
@@ -129,8 +134,13 @@ class Looting:
             if self._config.ringed_corpses:
                 self._ring_wait_until = self._clock() + RING_WAIT
             return
-        self._pending = target_name
         can_click = self._config.loot_by_right_click and self._clicker is not None
+        if corpse_slot is None and can_click and self._rings is not None:
+            # the OTS ignores the hotkey: wait for the ring, then right-click it
+            # (bot.log 2026-11-04: no tile known, Alt+Q, then on to the next fight)
+            self._kill_ring_wait_until = self._clock() + RING_WAIT
+            return
+        self._pending = target_name
         if corpse_slot is not None and can_click and self._grid is not None:
             self._corpse = slot_ring(self._grid, corpse_slot)
         self._pressed_at = None
@@ -141,7 +151,7 @@ class Looting:
         return (
             self._pending is not None
             or self._ring_clicking
-            or self._clock() < self._ring_wait_until
+            or self._clock() < max(self._ring_wait_until, self._kill_ring_wait_until)
         )
 
     def loot_first(self, snap: WorldState) -> bool:
@@ -154,7 +164,7 @@ class Looting:
         looting = (
             self._pending is not None
             or self._ring_clicking
-            or self._clock() < self._ring_hold_until
+            or self._clock() < max(self._ring_hold_until, self._kill_ring_wait_until)
         )
         return looting and not (0 < snap.hp_percent < self._config.min_hp_to_loot)
 
@@ -207,12 +217,14 @@ class Looting:
             assert self._ring_clicked is not None
             walk = RING_WALK_S_PER_TILE * max(self._ring_clicked.tiles_away - 1, 0)
             self._ring_clicking = False
+            self._kill_ring_wait_until = 0.0  # the kill's ring is clicked
             wait, now = self._config.wait_ms / 1000, self._clock()
             self._ring_wait_until = now + wait + walk
             self._ring_hold_until = now + max(wait, RING_GAP) + walk
             return True
         if self._pending is None:
-            return self._clock() < self._ring_wait_until  # stand still, the ring check runs
+            # stand still, the ring check runs
+            return self._clock() < max(self._ring_wait_until, self._kill_ring_wait_until)
         now = self._clock()
         if self._pressed_at is None:
             if 0 < snap.hp_percent < self._config.min_hp_to_loot:
