@@ -260,6 +260,7 @@ def make_backend(config: BotConfig, hardware: HardwareController) -> InputBacken
     """
     backend: InputBackend
     if config.simulation:
+        logger.warning("Simulation is on (Hardware tab): no Arduino, no keys are pressed")
         backend = FakeInput()
     else:
         backend = hardware.connect(
