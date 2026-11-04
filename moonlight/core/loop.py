@@ -107,6 +107,7 @@ from moonlight.cavebot.cavebot import WALK_KEYS
 from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
+from moonlight.perception.corpses import FARTHEST
 from moonlight.targeting.targeting import PAUSE_SECONDS
 
 if TYPE_CHECKING:
@@ -742,8 +743,8 @@ class GameLoop:
             self._task = "Healing"
             return
         looting = self.modules.looting
-        ring_may_show = self._clock() - self._target_died_at < RING_AFTER_KILL_SECONDS
-        if looting is not None and ring_may_show and looting.ring_due():
+        reach = self._ring_reach()
+        if looting is not None and reach is not None and looting.ring_due(reach):
             self._send(snap, looting.press_ring)  # then carry on with this tick
         # doc: docs/prs/pause-stop.md#action-order
         # Healing, then the fight and loot, then scripts, extras and walking.
@@ -759,6 +760,19 @@ class GameLoop:
                     return
                 if self._state is BotState.MOVE:
                     self._act_move(snap)
+
+    def _ring_reach(self) -> range | None:
+        """How many tiles from the player a loot ring counts; None = no ring check.
+
+        Mid-fight only the 8 tiles around, within ``RING_AFTER_KILL_SECONDS``
+        of a kill. With nothing to kill, the whole game grid; the player's own
+        tile only after a kill, since hits flash there like a ring.
+        """
+        # doc: docs/prs/client-hotkeys.md#ring-anywhere
+        after_kill = self._clock() - self._target_died_at < RING_AFTER_KILL_SECONDS
+        if self._state is not BotState.ATTACK:
+            return range(0 if after_kill else 1, FARTHEST + 1)
+        return range(0, 2) if after_kill else None
 
     def _send(
         self,

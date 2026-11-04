@@ -938,7 +938,7 @@ class TestCurrentTask:
         looting = SimpleNamespace(
             should_loot=lambda s: True,
             loot_first=lambda s: True,
-            ring_due=lambda: False,
+            ring_due=lambda reach: False,
             step=lambda s: None,
         )
         modules = DecisionModules(looting=cast(Looting, looting))
@@ -959,16 +959,16 @@ class TestCurrentTask:
 
 
 
-def test_a_loot_ring_counts_only_after_the_target_died() -> None:
+def test_loot_ring_reach_follows_the_fight() -> None:
     ws = make_state()
     rat = Monster("Rat")
     with ws.lock():
         ws.monsters = [rat, Monster("Cave Rat", battle_list_row=1)]
         ws.selected_target = rat
-    checks: list[int] = []
+    checks: list[range] = []
 
-    def ring_due() -> bool:
-        checks.append(1)
+    def ring_due(reach: range) -> bool:
+        checks.append(reach)
         return False
 
     looting = SimpleNamespace(
@@ -977,7 +977,7 @@ def test_a_loot_ring_counts_only_after_the_target_died() -> None:
         ring_due=ring_due,
         on_target_died=lambda name: None,
     )
-    gl, _ = make_loop(ws, FakeInput(), modules=DecisionModules(looting=cast(Looting, looting)))
+    gl, clock = make_loop(ws, FakeInput(), modules=DecisionModules(looting=cast(Looting, looting)))
     gl.tick()
     assert checks == []  # rats hitting the player flash like a ring
     with ws.lock():
@@ -987,7 +987,10 @@ def test_a_loot_ring_counts_only_after_the_target_died() -> None:
     with ws.lock():
         ws.monsters, ws.selected_target = [], None  # the target died
     gl.tick()
-    assert checks == [1]
+    assert checks == [range(0, 8)]  # nothing to kill: the whole grid
+    clock.now += 3.0
+    gl.tick()
+    assert checks[-1] == range(1, 8)  # long after the kill: not the player's tile
 
 # doc: docs/prs/extras.md#extras
 class TestExtras:

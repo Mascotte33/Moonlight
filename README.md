@@ -181,18 +181,20 @@ mouse click holds 60 ms, like a real press; combo hotkeys (Alt+Q, Shift+F1)
 hold all their keys down together. Reflash the Leonardo after updating.
 
 Cavebot > Settings has a switch for each loot trigger. **Loot after every kill**
-(on by default) is the above. **Loot ringed corpses next to me** (off by
-default) right-clicks the corpse whenever its turning loot ring shows
-on the character's tile or the 8 around it (the OTS loots on that click),
-mid-fight too; clicks are the set wait apart, and at least 0.5 s. A ring counts only within
-3 s of the target dying: monsters hitting the character
-flash the same way and kept the cavebot from walking. The ring is also seen
-while the character walks (the scroll is undone first); after a
-ring click the cavebot stands for the set wait so the loot lands. With only
-this switch on, the cavebot stands still for up to 1 s after a kill
-(attacking goes on) until the ring press. bot.log shows `loot triggered`
-when a ring is found and `looting` at each loot press. A ring
-whose press could not go out at once is pressed on the next free slot.
+(on by default) is the above. **Loot ringed corpses** (off by default)
+right-clicks a corpse whenever its turning loot ring shows (the OTS loots on
+that click and walks there first when the corpse is far). Mid-fight only a
+ring on the character's tile or the 8 around it counts, within 3 s of the
+target dying (monsters hitting the character flash the same way). With
+nothing to kill, a ring anywhere on the game grid counts, the nearest first;
+the character's own tile only within 3 s of a kill. The ring is also seen
+while the character walks (the scroll is undone first). After a ring click
+the cavebot stands for the set wait (at least 0.5 s), plus 0.3 s per tile of
+the walk to a far corpse, so the loot lands. With only this switch on, the
+cavebot stands still for up to 1 s after a kill (attacking goes on) until the
+ring click. bot.log shows `loot triggered at (x, y), N tiles away` when a ring
+is found and `looting: right-click at (x, y)` at each click. A ring whose
+click could not go out at once is clicked on the next free slot.
 
 Every waypoint button in Route adds the waypoint on the character's
 tile; there are no typed X, Y, Z fields. The bot walks onto that tile before

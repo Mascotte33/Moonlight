@@ -10,8 +10,10 @@ heals) until HP is back up.
 
 Each trigger has its own switch: ``after_kill`` (the above) and
 ``ringed_corpses``, which right-clicks a corpse whenever its loot ring
-shows on the player's tile or the 8 around it (the OTS loots it on that
-click), then stands ``wait_ms`` so the loot lands.
+shows (the OTS loots it on that click, walking there first when it is
+far), then stands ``wait_ms`` so the loot lands. The loop says how far a
+ring may be (``reach``): mid-fight only the 8 tiles around the player, with
+nothing to kill the whole game grid.
 With only ``ringed_corpses`` on, a kill holds the bot still (no walking;
 attacking goes on) for up to ``RING_WAIT`` so the ring can show and be
 clicked before the cavebot walks off: the ring check is blind while the
@@ -33,9 +35,11 @@ import numpy as np
 from moonlight.core.state import WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, InputBackend
-from moonlight.perception.corpses import RingWatch
+from moonlight.perception.corpses import Ring, RingWatch
 
-__all__ = ["LootingConfig", "Looting", "PRESS_DELAY", "RING_GAP", "RING_WAIT"]
+__all__ = [
+    "LootingConfig", "Looting", "PRESS_DELAY", "RING_GAP", "RING_WAIT", "RING_WALK_S_PER_TILE"
+]
 
 #: Seconds between the kill and the press; a press on the kill tick is ignored.
 PRESS_DELAY = 0.3
@@ -43,6 +47,10 @@ PRESS_DELAY = 0.3
 RING_WAIT = 1.0
 #: Least seconds between ring clicks: the ring stays until the loot lands.
 RING_GAP = 0.5
+#: Seconds the character takes per tile walking to a far ring's corpse.
+# ponytail: one fixed walk speed; read the character's speed if fast or
+# slow characters re-click or wait too long.
+RING_WALK_S_PER_TILE = 0.3
 
 log = logging.getLogger(__name__)
 
@@ -77,9 +85,11 @@ class Looting:
         self._frames = frames
         self._rings = RingWatch(game_region) if game_region is not None else None
         self._clicker = clicker
-        self._ring_clicked_at: float | None = None
-        #: A seen ring's tile whose click is not asked for yet (the input limit dropped it).
-        self._ring_tile: tuple[int, int] | None = None
+        #: No ring click before this: the last one's loot lands (and its walk ends).
+        self._ring_hold_until = 0.0
+        #: A seen ring whose click is not asked for yet (the input limit dropped it).
+        self._ring: Ring | None = None
+        self._ring_clicked: Ring | None = None
         #: The ring's right-click is on its way through the clicker.
         self._ring_clicking = False
         self._pending: str | None = None
@@ -118,24 +128,27 @@ class Looting:
             0 < snap.hp_percent < self._config.min_hp_to_loot
         )
 
-    def ring_due(self) -> bool:
-        """True when a loot ring shows next to the player and a ring click is due.
+    def ring_due(self, reach: range) -> bool:
+        """True when a loot ring shows *reach* tiles from the player and a click is due.
 
-        Clicks are ``wait_ms`` (at least ``RING_GAP``) apart, so the ring has
-        time to go away and a ring that stays does not take every input slot.
-        A seen ring stays due until :meth:`press_ring` runs.
+        Clicks are ``wait_ms`` (at least ``RING_GAP``) apart after the click
+        lands, plus the walk to a far ring, so the ring has time to go away and
+        a ring that stays does not take every input slot. A seen ring stays due
+        until :meth:`press_ring` runs.
         """
         if not self._config.ringed_corpses or self._frames is None or self._rings is None:
             return False
-        if self._ring_tile is not None:
+        if self._ring is not None:
             return True
-        if self._ring_clicking:
+        now = self._clock()
+        if self._ring_clicking or now < self._ring_hold_until:
             return False
-        now, last = self._clock(), self._ring_clicked_at
-        if last is not None and now - last < max(self._config.wait_ms / 1000, RING_GAP):
-            return False
-        self._ring_tile = self._rings.ring_tile(self._frames(), now)
-        return self._ring_tile is not None
+        seen = self._rings.rings(self._frames(), now)
+        rings = [ring for ring in seen if ring.tiles_away in reach]
+        if rings:
+            self._ring = rings[0]  # the nearest
+            log.info("loot triggered at %s, %d tiles away", *self._ring)
+        return self._ring is not None
 
     def press_ring(self) -> None:
         """Right-click the ringed corpse; :meth:`step` drives the click, then waits.
@@ -143,13 +156,12 @@ class Looting:
         Raises:
             RuntimeError: When looting has no clicker or no ring is due.
         """
-        if self._clicker is None or self._ring_tile is None:
+        if self._clicker is None or self._ring is None:
             raise RuntimeError("press_ring needs a clicker and a seen ring")
-        log.info("looting: right-click at %s", self._ring_tile)
-        self._clicker.request(self._ring_tile, side=ClickSide.RIGHT)
-        self._ring_tile = None
+        log.info("looting: right-click at %s", self._ring.point)
+        self._clicker.request(self._ring.point, side=ClickSide.RIGHT)
+        self._ring_clicked, self._ring = self._ring, None
         self._ring_clicking = True
-        self._ring_clicked_at = self._clock()
 
     def step(self, snap: WorldState) -> bool:
         """Press once, then hold for ``wait_ms``; True while looting holds the bot."""
@@ -160,9 +172,14 @@ class Looting:
             if self._clicker.busy:
                 self._clicker.step()
                 return True
-            # clicked: the loot lands, then walk (this also ends a kill's ring wait early)
+            # clicked: the character walks there, the loot lands, then walk on
+            # (this also ends a kill's ring wait early)
+            assert self._ring_clicked is not None
+            walk = RING_WALK_S_PER_TILE * max(self._ring_clicked.tiles_away - 1, 0)
             self._ring_clicking = False
-            self._ring_wait_until = self._clock() + self._config.wait_ms / 1000
+            wait, now = self._config.wait_ms / 1000, self._clock()
+            self._ring_wait_until = now + wait + walk
+            self._ring_hold_until = now + max(wait, RING_GAP) + walk
             return True
         if self._pending is None:
             return self._clock() < self._ring_wait_until  # stand still, the ring check runs
