@@ -29,7 +29,9 @@ import numpy as np
 
 from moonlight.perception.creatures import PLAYER_SLOT
 
-__all__ = ["DOT_PIXELS", "FARTHEST", "GAP", "MOVED", "RING_PIXELS", "Ring", "RingWatch"]
+__all__ = [
+    "DOT_PIXELS", "FARTHEST", "GAP", "MOVED", "RING_PIXELS", "Ring", "RingWatch", "slot_ring"
+]
 
 _COLS, _ROWS = 15, 11
 #: Most tiles from the player to the grid's edge (its columns are 7 to each side).
@@ -95,6 +97,15 @@ class Ring(NamedTuple):
     tiles_away: int  # 1 = the 8 around the player (their own tile is never one)
 
 
+def slot_ring(grid: tuple[int, int, int, int], slot: tuple[int, int]) -> Ring:
+    """The middle of game-grid *slot* ``(col, row)`` and its distance from the player."""
+    gx, gy, gw, gh = grid
+    tw, th = gw / _COLS, gh / _ROWS
+    (col, row), (pc, pr) = slot, PLAYER_SLOT
+    point = (round(gx + (col + 0.5) * tw), round(gy + (row + 0.5) * th))
+    return Ring(point, max(abs(col - pc), abs(row - pr)))
+
+
 class RingWatch:
     """Finds loot rings anywhere on the game grid."""
 
@@ -102,7 +113,7 @@ class RingWatch:
         gx, gy, gw, gh = grid
         tw, th = gw / _COLS, gh / _ROWS
         col, row = PLAYER_SLOT
-        self._origin, self._tile_size = (gx, gy), (tw, th)
+        self._grid, self._tile_size = grid, (tw, th)
         self._box = (slice(gy, gy + gh), slice(gx, gx + gw))
         self._player = (
             slice(round(row * th), round((row + 1) * th)),
@@ -127,7 +138,7 @@ class RingWatch:
         ys, xs = np.nonzero(_bright(block) & ~_bright(ref))
         if len(xs) < RING_PIXELS:
             return []
-        (tw, th), (gx, gy) = self._tile_size, self._origin
+        tw, th = self._tile_size
         cols = np.clip((xs + cut[0]) // tw, 0, _COLS - 1).astype(int)
         rows = np.clip((ys + cut[1]) // th, 0, _ROWS - 1).astype(int)
         counts = np.bincount(rows * _COLS + cols, minlength=_COLS * _ROWS).reshape(_ROWS, _COLS)
@@ -141,10 +152,7 @@ class RingWatch:
         # the player's own outfit and the text over it sparkle the same blue
         is_ring[pr, pc] = False
         found = [
-            Ring(
-                (round(gx + (col + 0.5) * tw), round(gy + (row + 0.5) * th)),
-                max(abs(int(col) - pc), abs(int(row) - pr)),
-            )
+            slot_ring(self._grid, (int(col), int(row)))
             for row, col in zip(*np.nonzero(is_ring), strict=True)
         ]
         return sorted(found, key=lambda ring: ring.tiles_away)

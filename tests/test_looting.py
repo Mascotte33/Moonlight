@@ -223,3 +223,29 @@ def test_far_ring_is_seen_only_in_reach_and_holds_for_the_walk() -> None:
     assert looting.should_loot(ws) and not looting.ring_due(range(1, 8))
     clock.t += 0.02
     assert not looting.should_loot(ws)
+
+
+def test_kill_with_a_known_tile_right_clicks_its_corpse() -> None:
+    clock, clicker = Clock(), FakeClicker(steps=1)
+    looting = Looting(FakeInput(), LootingConfig(), clock=clock, game_region=GRID, clicker=clicker)  # type: ignore[arg-type]
+    ws = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0)
+    looting.on_target_died("Wolf", (8, 5))
+    clock.t = PRESS_DELAY
+    assert looting.step(ws) is True
+    assert clicker.clicks == [(EAST, ClickSide.RIGHT)]
+    assert looting.step(ws) is True  # the click goes out
+    assert looting.step(ws) is True  # the loot lands: wait_ms
+    clock.t = PRESS_DELAY + 0.39
+    assert looting.should_loot(ws)
+    clock.t = PRESS_DELAY + 0.41
+    assert not looting.should_loot(ws)
+
+
+def test_hotkey_setting_presses_the_loot_hotkey_instead() -> None:
+    inp, clock, clicker = FakeInput(), Clock(), FakeClicker()
+    config = LootingConfig(loot_by_right_click=False)
+    looting = Looting(inp, config, clock=clock, game_region=GRID, clicker=clicker)  # type: ignore[arg-type]
+    looting.on_target_died("Wolf", (8, 5))
+    clock.t = PRESS_DELAY
+    looting.step(WorldState(client_focused=True, screen_ok=True, hp_percent=100.0))
+    assert inp.sent_lines == ["K alt+q"] and clicker.clicks == []

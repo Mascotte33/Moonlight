@@ -1,9 +1,12 @@
-"""Looting: one press of the client's loot-all hotkey after a kill.
+"""Looting: right-click the corpse after a kill (else the loot-all hotkey).
 
-The OTS loots every nearby corpse on one hotkey (Alt+Q). A kill or the
-battle list going empty queues a press; the bot holds still ``PRESS_DELAY``
-(the corpse is not lootable the instant the monster leaves the battle list),
-presses it once, then holds
+A kill or the battle list going empty queues a loot; the bot holds still
+``PRESS_DELAY`` (the corpse is not lootable the instant the monster leaves
+the battle list), then right-clicks the corpse's tile when the loop knows it
+(the tile the killed creature's health bar vanished from; the OTS loots on
+that click, walking there first when it is far) and ``loot_by_right_click``
+is on, else presses the loot-all
+hotkey (Alt+Q) once, then holds
 still for ``wait_ms`` so the loot lands and late monsters show up before it
 walks on. Below ``min_hp_to_loot`` the press waits (the bot holds still and
 heals) until HP is back up.
@@ -22,6 +25,7 @@ view scrolls.
 
 # doc: docs/prs/looting.md#loot-hotkey
 # doc: docs/prs/client-hotkeys.md#ring-right-click
+# doc: docs/prs/client-hotkeys.md#corpse-click
 
 from __future__ import annotations
 
@@ -35,7 +39,7 @@ import numpy as np
 from moonlight.core.state import WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, InputBackend
-from moonlight.perception.corpses import Ring, RingWatch
+from moonlight.perception.corpses import Ring, RingWatch, slot_ring
 
 __all__ = [
     "LootingConfig", "Looting", "PRESS_DELAY", "RING_GAP", "RING_WAIT", "RING_WALK_S_PER_TILE"
@@ -62,6 +66,8 @@ class LootingConfig:
     min_hp_to_loot: float = 70.0
     #: Press after every kill (and when the battle list empties).
     after_kill: bool = True
+    #: After a kill right-click its corpse; off = press ``loot_hotkey`` instead.
+    loot_by_right_click: bool = True
     #: Right-click a corpse whenever its loot ring shows next to the player.
     ringed_corpses: bool = False
 
@@ -83,7 +89,12 @@ class Looting:
         self._config = config or LootingConfig()
         self._clock = clock
         self._frames = frames
-        self._rings = RingWatch(game_region) if game_region is not None else None
+        self._grid = game_region
+        self._rings = (
+            RingWatch(game_region)
+            if game_region is not None and self._config.ringed_corpses
+            else None
+        )
         self._clicker = clicker
         #: No ring click before this: the last one's loot lands (and its walk ends).
         self._ring_hold_until = 0.0
@@ -93,6 +104,8 @@ class Looting:
         #: The ring's right-click is on its way through the clicker.
         self._ring_clicking = False
         self._pending: str | None = None
+        #: The kill's corpse tile to right-click (None = press the loot-all hotkey).
+        self._corpse: Ring | None = None
         self._pressed_at: float | None = None
         self._died_at = 0.0
         self._ring_wait_until = 0.0
@@ -102,8 +115,13 @@ class Looting:
         """Name of the kill waiting to be looted ("" for an emptied battle list)."""
         return self._pending
 
-    def on_target_died(self, target_name: str) -> None:
-        """Queue a press for the corpse of *target_name* ("" = battle list emptied)."""
+    def on_target_died(
+        self, target_name: str, corpse_slot: tuple[int, int] | None = None
+    ) -> None:
+        """Queue a loot for the corpse of *target_name* ("" = battle list emptied).
+
+        *corpse_slot* is the game-grid ``(col, row)`` it died on, when known.
+        """
         # ponytail: one queued press; a kill and the emptied list in one tick
         # share it, since the hotkey loots every corpse around.
         if not self._config.after_kill:
@@ -111,6 +129,9 @@ class Looting:
                 self._ring_wait_until = self._clock() + RING_WAIT
             return
         self._pending = target_name
+        can_click = self._config.loot_by_right_click and self._clicker is not None
+        if corpse_slot is not None and can_click and self._grid is not None:
+            self._corpse = slot_ring(self._grid, corpse_slot)
         self._pressed_at = None
         self._died_at = self._clock()
 
@@ -189,6 +210,13 @@ class Looting:
                 return True
             if 0 < snap.hp_percent < self._config.min_hp_to_loot:
                 return True  # low HP: hold still and heal, loot after
+            if self._corpse is not None:
+                assert self._clicker is not None  # on_target_died checked it
+                log.info("looting: right-click the corpse at %s", self._corpse.point)
+                self._clicker.request(self._corpse.point, side=ClickSide.RIGHT)
+                self._ring_clicked, self._ring_clicking = self._corpse, True
+                self._pending = self._corpse = None
+                return True
             log.info("looting")
             self._input.press_combo(self._config.loot_hotkey)
             self._pressed_at = now

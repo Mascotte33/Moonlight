@@ -681,11 +681,7 @@ def build_modules(
                 config.looting,
                 clock=clock or time.monotonic,
                 frames=frames,
-                game_region=(
-                    profile.get_region("game_grid").to_tuple
-                    if config.looting.ringed_corpses
-                    else None
-                ),
+                game_region=profile.get_region("game_grid").to_tuple,
                 clicker=m.clicker,
             )
     return m

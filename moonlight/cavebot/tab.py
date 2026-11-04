@@ -118,6 +118,7 @@ CAVEBOT_PAGE_OPTIONS = [
 ]
 LOOT_OPTIONS = [
     Option("Loot after every kill", "looting.after_kill", "switch"),
+    Option("Right-click the corpse (off: loot hotkey)", "looting.loot_by_right_click", "switch"),
     Option("Loot ringed corpses", "looting.ringed_corpses", "switch"),
     Option("Loot hotkey", "looting.loot_hotkey", "hotkey"),
     Option("Wait after looting (ms)", "looting.wait_ms", "entry"),

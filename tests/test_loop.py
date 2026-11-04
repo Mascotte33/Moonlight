@@ -975,7 +975,7 @@ def test_loot_ring_reach_follows_the_fight() -> None:
         should_loot=lambda s: False,
         loot_first=lambda s: False,
         ring_due=ring_due,
-        on_target_died=lambda name: None,
+        on_target_died=lambda name, corpse_slot=None: None,
     )
     gl, clock = make_loop(ws, FakeInput(), modules=DecisionModules(looting=cast(Looting, looting)))
     gl.tick()

@@ -127,9 +127,27 @@ def test_kill_detection_and_loot_state() -> None:
     looting.should_loot.return_value = True
     clock.now += 1.0
     gl.tick()
-    looting.on_target_died.assert_called_once_with("Wolf")
+    looting.on_target_died.assert_called_once_with("Wolf", None)
     assert gl.current_state is BotState.LOOT
     looting.step.assert_called_once()
+
+
+def test_kill_passes_the_tile_its_health_bar_vanished_from() -> None:
+    ws = make_state(target="Wolf", monsters=0)
+    with ws.lock():
+        ws.creature_slots = ((8, 5), (2, 2))  # the wolf east of the player, a rat far off
+    looting = idle_module()
+    gl, clock = make_loop(ws, FakeInput(), looting=looting)
+    gl.tick()
+    with ws.lock():
+        ws.creature_slots = ()  # the bar goes first, the battle list a few ticks later
+    clock.now += 0.1
+    gl.tick()
+    with ws.lock():
+        ws.selected_target = None
+    clock.now += 0.1
+    gl.tick()
+    looting.on_target_died.assert_called_once_with("Wolf", (8, 5))
 
 
 def test_kill_detected_while_a_same_named_monster_remains() -> None:
@@ -143,7 +161,7 @@ def test_kill_detected_while_a_same_named_monster_remains() -> None:
         ws.monsters = [Monster(name="Wolf")]  # one died, the client selects the other
     clock.now += 1.0
     gl.tick()
-    looting.on_target_died.assert_called_once_with("Wolf")
+    looting.on_target_died.assert_called_once_with("Wolf", None)
 
 
 def test_kill_mid_fight_loots_before_next_target() -> None:

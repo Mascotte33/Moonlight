@@ -96,7 +96,7 @@ import logging
 import math
 import threading
 import time
-from collections import Counter
+from collections import Counter, deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -108,6 +108,7 @@ from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
 from moonlight.perception.corpses import FARTHEST
+from moonlight.perception.creatures import PLAYER_SLOT
 from moonlight.targeting.targeting import PAUSE_SECONDS
 
 if TYPE_CHECKING:
@@ -148,6 +149,26 @@ STOPPED_READ_EVERY_TICKS = 4
 #: from a kill; without one, hits flashing on the player look the same, and
 #: monsters walking out of view drop the battle list count every few seconds.
 RING_AFTER_KILL_SECONDS = 3.0
+#: Ticks of creature tiles kept to find a kill's corpse: the battle list is
+#: read every 4th tick, so the health bar may vanish a few ticks earlier.
+CORPSE_LOOKBACK_TICKS = 8
+
+
+def vanished_slot(
+    recent_slots: deque[tuple[tuple[int, int], ...]], current_slots: tuple[tuple[int, int], ...]
+) -> tuple[int, int] | None:
+    """The tile nearest the player whose creature is gone: a kill's corpse.
+
+    # doc: docs/prs/client-hotkeys.md#corpse-click
+    """
+    # ponytail: a monster that walked off a tile looks gone too; nearest wins
+    # (the target is usually next to the player). Use the target's red box
+    # if the wrong corpse gets clicked.
+    gone = set().union(*recent_slots) - set(current_slots)
+    if not gone:
+        return None
+    pc, pr = PLAYER_SLOT
+    return min(gone, key=lambda slot: (max(abs(slot[0] - pc), abs(slot[1] - pr)), slot))
 
 
 @dataclass(frozen=True)
@@ -296,6 +317,9 @@ class GameLoop:
         self._targeting_paused_until = 0.0  # a lone unreachable target: walk on
         self._last_target: str | None = None
         self._last_names: Counter[str] = Counter()
+        self._recent_creature_slots: deque[tuple[tuple[int, int], ...]] = deque(
+            maxlen=CORPSE_LOOKBACK_TICKS
+        )
         self._target_died_at = float("-inf")
         self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
@@ -613,7 +637,8 @@ class GameLoop:
             if prev and (
                 names[prev] < self._last_names[prev] or (cur is None and not names[prev])
             ):
-                m.looting.on_target_died(prev)
+                corpse = vanished_slot(self._recent_creature_slots, snap.creature_slots)
+                m.looting.on_target_died(prev, corpse)
                 self._target_died_at = now
                 if m.attack_hotkeys is not None:
                     m.attack_hotkeys.new_target()  # the client may select the next at once
@@ -621,6 +646,7 @@ class GameLoop:
                 m.looting.on_target_died("")  # the battle list emptied: loot again
                 self._target_died_at = now
         self._last_names = names
+        self._recent_creature_slots.append(snap.creature_slots)
         if m.extras is not None:
             m.extras.observe(snap)
             if m.extras.refill_due and m.cavebot is not None:
@@ -765,10 +791,11 @@ class GameLoop:
         """How many tiles from the player a loot ring counts; None = no ring check.
 
         Mid-fight only the 8 tiles around, within ``RING_AFTER_KILL_SECONDS``
-        of a kill. With nothing to kill, the whole game grid.
+        of a kill (also while a kill is looted). With nothing to kill, the
+        whole game grid.
         """
         # doc: docs/prs/client-hotkeys.md#ring-anywhere
-        if self._state is not BotState.ATTACK:
+        if self._state not in (BotState.ATTACK, BotState.LOOT):
             return range(1, FARTHEST + 1)
         after_kill = self._clock() - self._target_died_at < RING_AFTER_KILL_SECONDS
         return range(1, 2) if after_kill else None

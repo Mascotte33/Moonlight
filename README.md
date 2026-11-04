@@ -170,10 +170,14 @@ target never lands on one. Log: `echo raid seen at x,y,z, triggering`, then
 a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 (`<time>_<x>_<y>_<z>_<right|left>.png`); bot.log names each file.
 
-Looting presses the loot hotkey (the OTS loots every corpse around on
-Alt+Q) 0.3 s after each kill (also when more monsters of that name are left),
-before attacking the next monster, and again
-when the battle list empties, then stands
+Looting right-clicks the killed monster's corpse 0.3 s after each kill (also
+when more monsters of that name are left), before attacking the next monster
+(the OTS loots on that click). The corpse is the tile the monster's health bar
+vanished from, the one nearest the character when several did. When no tile
+is known, and when the battle list empties, it presses the loot hotkey
+instead. bot.log shows `looting: right-click the corpse at (x, y)` or
+`looting` (the hotkey). Switch **Right-click the corpse (off: loot hotkey)**
+off for a server that loots on its hotkey. Then it stands
 still for the set wait (400 ms by default) before walking on. Below the set
 HP (70 % by default) it holds still and heals first, then loots. It also
 loots while an alarm is up. Set it in Cavebot > Settings. Every key tap and
@@ -185,7 +189,7 @@ Cavebot > Settings has a switch for each loot trigger. **Loot after every kill**
 right-clicks a corpse whenever its turning loot ring shows (the OTS loots on
 that click and walks there first when the corpse is far). Mid-fight only a
 ring on the 8 tiles around the character counts, within 3 s of the target
-dying. With nothing to kill, a ring anywhere on the game grid counts, the
+dying, also while the kill is looted. With nothing to kill, a ring anywhere on the game grid counts, the
 nearest first. The character's own tile never counts. Only the ring's own
 light-blue dots count: campfires, the blue orb, water, skulls, white text and
 "puff" clouds do not, and the ring is seen in the blue half of its pulse. The ring is also seen
