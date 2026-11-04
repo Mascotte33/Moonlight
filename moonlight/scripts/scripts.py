@@ -178,7 +178,7 @@ class Bot:
         return [functools.partial(self._runner.input.press_combo, k) for k in say_keys(text)]
 
     def click(self, x: int, y: int, right: bool = False) -> list[Command]:
-        """Click client-window pixel *x*, *y* (what the Edit route cursor readout shows)."""
+        """Click client-window pixel *x*, *y* (what the Route cursor readout shows)."""
         clicker = self._runner.clicker
         if clicker is None or not clicker.absolute:
             raise RuntimeError("bot.click needs the absolute clicker")

@@ -1,4 +1,4 @@
-"""Cavebot tab: Waypoints, and a Refill / Loot / Edit route switch
+"""Cavebot tab: Waypoints, and a Refill / Settings / Route switch
 (T3.F1.K1, T3.F7.K1, T3.F8.K1).
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, read by
@@ -76,7 +76,7 @@ __all__ = [
 
 NO_ROUTES = "No routes"
 PICK = "Pick a route"
-NO_ROUTES_HINT = "No routes yet. Press New, then add waypoints in Edit route."
+NO_ROUTES_HINT = "No routes yet. Press New, then add waypoints in Route."
 #: The cavebot's only on/off switch (Settings has none for it).
 SWITCH = Option("Cavebot on", "cavebot.enabled", "switch")
 ROUTE = Option("Route", "cavebot.route", "dropdown")
@@ -112,7 +112,7 @@ OPTIONS = [
     ROUTE,
     START,
 ]
-#: Cavebot options on the Options page, kept off the Waypoints card.
+#: Cavebot options on the Settings page, kept off the Waypoints card.
 CAVEBOT_PAGE_OPTIONS = [
     Option("Rope hotkey", "cavebot.rope_hotkey", "hotkey"),
     Option("Shovel hotkey", "cavebot.shovel_hotkey", "hotkey"),
@@ -283,7 +283,7 @@ def _entry(parent: ctk.CTkFrame, hint: str, width: int) -> ctk.CTkEntry:
 
 
 def _kind_heading(parent: ctk.CTkFrame, text: str) -> None:
-    """A small heading over a group of waypoint buttons on Edit route."""
+    """A small heading over a group of widgets on the right card."""
     Label(
         parent,
         text=text,
@@ -308,7 +308,7 @@ def refill_now(cavebot: Any) -> str:
 
 
 class CavebotTab(Tab):
-    """Waypoints card beside one card switching Refill, Loot and Edit route."""
+    """Waypoints card beside one card switching Refill, Settings and Route."""
 
     title = "Cavebot"
     options = OPTIONS + CAVEBOT_PAGE_OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS
@@ -372,11 +372,11 @@ class CavebotTab(Tab):
         self.lbl_msg = Label(box, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
-        side = section(root, "Refill / Loot / Options / Edit route")
+        side = section(root, "Refill / Settings / Route")
         side.grid(row=0, column=1, sticky="nsew")
         pages = {
             name: Row(side)
-            for name in ("Refill", "Loot", "Options", "Edit route")
+            for name in ("Refill", "Settings", "Route")
         }
 
         def show(name: str) -> None:
@@ -428,7 +428,7 @@ class CavebotTab(Tab):
         Label(
             refill,
             text="Buy at a 'trade' waypoint, one per line: item, percent of the amount slider."
-            " Saved with the route (Save in Edit route).",
+            " Saved with the route (Save in Route).",
             anchor="w",
             justify="left",
             wraplength=260,
@@ -439,11 +439,12 @@ class CavebotTab(Tab):
         self.txt_buy.bind("<KeyRelease>", lambda _event: self._buy_edited())
         self.lbl_buy = Label(refill, text="", anchor="w", text_color=theme.TEXT_DIM)
         self.lbl_buy.pack(fill="x", padx=theme.PAD)
-        self.build_options(pages["Loot"], LOOT_OPTIONS)
-        self.build_options(pages["Options"], CAVEBOT_PAGE_OPTIONS)
+        self.build_options(pages["Settings"], CAVEBOT_PAGE_OPTIONS)
+        _kind_heading(pages["Settings"], "Loot")
+        self.build_options(pages["Settings"], LOOT_OPTIONS)
         show("Refill")
 
-        edit = pages["Edit route"]
+        edit = pages["Route"]
         add = Row(edit)
         add.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         Label(add, text="Label / script").pack(side="left")
