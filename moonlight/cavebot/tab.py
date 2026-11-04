@@ -1,4 +1,4 @@
-"""Cavebot tab: Waypoints, and a Refill / Settings / Route switch
+"""Cavebot tab: Waypoints, and a Route / Refill / Settings switch
 (T3.F1.K1, T3.F7.K1, T3.F8.K1).
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, read by
@@ -306,7 +306,7 @@ def refill_now(cavebot: Any) -> str:
 
 
 class CavebotTab(Tab):
-    """Waypoints card beside one card switching Refill, Settings and Route."""
+    """Waypoints card beside one card switching Route, Refill and Settings."""
 
     title = "Cavebot"
     options = OPTIONS + CAVEBOT_PAGE_OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS
@@ -370,11 +370,11 @@ class CavebotTab(Tab):
         self.lbl_msg = Label(box, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
-        side = section(root, "Refill / Settings / Route")
+        side = section(root, "Route / Refill / Settings")
         side.grid(row=0, column=1, sticky="nsew")
         pages = {
             name: Row(side)
-            for name in ("Refill", "Settings", "Route")
+            for name in ("Route", "Refill", "Settings")
         }
 
         def show(name: str) -> None:
@@ -389,7 +389,7 @@ class CavebotTab(Tab):
             selected_hover_color=theme.HOVER,
         )
         switch.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        switch.set("Refill")
+        switch.set("Route")
         refill = pages["Refill"]
         Label(
             refill,
@@ -440,7 +440,7 @@ class CavebotTab(Tab):
         self.build_options(pages["Settings"], CAVEBOT_PAGE_OPTIONS)
         _kind_heading(pages["Settings"], "Loot")
         self.build_options(pages["Settings"], LOOT_OPTIONS)
-        show("Refill")
+        show("Route")
 
         edit = pages["Route"]
         add = Row(edit)
