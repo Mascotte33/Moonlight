@@ -1336,7 +1336,8 @@ class Cavebot:
         on_tile = dx == dy == 0
         if on_tile:
             self._last_move = now  # waiting here is not being stuck
-        if now - self._depot_looked < _DEPOT_RELOOK:
+        settled = now - self._moved_at >= _VIEW_SETTLE  # mid-step a locker is a tile off
+        if not settled or now - self._depot_looked < _DEPOT_RELOOK:
             return None if on_tile else wp
         self._depot_looked = now
         frame = self._frames() if self._frames is not None else None
@@ -1388,8 +1389,8 @@ class Cavebot:
                 self.alarm = None
             self._deposit_drag = (bag, stash)
             return
-        if now - self._locker_clicked < _DEPOT_RELOOK:
-            return
+        if now - self._locker_clicked < _DEPOT_RELOOK or now - self._moved_at < _VIEW_SETTLE:
+            return  # mid-step the click lands a tile off
         if self._locker_clicked > float("-inf") and self.alarm != "deposit":
             found = (("stash", stash), ("backpack", bag))
             missing = " and ".join(name for name, at in found if at is None)

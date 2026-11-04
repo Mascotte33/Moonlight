@@ -1415,7 +1415,7 @@ def test_finddepo_walks_to_the_free_tile_below_the_nearest_locker(
     # Lockers in slots (7, 3) and (9, 3): the player (slot 7, 5) is at 100,100.
     sim = _depot_sim(monkeypatch, {(7, 3), (9, 3)})
     sim.seen["creatures"] = {(7, 4)}  # type: ignore[attr-defined]  # someone at the first
-    sim.step()
+    run_until(sim, 0.6)  # stood still long enough for a settled view
     assert sim.bot.depot_locker == (102, 98, 7)
     assert sim.clicker.clicks  # walking to 102,99
     sim.pos = Position(102, 99, 7)
@@ -1430,10 +1430,10 @@ def test_finddepo_waits_while_every_locker_is_taken_then_alarms(
     sim.seen["creatures"] = {(7, 4)}  # type: ignore[attr-defined]
     run_until(sim, 299)
     assert sim.bot.alarm is None and sim.route.current == 0 and not sim.clicker.clicks
-    run_until(sim, 302)
+    run_until(sim, 304)
     assert sim.bot.alarm == "depot_taken" and sim.bot.is_active()
     sim.seen["creatures"] = set()  # type: ignore[attr-defined]
-    run_until(sim, 306)
+    run_until(sim, 307)
     assert sim.bot.alarm is None and sim.bot.depot_locker == (100, 98, 7)
     sim.pos = Position(100, 99, 7)
     sim.step()
@@ -1455,6 +1455,8 @@ def _deposit_sim(
               frames=lambda: frame, backpack=bag, clicker=SteppedClicker())  # fmt: skip
     sim.bot.start()
     sim.bot.depot_locker = (100, 98, 7)
+    sim.step()  # sees the position
+    sim.now += 0.5  # the view settled
     return sim
 
 
@@ -1489,8 +1491,22 @@ def test_finddepo_looks_as_soon_as_its_tile_is_in_view(monkeypatch: pytest.Monke
     # Its tile 100,100 is blocked by a player: the bot is 3 tiles off.
     sim = _depot_sim(monkeypatch, {(7, 3)})
     sim.pos = Position(97, 100, 7)
-    sim.step()
+    run_until(sim, 0.6)
     assert sim.bot.depot_locker == (97, 98, 7)
+
+
+def test_finddepo_reads_the_lockers_only_once_the_player_stands_still(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#finddepo-waypoint
+    # Mid-step the view is scrolled: a locker read then lands a tile off.
+    sim = _depot_sim(monkeypatch, {(7, 3)})
+    for x in range(95, 99):  # walking in, a new tile every 0.3 s
+        sim.pos = Position(x, 100, 7)
+        sim.step(0.3)
+    assert sim.bot.depot_locker is None
+    run_until(sim, sim.now + 0.6)
+    assert sim.bot.depot_locker == (98, 98, 7)
 
 
 def test_walk_keys_turn_the_chat_off_instead_of_calling_the_tile_blocked(
