@@ -6,10 +6,17 @@ API) plus real ``HealingDecision`` instances to prove the heal hotkey path.
 
 from __future__ import annotations
 
+from collections import deque
 from types import SimpleNamespace
 from unittest import mock
 
-from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
+from moonlight.core.loop import (
+    BotState,
+    DecisionModules,
+    GameLoop,
+    LoopConfig,
+    vanished_slot,
+)
 from moonlight.core.state import Monster, WorldState
 from moonlight.hardware.input import FakeInput
 from moonlight.healing.healing import HealingConfig, HealingDecision
@@ -157,14 +164,39 @@ def test_kill_detected_while_a_same_named_monster_remains() -> None:
     ws = make_state(target="Wolf")
     with ws.lock():
         ws.monsters = [Monster(name="Wolf"), Monster(name="Wolf")]
+        ws.selected_target = Monster(name="Wolf", hp_percent=20.0)
     looting = idle_module()
     gl, clock = make_loop(ws, FakeInput(), looting=looting)
     gl.tick()
     with ws.lock():
         ws.monsters = [Monster(name="Wolf")]  # one died, the client selects the other
+        ws.selected_target = Monster(name="Wolf")
     clock.now += 1.0
     gl.tick()
     looting.on_target_died.assert_called_once_with("Wolf", None)
+
+
+def test_monster_leaving_while_the_target_stays_selected_is_no_kill() -> None:
+    ws = make_state(target="Wolf")
+    with ws.lock():
+        ws.monsters = [Monster(name="Wolf"), Monster(name="Wolf")]
+        ws.selected_target = Monster(name="Wolf", hp_percent=60.0)
+        ws.creature_slots = ((8, 5), (9, 7))
+    looting = idle_module()
+    gl, clock = make_loop(ws, FakeInput(), looting=looting)
+    gl.tick()
+    with ws.lock():
+        ws.monsters = [Monster(name="Wolf")]  # the far one walked off screen
+        ws.selected_target = Monster(name="Wolf", hp_percent=50.0)
+        ws.creature_slots = ((8, 5),)
+    clock.now += 1.0
+    gl.tick()
+    looting.on_target_died.assert_not_called()
+
+
+def test_corpse_two_tiles_away_is_not_guessed() -> None:
+    assert vanished_slot(deque([((9, 7), (8, 5))]), ((8, 5),)) is None
+    assert vanished_slot(deque([((9, 7), (8, 6))]), ((9, 7),)) == (8, 6)
 
 
 def test_kill_mid_fight_loots_before_next_target() -> None:

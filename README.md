@@ -175,9 +175,11 @@ Pause). Looting right-clicks the killed monster's corpse 0.1 s after each kill (
 when more monsters of that name are left), before attacking the next monster
 (the OTS loots on that click). The next attack waits until the click is sent
 and the loot wait is over, also for a ring clicked mid-fight. The corpse is the tile the monster's health bar
-vanished from, the one nearest the character when several did. When no tile
-is known, and when the battle list empties, it presses the loot hotkey
-instead. bot.log shows `looting: right-click the corpse at (x, y)` or
+vanished from, the one nearest the character when several did; only the 8
+tiles around the character count. A kill counts only when the target is gone
+or the selection moves to another monster, not when some other monster walks
+out of the battle list. When no tile is known, and when the battle list
+empties, it presses the loot hotkey instead. bot.log shows `looting: right-click the corpse at (x, y)` or
 `looting` (the hotkey). Switch **Right-click the corpse (off: loot hotkey)**
 off for a server that loots on its hotkey. Then it stands
 still for the set wait (400 ms by default) before walking on. Below the set
