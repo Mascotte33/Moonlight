@@ -6,7 +6,6 @@ API) plus real ``HealingDecision`` instances to prove the heal hotkey path.
 
 from __future__ import annotations
 
-from collections import deque
 from types import SimpleNamespace
 from unittest import mock
 
@@ -15,7 +14,6 @@ from moonlight.core.loop import (
     DecisionModules,
     GameLoop,
     LoopConfig,
-    vanished_slot,
 )
 from moonlight.core.state import Monster, WorldState
 from moonlight.hardware.input import FakeInput
@@ -137,27 +135,11 @@ def test_kill_detection_and_loot_state() -> None:
     looting.should_loot.return_value = True
     clock.now += 1.0
     gl.tick()
-    looting.on_target_died.assert_called_once_with("Wolf", None)
+    looting.on_target_died.assert_called_once_with("Wolf")
     assert gl.current_state is BotState.LOOT
     looting.step.assert_called_once()
 
 
-def test_kill_passes_the_tile_its_health_bar_vanished_from() -> None:
-    ws = make_state(target="Wolf", monsters=0)
-    with ws.lock():
-        ws.creature_slots = ((8, 5), (2, 2))  # the wolf east of the player, a rat far off
-    looting = idle_module()
-    gl, clock = make_loop(ws, FakeInput(), looting=looting)
-    gl.tick()
-    with ws.lock():
-        ws.creature_slots = ()  # the bar goes first, the battle list a few ticks later
-    clock.now += 0.1
-    gl.tick()
-    with ws.lock():
-        ws.selected_target = None
-    clock.now += 0.1
-    gl.tick()
-    looting.on_target_died.assert_called_once_with("Wolf", (8, 5))
 
 
 def test_kill_detected_while_a_same_named_monster_remains() -> None:
@@ -173,7 +155,7 @@ def test_kill_detected_while_a_same_named_monster_remains() -> None:
         ws.selected_target = Monster(name="Wolf")
     clock.now += 1.0
     gl.tick()
-    looting.on_target_died.assert_called_once_with("Wolf", None)
+    looting.on_target_died.assert_called_once_with("Wolf")
 
 
 def test_monster_leaving_while_the_target_stays_selected_is_no_kill() -> None:
@@ -194,9 +176,6 @@ def test_monster_leaving_while_the_target_stays_selected_is_no_kill() -> None:
     looting.on_target_died.assert_not_called()
 
 
-def test_corpse_two_tiles_away_is_not_guessed() -> None:
-    assert vanished_slot(deque([((9, 7), (8, 5))]), ((8, 5),)) is None
-    assert vanished_slot(deque([((9, 7), (8, 6))]), ((9, 7),)) == (8, 6)
 
 
 def test_kill_mid_fight_loots_before_next_target() -> None:
@@ -289,22 +268,3 @@ def test_perceive_runs_before_snapshot() -> None:
     )
     gl.tick()
     assert gl.current_state is BotState.IDLE  # perceive set screen_ok, so not PAUSED
-
-
-def test_corpse_tile_found_ticks_after_the_kill() -> None:
-    ws = make_state(target="Wolf", monsters=0)
-    with ws.lock():
-        ws.creature_slots = ((8, 5),)
-    looting = idle_module()
-    gl, clock = make_loop(ws, FakeInput(), looting=looting)
-    gl.tick()
-    with ws.lock():
-        ws.selected_target = None  # the battle list drops it, the bar is still up
-    clock.now += 0.05
-    gl.tick()
-    looting.on_target_died.assert_called_once_with("Wolf", None)
-    with ws.lock():
-        ws.creature_slots = ()
-    clock.now += 0.05
-    gl.tick()
-    looting.on_corpse_found.assert_called_once_with((8, 5))

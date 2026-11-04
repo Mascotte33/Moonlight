@@ -171,20 +171,16 @@ a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 (`<time>_<x>_<y>_<z>_<right|left>.png`); bot.log names each file.
 
 Looting runs only while the cavebot is on and the bot is not paused (F12 or
-Pause). Looting right-clicks the killed monster's corpse right after each kill (also
-when more monsters of that name are left), before attacking the next monster
-(the OTS loots on that click). The next attack waits until the click is sent
-and the loot wait is over, also for a ring clicked mid-fight. The corpse is the tile the monster's health bar
-vanished from, the one nearest the character when several did; only the 8
-tiles around the character count. A kill counts only when the target is gone
-or the selection moves to another monster, not when some other monster walks
-out of the battle list. When the battle list drops the kill before the health bar goes, it keeps
-looking for the tile for 0.5 s and right-clicks it as soon as the bar goes
-(`looting: corpse tile found after the kill`). When no tile is known, and when the battle list
-empties, it waits up to 1.5 s (no attacking, no walking) for the corpse's loot
-ring and right-clicks that (also with **Loot ringed corpses** off); a ring
-found just as the wait ends is still clicked. It never
-presses the loot hotkey while right-clicking is on. bot.log shows `looting: right-click the corpse at (x, y)` or
+Pause). After each kill (also when more monsters of that name are left) and
+when the battle list empties, looting waits up to 1.5 s (no attacking, no
+walking) for the corpse's loot ring and right-clicks it (the OTS loots on that
+click); a corpse with no ring has no loot. It only clicks rings, never guesses
+the tile (also with **Loot ringed corpses** off); a ring found just as the wait
+ends is still clicked. The next attack waits until the click is sent and the
+loot wait is over, also for a ring clicked mid-fight. A kill counts only when
+the target is gone or the selection moves to another monster, not when some
+other monster walks out of the battle list. It never presses the loot hotkey
+while right-clicking is on. bot.log shows `looting: right-click at (x, y)` or
 `looting` (the hotkey). Switch **Right-click the corpse (off: loot hotkey)**
 off for a server that loots on its hotkey. Then it stands
 still for the set wait (400 ms by default) before walking on. Below the set

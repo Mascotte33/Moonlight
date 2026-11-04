@@ -96,7 +96,7 @@ import logging
 import math
 import threading
 import time
-from collections import Counter, deque
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -107,7 +107,6 @@ from moonlight.cavebot.cavebot import WALK_KEYS
 from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import Monster, WorldState
 from moonlight.hardware.input import InputBackend
-from moonlight.perception.creatures import PLAYER_SLOT
 from moonlight.targeting.targeting import PAUSE_SECONDS
 
 if TYPE_CHECKING:
@@ -144,41 +143,12 @@ _SELECT_OUTLINE_WAIT = 1.0
 #: While stopped only every 4th tick reads the screen (5 a second at 20 Hz).
 STOPPED_READ_EVERY_TICKS = 4
 
-#: Ticks of creature tiles kept to find a kill's corpse: the battle list is
-#: read every 4th tick, so the health bar may vanish a few ticks earlier.
-CORPSE_LOOKBACK_TICKS = 8
-#: Seconds after a kill with no corpse tile to keep looking for its vanished bar.
-CORPSE_SEARCH_S = 0.5
-
 
 #: How many tiles from the player a loot ring counts, at any time: the 5x5
 #: around and under the character (owner 2026-11-04: far rings confused the
 #: bot; a corpse under the character is looted too).
 # doc: docs/prs/client-hotkeys.md#ring-anywhere
 RING_REACH = range(0, 3)
-
-
-def vanished_slot(
-    recent_slots: deque[tuple[tuple[int, int], ...]], current_slots: tuple[tuple[int, int], ...]
-) -> tuple[int, int] | None:
-    """The tile next to the player whose creature is gone: a kill's corpse.
-
-    Only the 8 tiles around count (bot.log 2026-11-04: farther guesses were
-    monsters walking, so the bot right-clicked random tiles); a farther
-    corpse is left to the ring watch.
-
-    # doc: docs/prs/client-hotkeys.md#corpse-click
-    """
-    # ponytail: a monster that walked off a tile looks gone too; nearest wins.
-    # Use the target's red box if the wrong corpse gets clicked.
-    pc, pr = PLAYER_SLOT
-
-    def tiles_away(slot: tuple[int, int]) -> int:
-        return max(abs(slot[0] - pc), abs(slot[1] - pr))
-
-    gone = set().union(*recent_slots) - set(current_slots)
-    near = [slot for slot in gone if tiles_away(slot) <= 1]
-    return min(near, key=lambda slot: (tiles_away(slot), slot)) if near else None
 
 
 @dataclass(frozen=True)
@@ -326,12 +296,7 @@ class GameLoop:
         self._target: TargetingAction | None = None
         self._targeting_paused_until = 0.0  # a lone unreachable target: walk on
         self._last_target: Monster | None = None
-        #: A kill with no corpse tile yet: its health bar may go a few ticks later.
-        self._looking_for_corpse_until = 0.0
         self._last_names: Counter[str] = Counter()
-        self._recent_creature_slots: deque[tuple[tuple[int, int], ...]] = deque(
-            maxlen=CORPSE_LOOKBACK_TICKS
-        )
         self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
@@ -663,20 +628,12 @@ class GameLoop:
                 (names[prev.name] < self._last_names[prev.name] and target_changed)
                 or (cur is None and not names[prev.name])
             ):
-                corpse = vanished_slot(self._recent_creature_slots, snap.creature_slots)
-                m.looting.on_target_died(prev.name, corpse)
-                self._looking_for_corpse_until = now + CORPSE_SEARCH_S if corpse is None else 0.0
+                m.looting.on_target_died(prev.name)
                 if m.attack_hotkeys is not None:
                     m.attack_hotkeys.new_target()  # the client may select the next at once
             elif self._last_names and not names:
                 m.looting.on_target_died("")  # the battle list emptied: loot again
-            elif now < self._looking_for_corpse_until:
-                corpse = vanished_slot(self._recent_creature_slots, snap.creature_slots)
-                if corpse is not None:
-                    m.looting.on_corpse_found(corpse)
-                    self._looking_for_corpse_until = 0.0
         self._last_names = names
-        self._recent_creature_slots.append(snap.creature_slots)
         if m.extras is not None:
             m.extras.observe(snap)
             if m.extras.refill_due and m.cavebot is not None:
