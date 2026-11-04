@@ -217,7 +217,9 @@ the set number (Cavebot > Refill > `cap <`, 0 = off: the number shows gray with 
 health or mana potions than set there (0 = off; spirit potions count for
 both), or after **Refill now** is pressed; otherwise it goes on to the next
 waypoint. The potions are found on the action bar by their
-picture (`data/templates/potions/<health|mana|spirit>/`), the Cap box by
+picture (`data/templates/potions/<health|mana|spirit>/`; a few potions look
+different from a full stack, and a faded slot, saved as `*_empty.png`, means 0
+left), the Cap box by
 `data/templates/cap_label.png`; their digits must match known shapes
 (learned from the golden screenshots), or be twice as close to one digit as to any other. A cap or count that does not read never
 sends the bot to town. Each `check` logs one line per number that is on, such

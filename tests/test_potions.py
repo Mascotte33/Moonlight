@@ -57,3 +57,22 @@ def test_counts_spirit_for_both_and_refinds_a_moved_slot(tmp_path: Path) -> None
     frame[:] = 0
     frame[100:131, 300:335] = slot(1, "50")
     assert counter.counts() == {"health": 50, "mana": None}
+
+
+def test_a_slot_seen_once_is_read_when_its_picture_changes(tmp_path: Path) -> None:
+    """A few potions are drawn as a smaller stack: the slot is read in place."""
+    save(tmp_path, "health", slot(1, "105"))
+    frame = np.zeros((300, 400, 3), np.uint8)
+    frame[200:231, 50:85] = slot(1, "105")
+    counter = PotionCounter(lambda: frame, tmp_path)
+    assert counter.counts()["health"] == 105
+    frame[200:231, 50:85] = slot(9, "9")  # another picture, same slot
+    assert counter.counts()["health"] == 9
+
+
+def test_an_empty_picture_counts_zero(tmp_path: Path) -> None:
+    save(tmp_path, "mana", slot(3, ""))
+    (tmp_path / "mana" / "p.png").rename(tmp_path / "mana" / "p_empty.png")
+    frame = np.zeros((300, 400, 3), np.uint8)
+    frame[10:41, 10:45] = slot(3, "")
+    assert PotionCounter(lambda: frame, tmp_path).counts()["mana"] == 0

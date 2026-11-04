@@ -7,6 +7,13 @@ slot (RGBA, the hotkey label and count masked out). Spirit potions count for
 both. A slot is searched for on the whole window once and then checked in
 place; it is searched again when the potion there changed.
 
+The game draws a stack by its size (a few potions are one small flask), so a
+slot found once keeps being read in place when its picture stops matching
+and it is not found elsewhere. A picture named ``*_empty.png`` (the faded,
+checkered slot of a potion you have none of) counts 0.
+
+# doc: docs/prs/potion-count.md#potion-sprites
+
 A count that cannot be read is unknown: it never triggers a refill, only a
 log line (an unknown digit is logged as its picture, to add to ``DIGITS``).
 
@@ -90,7 +97,7 @@ class PotionCounter:
                 rgb = np.ascontiguousarray(bgra[:, :, 2::-1]).astype(np.float32)
                 weight = bgra[:, :, 3].astype(np.float32) / 255.0
                 mask = np.repeat(weight[:, :, None], 3, axis=2)
-                self._kinds.append((kind, path.stem, rgb, mask, float(weight.sum())))
+                self._kinds.append((kind, f"{kind}/{path.stem}", rgb, mask, float(weight.sum())))
         self._slots: dict[str, tuple[int, int]] = {}  # name -> slot top-left
         #: ``"health"`` / ``"mana"`` -> the slot picture the last
         #: :meth:`counts` read for it (the first found; a spirit slot counts
@@ -105,13 +112,22 @@ class PotionCounter:
         unknown: set[str] = set()
         self.crops = {}
         for kind, name, rgb, mask, weight in self._kinds:
-            spot = self._find(frame, name, rgb, mask, weight)
-            if spot is None:
-                continue
-            x, y = spot
             h, w = rgb.shape[:2]
-            pic = frame[y : y + h, x : x + w].copy()
-            n = read_count(pic)
+            spot = self._find(frame, name, rgb, mask, weight)
+            if spot is not None:
+                x, y = spot
+                pic = frame[y : y + h, x : x + w].copy()
+                n = 0 if name.endswith("_empty") else read_count(pic)
+            elif name in self._slots:  # seen before: the stack changed its picture
+                # ponytail: trusts the slot still holds this potion; an item
+                # moved into it is read as the potion until the bot restarts.
+                x, y = self._slots[name]
+                pic = frame[y : y + h, x : x + w].copy()
+                n = read_count(pic)
+                if n is None:
+                    continue
+            else:
+                continue
             for t in ("health", "mana") if kind == "spirit" else (kind,):
                 self.crops.setdefault(t, pic)
                 if n is None:
@@ -132,10 +148,9 @@ class PotionCounter:
                 score = cv2.matchTemplate(here, rgb, cv2.TM_SQDIFF, mask=mask)[0, 0]
                 if score / weight < MATCH_THRESHOLD:
                     return spot
-            del self._slots[name]
         scores = cv2.matchTemplate(frame.astype(np.float32), rgb, cv2.TM_SQDIFF, mask=mask)
         _, _, (x, y), _ = cv2.minMaxLoc(scores)
         if scores[y, x] / weight >= MATCH_THRESHOLD:
-            return None
+            return None  # the last spot stays in _slots, read in place by counts()
         self._slots[name] = (x, y)
         return x, y
