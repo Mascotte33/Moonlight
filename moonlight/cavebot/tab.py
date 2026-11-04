@@ -469,7 +469,9 @@ class CavebotTab(Tab):
                 for col, action in enumerate(group):
                     button = _button(kinds, action.capitalize(), partial(self._add_action, action))
                     button.configure(width=64)
-                    button.grid(row=grid_row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
+                    button.grid(
+                        row=grid_row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT)
+                    )
         # doc: docs/prs/steps.md#step-waypoint
         # A step waypoint on X, Y, Z or the bot's sqm: one key press that way; the middle stands.
         _kind_heading(edit, "Step (one key)")
