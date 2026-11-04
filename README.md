@@ -185,9 +185,11 @@ clouds do not count. **Right-click the loot ring (off: loot hotkey)** in Cavebot
 (on by default) picks how: right-click the ring (the OTS loots on that click
 and walks there first when it is 2 tiles off), or press the loot hotkey
 (Alt+Q, loots every corpse around). After each loot the bot stands still for
-the set wait (400 ms by default, at least 0.3 s between rings, plus 0.3 s per
-tile of the walk to a far corpse) so the loot lands; the next attack waits
-too. Below the set HP (70 % by default) it holds still and heals first, then
+the set wait (400 ms by default, plus 0.3 s per tile of the walk to a far
+corpse) so the loot lands, and then until the ring is gone (unseen for
+0.8 s, bot.log `looting: ring at (x, y) gone`); the next attack and the walk
+wait too. A ring still there 3 s after its loot landed is looted again
+(`looting: ring at (x, y) still there, looting it again`). Below the set HP (70 % by default) it holds still and heals first, then
 loots. It also loots while an alarm is up. bot.log shows `loot triggered at
 (x, y), N tiles away` for each ring, then `looting: right-click at (x, y)` or
 `looting: press alt+q`. Each looted ring is also saved as a screenshot (the
