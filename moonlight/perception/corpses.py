@@ -6,20 +6,15 @@ X sparkles that turns over the corpse. The dots are a pale blue (blue
 skin, white text, skulls and gravel are not, and neither are the river
 (blue far over red) or a blue orb (green far over red). They are small
 specks; a "puff" cloud has the same color but is one big blob, so blobs
-over ``DOT_PIXELS``, and specks next to one, are dropped. The player's own
-tile never counts: their outfit sparkles the same blue.
+over ``DOT_PIXELS``, and specks next to one, are dropped.
 
-The ring moves and the floor does not. :class:`RingWatch` compares the game
-grid with how it looked ``GAP`` seconds before and counts the dots that are
-new, tile by tile. While the view scrolls (the player walks) the older look
-is first shifted by the scroll (found by phase correlation), so a ring
-passed on the way is seen too.
-
-Turning blue specks are not enough: a live amazon's outfit and the smoke of a
+Blue specks are not enough: a live amazon's outfit and the smoke of a
 spell sparkle the same blue (loot shots 2026-11-04). The ring is one known
 32 px animation of 16 frames, a circle of dots around the tile's middle
 (the owner's Loot_Effect.gif, kept in ``loot_ring.png``), so a tile counts
-only when its specks match one of those frames (:func:`ring_shape`).
+only when its specks match one of those frames (:func:`ring_shape`). The
+shape alone is enough, so a ring is seen while the view scrolls too (the
+character walks on right after a kill, bot.log 2026-11-04).
 
 # doc: docs/prs/corpse-loot.md#ring-check
 # doc: docs/prs/client-hotkeys.md#ring-anywhere
@@ -37,21 +32,16 @@ import numpy as np
 from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
-    "DOT_PIXELS", "FARTHEST", "GAP", "MOVED", "RING_PIXELS", "RING_SHAPE", "Ring", "RingWatch",
-    "ring_shape", "slot_ring",
+    "DOT_PIXELS", "FARTHEST", "GAP", "RING_SHAPE", "Ring", "RingWatch", "ring_shape", "slot_ring",
 ]
 
 _COLS, _ROWS = 15, 11
 #: Most tiles from the player to the grid's edge (its columns are 7 to each side).
 FARTHEST = 7
-#: Seconds between the two looks; the ring turns visibly in that time.
+#: Least seconds between two looks (a look costs about 45 ms).
 GAP = 0.1
-#: New bright pixels that mean a ring (a real ring gave 41-128, still floor 0).
-RING_PIXELS = 25
 #: Largest blob of ring color that is a dot (dots measured <= 47, puffs >= 250).
 DOT_PIXELS = 60
-#: Mean color change of the block above which the view moved (still <= 2.4, walking >= 10).
-MOVED = 6.0
 #: Least match of a tile's specks with a ring frame (rings 0.52-0.63, fire,
 #: grass and spell smoke 0.0-0.44, loot shots 2026-11-04).
 RING_SHAPE = 0.48
@@ -93,33 +83,6 @@ def ring_shape(specks: np.ndarray) -> float:
     )
 
 
-def _overlap(n: int, d: int) -> tuple[slice, slice]:
-    """Slices of the new and the old look that show the same floor after a *d* px scroll."""
-    d = max(-n, min(n, d))  # a scroll past the block leaves no overlap
-    return (slice(d, n), slice(0, n - d)) if d >= 0 else (slice(0, n + d), slice(-d, n))
-
-
-def _unscrolled(
-    block: np.ndarray, ref: np.ndarray, player: tuple[slice, slice]
-) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
-    """*block* and *ref* cut to the floor both show, with the scroll undone.
-
-    *player* is the player's tile in *block*. Also returns where the cut
-    starts in *block* (x, y).
-    """
-    old, new = (a.mean(axis=2).astype(np.float32) for a in (ref, block))
-    (dx, dy), _ = cv2.phaseCorrelate(old, new)
-    h, w = block.shape[:2]
-    (by, ry), (bx, rx) = _overlap(h, round(dy)), _overlap(w, round(dx))
-    block, ref = block[by, bx].copy(), ref[ry, rx].copy()
-    # the player walks along with the view: blank their own tile, its sprite steps
-    pys, pxs = player
-    py = slice(max(pys.start - by.start, 0), max(pys.stop - by.start, 0))
-    px = slice(max(pxs.start - bx.start, 0), max(pxs.stop - bx.start, 0))
-    block[py, px] = ref[py, px] = 0
-    return block, ref, (bx.start, by.start)
-
-
 class Ring(NamedTuple):
     """A turning loot ring: the middle of its tile and how far it is."""
 
@@ -141,58 +104,38 @@ class RingWatch:
 
     def __init__(self, grid: tuple[int, int, int, int]) -> None:
         gx, gy, gw, gh = grid
-        tw, th = gw / _COLS, gh / _ROWS
-        col, row = PLAYER_SLOT
-        self._grid, self._tile_size = grid, (tw, th)
+        self._grid, self._tile_size = grid, (gw / _COLS, gh / _ROWS)
         self._box = (slice(gy, gy + gh), slice(gx, gx + gw))
-        self._player = (
-            slice(round(row * th), round((row + 1) * th)),
-            slice(round(col * tw), round((col + 1) * tw)),
-        )
-        self._ref: np.ndarray | None = None
-        self._ref_at = 0.0
+        self._looked_at = float("-inf")
 
     def rings(self, frame: np.ndarray, now: float) -> list[Ring]:
-        """Rings that turned since the last look, nearest first (*frame* is RGB)."""
-        if self._ref is not None and now - self._ref_at < GAP:
+        """Loot rings on the game grid, nearest first (*frame* is RGB)."""
+        if now - self._looked_at < GAP:
             return []
-        block = frame[self._box].astype(np.int16)
-        ref, self._ref, self._ref_at = self._ref, block, now
-        whole = block
-        if ref is None or ref.shape != block.shape:
-            return []
-        cut = (0, 0)
-        if float(np.abs(block - ref).mean()) > MOVED:
-            block, ref, cut = _unscrolled(block, ref, self._player)  # the view scrolled
-            if block.size == 0 or float(np.abs(block - ref).mean()) > MOVED:
-                return []  # scrolled too far, or not a plain scroll
-        ys, xs = np.nonzero(_bright(block) & ~_bright(ref))
-        if len(xs) < RING_PIXELS:
-            return []
+        self._looked_at = now
         tw, th = self._tile_size
-        cols = np.clip((xs + cut[0]) // tw, 0, _COLS - 1).astype(int)
-        rows = np.clip((ys + cut[1]) // th, 0, _ROWS - 1).astype(int)
-        counts = np.bincount(rows * _COLS + cols, minlength=_COLS * _ROWS).reshape(_ROWS, _COLS)
-        # A ring split over two tiles (mid-scroll they are off by the scroll)
-        # counts with its neighbours; it belongs to the tile holding most of it.
-        padded = np.pad(counts, 1)
+        # half a tile of blank around the grid: a ring at its edge is matched whole
+        pad_x, pad_y = round(tw / 2), round(th / 2)
+        specks = np.pad(_bright(frame[self._box].astype(np.int16)), ((pad_y,), (pad_x,)))
+        scores = np.array([
+            [
+                ring_shape(specks[
+                    round(row * th) : round(row * th + 2 * th),
+                    round(col * tw) : round(col * tw + 2 * tw),
+                ])
+                for col in range(_COLS)
+            ]
+            for row in range(_ROWS)
+        ])
+        # A ring between two tiles (mid-step) matches on both; it belongs to the better one.
+        padded = np.pad(scores, 1)
         around = [padded[r : r + _ROWS, c : c + _COLS] for r in range(3) for c in range(3)]
-        most_here = (counts > 0) & (counts == np.maximum.reduce(around))
-        is_ring = most_here & (sum(around) >= RING_PIXELS)
+        is_ring = (scores >= RING_SHAPE) & (scores == np.maximum.reduce(around))
         # ponytail: the player's own tile counts (owner 2026-11-04: a corpse
         # under the character), though their outfit may sparkle the same
         # blue; mask the outfit if it is clicked with no corpse there.
         found = [
             slot_ring(self._grid, (int(col), int(row)))
             for row, col in zip(*np.nonzero(is_ring), strict=True)
-            if ring_shape(_bright(self._around(whole, int(col), int(row)))) >= RING_SHAPE
         ]
         return sorted(found, key=lambda ring: ring.tiles_away)
-
-    def _around(self, block: np.ndarray, col: int, row: int) -> np.ndarray:
-        """The 2x2 tiles of *block* centred on tile (*col*, *row*)."""
-        # ponytail: cut short at the grid's edge, so a ring there matches
-        # worse; pad the block if rings at the edge are missed.
-        tw, th = self._tile_size
-        x, y = round((col - 0.5) * tw), round((row - 0.5) * th)
-        return block[max(y, 0) : round(y + 2 * th), max(x, 0) : round(x + 2 * tw)]

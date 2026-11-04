@@ -38,7 +38,7 @@ __all__ = [
     "RING_WALK_S_PER_TILE",
 ]
 
-#: A ring is looted only once seen on its tile this many times ...
+#: A ring is looted only once seen this many times, up to a tile off ...
 RING_CONFIRM_LOOKS = 3
 #: ... over at least this many seconds: a real ring turns for seconds, a spell
 #: flash or a rock caught mid-scroll shows once (loot shots 2026-11-04).
@@ -93,10 +93,8 @@ class Looting:
         #: The ring seen this tick, not looted yet.
         self._ring: Ring | None = None
         self._ring_clicked: Ring | None = None
-        #: When each tile's ring was seen lately (its pixel -> look times).
-        # ponytail: keyed by screen pixel, so a ring is confirmed only while
-        # the view stands still; track map tiles if walking misses rings.
-        self._ring_sightings: dict[tuple[int, int], list[float]] = {}
+        #: Where and when rings were seen lately.
+        self._ring_sightings: list[tuple[tuple[int, int], float]] = []
         #: The ring's right-click is on its way through the clicker.
         self._ring_clicking = False
         #: No ring looted before this: the last one's loot lands (and its walk ends).
@@ -128,12 +126,9 @@ class Looting:
         if self._ring_clicking or now < self._ring_hold_until:
             return False
         seen = self._rings.rings(self._frames(), now)
-        for ring in seen:
-            self._ring_sightings.setdefault(ring.point, []).append(now)
-        for point, times in list(self._ring_sightings.items()):
-            times[:] = [t for t in times if now - t <= RING_FORGET_SECONDS]
-            if not times:
-                del self._ring_sightings[point]
+        self._ring_sightings = [
+            (point, t) for point, t in self._ring_sightings if now - t <= RING_FORGET_SECONDS
+        ] + [(ring.point, now) for ring in seen]
         assert self._game_region is not None
         creatures = {slot_ring(self._game_region, slot).point for slot in snap.creature_slots}
         rings = [
@@ -146,7 +141,14 @@ class Looting:
         return self._ring is not None and not self._hp_too_low(snap)
 
     def _confirmed(self, ring: Ring, now: float) -> bool:
-        times = self._ring_sightings[ring.point]
+        """Seen enough looks for long enough, up to a tile off (the view scrolls as one walks)."""
+        assert self._game_region is not None
+        tile = self._game_region[2] / 15  # the grid is 15 tiles wide
+        x, y = ring.point
+        times = [
+            t for (px, py), t in self._ring_sightings
+            if abs(px - x) <= tile and abs(py - y) <= tile
+        ]
         return len(times) >= RING_CONFIRM_LOOKS and now - times[0] >= RING_CONFIRM_SECONDS
 
     def press_ring(self) -> None:

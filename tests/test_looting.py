@@ -53,23 +53,23 @@ class FakeClicker:
         return True if self.left == 0 else None
 
 
-def ring_frames(still_after: bool = False, x: int = 800) -> Callable[[], np.ndarray]:
+def ring_frames(flash: bool = False, x: int = 800) -> Callable[[], np.ndarray]:
     tile_x = x // 96 * 96
     frames = [paint_ring(np.zeros((1056, 1440, 3), np.uint8), tile_x, 480, p) for p in (0, 1)]
     tick = iter(range(100))
-    if still_after:
-        frames.append(frames[1])  # then the ring stands still for a look
-        return lambda: frames[min(next(tick), 2)]
+    if flash:  # one look, then gone
+        frames[1] = np.zeros_like(frames[0])
+        return lambda: frames[min(next(tick), 1)]
     return lambda: frames[next(tick) % 2]
 
 
 def make_ring(
-    clock: Clock, clicker: FakeClicker | None = None, still_after: bool = False, x: int = 800,
+    clock: Clock, clicker: FakeClicker | None = None, flash: bool = False, x: int = 800,
     inp: FakeInput | None = None, **cfg: object,
 ) -> Looting:
     config = LootingConfig(**{"wait_ms": 400, **cfg})  # type: ignore[arg-type]
     return Looting(
-        inp or FakeInput(), config, clock=clock, frames=ring_frames(still_after, x),
+        inp or FakeInput(), config, clock=clock, frames=ring_frames(flash, x),
         game_region=GRID, clicker=clicker,  # type: ignore[arg-type]
     )
 
@@ -111,7 +111,7 @@ def test_ring_is_right_clicked_once_it_turned_then_wait_ms() -> None:
 
 def test_a_flash_seen_once_is_not_looted() -> None:
     clock, clicker = Clock(), FakeClicker(steps=1)
-    looting = make_ring(clock, clicker, still_after=True)  # turns for one look, then still
+    looting = make_ring(clock, clicker, flash=True)  # shows for one look, then gone
     for _ in range(12):
         assert not looting.ring_due(NEAR, WS)
         clock.t += 0.125
