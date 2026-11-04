@@ -8,6 +8,7 @@ from moonlight.perception.corpses import RingWatch, _overlap
 
 GRID = (0, 0, 1440, 1056)  # 96 px tiles; the player's tile is x 672-767, y 480-575
 BLUE = (255, 230, 200)  # BGR light blue
+NW = (624, 432)  # the middle of the tile north-west of the player
 
 
 def frame(*dots: tuple[int, int]) -> np.ndarray:
@@ -17,34 +18,38 @@ def frame(*dots: tuple[int, int]) -> np.ndarray:
     return out
 
 
-def looks(*frames: np.ndarray) -> list[bool]:
+def looks(*frames: np.ndarray) -> list[tuple[int, int] | None]:
     watch = RingWatch(GRID)
-    return [watch.seen(f, i * 0.1) for i, f in enumerate(frames)]
+    return [watch.ring_tile(f, i * 0.1) for i, f in enumerate(frames)]
 
 
 def test_turning_ring_on_the_nine_tiles() -> None:
-    assert looks(frame((600, 400)), frame((620, 420))) == [False, True]  # north-west tile
+    assert looks(frame((600, 400)), frame((620, 420))) == [None, NW]
 
 
 def test_still_dots_are_floor() -> None:
-    assert looks(frame((600, 400)), frame((600, 400))) == [False, False]
+    assert looks(frame((600, 400)), frame((600, 400))) == [None, None]
 
 
 def test_ring_two_tiles_away_is_out_of_reach() -> None:
-    assert looks(frame((500, 500)), frame((520, 520))) == [False, False]
+    assert looks(frame((500, 500)), frame((520, 520))) == [None, None]
 
 
 def test_scrolling_view_is_not_a_ring() -> None:
     gravel = np.full((1056, 1440, 3), 90, np.uint8)
     gravel[::3, ::3] = 220
-    assert looks(gravel, np.roll(gravel, 1, axis=0)) == [False, False]
+    assert looks(gravel, np.roll(gravel, 1, axis=0)) == [None, None]
 
 
 def test_looks_are_gap_apart() -> None:
     watch = RingWatch(GRID)
-    assert not watch.seen(frame((600, 400)), 0.0)
-    assert not watch.seen(frame((620, 420)), 0.05)  # too soon: no look
-    assert watch.seen(frame((620, 420)), 0.1)
+    assert watch.ring_tile(frame((600, 400)), 0.0) is None
+    assert watch.ring_tile(frame((620, 420)), 0.05) is None  # too soon: no look
+    assert watch.ring_tile(frame((620, 420)), 0.1) == NW
+
+
+def test_ring_on_the_south_east_tile() -> None:
+    assert looks(frame((800, 600)), frame((820, 620))) == [None, (816, 624)]
 
 
 def test_ring_passed_while_walking() -> None:
@@ -54,8 +59,8 @@ def test_ring_passed_while_walking() -> None:
     before, after = floor[:, :1440].copy(), floor[:, 40:1480].copy()  # walked east 40 px
     before[400:405, 600:608] = BLUE
     after[420:425, 580:588] = BLUE  # the ring turned on the floor that scrolled by
-    assert looks(before, after) == [False, True]
-    assert looks(before, floor[:, 40:1480].copy()) == [False, False]  # just walking
+    assert looks(before, after) == [None, NW]
+    assert looks(before, floor[:, 40:1480].copy()) == [None, None]  # just walking
 
 
 def test_overlap_of_a_scroll_past_the_block_is_empty() -> None:

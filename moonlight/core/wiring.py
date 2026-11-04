@@ -686,6 +686,7 @@ def build_modules(
                     if config.looting.ringed_corpses
                     else None
                 ),
+                clicker=m.clicker,
             )
     return m
 

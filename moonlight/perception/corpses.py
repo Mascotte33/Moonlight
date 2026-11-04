@@ -47,8 +47,13 @@ def _overlap(n: int, d: int) -> tuple[slice, slice]:
     return (slice(d, n), slice(0, n - d)) if d >= 0 else (slice(0, n + d), slice(-d, n))
 
 
-def _unscrolled(block: np.ndarray, ref: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """*block* and *ref* cut to the floor both show, with the scroll undone."""
+def _unscrolled(
+    block: np.ndarray, ref: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
+    """*block* and *ref* cut to the floor both show, with the scroll undone.
+
+    Also returns where the cut starts in *block* (x, y).
+    """
     old, new = (a.mean(axis=2).astype(np.float32) for a in (ref, block))
     (dx, dy), _ = cv2.phaseCorrelate(old, new)
     h, w = block.shape[:2]
@@ -59,36 +64,49 @@ def _unscrolled(block: np.ndarray, ref: np.ndarray) -> tuple[np.ndarray, np.ndar
     py = slice(max(ch - by.start, 0), 2 * ch - by.start)
     px = slice(max(cw - bx.start, 0), 2 * cw - bx.start)
     block[py, px] = ref[py, px] = 0
-    return block, ref
+    return block, ref, (bx.start, by.start)
 
 
 class RingWatch:
-    """Reports a loot ring on the player's tile or the 8 around it."""
+    """Finds a loot ring on the player's tile or the 8 around it."""
 
     def __init__(self, grid: tuple[int, int, int, int]) -> None:
         gx, gy, gw, gh = grid
         tw, th = gw / _COLS, gh / _ROWS
         col, row = PLAYER_SLOT
         x0, y0 = round(gx + (col - 1) * tw), round(gy + (row - 1) * th)
+        self._origin, self._tile_size = (x0, y0), (tw, th)
         self._box = (slice(y0, y0 + round(3 * th)), slice(x0, x0 + round(3 * tw)))
         self._ref: np.ndarray | None = None
         self._ref_at = 0.0
 
-    def seen(self, frame: np.ndarray, now: float) -> bool:
-        """True when a ring turned in the block since the last look (BGR *frame*)."""
+    def ring_tile(self, frame: np.ndarray, now: float) -> tuple[int, int] | None:
+        """Frame pixel at the middle of the tile where a ring turned since the last look.
+
+        None when no ring turned (BGR *frame*).
+        """
         if self._ref is not None and now - self._ref_at < GAP:
-            return False
+            return None
         block = frame[self._box].astype(np.int16)
         ref, self._ref, self._ref_at = self._ref, block, now
         if ref is None or ref.shape != block.shape:
-            return False
+            return None
+        cut = (0, 0)
         if float(np.abs(block - ref).mean()) > MOVED:
-            block, ref = _unscrolled(block, ref)  # the view scrolled
+            block, ref, cut = _unscrolled(block, ref)  # the view scrolled
             if block.size == 0 or float(np.abs(block - ref).mean()) > MOVED:
-                return False  # scrolled too far, or not a plain scroll
+                return None  # scrolled too far, or not a plain scroll
         # ponytail: a white spell flash on these tiles counts too; it only
-        # costs one extra loot press.
-        if int((_bright(block) & ~_bright(ref)).sum()) < RING_PIXELS:
-            return False
-        log.info("loot triggered")
-        return True
+        # costs one extra loot click.
+        new = _bright(block) & ~_bright(ref)
+        if int(new.sum()) < RING_PIXELS:
+            return None
+        # The ring circles the corpse, so its middle is on the corpse's tile.
+        # ponytail: mid-scroll the tiles are off by the scroll (under a tile).
+        ys, xs = np.nonzero(new)
+        (tw, th), (x0, y0) = self._tile_size, self._origin
+        col = min(int((xs.mean() + cut[0]) // tw), 2)
+        row = min(int((ys.mean() + cut[1]) // th), 2)
+        point = (x0 + round((col + 0.5) * tw), y0 + round((row + 0.5) * th))
+        log.info("loot triggered at %s", point)
+        return point
