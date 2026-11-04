@@ -105,13 +105,10 @@ DIRECTIONS = (
     ("↓", 0, 1),
     ("↘", 1, 1),
 )
-#: Shown 1-based; ``cavebot.start_index`` is 0-based.
+#: No control: the tab gives the highlighted row (1-based, 1 when none);
+#: ``cavebot.start_index`` is 0-based.
 START = Option("Start from waypoint", "cavebot.start_index", "entry")
-OPTIONS = [
-    SWITCH,
-    ROUTE,
-    START,
-]
+OPTIONS = [SWITCH, ROUTE]
 #: Cavebot options on the Settings page, kept off the Waypoints card.
 CAVEBOT_PAGE_OPTIONS = [
     Option("Rope hotkey", "cavebot.rope_hotkey", "hotkey"),
@@ -240,7 +237,8 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
                 values = {**values, START.field: int(str(start)) - 1}
             except ValueError:
                 raise ConfigError(f"start waypoint {start!r} is not a whole number") from None
-        for option in sorted(OPTIONS + CAVEBOT_PAGE_OPTIONS, key=lambda o: o is not ROUTE):
+        route_options = OPTIONS + [START] + CAVEBOT_PAGE_OPTIONS
+        for option in sorted(route_options, key=lambda o: o is not ROUTE):
             if option is not SWITCH and values.get(option.field, "") != "":
                 cfg = write_option(cfg, option, values[option.field])
     if SWITCH.field in values:
@@ -546,8 +544,6 @@ class CavebotTab(Tab):
         names = self._refresh_names()
         picked = picked_route(cfg)
         self.menu_route.set(picked if picked in names else (PICK if names else NO_ROUTES))
-        start = read_option(cfg, START.field)
-        self._writers[START.field](start + 1 if isinstance(start, int) else 1)
         self._show_route(self.menu_route.get())
 
     def _discard_ok(self) -> bool:
@@ -691,6 +687,8 @@ class CavebotTab(Tab):
         self._selected = None if self._error else picked_waypoint(line, len(self._waypoints))
         self._mark_selected()
         self.wp_list.focus_set()  # for the Delete key
+        if self.ctx.live_cavebot() is None:  # a running cavebot would re-pick its waypoint
+            self.submit()  # the cavebot starts from the highlighted row
 
     def _move(self, by: int) -> None:
         """Move the selected waypoint one row up (-1) or down (+1)."""
@@ -764,7 +762,8 @@ class CavebotTab(Tab):
         i = None if self._error else picked_waypoint(line, len(self._waypoints))
         if i is None:
             return "break"
-        self._writers[START.field](i + 1)
+        self._selected = i
+        self._mark_selected()
         cavebot = self.ctx.live_cavebot()
         if cavebot is not None and cavebot.route.name == self._name:
             cavebot.go_to(i)
@@ -945,6 +944,8 @@ class CavebotTab(Tab):
     def apply(self) -> BotConfig:
         path = picked_config()
         values = {field: read() for field, read in self._readers.items()}
+        # doc: docs/prs/edit-route.md#start-from-selected
+        values[START.field] = 1 if self._selected is None else self._selected + 1
         cfg = apply_cavebot(load_real_config(path), values)
         cfg.save(path)
         return cfg

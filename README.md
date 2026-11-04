@@ -202,7 +202,9 @@ stands. One click on a row in the waypoint list highlights it; the ▲ and ▼
 buttons above the list move it one row up or down, and ✕ (or the Delete key)
 deletes it, with no popup; the row below is highlighted next. Press Save to
 keep the change. The buttons are grayed out while Cavebot is on. The list
-keeps its scroll position when it changes.
+keeps its scroll position when it changes. The cavebot starts from the highlighted
+waypoint, or from waypoint 1 when none is highlighted; picking another route
+clears the highlight.
 
 Refill is part of the waypoint list. A `check` waypoint with label `town`
 is added on the character's tile and the bot walks there. On it, the bot
