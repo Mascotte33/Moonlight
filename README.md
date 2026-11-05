@@ -122,8 +122,10 @@ below are tried near the last position (1 up, 1 down, 2 up, 2 down, up to 3),
 and a mostly black minimap is matched near the last position with a looser
 score. After a floor change the route goes on at the next waypoint on that
 floor the map can reach; with none reachable (a fight chased the character up
-a ramp) it walks onto the nearest stairs or ramp to leave that floor and tries
-again (`[stuck: off-route]` in the log). If the floor reads as one with no waypoint on the route
+a ramp) it tries the next waypoint on that floor anyway. When there is no way
+to the waypoint at all, it tries the next waypoint on the same floor, wrapping
+round the route, until one gets it unstuck (`no way to waypoint 24, trying
+waypoint 8` in the log). If the floor reads as one with no waypoint on the route
 (for a moment after a pause), the cavebot raises the `lost` alarm and waits;
 it walks on once the floor reads right again.
 

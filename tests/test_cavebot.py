@@ -1028,21 +1028,15 @@ def test_walk_keys_walk_onto_a_hole_when_it_is_the_waypoint(tmp_path: Path) -> N
 
 
 # doc: docs/prs/client-hotkeys.md#leave-floor
-def test_a_floor_with_no_reachable_waypoint_is_left_by_the_nearest_floor_change(
-    tmp_path: Path,
-) -> None:
+def test_a_floor_with_no_reachable_waypoint_goes_to_the_next_one_on_it(tmp_path: Path) -> None:
     costs = _corridor_map(tmp_path, hole=(5, 8))
     route = [walk(5, 4, 6), walk(5, 12, 6), walk(100, 100, 7)]  # (100, 100) is off the corridor
     sim = Sim(route, Position(5, 4, 6), walk_keys=True, cost_map=costs)
     sim.bot.start()
     sim.step()
     sim.pos = Position(5, 4, 7)  # a fight chased the character up a ramp
-    _step_until_planned(sim)
-    assert sim.bot.planned_path[-1] == (5, 8)  # off this floor, not to (100, 100)
-    assert sim.route.current == 1
-    sim.pos = Position(5, 8, 6)  # back down
     sim.step()
-    assert sim.route.current == 1 and sim.bot.alarm is None
+    assert sim.route.current == 2 and sim.bot.alarm is None  # tried anyway, not "lost"
 
 
 # doc: docs/prs/avoid-holes.md#route-lines-last
@@ -1344,6 +1338,29 @@ def test_walk_keys_skip_unreachable_waypoints_until_one_has_a_way(
     assert "waypoint 0 unreachable, skipping to 2" in caplog.text
     assert pressed(sim)[0] == "d" and pressed(sim)[-1] == "s"
     assert sim.bot.is_active()
+
+
+# doc: docs/prs/client-hotkeys.md#next-waypoint-when-stuck
+def test_walk_keys_with_no_way_anywhere_try_the_next_waypoint_on_the_floor(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    tile = np.full((256, 256, 3), 100, np.uint8)
+    for y in (100, 110):  # walls all around both waypoints
+        tile[y - 1 : y + 2, 109:112] = (0, 255, 255)
+        tile[y, 110] = 100
+    cv2.imwrite(str(tmp_path / "0_0_7.png"), tile)
+    sim = Sim(
+        [walk(110, 100), walk(110, 110)],
+        Position(100, 100, 7),
+        walk_keys=True,
+        cost_map=CostMap(tmp_path),
+    )
+    sim.bot.start()
+    with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
+        while sim.now < 30 and "trying waypoint 1" not in caplog.text:
+            sim.step()
+    assert "no way to waypoint 0, trying waypoint 1" in caplog.text
+    assert sim.route.current == 1 and sim.bot.is_active()
 
 
 def test_walk_keys_never_skips_back_to_the_waypoint_it_stands_on(
