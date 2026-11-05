@@ -24,7 +24,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-__all__ = ["WorldMap", "MATCH_MAX_SCORE", "NEAR_MATCH_MAX_SCORE"]
+__all__ = ["DISTINCT_RATIO", "WorldMap", "MATCH_MAX_SCORE", "NEAR_MATCH_MAX_SCORE"]
 
 #: Good matches score ~0.004-0.03 on the golden frames, wrong ones >= 0.4.
 #: The Thais sewer with map marks on the radar scored 0.06-0.08 (2026-11-01),
@@ -37,6 +37,12 @@ MATCH_MAX_SCORE = 0.15
 #: +-20 sqm window leaves little to match wrongly.
 # doc: docs/prs/client-hotkeys.md#sparse-radar
 NEAR_MATCH_MAX_SCORE = 0.25
+#: A whole-floor search may score up to ``NEAR_MATCH_MAX_SCORE`` too when no
+#: other spot on the floor (1/4 scale) comes within this factor of the best.
+#: The live floor-4 radar: 2.5x; the golden frames' wrong 0.15-0.25 matches:
+#: 1.01-1.02x (2026-11-05).
+# doc: docs/prs/client-hotkeys.md#distinct-full-match
+DISTINCT_RATIO = 2.0
 
 _TILE = 256
 _COARSE = 4
@@ -99,9 +105,13 @@ class WorldMap:
                 return None
             self._last_full = now
         h, w = radar_rgb.shape[:2]
-        best: tuple[float, int, int, int] | None = None
+        best: tuple[float, int, int, int, bool] | None = None
         for z_ in self._zooms:
-            spot = near or self._coarse_spot(radar_rgb, z, image, x0, y0, z_)
+            distinct = False
+            if near is None:
+                spot, distinct = self._coarse_spot(radar_rgb, z, image, x0, y0, z_)
+            else:
+                spot = near
             # Tile edges may fall on any pixel phase; averaging each zoom block
             # blurs a wrong phase, so the right one scores best.
             for px, py in itertools.product(range(z_), repeat=2):
@@ -118,8 +128,9 @@ class WorldMap:
                 x = x0 + ox + loc[0] + (w // 2 - px) // z_
                 y = y0 + oy + loc[1] + (h // 2 - py) // z_
                 if best is None or score < best[0]:
-                    best = (float(score), x, y, z_)
-        limit = self._max_score if near is None else self._near_max_score
+                    best = (float(score), x, y, z_, distinct)
+        loose = near is not None or (best is not None and best[4])
+        limit = self._near_max_score if loose else self._max_score
         if best is None or not best[0] <= limit:
             return None
         self.zoom = best[3]
@@ -127,8 +138,9 @@ class WorldMap:
 
     def _coarse_spot(
         self, radar_rgb: np.ndarray, z: int, image: np.ndarray, x0: int, y0: int, zoom: int
-    ) -> tuple[int, int]:
-        """Rough world ``(x, y)`` of the radar center from a 1/4 scale match."""
+    ) -> tuple[tuple[int, int], bool]:
+        """Rough world ``(x, y)`` of the radar center from a 1/4 scale match,
+        and whether no spot away from it scores within ``DISTINCT_RATIO``."""
         if z not in self._coarse:
             h, w = image.shape[:2]
             size = (w // _COARSE, h // _COARSE)
@@ -137,8 +149,11 @@ class WorldMap:
         f = zoom * _COARSE
         small = cv2.resize(radar_rgb[:, :, :3], (w // f, h // f), interpolation=cv2.INTER_AREA)
         res = cv2.matchTemplate(self._coarse[z], small, cv2.TM_SQDIFF_NORMED)
-        _, _, loc, _ = cv2.minMaxLoc(res)
-        return x0 + (loc[0] * f + w // 2) // zoom, y0 + (loc[1] * f + h // 2) // zoom
+        score, _, loc, _ = cv2.minMaxLoc(res)
+        bx, by = loc
+        res[max(0, by - 8) : by + 9, max(0, bx - 8) : bx + 9] = np.inf  # the best spot's area
+        distinct = bool(res.min() >= DISTINCT_RATIO * score)
+        return (x0 + (bx * f + w // 2) // zoom, y0 + (by * f + h // 2) // zoom), distinct
 
     def _floor(self, z: int) -> tuple[np.ndarray, int, int] | None:
         """The stitched RGB map of floor *z* and its world origin (cached)."""

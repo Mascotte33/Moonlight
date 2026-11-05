@@ -119,8 +119,9 @@ in `data/map/`. A frame that does not match (a map mark or a tooltip over the
 minimap) keeps the last position as an estimate; only 10 s without any match
 makes it unknown. When the floor shown has no match, the floors above and
 below are tried near the last position (1 up, 1 down, 2 up, 2 down, up to 3),
-and a mostly black minimap is matched near the last position with a looser
-score. After a floor change the route goes on at the next waypoint on that
+and a mostly black minimap is matched with a looser score near the last
+position, or anywhere on the floor when that spot is at least twice as good
+as any other (so a restart on an upper floor still finds the character). After a floor change the route goes on at the next waypoint on that
 floor the map can reach; with none reachable (a fight chased the character up
 a ramp) it tries the next waypoint on that floor anyway. When there is no way
 to the waypoint at all, it tries the next waypoint on the same floor, wrapping

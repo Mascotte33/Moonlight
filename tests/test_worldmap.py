@@ -59,3 +59,20 @@ def test_a_near_search_accepts_a_looser_score(tmp_path: Path) -> None:
     assert world.match(radar, 7) is None
     assert world.match(radar, 7, near=(32070, 31080)) == (32066, 31087)
 
+
+# doc: docs/prs/client-hotkeys.md#distinct-full-match
+def test_a_whole_floor_search_accepts_a_looser_score_only_at_a_distinct_spot(
+    tmp_path: Path,
+) -> None:
+    rng = np.random.RandomState(4)
+    tile = np.zeros((256, 256, 3), np.uint8)  # mostly black, like an upper floor
+    for _ in range(30):
+        x, y, size = rng.randint(0, 240), rng.randint(0, 240), rng.randint(4, 12)
+        tile[y : y + size, x : x + size] = rng.randint(60, 255, 3)
+    cv2.imwrite(str(tmp_path / "32000_31000_7.png"), cv2.cvtColor(tile, cv2.COLOR_RGB2BGR))
+    radar = _radar(tile, 40, 60)
+    world = WorldMap(tmp_path, max_score=0.0, full_search_every=0.0)
+    assert world.match(radar, 7) == (32066, 31087)
+    # The same tile twice: two equally good spots, so neither is trusted.
+    cv2.imwrite(str(tmp_path / "32256_31000_7.png"), cv2.cvtColor(tile, cv2.COLOR_RGB2BGR))
+    assert WorldMap(tmp_path, max_score=0.0).match(radar, 7) is None
