@@ -71,8 +71,24 @@ def test_a_whole_floor_search_accepts_a_looser_score_only_at_a_distinct_spot(
         tile[y : y + size, x : x + size] = rng.randint(60, 255, 3)
     cv2.imwrite(str(tmp_path / "32000_31000_7.png"), cv2.cvtColor(tile, cv2.COLOR_RGB2BGR))
     radar = _radar(tile, 40, 60)
-    world = WorldMap(tmp_path, max_score=0.0, full_search_every=0.0)
+    world = WorldMap(tmp_path, max_score=-1.0, full_search_every=0.0)  # only "distinct" passes
     assert world.match(radar, 7) == (32066, 31087)
     # The same tile twice: two equally good spots, so neither is trusted.
     cv2.imwrite(str(tmp_path / "32256_31000_7.png"), cv2.cvtColor(tile, cv2.COLOR_RGB2BGR))
-    assert WorldMap(tmp_path, max_score=0.0).match(radar, 7) is None
+    assert WorldMap(tmp_path, max_score=-1.0).match(radar, 7) is None
+
+
+# doc: docs/prs/client-hotkeys.md#lit-pixels-only
+def test_the_player_cross_and_black_radar_parts_are_not_compared(tmp_path: Path) -> None:
+    tile = np.zeros((256, 256, 3), np.uint8)  # an upper floor: two trees and two roofs
+    tile[80:90, 60:70] = (0, 100, 0)
+    tile[70:80, 90:100] = (0, 100, 0)
+    tile[85:92, 82:95] = (153, 102, 51)  # the roof the character stands on
+    tile[90:95, 100:108] = (153, 102, 51)  # a roof the radar does not draw
+    cv2.imwrite(str(tmp_path / "32000_31000_7.png"), cv2.cvtColor(tile, cv2.COLOR_RGB2BGR))
+    radar = tile[60:169, 40:146].copy()  # 1 px per sqm, center (93, 114)
+    radar[52:58, 50:56] = 255  # the player cross
+    radar[30:35, 60:68] = 0  # the undrawn roof
+    world = WorldMap(tmp_path, full_search_every=0.0)
+    assert world.match(radar, 7) == (32093, 31114)
+    assert world.match(radar, 7, near=(32090, 31110)) == (32093, 31114)
