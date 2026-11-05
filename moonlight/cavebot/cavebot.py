@@ -665,6 +665,10 @@ class Cavebot:
         self._last_pos: Position | None = None
         #: Floor-change tile walked to when no waypoint on this floor is reachable.
         self._floor_exit: Waypoint | None = None
+        #: The floor change last walked through by :meth:`_leave_floor`.
+        self._left_by: Waypoint | None = None
+        #: Floor changes that led to a floor with no waypoint: never left by again.
+        self._dead_exits: set[tuple[int, int, int]] = set()
         self._last_move = 0.0
         #: Last position change (resume() also restarts _last_move, a fight is not "stuck").
         self._moved_at = float("-inf")
@@ -783,6 +787,8 @@ class Cavebot:
         wp = self.route.waypoints[self.route.current]
         exit_ = self._floor_exit
         if exit_ is not None and (pos.z != exit_.z or (pos.x, pos.y) == (exit_.x, exit_.y)):
+            if pos.z != exit_.z:
+                self._left_by = exit_
             self._floor_exit = exit_ = None  # left the floor, or the tile did not change it
         if exit_ is not None:
             wp = exit_
@@ -1445,6 +1451,8 @@ class Cavebot:
 
         None reachable (a fight chased the character up a ramp): the next one on
         the floor anyway; stuck there, :meth:`_skip_unreachable` tries the next.
+        No waypoint on the floor at all: leave by the nearest floor change (the
+        one that led here is not taken again); with none, wait as ``lost``.
         """
         wps = self.route.waypoints
         n, z = len(wps), pos.z
@@ -1460,6 +1468,17 @@ class Cavebot:
             self._expected_z = None
             self._last_cmd = float("-inf")
             self._clicker.cancel()
+            return
+        left_by = self._left_by
+        if left_by is not None and left_by.z != z:
+            logger.info(
+                "cavebot: floor change at %d,%d,%d leads to floor %d with no waypoint, "
+                "not taken again",
+                left_by.x, left_by.y, left_by.z, z,
+            )  # fmt: skip
+            self._dead_exits.add((left_by.x, left_by.y, left_by.z))
+            self._left_by = None
+        if self._leave_floor(pos):
             return
         # doc: docs/prs/position-lost.md#wait-on-an-unknown-floor
         # The route used to stop here for good: a floor misread for one tick
@@ -1477,7 +1496,10 @@ class Cavebot:
 
     # doc: docs/prs/client-hotkeys.md#leave-floor
     def _leave_floor(self, pos: Position) -> bool:
-        """Head for the nearest reachable floor change within 30 sqm; False when none."""
+        """Head for the nearest reachable floor change within 30 sqm; False when none.
+
+        Floor changes next to a dead exit (the same stairs) are skipped.
+        """
         cost = self._cost_map
         if cost is None or cost.empty:
             return False
@@ -1487,7 +1509,11 @@ class Cavebot:
         )
         for x, y in near[1:]:  # [0] is the player's own tile
             stairs = Waypoint(x, y, pos.z, "stairs")
-            if cost.floor_change(x, y, pos.z) and self._map_reaches(pos, stairs):
+            dead = any(
+                dz == pos.z and max(abs(dx - x), abs(dy - y)) <= 1
+                for dx, dy, dz in self._dead_exits
+            )  # fmt: skip
+            if not dead and cost.floor_change(x, y, pos.z) and self._map_reaches(pos, stairs):
                 logger.warning(
                     "cavebot: [stuck: off-route] no reachable waypoint on floor %d, "
                     "leaving by the floor change at %d,%d",

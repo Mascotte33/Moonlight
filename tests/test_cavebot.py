@@ -1057,6 +1057,25 @@ def test_stuck_with_no_reachable_waypoint_on_the_floor_leaves_by_the_floor_chang
     assert sim.route.current == 1 and sim.bot.alarm is None
 
 
+# doc: docs/prs/client-hotkeys.md#waypointless-floor
+def test_a_floor_with_no_waypoint_is_left_and_a_dead_exit_not_taken_again(
+    tmp_path: Path,
+) -> None:
+    costs = _corridor_map(tmp_path, hole=(5, 8))
+    sim = Sim([walk(5, 4, 6), walk(5, 12, 6)], Position(5, 4, 6), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(5, 4, 7)  # chased up onto a roof with no waypoint
+    _step_until_planned(sim)
+    assert sim.bot.planned_path[-1] == (5, 8) and sim.bot.alarm is None
+    sim.pos = Position(5, 8, 8)  # those stairs led to another floor with no waypoint
+    sim.step()
+    assert (5, 8, 7) in sim.bot._dead_exits
+    sim.pos = Position(5, 4, 7)
+    sim.step()
+    assert sim.bot.alarm == "lost"  # the only floor change is the dead one
+
+
 # doc: docs/prs/avoid-holes.md#route-lines-last
 def test_route_lines_only_where_the_map_shows_no_way(tmp_path: Path) -> None:
     costs = _corridor_map(tmp_path, blocked=(5, 8))  # a way around it exists
