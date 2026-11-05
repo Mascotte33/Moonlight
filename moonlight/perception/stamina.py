@@ -62,7 +62,7 @@ def _find_label(lit: np.ndarray) -> tuple[int, int] | None:
     word = _LABEL.astype(np.float32) * 2 - 1  # lit +1, dark -1
     scores = cv2.matchTemplate(lit.astype(np.float32), word, cv2.TM_CCORR)
     _, best, _, (x, y) = cv2.minMaxLoc(scores)
-    return (x, y) if best >= _LABEL.sum() else None
+    return (x, y) if best > _LABEL.sum() - 0.5 else None  # float sums
 
 
 def _read_time(lit: np.ndarray) -> str | None:
