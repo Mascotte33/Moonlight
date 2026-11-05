@@ -117,7 +117,10 @@ full live session (2026-10-28) verified looting.
 The position comes from matching the minimap against the client's map tiles
 in `data/map/`. A frame that does not match (a map mark or a tooltip over the
 minimap) keeps the last position as an estimate; only 10 s without any match
-makes it unknown. If the floor reads as one with no waypoint on the route
+makes it unknown. When the floor shown has no match, the floors above and
+below are tried near the last position (1 up, 1 down, 2 up, 2 down, up to 3),
+and a mostly black minimap is matched near the last position with a looser
+score. If the floor reads as one with no waypoint on the route
 (for a moment after a pause), the cavebot raises the `lost` alarm and waits;
 it walks on once the floor reads right again.
 
