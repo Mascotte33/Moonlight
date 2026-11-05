@@ -126,7 +126,10 @@ floor the map can reach; with none reachable (a fight chased the character up
 a ramp) it tries the next waypoint on that floor anyway. When there is no way
 to the waypoint at all, it tries the next waypoint on the same floor, wrapping
 round the route, until one gets it unstuck (`no way to waypoint 24, trying
-waypoint 8` in the log). If the floor reads as one with no waypoint on the route
+waypoint 8` in the log). When the map shows no way to any waypoint on that
+floor (a closed-off platform), it walks onto the nearest floor change instead
+(`leaving by the floor change at 32437,31729`) and goes on from the floor it
+lands on. If the floor reads as one with no waypoint on the route
 (for a moment after a pause), the cavebot raises the `lost` alarm and waits;
 it walks on once the floor reads right again.
 

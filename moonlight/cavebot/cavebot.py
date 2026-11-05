@@ -663,6 +663,8 @@ class Cavebot:
         self.alarm: str | None = None
         self._active = False
         self._last_pos: Position | None = None
+        #: Floor-change tile walked to when no waypoint on this floor is reachable.
+        self._floor_exit: Waypoint | None = None
         self._last_move = 0.0
         #: Last position change (resume() also restarts _last_move, a fight is not "stuck").
         self._moved_at = float("-inf")
@@ -779,7 +781,12 @@ class Cavebot:
             return
 
         wp = self.route.waypoints[self.route.current]
-        if wp.action == "finddepo":
+        exit_ = self._floor_exit
+        if exit_ is not None and (pos.z != exit_.z or (pos.x, pos.y) == (exit_.x, exit_.y)):
+            self._floor_exit = exit_ = None  # left the floor, or the tile did not change it
+        if exit_ is not None:
+            wp = exit_
+        elif wp.action == "finddepo":
             stand = self._find_depot(wp, pos, now)
             if stand is None:
                 self.release_walk_key()
@@ -1281,8 +1288,9 @@ class Cavebot:
         """Move on to the next waypoint with a path over *walkable*.
 
         None has one: try the next waypoint on this floor anyway (wrapping), so
-        an earlier waypoint gets the character unstuck. None on this floor:
-        retry the blocked tiles.
+        an earlier waypoint gets the character unstuck. The map reaches none on
+        this floor (a closed-off platform): leave by the nearest floor change.
+        None on this floor: retry the blocked tiles.
 
         # doc: docs/prs/client-hotkeys.md#next-waypoint-when-stuck
         """
@@ -1309,6 +1317,9 @@ class Cavebot:
                 self._target = self._retried_target = None
                 return
         if not self._active:  # a goto loop already halted it
+            return
+        on_floor = [w for w in self.route.waypoints if has_tile(w) and w.z == pos.z]
+        if not any(self._map_reaches(pos, w) for w in on_floor) and self._leave_floor(pos):
             return
         if same_floor is not None:
             logger.info(
@@ -1463,6 +1474,30 @@ class Cavebot:
             return True
         self._trust_route = True  # _step_toward sets it again before it walks
         return next_step((pos.x, pos.y, pos.z), (wp.x, wp.y, wp.z), self._map_walkable) is not None
+
+    # doc: docs/prs/client-hotkeys.md#leave-floor
+    def _leave_floor(self, pos: Position) -> bool:
+        """Head for the nearest reachable floor change within 30 sqm; False when none."""
+        cost = self._cost_map
+        if cost is None or cost.empty:
+            return False
+        near = sorted(
+            ((x, y) for x in range(pos.x - 30, pos.x + 31) for y in range(pos.y - 30, pos.y + 31)),
+            key=lambda t: max(abs(t[0] - pos.x), abs(t[1] - pos.y)),
+        )
+        for x, y in near[1:]:  # [0] is the player's own tile
+            stairs = Waypoint(x, y, pos.z, "stairs")
+            if cost.floor_change(x, y, pos.z) and self._map_reaches(pos, stairs):
+                logger.warning(
+                    "cavebot: [stuck: off-route] no reachable waypoint on floor %d, "
+                    "leaving by the floor change at %d,%d",
+                    pos.z, x, y,
+                )  # fmt: skip
+                self._floor_exit = stairs
+                self._target = self._retried_target = None
+                self._clicker.cancel()
+                return True
+        return False
 
     def _retry_if_idle(self, now: float, command: Callable[[], None]) -> None:
         """Send *command* first time, then only after standing still a while."""
