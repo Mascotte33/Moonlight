@@ -1008,6 +1008,20 @@ def _corridor_map(tmp_path: Path, blocked: tuple[int, int] | None = None,
     return CostMap(tmp_path / "cost")
 
 
+def test_a_tile_black_on_the_minimap_is_never_walked(tmp_path: Path) -> None:
+    costs = _corridor_map(tmp_path)
+    colour = cv2.imread(str(tmp_path / "0_0_7.png"))
+    assert colour is not None
+    colour[8, 5] = 0  # black on the minimap, walkable on the cost map
+    cv2.imwrite(str(tmp_path / "0_0_7.png"), colour)
+    costs = CostMap(tmp_path / "cost")
+    assert not costs.walkable(5, 8, 7) and costs.walkable(5, 7, 7)
+    sim = Sim([walk(5, 4), walk(5, 12)], Position(5, 4, 7), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    _step_until_planned(sim)
+    assert sim.bot.planned_path and (5, 8) not in sim.bot.planned_path
+
+
 # doc: docs/prs/avoid-holes.md#floor-change-tiles
 def test_walk_keys_go_around_a_hole_on_the_straight_way(tmp_path: Path) -> None:
     costs = _corridor_map(tmp_path, hole=(5, 8))

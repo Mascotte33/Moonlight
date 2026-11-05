@@ -139,7 +139,8 @@ no floor change left to take, the cavebot raises the `lost` alarm and waits;
 it walks on once the floor reads right again.
 
 Walking with keys finds its way on the client's walkability map
-(`data/map/cost/`). It never walks over a hole, stairs, a ladder or any other
+(`data/map/cost/`); a tile black on the colour map (`data/map/`) is a wall
+whatever the walkability map says. It never walks over a hole, stairs, a ladder or any other
 floor change: the tiles drawn yellow on the colour map (`data/map/`), the
 floor changes on the route and the ones it once fell through. It steps onto
 one only when a waypoint (`stairs`, `ladder`, `step`) is that tile. The map
