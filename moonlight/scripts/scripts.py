@@ -268,6 +268,8 @@ class ScriptRunner:
         #: Stamina minutes from the Skills window for ``bot.stamina`` and the log.
         self.stamina: Callable[[], int | None] | None = None
         self._stamina_logged_at: float | None = None
+        #: The last stamina read (minutes) for the dashboard; None when unread.
+        self.last_stamina_minutes: int | None = None
         #: Ticked scripts: (name, pause in seconds after it ended), in order.
         self.timers = timers or []
         self._clock = clock
@@ -389,14 +391,14 @@ class ScriptRunner:
             self.cavebot.goto(label)
 
     def log_stamina(self) -> None:
-        """Read the stamina once a minute (the reader logs each change)."""
+        """Read the stamina every 5 minutes (the reader logs each change)."""
         now = self._clock()
         if self.stamina is None or (
-            self._stamina_logged_at is not None and now - self._stamina_logged_at < 60.0
+            self._stamina_logged_at is not None and now - self._stamina_logged_at < 300.0
         ):
             return
         self._stamina_logged_at = now
-        self.stamina()
+        self.last_stamina_minutes = self.stamina()
 
     def step(self, snap: WorldState, input: InputBackend) -> bool:  # noqa: A002
         """One tick of the running script: one command, a wait, or the script's next yield.

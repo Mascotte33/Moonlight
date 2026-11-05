@@ -1031,6 +1031,9 @@ class GameLoop:
             "state_transitions": {s.value: n for s, n in self._state_transitions.items()},
             "kill_switch_active": self.kill_switch_active,
             "stop_requested": self.stop_requested,
+            "stamina_minutes": (
+                None if self.modules.scripts is None else self.modules.scripts.last_stamina_minutes
+            ),
         }
 
     def _task_text(self) -> str:

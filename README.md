@@ -302,7 +302,8 @@ def run(bot):
 ```
 
 `bot.stamina()` reads the Stamina line of the Skills window, so keep that
-window open. The bot also logs the stamina once a minute when it changes
+window open. The bot also reads the stamina every 5 minutes, shows it on the
+Dashboard's Stamina card and logs it when it changes
 (`stamina 41:23`, with `(under 39:30)` once it is low).
 
 A running script pauses walking and waits during a fight or looting; healing
