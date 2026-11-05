@@ -671,8 +671,11 @@ class GameLoop:
             pass  # a lone unreachable target: walk on
         elif targeting is not None:
             selected = snap.selected_target
-            if self._target is not None or (
-                selected is not None and not targeting.is_unreachable(selected)
+            # doc: docs/prs/near-targeting.md#pick-on-screen
+            if (
+                self._target is not None
+                or self._screen_click_tile is not None  # stand still until the click answers
+                or (selected is not None and not targeting.is_unreachable(selected))
             ):
                 return BotState.ATTACK
         elif snap.selected_target is not None and snap.selected_target.name:
@@ -871,7 +874,9 @@ class GameLoop:
             row, sent_at = self._select_click
             selected = snap.selected_target
             outline_shows = selected is not None and (row == -1 or selected.battle_list_row == row)
-            if sent_at is not None and not outline_shows and now - sent_at < _SELECT_OUTLINE_WAIT:
+            if sent_at is None:  # cancelled before it went out: nothing to judge
+                self._screen_click_tile = None
+            elif not outline_shows and now - sent_at < _SELECT_OUTLINE_WAIT:
                 return
             self._select_click = None
         if self._check_screen_click(snap, targeting, now):

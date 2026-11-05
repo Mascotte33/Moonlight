@@ -593,6 +593,17 @@ class TestScreenClick:
         assert gl.current_state is BotState.ATTACK
         assert inp.sent_lines == ["A 85 55", "C R"]  # the far (13, 5) one is never clicked
 
+    def test_click_in_flight_holds_attack_when_the_creature_flickers(self) -> None:
+        ws = self.near_state()
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, self.NEAR)
+        ticks(gl, clock, 1)  # the mouse jumps
+        with ws.lock():
+            ws.creature_slots, ws.creature_hp_percents = (), ()  # its bar is gone a frame
+        ticks(gl, clock, 2)
+        assert gl.current_state is BotState.ATTACK  # no walk takes the click over
+        assert inp.sent_lines == ["A 85 55", "C R"]
+
     def test_nothing_selected_skips_the_tile(self, caplog: pytest.LogCaptureFixture) -> None:
         inp = FakeInput()
         gl, clock = make_targeting_loop(self.near_state(), inp, self.NEAR)
