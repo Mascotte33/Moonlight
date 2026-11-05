@@ -24,13 +24,19 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-__all__ = ["WorldMap", "MATCH_MAX_SCORE"]
+__all__ = ["WorldMap", "MATCH_MAX_SCORE", "NEAR_MATCH_MAX_SCORE"]
 
 #: Good matches score ~0.004-0.03 on the golden frames, wrong ones >= 0.4.
 #: The Thais sewer with map marks on the radar scored 0.06-0.08 (2026-11-01),
 #: so 0.08 dropped good matches there.
 # doc: docs/prs/position-lost.md#wider-match
 MATCH_MAX_SCORE = 0.15
+#: A search near the last position may score up to this. A mostly black
+#: radar (Ab'Dendriel floor 4, 2026-11-05) scored 0.207 at the right spot;
+#: wrong whole-floor matches on the golden frames scored from 0.215, but a
+#: +-20 sqm window leaves little to match wrongly.
+# doc: docs/prs/client-hotkeys.md#sparse-radar
+NEAR_MATCH_MAX_SCORE = 0.25
 
 _TILE = 256
 _COARSE = 4
@@ -48,6 +54,7 @@ class WorldMap:
         near_sqm: int = 20,
         full_search_every: float = 3.0,
         max_score: float = MATCH_MAX_SCORE,
+        near_max_score: float = NEAR_MATCH_MAX_SCORE,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._tiles: dict[int, list[tuple[int, int, Path]]] = {}
@@ -64,6 +71,7 @@ class WorldMap:
         self._near = int(near_sqm)
         self._every = float(full_search_every)
         self._max_score = float(max_score)
+        self._near_max_score = float(near_max_score)
         self._clock = clock
         self._last_full: float | None = None
 
@@ -111,7 +119,8 @@ class WorldMap:
                 y = y0 + oy + loc[1] + (h // 2 - py) // z_
                 if best is None or score < best[0]:
                     best = (float(score), x, y, z_)
-        if best is None or not best[0] <= self._max_score:
+        limit = self._max_score if near is None else self._near_max_score
+        if best is None or not best[0] <= limit:
             return None
         self.zoom = best[3]
         return best[1], best[2]

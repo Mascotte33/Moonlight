@@ -48,3 +48,14 @@ def test_unknown_floor_or_bad_radar_is_none(tmp_path: Path) -> None:
     assert world.match(noise, 7) is None
     assert world.match(noise, 6) is None
     assert WorldMap(tmp_path / "missing").empty
+
+
+# doc: docs/prs/client-hotkeys.md#sparse-radar
+def test_a_near_search_accepts_a_looser_score(tmp_path: Path) -> None:
+    radar = _radar(_map(tmp_path), 40, 60).astype(np.int32)
+    noise = np.random.RandomState(5).randint(-40, 40, radar.shape)
+    radar = np.clip(radar + noise, 0, 255).astype(np.uint8)  # scores above 0
+    world = WorldMap(tmp_path, max_score=0.0, near_max_score=0.2)
+    assert world.match(radar, 7) is None
+    assert world.match(radar, 7, near=(32070, 31080)) == (32066, 31087)
+
