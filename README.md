@@ -237,7 +237,8 @@ depot, the trade window and the chat button on screen when they run:
   the locker window and drags the loot backpack onto it (every stashable item
   goes in, the backpack stays). Pick the backpack once with **Pick backpack**
   on Cavebot > Refill: drag a box around it on a grab of the client
-  (saved as `loot_backpack.png` in the profiles folder).
+  (saved as `loot_backpack.png` in the profiles folder; the tab shows it after
+  a restart).
 - `trade`: record it on the tile right next to the NPC (NPCs answer within 3
   sqm and wander). The bot stands on that tile, says `hi`, `trade`, waits up
   to 3 s for the trade window (else talks again), clicks Buy and buys the

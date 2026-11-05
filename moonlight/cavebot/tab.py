@@ -289,6 +289,14 @@ def _kind_heading(parent: ctk.CTkFrame, text: str) -> None:
     ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
 
 
+def _backpack_path() -> Path:
+    """The loot backpack picture ``Pick backpack`` saves and ``deposit`` drags."""
+    from moonlight.calibration.calibrate import default_profiles_dir
+    from moonlight.cavebot.town import BACKPACK_FILE
+
+    return (load_real_config().profiles_dir or default_profiles_dir()) / BACKPACK_FILE
+
+
 def _button(parent: ctk.CTkFrame, text: str, command: Callable[[], None]) -> ctk.CTkButton:
     return ctk.CTkButton(
         parent, text=text, width=90, command=command, fg_color=theme.RAISED, hover_color=theme.HOVER
@@ -419,6 +427,7 @@ class CavebotTab(Tab):
         _button(pick, "Pick backpack", self._pick_backpack).pack(side="left")
         self.lbl_backpack = ctk.CTkLabel(pick, text="")
         self.lbl_backpack.pack(side="left", padx=(theme.UNIT, 0))
+        self._show_saved_backpack()
         # doc: docs/prs/depot.md#trade-waypoint
         Label(
             refill,
@@ -725,8 +734,6 @@ class CavebotTab(Tab):
     def _cut_backpack(self) -> None:
         import cv2
 
-        from moonlight.calibration.calibrate import default_profiles_dir
-        from moonlight.cavebot.town import BACKPACK_FILE
         from moonlight.perception.capture import ScreenCapture
 
         cfg = load_real_config()
@@ -741,10 +748,21 @@ class CavebotTab(Tab):
             self.lbl_msg.configure(text="Pick backpack: cancelled")
             return
         pic = np.ascontiguousarray(frame[y : y + h, x : x + w])
-        cv2.imwrite(str((cfg.profiles_dir or default_profiles_dir()) / BACKPACK_FILE), pic)
+        cv2.imwrite(str(_backpack_path()), pic)
+        self._show_backpack(pic)
+        self.lbl_msg.configure(text="Saved the loot backpack")
+
+    def _show_saved_backpack(self) -> None:
+        """Show the backpack picked earlier (saved in the profiles folder)."""
+        import cv2
+
+        pic = cv2.imread(str(_backpack_path()))  # the file holds the frame's RGB as is
+        if pic is not None:
+            self._show_backpack(pic)
+
+    def _show_backpack(self, pic: np.ndarray) -> None:
         image = Image.fromarray(pic)
         self.lbl_backpack.configure(image=ctk.CTkImage(image, size=image.size))
-        self.lbl_msg.configure(text="Saved the loot backpack")
 
     def _cursor_text(self) -> str:
         from moonlight.perception.capture import ScreenCapture
