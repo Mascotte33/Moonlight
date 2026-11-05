@@ -1792,7 +1792,7 @@ def test_use_waits_for_no_monsters_and_hp(monkeypatch: pytest.MonkeyPatch, unsaf
     if unsafe == "monster":
         sim.state.monsters = [Monster("Rat", 100.0)]
     else:
-        sim.state.hp_percent = 79.0
+        sim.state.hp_percent = 49.0
     sim.step()
     sim.step()
     assert "d" not in pressed(sim)

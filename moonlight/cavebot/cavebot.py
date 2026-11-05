@@ -262,7 +262,7 @@ _CREATURE_IN_THE_WAY_CLICK_WAIT = 1.5
 _VIEW_SETTLE = 0.5
 # doc: docs/prs/echo-raid.md#use
 #: HP % at or above which an echo raid trigger is walked onto (with no monster around).
-ECHO_RAID_MIN_HP = 80.0
+ECHO_RAID_MIN_HP = 50.0
 #: Seconds after each click on an echo raid trigger before looking whether it is gone.
 ECHO_RAID_CLICK_WAIT = 1.0
 #: Right-click + left-click tries on one trigger before it is ignored.

@@ -158,7 +158,7 @@ Echo raid triggers (the red swirl that spawns stronger monsters) are seen on
 the game screen while walking with WSAD keys. Cavebot > Settings > **Echo raid** picks
 what the bot does: **avoid** (default) never walks onto one and skips a
 waypoint on one; **use** walks next to the nearest one once no monster is in
-the battle list and HP is 80 % or above, right-clicks it, waits 1 s, and if it
+the battle list and HP is 50 % or above, right-clicks it, waits 1 s, and if it
 is still there left-clicks it (the character steps on), waits 1 s again. Once
 it is gone it fights what spawns, then goes on from the nearest waypoint.
 After 3 such tries, or with no way to it, the swirl is ignored until it was
