@@ -1029,7 +1029,7 @@ def test_walk_keys_walk_onto_a_hole_when_it_is_the_waypoint(tmp_path: Path) -> N
 
 # doc: docs/prs/client-hotkeys.md#leave-floor
 def test_a_floor_with_no_reachable_waypoint_goes_to_the_next_one_on_it(tmp_path: Path) -> None:
-    costs = _corridor_map(tmp_path, hole=(5, 8))
+    costs = _corridor_map(tmp_path)  # no floor change to leave by
     route = [walk(5, 4, 6), walk(5, 12, 6), walk(100, 100, 7)]  # (100, 100) is off the corridor
     sim = Sim(route, Position(5, 4, 6), walk_keys=True, cost_map=costs)
     sim.bot.start()
@@ -1037,6 +1037,24 @@ def test_a_floor_with_no_reachable_waypoint_goes_to_the_next_one_on_it(tmp_path:
     sim.pos = Position(5, 4, 7)  # a fight chased the character up a ramp
     sim.step()
     assert sim.route.current == 2 and sim.bot.alarm is None  # tried anyway, not "lost"
+
+
+# doc: docs/prs/client-hotkeys.md#keep-route-on-a-wrong-floor
+def test_a_step_onto_a_closed_off_platform_goes_back_down_and_on(tmp_path: Path) -> None:
+    costs = _corridor_map(tmp_path, hole=(5, 8))
+    # waypoint 2 is on floor 7 but off the corridor: the platform does not reach it
+    route = [walk(5, 4, 6), walk(5, 12, 6), walk(100, 100, 7), walk(5, 20, 6)]
+    sim = Sim(route, Position(5, 4, 6), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    sim.step()
+    assert sim.route.current == 1
+    sim.pos = Position(5, 4, 7)  # waypoint 0's step led up onto the platform
+    _step_until_planned(sim)
+    assert sim.route.current == 1  # not resynced to waypoint 2: the route stays put
+    assert sim.bot.planned_path[-1] == (5, 8)  # back down by the stairs
+    sim.pos = Position(5, 8, 6)
+    sim.step()
+    assert sim.route.current == 1 and sim.bot.alarm is None  # goes on where it left off
 
 
 # doc: docs/prs/client-hotkeys.md#leave-floor

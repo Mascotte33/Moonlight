@@ -1449,10 +1449,14 @@ class Cavebot:
     def _resync_floor(self, pos: Position) -> None:
         """Jump to the next waypoint on the new floor the map can reach (wrapping).
 
-        None reachable (a fight chased the character up a ramp): the next one on
-        the floor anyway; stuck there, :meth:`_skip_unreachable` tries the next.
-        No waypoint on the floor at all: leave by the nearest floor change (the
-        one that led here is not taken again); with none, wait as ``lost``.
+        None reachable (a step or a fight led onto a closed-off platform or
+        roof): keep the route where it was and leave by the nearest floor
+        change, so the route goes on where it left off. A floor change that
+        led to a floor with no waypoint is not taken again. No floor change
+        either: the next waypoint on the floor anyway, or with none wait as
+        ``lost``.
+
+        # doc: docs/prs/client-hotkeys.md#keep-route-on-a-wrong-floor
         """
         wps = self.route.waypoints
         n, z = len(wps), pos.z
@@ -1461,16 +1465,11 @@ class Cavebot:
             if has_tile(wps[i]) and wps[i].z == z
         ]  # fmt: skip
         reachable = [i for i in on_floor if self._map_reaches(pos, wps[i])]
-        if on_floor:
-            i = (reachable or on_floor)[0]
-            logger.info("cavebot: floor changed to %d, resync to waypoint %d", z, i)
-            self.route.current = i
-            self._expected_z = None
-            self._last_cmd = float("-inf")
-            self._clicker.cancel()
+        if reachable:
+            self._resync_to(reachable[0], z)
             return
         left_by = self._left_by
-        if left_by is not None and left_by.z != z:
+        if not on_floor and left_by is not None and left_by.z != z:
             logger.info(
                 "cavebot: floor change at %d,%d,%d leads to floor %d with no waypoint, "
                 "not taken again",
@@ -1480,12 +1479,22 @@ class Cavebot:
             self._left_by = None
         if self._leave_floor(pos):
             return
+        if on_floor:
+            self._resync_to(on_floor[0], z)
+            return
         # doc: docs/prs/position-lost.md#wait-on-an-unknown-floor
         # The route used to stop here for good: a floor misread for one tick
         # after a pause (bot.log 2026-10-31 22:44:01) ended the hunt.
         if self.alarm != "lost":
             logger.warning("cavebot: [stuck: lost] no waypoint on floor %d, waiting", z)
             self.alarm = "lost"
+
+    def _resync_to(self, index: int, z: int) -> None:
+        logger.info("cavebot: floor changed to %d, resync to waypoint %d", z, index)
+        self.route.current = index
+        self._expected_z = None
+        self._last_cmd = float("-inf")
+        self._clicker.cancel()
 
     def _map_reaches(self, pos: Position, wp: Waypoint) -> bool:
         """True without a cost map, or when it (or the route's lines) shows a way to *wp*."""

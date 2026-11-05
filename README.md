@@ -125,14 +125,14 @@ as any other (so a restart on an upper floor still finds the character).
 Only what the minimap shows is compared: the white player cross and black
 parts away from anything drawn are skipped, so a roof the minimap does not
 draw does not spoil the match. After a floor change the route goes on at the next waypoint on that
-floor the map can reach; with none reachable (a fight chased the character up
-a ramp) it tries the next waypoint on that floor anyway. When there is no way
-to the waypoint at all, it tries the next waypoint on the same floor, wrapping
-round the route, until one gets it unstuck (`no way to waypoint 24, trying
-waypoint 8` in the log). When the map shows no way to any waypoint on that
-floor (a closed-off platform), it walks onto the nearest floor change instead
-(`leaving by the floor change at 32437,31729`) and goes on from the floor it
-lands on. A floor with no waypoint on the route (a roof a fight chased the
+floor the map can reach. When the map shows no way to any waypoint on that
+floor (a fight or a step led onto a closed-off platform), it keeps its place on
+the route and walks onto the nearest floor change instead (`leaving by the
+floor change at 32437,31729`), then goes on with the same waypoint; only with no
+floor change left does it try the next waypoint on that floor anyway. When
+there is no way to the waypoint at all, it tries the next waypoint on the same
+floor, wrapping round the route, until one gets it unstuck (`no way to
+waypoint 24, trying waypoint 8` in the log). A floor with no waypoint on the route (a roof a fight chased the
 character onto) is left the same way, by its nearest floor change; stairs that
 led to such a floor are not taken again (`not taken again` in the log). With
 no floor change left to take, the cavebot raises the `lost` alarm and waits;
