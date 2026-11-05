@@ -482,7 +482,8 @@ def trade_steps(buy: list[tuple[str, int]]) -> list[TalkStep]:
     ``(op, a, b)``: ``win`` waits for the window, ``click`` / ``to`` click /
     move the mouse at (a, b) from the window's ``npc_trade.png``, ``down`` /
     ``up`` the left button, ``count`` reads the potions, ``health`` / ``mana``
-    goes back to step a once when that total did not go up."""
+    goes back to step a once when that total did not go up. Esc closes the
+    window at the end so the walk goes on."""
     steps: list[TalkStep] = [*talk_steps(("hi", "trade")), ("win", 0, 0), ("click", *_BUY_SWITCH)]
     for item, percent in buy:
         row = len(steps)
@@ -495,7 +496,7 @@ def trade_steps(buy: list[tuple[str, int]]) -> list[TalkStep]:
             steps += [("to", x, y), ("down", 0, 0), ("to", right, y), ("up", 0, 0), 0.3]
         steps += [("click", *_BUY), 1.0]
         steps += [(kind, row, 0) for kind in ("health", "mana") if kind in item.lower()]
-    return [*steps, False]
+    return [*steps, False, "esc"]
 
 
 class Cavebot:

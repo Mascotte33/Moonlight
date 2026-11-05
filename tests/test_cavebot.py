@@ -1607,6 +1607,8 @@ def test_trade_buys_each_row_and_buys_a_potion_again_when_its_total_did_not_go_u
     assert points.count((816, 725)) == 3  # Buy: the potion twice, the rope once
     keys = "".join(line[2:] for line in sim.fake.sent_lines if line.startswith("K "))
     assert keys.count("strong") == 2 and keys.count("rope") == 1
+    last_key = [line for line in sim.fake.sent_lines if line.startswith("K ")][-1]
+    assert last_key == "K esc"  # closes the trade window before walking on
     a, b = clicker.to_wire((680, 683)), clicker.to_wire((680 + 46, 683))
     drag = [f"A {a[0]} {a[1]}", "H L", f"A {b[0]} {b[1]}", "R L"]
     mouse = [line for line in sim.fake.sent_lines if line[0] in "AHR"]
