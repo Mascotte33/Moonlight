@@ -1065,7 +1065,7 @@ def test_stuck_goes_round_every_waypoint_on_any_floor_then_again() -> None:
     sim.route.current = 2
     tried = []
     for _ in range(6):
-        sim.bot._skip_unreachable(Position(0, 0, 7), lambda x, y, z: True)
+        sim.bot._skip_unreachable(sim.pos, lambda x, y, z: True)
         tried.append(sim.route.current)
         if sim.route.current == 1:  # on floor 6: its x,y on this floor
             assert sim.bot._detour == Waypoint(30, 30, 7, "stand")
