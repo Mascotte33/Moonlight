@@ -655,6 +655,9 @@ def build_modules(
             from moonlight.perception.potions import PotionCounter
 
             m.scripts.potion_counts = PotionCounter(screen_grab).counts
+            from moonlight.perception.stamina import StaminaReader
+
+            m.scripts.stamina = StaminaReader(screen_grab).minutes
     m.scripts.clicker = m.clicker
     m.scripts.timers = config.scripts.timers()
     if config.rotation is None:

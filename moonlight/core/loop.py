@@ -583,6 +583,8 @@ class GameLoop:
         m = self.modules
         self._report_alarm(snap)
         self._report_module_alarm()
+        if m.scripts is not None:
+            m.scripts.log_stamina()
         selected = snap.selected_target
         if self._had_selection and selected is None and m.cavebot is not None:
             m.cavebot.on_target_killed()

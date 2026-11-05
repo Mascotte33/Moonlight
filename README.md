@@ -297,7 +297,13 @@ def run(bot):
     if (bot.count("mana") or 0) < 50:  # action-bar potions, None when unknown
         yield bot.goto("town")    # walk on from route label town
     yield bot.press("f5")
+    if (bot.stamina() or 99 * 60) < 39 * 60 + 30:  # minutes, None when unread
+        yield bot.goto("relog")
 ```
+
+`bot.stamina()` reads the Stamina line of the Skills window, so keep that
+window open. The bot also logs the stamina once a minute when it changes
+(`stamina 41:23`, with `(under 39:30)` once it is low).
 
 A running script pauses walking and waits during a fight or looting; healing
 always goes first.
