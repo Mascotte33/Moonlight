@@ -205,7 +205,7 @@ it does the waypoint: a `label`, `goto`, `say`, `key`, `drag`, `script` or
 stands. One click on a row in the waypoint list highlights it; the ▲ and ▼
 buttons above the list move it one row up or down, and ✕ (or the Delete key)
 deletes it, with no popup; the row below is highlighted next. Press Save to
-keep the change. The buttons are grayed out while Cavebot is on. The list
+keep the change. The buttons are grayed out while Cavebot is on (except Refill now). The list
 keeps its scroll position when it changes. The cavebot starts from the highlighted
 waypoint, or from waypoint 1 when none is highlighted; picking another route
 clears the highlight.

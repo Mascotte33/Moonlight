@@ -411,9 +411,8 @@ class CavebotTab(Tab):
             picture = ctk.CTkLabel(row, text="")
             picture.pack(side="left", padx=(theme.UNIT, 0))
             self._last_read[option.field] = (last_read_text, picture)
-        _button(refill, "Refill now", self._refill_now).pack(
-            anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0)
-        )
+        self.btn_refill_now = _button(refill, "Refill now", self._refill_now)
+        self.btn_refill_now.pack(anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0))
         # doc: docs/prs/depot.md#deposit-waypoint
         pick = Row(refill)
         pick.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
@@ -606,13 +605,14 @@ class CavebotTab(Tab):
         self._draw()
 
     def _lock(self, locked: bool) -> None:
-        """Gray out every control while Cavebot is on; the switch and card pickers stay."""
+        """Gray out every control while Cavebot is on; the switch, Refill now
+        and card pickers stay."""
         self._locked = locked
         state = "disabled" if locked else "normal"
         stack = list(self._root.winfo_children())
         while stack:
             widget = stack.pop()
-            if widget is self._switches[SWITCH.field]:
+            if widget in (self._switches[SWITCH.field], self.btn_refill_now):
                 continue
             if isinstance(widget, CONTROLS):
                 widget.configure(state=state)
