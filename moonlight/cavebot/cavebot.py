@@ -663,8 +663,11 @@ class Cavebot:
         self.alarm: str | None = None
         self._active = False
         self._last_pos: Position | None = None
-        #: Floor-change tile walked to when no waypoint on this floor is reachable.
-        self._floor_exit: Waypoint | None = None
+        #: Tile on this floor walked to instead of the waypoint: a floor change
+        #: (no waypoint here reachable) or another floor's waypoint (stuck).
+        self._detour: Waypoint | None = None
+        #: (waypoint, floor) tried while stuck since the last waypoint reached.
+        self._stuck_tried: set[tuple[int, int]] = set()
         #: The floor change last walked through by :meth:`_leave_floor`.
         self._left_by: Waypoint | None = None
         #: Floor changes that led to a floor with no waypoint: never left by again.
@@ -785,11 +788,11 @@ class Cavebot:
             return
 
         wp = self.route.waypoints[self.route.current]
-        exit_ = self._floor_exit
+        exit_ = self._detour
         if exit_ is not None and (pos.z != exit_.z or (pos.x, pos.y) == (exit_.x, exit_.y)):
-            if pos.z != exit_.z:
+            if pos.z != exit_.z and exit_.action == "stairs":
                 self._left_by = exit_
-            self._floor_exit = exit_ = None  # left the floor, or the tile did not change it
+            self._detour = exit_ = None  # left the floor, or the tile did not change it
         if exit_ is not None:
             wp = exit_
         elif wp.action == "finddepo":
@@ -1293,8 +1296,10 @@ class Cavebot:
     def _skip_unreachable(self, pos: Position, walkable: Callable[[int, int, int], bool]) -> None:
         """Move on to the next waypoint with a path over *walkable*.
 
-        None has one: try the next waypoint on this floor anyway (wrapping), so
-        an earlier waypoint gets the character unstuck. The map reaches none on
+        Waypoints on other floors count too: the character walks to their
+        x,y on this floor. Each is tried once per floor until a waypoint is
+        reached; when all were tried the round starts again. None has one:
+        try the next waypoint on this floor anyway (wrapping). The map reaches none on
         this floor (a closed-off platform): leave by the nearest floor change.
         None on this floor: retry the blocked tiles.
 
@@ -1313,17 +1318,25 @@ class Cavebot:
                 continue  # reached at once: straight back to the unreachable one
             if wp.z == pos.z and same_floor is None:
                 same_floor = index
-            if wp.z == pos.z and next_step(start, goal, walkable) is not None:
+            if (index, pos.z) in self._stuck_tried:
+                continue
+            if next_step(start, goal, walkable) is not None:
                 logger.info(
-                    "cavebot: [stuck: unreachable] waypoint %d unreachable, skipping to %d",
+                    "cavebot: [stuck: unreachable] waypoint %d unreachable, skipping to %d%s",
                     self.route.current,
                     index,
+                    "" if wp.z == pos.z else f" (floor {wp.z}: walking to its x,y here)",
                 )
+                self._stuck_tried.add((index, pos.z))
                 self.route.current = index
+                if wp.z != pos.z:
+                    self._detour = Waypoint(wp.x, wp.y, pos.z, "stand")
                 self._target = self._retried_target = None
+                self._clicker.cancel()
                 return
         if not self._active:  # a goto loop already halted it
             return
+        self._stuck_tried = set()  # all tried: the next stuck goes round the route again
         on_floor = [w for w in self.route.waypoints if has_tile(w) and w.z == pos.z]
         if not any(self._map_reaches(pos, w) for w in on_floor) and self._leave_floor(pos):
             return
@@ -1348,6 +1361,7 @@ class Cavebot:
 
     def _advance(self) -> None:
         self.on_waypoint_reached(self.route.current)
+        self._stuck_tried = set()
         wp = self.route.waypoints[self.route.current]
         if wp.action == "goto" or (wp.action == "check" and self._refill_due()):
             if wp.action == "check":
@@ -1519,7 +1533,7 @@ class Cavebot:
                     "leaving by the floor change at %d,%d",
                     pos.z, x, y,
                 )  # fmt: skip
-                self._floor_exit = stairs
+                self._detour = stairs
                 self._target = self._retried_target = None
                 self._clicker.cancel()
                 return True

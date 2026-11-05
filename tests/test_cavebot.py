@@ -1057,6 +1057,19 @@ def test_stuck_with_no_reachable_waypoint_on_the_floor_leaves_by_the_floor_chang
     assert sim.route.current == 1 and sim.bot.alarm is None
 
 
+# doc: docs/prs/client-hotkeys.md#next-waypoint-when-stuck
+def test_stuck_goes_round_every_waypoint_on_any_floor_then_again() -> None:
+    sim = Sim([walk(20, 20), walk(30, 30, 6), walk(40, 40), walk(50, 50)], Position(0, 0, 7))
+    sim.route.loop = True
+    sim.bot.start()
+    sim.route.current = 2
+    tried = []
+    for _ in range(6):
+        sim.bot._skip_unreachable(sim.pos, lambda x, y, z: True)
+        tried.append(sim.route.current)
+        if sim.route.current == 1:  # on floor 6: its x,y on this floor
+            assert sim.bot._detour == Waypoint(30, 30, 7, "stand")
+    assert tried == [3, 0, 1, 2, 3, 0]  # every one after the stuck one, wrapping, then again
 # doc: docs/prs/client-hotkeys.md#waypointless-floor
 def test_a_floor_with_no_waypoint_is_left_and_a_dead_exit_not_taken_again(
     tmp_path: Path,
@@ -1367,12 +1380,13 @@ def test_walk_keys_skip_unreachable_waypoints_until_one_has_a_way(
     with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
         for _ in range(3 * _BLOCK_STEPS):  # walks into the wall first: the map can be wrong
             sim.step()
-            if sim.route.current == 2:
+            if sim.route.current == 1:
                 break
     for _ in range(_BLOCK_STEPS // 2):
         sim.step()
-    assert sim.route.current == 2  # waypoint 1 is on another floor: skipped too
-    assert "waypoint 0 unreachable, skipping to 2" in caplog.text
+    assert sim.route.current == 1  # on another floor: tried at its x,y on this one
+    assert sim.bot._detour == Waypoint(100, 104, 7, "stand")
+    assert "waypoint 0 unreachable, skipping to 1 (floor 6" in caplog.text
     assert pressed(sim)[0] == "d" and pressed(sim)[-1] == "s"
     assert sim.bot.is_active()
 
