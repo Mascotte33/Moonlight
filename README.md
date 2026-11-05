@@ -127,11 +127,9 @@ parts away from anything drawn are skipped, so a roof the minimap does not
 draw does not spoil the match. After a floor change the route goes on at the next waypoint on that
 floor the map can reach; with none reachable (a fight chased the character up
 a ramp) it tries the next waypoint on that floor anyway. When there is no way
-to the waypoint at all, it tries every waypoint after it in turn, wrapping
-round the route (through `goto`/`check` loops) and back to the stuck one, then
-round again, until one gets it unstuck (`waypoint 20 unreachable, skipping to
-21` in the log). A waypoint on another floor is tried by walking to its x,y on
-the current floor (`(floor 5: walking to its x,y here)`). When the map shows no way to any waypoint on that
+to the waypoint at all, it tries the next waypoint on the same floor, wrapping
+round the route, until one gets it unstuck (`no way to waypoint 24, trying
+waypoint 8` in the log). When the map shows no way to any waypoint on that
 floor (a closed-off platform), it walks onto the nearest floor change instead
 (`leaving by the floor change at 32437,31729`) and goes on from the floor it
 lands on. A floor with no waypoint on the route (a roof a fight chased the
