@@ -111,7 +111,8 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   to 3 s for the trade window (else talks again), clicks Buy, then buys each
   row of the route's buy list: search the name, pick the first result, drag
   the amount slider to the row's percent, Buy. A health or mana potion whose
-  action-bar total did not go up is bought again. Alarm ``"trade"`` after 3 min.
+  action-bar total did not go up is bought once more, then the trade moves on.
+  Alarm ``"trade"`` after 3 min.
 * **script**: runs the user script named by its label
   (:mod:`moonlight.scripts.scripts`); the route holds until it ends.
 * **End of route**: a hunting route starts over at waypoint 0; a route
@@ -481,7 +482,7 @@ def trade_steps(buy: list[tuple[str, int]]) -> list[TalkStep]:
     ``(op, a, b)``: ``win`` waits for the window, ``click`` / ``to`` click /
     move the mouse at (a, b) from the window's ``npc_trade.png``, ``down`` /
     ``up`` the left button, ``count`` reads the potions, ``health`` / ``mana``
-    goes back to step a when that total did not go up."""
+    goes back to step a once when that total did not go up."""
     steps: list[TalkStep] = [*talk_steps(("hi", "trade")), ("win", 0, 0), ("click", *_BUY_SWITCH)]
     for item, percent in buy:
         row = len(steps)
@@ -652,6 +653,8 @@ class Cavebot:
         self._trade_at: tuple[int, int] | None = None
         self._trade_wait_since: float | None = None
         self._potions_before: dict[str, int | None] = {}
+        #: ``trade``: buy rows already bought again (each gets one more try).
+        self._rebought_rows: set[int] = set()
         self._potion_counts = potion_counts
 
         #: Why the route stopped on its own ("stuck", "lost", "goto_loop"),
@@ -1215,9 +1218,13 @@ class Cavebot:
             else:
                 before, after = self._potions_before.get(op), counts.get(op)
                 if before is not None and after is not None and after <= before:
-                    logger.info("cavebot: trade: %s potions did not go up, buying again", op)
-                    self._sends_done = a
-                    return
+                    if a in self._rebought_rows:
+                        logger.warning("cavebot: trade: %s potions still not up, moving on", op)
+                    else:
+                        logger.info("cavebot: trade: %s potions did not go up, buying again", op)
+                        self._rebought_rows.add(a)
+                        self._sends_done = a
+                        return
             self._sends_done += 1
             return
         send = self._input
@@ -1318,6 +1325,7 @@ class Cavebot:
         self._deposit_drag, self._locker_clicked = None, float("-inf")
         self._talk, self._sends_done = None, 0
         self._trade_at = self._trade_wait_since = None
+        self._rebought_rows = set()
         self._expected_z = None
         self._last_cmd = float("-inf")
         self._clicker.cancel()  # the pending click targeted the old waypoint

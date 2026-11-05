@@ -243,7 +243,7 @@ depot, the trade window and the chat button on screen when they run:
   to 3 s for the trade window (else talks again), clicks Buy and buys the
   route's buy list in order: search the name, pick the first result, drag the
   amount slider to the row's percent, Buy. A health or mana potion whose
-  action-bar total did not go up is bought again. Write the buy list on
+  action-bar total did not go up is bought once more, then the trade moves on. Write the buy list on
   Cavebot > Refill, one `item, percent` per line (`strong mana potion, 80`);
   it is saved in the route file.
 - `bank`: also next to the NPC. Says `hi`, `deposit all`, `yes`, waits about

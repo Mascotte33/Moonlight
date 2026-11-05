@@ -1613,6 +1613,28 @@ def test_trade_buys_each_row_and_buys_a_potion_again_when_its_total_did_not_go_u
     assert mouse == drag * 2  # the rope's 0 % leaves the slider at 1
 
 
+def test_trade_buys_a_potion_at_most_twice_when_its_total_never_goes_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#trade-waypoint
+    import moonlight.cavebot.cavebot as cb
+
+    clicker = SteppedClicker()
+    monkeypatch.setattr(cb, "find_chat", lambda frame: (
+        [c[0] for c in clicker.clicks].count((500, 600)) % 2 == 0, (500, 600)))  # fmt: skip
+    monkeypatch.setattr(cb, "find_picture", lambda frame, path: (700, 400))
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([Waypoint(100, 100, 7, "trade"), walk(110, 100)], Position(100, 100, 7),
+              frames=lambda: frame, clicker=clicker,
+              potion_counts=lambda: {"health": 5, "mana": 10})  # fmt: skip
+    sim.route.buy = [("strong mana potion", 50), ("strong health potion", 50)]
+    sim.bot.start()
+    run_until(sim, 60)
+    assert sim.route.current == 1
+    keys = "".join(line[2:] for line in sim.fake.sent_lines if line.startswith("K "))
+    assert keys.count("mana") == 2 and keys.count("health") == 2
+
+
 def test_bank_alarms_after_3_min_of_a_chat_that_will_not_turn_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
