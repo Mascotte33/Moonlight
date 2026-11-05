@@ -1027,6 +1027,24 @@ def test_walk_keys_walk_onto_a_hole_when_it_is_the_waypoint(tmp_path: Path) -> N
     assert sim.bot.planned_path[-1] == (5, 8)  # the route asks for it: onto it
 
 
+# doc: docs/prs/client-hotkeys.md#leave-floor
+def test_a_floor_with_no_reachable_waypoint_is_left_by_the_nearest_floor_change(
+    tmp_path: Path,
+) -> None:
+    costs = _corridor_map(tmp_path, hole=(5, 8))
+    route = [walk(5, 4, 6), walk(5, 12, 6), walk(100, 100, 7)]  # (100, 100) is off the corridor
+    sim = Sim(route, Position(5, 4, 6), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(5, 4, 7)  # a fight chased the character up a ramp
+    _step_until_planned(sim)
+    assert sim.bot.planned_path[-1] == (5, 8)  # off this floor, not to (100, 100)
+    assert sim.route.current == 1
+    sim.pos = Position(5, 8, 6)  # back down
+    sim.step()
+    assert sim.route.current == 1 and sim.bot.alarm is None
+
+
 # doc: docs/prs/avoid-holes.md#route-lines-last
 def test_route_lines_only_where_the_map_shows_no_way(tmp_path: Path) -> None:
     costs = _corridor_map(tmp_path, blocked=(5, 8))  # a way around it exists

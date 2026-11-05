@@ -120,7 +120,10 @@ minimap) keeps the last position as an estimate; only 10 s without any match
 makes it unknown. When the floor shown has no match, the floors above and
 below are tried near the last position (1 up, 1 down, 2 up, 2 down, up to 3),
 and a mostly black minimap is matched near the last position with a looser
-score. If the floor reads as one with no waypoint on the route
+score. After a floor change the route goes on at the next waypoint on that
+floor the map can reach; with none reachable (a fight chased the character up
+a ramp) it walks onto the nearest stairs or ramp to leave that floor and tries
+again (`[stuck: off-route]` in the log). If the floor reads as one with no waypoint on the route
 (for a moment after a pause), the cavebot raises the `lost` alarm and waits;
 it walks on once the floor reads right again.
 
