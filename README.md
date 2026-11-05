@@ -505,6 +505,16 @@ or in the `targeting` section of your profile config:
   A tie goes to the top row. It finishes the current target even when a higher priority monster
   comes, and never clicks it twice (a second click untargets). A selected
   "never attack" monster is left for the next one.
+- **Only monsters within N tiles** (Targeting > Settings, `only_attack_within_range`,
+  `attack_range_tiles`, default off and 3): the bot attacks only creatures in the
+  box of N tiles around you (7x7 at 3). It right-clicks them on the game screen
+  (needs the `game_grid` region), so with this on the priority column is not used:
+  the screen health bar's HP decides by the same-priority order ("battle list" =
+  nearest). Creatures further away act as if they were not there: the cavebot walks
+  on and echo raids are not blocked. A selected target is kept when it walks away.
+  Turn on secure mode in the client: a click on a player or NPC then selects nothing,
+  and the bot logs `nothing selected at x,y,z, skipping that tile 30 s`. A "never
+  attack" monster selected this way gets Esc and its tile is skipped 30 s.
 - **Area rules** press a hotkey when at least `minimum_adjacent_monsters`
   creatures stand next to you and MP is at least `minimum_mana` mana points.
   Default: no mana floor. A rule is used only while it is

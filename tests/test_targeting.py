@@ -279,3 +279,60 @@ def test_step_closer_never_lands_on_an_echo_raid() -> None:
     assert _step_toward_creature(((9, 3),)) == (1, 0)
     assert _step_toward_creature(((9, 3),), ((8, 5),)) == (0, -1)  # the other way
     assert _step_toward_creature(((7, 2),), ((7, 4),)) is None  # no other way
+
+
+# -- near-targeting: only monsters within N tiles, clicked on screen -----------
+
+
+def near(
+    slots: tuple[tuple[int, int], ...],
+    hps: tuple[float, ...],
+    target_order: str = "lowest hp",
+) -> tuple[TargetingDecision, WorldState]:
+    targeting = TargetingDecision(
+        TargetingConfig(only_attack_within_range=True, target_order=target_order)
+    )
+    s = state([Monster("Troll", 100.0, name_hash="t", battle_list_row=0)])
+    s.creature_slots, s.creature_hp_percents = slots, hps
+    return targeting, s
+
+
+def test_in_range_pick_is_the_lowest_screen_hp() -> None:
+    targeting, s = near(((8, 5), (6, 4), (7, 2)), (90.0, 40.0, 70.0))
+    action = targeting.decide(s, 0.0)
+    assert action is not None and action.kind == "select_on_screen"
+    assert action.creature_slot == (6, 4)
+
+
+def test_battle_list_order_picks_the_nearest_in_range() -> None:
+    targeting, s = near(((9, 7), (8, 5)), (10.0, 90.0), target_order="battle list")
+    action = targeting.decide(s, 0.0)
+    assert action is not None and action.creature_slot == (8, 5)
+
+
+def test_creatures_beyond_range_are_never_picked() -> None:
+    targeting, s = near(((11, 5), (7, 1)), (10.0, 10.0))
+    assert targeting.decide(s, 0.0) is None
+    assert not targeting.fight_in_range(s, 0.0)
+
+
+def test_selected_target_is_kept_when_it_leaves_range() -> None:
+    targeting, s = near(((12, 5),), (50.0,))
+    s.selected_target = s.monsters[0]
+    assert targeting.decide(s, 0.0) is None
+    assert targeting.fight_in_range(s, 0.0)
+
+
+def test_skipped_tile_is_left_alone_for_30_seconds() -> None:
+    targeting, s = near(((8, 5),), (50.0,))
+    action = targeting.decide(s, 0.0)
+    assert action is not None
+    targeting.skip_tile(action.creature_tile, 0.0, "nothing selected")
+    assert targeting.decide(s, 29.0) is None
+    assert not targeting.fight_in_range(s, 29.0)
+    assert targeting.decide(s, 30.5) is not None
+
+
+def test_fight_without_the_option_is_any_battle_list_monster() -> None:
+    s = state([Monster("Troll", 100.0, name_hash="t", battle_list_row=0)])
+    assert rows().fight_in_range(s, 0.0)

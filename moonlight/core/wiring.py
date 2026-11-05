@@ -249,7 +249,7 @@ def make_perceive(
     from moonlight.calibration.autofind import ANCHORS_DIR, PLAYERS_HEADER, PlayerListFollower
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.chase_mode import read_chase_mode
-    from moonlight.perception.creatures import find_creatures
+    from moonlight.perception.creatures import creature_bars
     from moonlight.perception.echo_raid import find_echo_raids
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
@@ -333,7 +333,8 @@ def make_perceive(
                     status_icons.read_active_conditions(frame) if status_icons else frozenset()
                 )
             ticks_until_slow_read -= 1
-            slots = tuple(find_creatures(frame, creature_grid)) if creature_grid else ()
+            bars = creature_bars(frame, creature_grid) if creature_grid else {}
+            slots = tuple(sorted(bars))
             echo_raids = tuple(find_echo_raids(frame, creature_grid)) if creature_grid else ()
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
@@ -359,6 +360,7 @@ def make_perceive(
             state.players_on_screen = players
             state.players = tuple(entry.name_hash for entry in names)
             state.creature_slots = slots
+            state.creature_hp_percents = tuple(bars[slot] for slot in slots)
             state.echo_raid_slots = echo_raids
             state.active_status_icons = conditions
             state.chase_mode = chase_mode
@@ -595,6 +597,7 @@ def build_modules(
             config.targeting,
             profile.get_region("battle_list").to_tuple,
             profile.ui_scale,
+            game_grid_region=profile.get_region("game_grid").to_tuple,
         )
     # doc: docs/prs/targeting.md#stuck-targeting
     # The owner's rows (kept while targeting is off) with every row attacking.
@@ -609,6 +612,7 @@ def build_modules(
             profile.get_region("battle_list").to_tuple,
             profile.ui_scale,
             attack_top_row_first=True,
+            game_grid_region=profile.get_region("game_grid").to_tuple,
         )
     if (config.targeting is not None or m.stuck_targeting) and m.attack_hotkeys is None:
         m.attack_hotkeys = AttackHotkeys(rows)

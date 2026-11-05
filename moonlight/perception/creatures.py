@@ -8,7 +8,8 @@ scale with the game view, so its size is the same at every tile size.
 :func:`find_creatures` returns the game-grid slot ``(col, row)`` under each
 bar. The bar's center sits over its creature's tile center, just above the
 tile, so the slot is the tile half a tile below the bar. The player's own
-slot (7, 5) is left out.
+slot (7, 5) is left out. :func:`creature_bars` also gives each one's HP from
+its bar's fill (docs/prs/near-targeting.md#pick-on-screen).
 
 # doc: docs/prs/keys-walking.md#creature-scan
 """
@@ -18,7 +19,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-__all__ = ["BAR_W", "PLAYER_SLOT", "find_creatures"]
+__all__ = ["BAR_W", "PLAYER_SLOT", "creature_bars", "find_creatures"]
 
 BAR_W = 31
 _BAR_H = 4
@@ -43,10 +44,17 @@ def find_creatures(frame: np.ndarray, grid: tuple[int, int, int, int]) -> list[t
 
     *frame* is a BGR screenshot, *grid* the calibrated ``(x, y, w, h)``.
     """
+    return sorted(creature_bars(frame, grid))
+
+
+def creature_bars(
+    frame: np.ndarray, grid: tuple[int, int, int, int]
+) -> dict[tuple[int, int], float]:
+    """HP percent of each creature slot ``(col, row)``, read off its bar's fill."""
     gx, gy, gw, gh = grid
     crop = frame[gy : gy + gh, gx : gx + gw]
     if crop.shape[0] < _BAR_H or crop.shape[1] < BAR_W:
-        return []
+        return {}
     # cv2.max is ~10x faster than crop.max(axis=2) on a full game grid.
     bright = cv2.max(cv2.max(crop[:, :, 0], crop[:, :, 1]), crop[:, :, 2])
     black = bright < _BLACK
@@ -62,11 +70,12 @@ def find_creatures(frame: np.ndarray, grid: tuple[int, int, int, int]) -> list[t
         & (bright[1:-2, 1 : n + 1] >= _FILL)
     )
     tw, th = gw / _COLS, gh / _ROWS
-    slots = set()
+    bars: dict[tuple[int, int], float] = {}
     for y, x in zip(ys.tolist(), xs.tolist(), strict=True):
         col = int((x + BAR_W / 2) // tw)
         row = int((y + th / 2) // th)
         if 0 <= col < _COLS and 0 <= row < _ROWS:
-            slots.add((col, row))
-    slots.discard(PLAYER_SLOT)
-    return sorted(slots)
+            fill = int((bright[y + 1, x + 1 : x + BAR_W - 1] >= _FILL).sum())
+            bars[(col, row)] = 100.0 * fill / (BAR_W - 2)
+    bars.pop(PLAYER_SLOT, None)
+    return bars

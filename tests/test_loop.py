@@ -507,14 +507,15 @@ class FakeClicker:
     def __init__(self) -> None:
         self.wire: InputBackend | None = None
         self.target: tuple[int, int] | None = None
+        self.side = ClickSide.LEFT
         self.jumped = False
 
     @property
     def busy(self) -> bool:
         return self.target is not None
 
-    def request(self, target: tuple[int, int]) -> None:
-        self.target, self.jumped = target, False
+    def request(self, target: tuple[int, int], side: ClickSide = ClickSide.LEFT) -> None:
+        self.target, self.side, self.jumped = target, side, False
 
     def cancel(self) -> None:
         self.target = None
@@ -527,7 +528,7 @@ class FakeClicker:
             self.wire.mouse_to(*self.target)
             self.jumped = True
             return None
-        self.wire.click(ClickSide.LEFT)
+        self.wire.click(self.side)
         self.target = None
         return True
 
@@ -539,14 +540,19 @@ def make_targeting_loop(
     cavebot: object | None = None,
     toggle_chase_hotkey: str = "F9",
 ) -> tuple[GameLoop, FakeClock]:
-    """A loop with real targeting over battle list region (100, 200, 170, 300)."""
+    """A loop with real targeting over battle list region (100, 200, 170, 300).
+
+    The game grid is (0, 0, 150, 110): 10 px tiles, slot (8, 5) centred at (85, 55).
+    """
     clock = FakeClock()
     clicker = FakeClicker()
     config = targeting_config if targeting_config is not None else TargetingConfig()
     config = replace(config, toggle_chase_hotkey=toggle_chase_hotkey)
     modules = DecisionModules(
         healing=HealingDecision(clock=clock),
-        targeting=TargetingDecision(config, (100, 200, 170, 300)),
+        targeting=TargetingDecision(
+            config, (100, 200, 170, 300), game_grid_region=(0, 0, 150, 110)
+        ),
         attack_hotkeys=AttackHotkeys(config),
         cavebot=cast(Cavebot, cavebot),
         clicker=cast(ClickController, clicker),
@@ -563,6 +569,50 @@ def ticks(gl: GameLoop, clock: FakeClock, n: int) -> None:
 
 
 #: The Chase Opponent key a follow row presses before its first attack key.
+
+
+class TestScreenClick:
+    """near-targeting: only creatures within N tiles, right-clicked on the game screen."""
+
+    NEAR = TargetingConfig(
+        only_attack_within_range=True,
+        monsters=(MonsterRow(name="Rat", ignore=True),),
+    )
+
+    def near_state(self) -> WorldState:
+        ws = make_state()
+        with ws.lock():
+            ws.monsters = [Monster("Wolf", 50.0)]
+            ws.creature_slots, ws.creature_hp_percents = ((8, 5), (13, 5)), (50.0, 10.0)
+        return ws
+
+    def test_right_clicks_the_creature_in_range(self) -> None:
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self.near_state(), inp, self.NEAR)
+        ticks(gl, clock, 3)
+        assert gl.current_state is BotState.ATTACK
+        assert inp.sent_lines == ["A 85 55", "C R"]  # the far (13, 5) one is never clicked
+
+    def test_nothing_selected_skips_the_tile(self, caplog: pytest.LogCaptureFixture) -> None:
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self.near_state(), inp, self.NEAR)
+        with caplog.at_level(logging.INFO):
+            ticks(gl, clock, 3 + 18 + 4 + 40)  # no outline after the click (a player)
+        assert inp.sent_lines == ["A 85 55", "C R"]
+        assert "nothing selected at 1,0,0, skipping that tile 30 s" in caplog.text
+
+    def test_a_selected_ignored_monster_is_dropped_with_esc(self) -> None:
+        ws = self.near_state()
+        rat = Monster("Rat", 50.0, name_hash="r", battle_list_row=1)
+        with ws.lock():
+            ws.monsters.append(rat)
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, self.NEAR)
+        ticks(gl, clock, 3)
+        with ws.lock():
+            ws.selected_target = rat  # the click picked the never-attack Rat
+        ticks(gl, clock, 20)
+        assert inp.sent_lines == ["A 85 55", "C R", "K esc"]
 
 
 class TestSelectClick:

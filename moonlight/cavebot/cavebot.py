@@ -611,6 +611,10 @@ class Cavebot:
         self.stuck_on_creatures = False
         #: Set by the loop while targeting is paused: walk on past a selected target.
         self.targeting_paused = False
+        # doc: docs/prs/near-targeting.md#fight-in-range
+        #: Set by the loop: a fight holds the walk (monsters out of range do not
+        #: count). None (no loop) = any monster in the battle list.
+        self.fight_in_range: bool | None = None
         self._stuck_allowed_until = float("-inf")
         self._creatures: set[tuple[int, int]] = set()  # tiles the last scan saw
         # doc: docs/prs/echo-raid.md#avoid
@@ -897,7 +901,7 @@ class Cavebot:
             return None
         safe = (
             self._trigger_echo_raids
-            and not self._state.monsters
+            and not self._fight()
             and self._state.hp_percent >= ECHO_RAID_MIN_HP
         )
         if goal is not None and self._echo_raid_click is not None:
@@ -1617,7 +1621,7 @@ class Cavebot:
             short = next_step(start, goal, free)
             detour_too_long = short is not None and path[1] > short[1] + _DETOUR
         stuck = path is None or detour_too_long
-        fight = self._state.monsters and not self.targeting_paused
+        fight = self._fight() and not self.targeting_paused
         if stuck and fight and now < self._stuck_allowed_until:
             if not self.stuck_on_creatures:
                 logger.info(
@@ -1667,6 +1671,12 @@ class Cavebot:
         """
         seen_before = self._creatures
         return self._scan(pos, now) and self._creatures != seen_before
+
+    def _fight(self) -> bool:
+        """A fight is on: the loop's :attr:`fight_in_range`, else any battle-list monster."""
+        if self.fight_in_range is None:
+            return bool(self._state.monsters)
+        return self.fight_in_range
 
     def _attack_creature_in_the_way(
         self, path: list[tuple[int, int]], pos: Position, now: float

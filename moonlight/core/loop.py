@@ -105,7 +105,7 @@ from typing import TYPE_CHECKING, Any
 from moonlight.cavebot.cavebot import WALK_KEYS
 from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import Monster, WorldState
-from moonlight.hardware.input import InputBackend
+from moonlight.hardware.input import ClickSide, InputBackend
 from moonlight.targeting.targeting import PAUSE_SECONDS
 
 if TYPE_CHECKING:
@@ -299,6 +299,8 @@ class GameLoop:
         self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
+        # The world tile an on-screen select click right-clicked (row -1 above).
+        self._screen_click_tile: tuple[int, int, int] | None = None
         # Until when a pressed chase toggle may not show on screen yet (no second press).
         self._chase_toggle_settles_at = 0.0
         self._warned_no_chase_toggle_key = False
@@ -608,6 +610,11 @@ class GameLoop:
             self._target = None
         if m.cavebot is not None:
             m.cavebot.targeting_paused = self._targeting_paused(now)
+            # doc: docs/prs/near-targeting.md#fight-in-range
+            judge = targeting or m.stuck_targeting
+            m.cavebot.fight_in_range = (
+                judge.fight_in_range(snap, now) if judge is not None else bool(snap.monsters)
+            )
         names = Counter(mon.name for mon in snap.monsters)
         if m.attack_hotkeys is not None:
             # ponytail: one fewer monster named like the target while the
@@ -713,6 +720,8 @@ class GameLoop:
         """Short human-readable reason for a transition (for logs)."""
         match new_state:
             case BotState.ATTACK:
+                if self._target is not None and self._target.kind == "select_on_screen":
+                    return f"click {self._target.reason}"
                 if self._target is not None:
                     return f"select row {self._target.battle_list_row} ({self._target.reason})"
                 name = snap.selected_target.name if snap.selected_target is not None else "?"
@@ -861,25 +870,54 @@ class GameLoop:
         if self._select_click is not None:
             row, sent_at = self._select_click
             selected = snap.selected_target
-            outline_shows = selected is not None and selected.battle_list_row == row
+            outline_shows = selected is not None and (row == -1 or selected.battle_list_row == row)
             if sent_at is not None and not outline_shows and now - sent_at < _SELECT_OUTLINE_WAIT:
                 return
             self._select_click = None
+        if self._check_screen_click(snap, targeting, now):
+            return
         if self._target is None:
             self._press_attack_hotkey(snap, targeting, now)
             return
         row = self._target.battle_list_row
-        point = targeting.row_center(row)
+        if self._target.kind == "select_on_screen":
+            point, side = targeting.slot_center(self._target.creature_slot), ClickSide.RIGHT
+            tile: tuple[int, int, int] | None = self._target.creature_tile
+        else:
+            point, side, tile = targeting.row_center(row), ClickSide.LEFT, None
 
         def click() -> bool | None:
-            clicker.request(point)
+            clicker.request(point, side=side)
             self._select_click = (row, None)
+            self._screen_click_tile = tile
             if self.modules.attack_hotkeys is not None:
                 self.modules.attack_hotkeys.new_target()
             return self._step_click(clicker, now)
 
         if self._send(snap, click):
             logger.debug("select click row %d at %s", row, point)
+
+    # doc: docs/prs/near-targeting.md#pick-on-screen
+    def _check_screen_click(
+        self, snap: WorldState, targeting: TargetingDecision, now: float
+    ) -> bool:
+        """After an on-screen select click: skip its tile when it selected nothing
+        or an ignored monster (which Esc drops). True when the tile was skipped:
+        this tick's action still points at it."""
+        tile, self._screen_click_tile = self._screen_click_tile, None
+        selected = snap.selected_target
+        if tile is None:
+            return False
+        if selected is None:
+            targeting.skip_tile(tile, now, "nothing selected")
+            return True
+        if targeting.row_for(selected).ignore:
+            if self._send(snap, lambda: self.input.press_combo("esc")):
+                targeting.skip_tile(tile, now, f"{selected.name or '?'} is ignored")
+            else:
+                self._screen_click_tile = tile  # the limiter dropped Esc: retry next tick
+            return True
+        return False
 
     def _press_attack_hotkey(
         self, snap: WorldState, targeting: TargetingDecision, now: float

@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import pytest
 
-from moonlight.perception.creatures import BAR_W, find_creatures
+from moonlight.perception.creatures import BAR_W, creature_bars, find_creatures
 
 GOLDEN = Path(__file__).resolve().parents[0] / "golden"
 GRID = (0, 0, 15 * 96, 11 * 96)
@@ -28,6 +28,15 @@ def test_bar_maps_to_the_tile_below_it() -> None:
     _bar(frame, 3 * 96 + 33, 2 * 96 - 9)  # over tile (3, 2), like the client
     _bar(frame, 10 * 96 + 33, 8 * 96 - 9, fill=5)
     assert find_creatures(frame, GRID) == [(3, 2), (10, 8)]
+
+
+def test_bar_fill_is_the_creatures_hp() -> None:
+    frame = _frame()
+    _bar(frame, 3 * 96 + 33, 2 * 96 - 9)
+    _bar(frame, 10 * 96 + 33, 8 * 96 - 9, fill=(BAR_W - 2) // 2 + 1)
+    bars = creature_bars(frame, GRID)
+    assert bars[(3, 2)] == 100.0
+    assert 50 < bars[(10, 8)] < 55
 
 
 def test_player_slot_and_black_boxes_are_ignored() -> None:
