@@ -436,8 +436,8 @@ Healing presses your action-bar hotkeys. It never types spell names. Set it up
 in the GUI's Healing tab, or in the `healing` section of your profile config:
 
 - **Rules** are checked top to bottom. Each has a kind (`spell` or `potion`), a
-  hotkey, an HP trigger (`hp_below_percent`), an MP trigger
-  (`mp_below_percent`) and a mana floor (`minimum_mana_percent`). 0 means unused.
+  hotkey, an HP trigger (`hp_below_percent`) and an MP trigger
+  (`mp_below_percent`). 0 means unused.
 - Each tick sends the first due spell and the first due potion, so both can
   land together. Spells and potions have their own cooldowns
   (`spell_cooldown_ms`, `potion_cooldown_ms`, default 1000).

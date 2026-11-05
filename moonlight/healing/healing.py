@@ -45,7 +45,7 @@ _SLOTS = ("spell", "potion")
 class HealingRule:
     """One healing rule: press *hotkey* when HP or MP is at or below its trigger.
 
-    A trigger of 0 is unused; ``minimum_mana_percent`` of 0 is no floor.
+    A trigger of 0 is unused.
     """
 
     kind: str
@@ -53,7 +53,6 @@ class HealingRule:
     hotkey: str
     hp_below_percent: float = 0.0
     mp_below_percent: float = 0.0
-    minimum_mana_percent: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -102,7 +101,7 @@ class HealingConfig:
             if rule.kind not in _SLOTS:
                 raise ValueError(f"{where}: kind must be 'spell' or 'potion', got {rule.kind!r}")
             check_hotkey(rule.hotkey, where)
-            for name in ("hp_below_percent", "mp_below_percent", "minimum_mana_percent"):
+            for name in ("hp_below_percent", "mp_below_percent"):
                 percent = getattr(rule, name)
                 if not 0.0 <= percent <= 100.0:
                     raise ValueError(f"{where}: {name} must be 0..100, got {percent}")
@@ -132,9 +131,6 @@ class HealingAction:
 
 def _rule_reason(rule: HealingRule, hp: float, mp: float) -> str | None:
     """Why *rule* is due at *hp* / *mp*, or None when it is not."""
-    floor = rule.minimum_mana_percent
-    if 0.0 < mp < floor:
-        return None
     if 0.0 < hp <= rule.hp_below_percent:
         return f"hp {hp:.0f}% <= {rule.hp_below_percent:.0f}%"
     if 0.0 < mp <= rule.mp_below_percent:

@@ -188,6 +188,14 @@ def test_an_old_percent_mana_minimum_is_dropped() -> None:
     assert targeting is not None and targeting.area_rules == (AreaRule("F5"),)
 
 
+def test_an_old_healing_mana_floor_is_dropped() -> None:
+    data = raw(healing={"enabled": True, "rules": [
+        {"kind": "spell", "hotkey": "F1", "hp_below_percent": 85.0, "minimum_mana_percent": 80.0}
+    ]})
+    healing = BotConfig.from_dict(data).healing
+    assert healing is not None and healing.rules == (HealingRule("spell", "F1", 85.0),)
+
+
 @pytest.mark.parametrize(
     "targeting",
     [

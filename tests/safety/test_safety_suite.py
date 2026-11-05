@@ -28,7 +28,7 @@ from moonlight.core.state import Monster, Position, WorldState
 from moonlight.core.wiring import build_loop
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
-from moonlight.healing.healing import HealingConfig, HealingDecision, HealingRule
+from moonlight.healing.healing import HealingDecision
 from moonlight.looting.looting import Looting, LootingConfig
 from tests.loot_ring_pictures import paint_ring
 
@@ -198,18 +198,6 @@ def test_7_low_hp_sends_the_strong_spell_and_a_potion() -> None:
     gl, _ = make_loop(make_state(hp_percent=25.0), inp, healing=healing)
     gl.tick()
     assert inp.sent_lines == ["K F2", "K F3"]
-
-
-def test_8_low_mp_stops_casting_spells() -> None:
-    rules = (
-        HealingRule("spell", "F2", hp_below_percent=50.0, minimum_mana_percent=20.0),
-        HealingRule("potion", "F3", hp_below_percent=40.0),
-    )
-    healing = HealingDecision(HealingConfig(rules=rules))
-    inp = FakeInput()
-    gl, _ = make_loop(make_state(hp_percent=10.0, mp_percent=5.0), inp, healing=healing)
-    gl.tick()
-    assert inp.sent_lines == ["K F3"]  # no spell cast below the mana floor; the potion goes
 
 
 def test_9_rate_limit_never_exceeds_20hz() -> None:

@@ -297,6 +297,10 @@ class BotConfig:
                         section.pop(key, None)
                 if name == "targeting":
                     _drop_mana_percent(section)
+                if name == "healing":  # the mana floor of a rule, removed
+                    for rule in section.get("rules", ()):
+                        if isinstance(rule, dict):
+                            rule.pop("minimum_mana_percent", None)
                 if name == "refill":  # the refill route file's keys, gone with it
                     for key in (
                         "stop_cap", "route_name", "storage_hotkey", "deposit_hotkey", "routes_dir",
