@@ -409,6 +409,19 @@ def _absolute_screen() -> tuple[int, int, int, int]:
     return (mon["left"], mon["top"], mon["width"], mon["height"])
 
 
+
+# doc: docs/prs/near-targeting.md#park-cursor
+def _park_point(profile: CalibrationProfile) -> tuple[int, int] | None:
+    """Where the cursor rests after a minimap or battle-list click: just left of the minimap."""
+    if "minimap" not in profile.regions:
+        return None
+    mx, my, _mw, mh = profile.regions["minimap"].to_tuple
+    # ponytail: 16 px left of the minimap is the game view's right edge in the
+    # default layout; make it a config knob if a layout puts something
+    # hover-sensitive there.
+    return (mx - 16, my + mh // 2)
+
+
 def _pointer_screen(
     window_origin: Callable[[], tuple[int, int]] | None,
 ) -> tuple[int, int, int, int] | None:
@@ -644,8 +657,11 @@ def build_modules(
             roi_provider=roi_provider,
             window_origin=window_origin,
             screen=_pointer_screen(window_origin) if config.clicker.absolute else None,
-            park_region=(
-                profile.regions["minimap"].to_tuple if "minimap" in profile.regions else None
+            park_point=_park_point(profile),
+            park_after_clicks_in=tuple(
+                profile.regions[name].to_tuple
+                for name in ("minimap", "battle_list")
+                if name in profile.regions
             ),
         )
         if on_clicker is not None:

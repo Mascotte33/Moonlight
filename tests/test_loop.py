@@ -509,27 +509,34 @@ class FakeClicker:
         self.target: tuple[int, int] | None = None
         self.side = ClickSide.LEFT
         self.jumped = False
+        #: Set, every click is followed by a jump here (the real one parks off
+        #: the minimap and the battle list).
+        self.park_point: tuple[int, int] | None = None
+        self.parking = False
 
     @property
     def busy(self) -> bool:
-        return self.target is not None
+        return self.target is not None or self.parking
 
     def request(self, target: tuple[int, int], side: ClickSide = ClickSide.LEFT) -> None:
         self.target, self.side, self.jumped = target, side, False
 
     def cancel(self) -> None:
-        self.target = None
+        self.target, self.parking = None, False
 
     def step(self) -> bool | None:
-        if self.target is None:
-            return None
         assert self.wire is not None
+        if self.target is None:
+            if self.parking and self.park_point is not None:
+                self.wire.mouse_to(*self.park_point)
+                self.parking = False
+            return None
         if not self.jumped:
             self.wire.mouse_to(*self.target)
             self.jumped = True
             return None
         self.wire.click(self.side)
-        self.target = None
+        self.target, self.parking = None, self.park_point is not None
         return True
 
 
@@ -673,6 +680,21 @@ class TestSelectClick:
             ws.monsters = [Monster("Wolf", 50.0, battle_list_row=1)]  # the list reordered
         ticks(gl, clock, 4)
         assert inp.sent_lines == ["A 189 222", "A 189 244", "C L"]
+
+    # doc: docs/prs/near-targeting.md#park-cursor
+    def test_the_cursor_parks_after_the_click_once_the_target_is_chosen(self) -> None:
+        ws = make_state()
+        wolf = Monster("Wolf", 50.0)
+        with ws.lock():
+            ws.monsters = [wolf]
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp)
+        cast(FakeClicker, gl.modules.clicker).park_point = (5, 5)
+        ticks(gl, clock, 2)  # jump, click
+        with ws.lock():
+            ws.selected_target = wolf  # targeting now wants nothing more
+        ticks(gl, clock, 3)
+        assert inp.sent_lines == ["A 189 222", "C L", "A 5 5"]
 
     def test_one_click_in_flight_until_the_outline_shows(self) -> None:
         ws = make_state()

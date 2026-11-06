@@ -566,6 +566,8 @@ or in the `targeting` section of your profile config:
   "never attack" monster is left for the next one. When the rows reorder
   while the mouse is on its way, the click is dropped and aimed again
   (log: `battle list moved under the click on row N, aiming again`).
+  After a battle-list click the mouse moves just left of the minimap, so it
+  never covers the minimap or brings up the battle list's name tooltip.
 - **Only monsters within N tiles** (Targeting > Settings, `only_attack_within_range`,
   `attack_range_tiles`, default off and 3): the bot attacks only creatures in the
   box of N tiles around you (7x7 at 3). It right-clicks them on the game screen

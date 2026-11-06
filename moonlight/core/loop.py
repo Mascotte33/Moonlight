@@ -987,7 +987,9 @@ class GameLoop:
         """
         if self._select_click is None or self._select_click[0] == -1:
             return False
-        row = self._select_click[0]
+        row, sent_at = self._select_click
+        if sent_at is not None:
+            return False  # already clicked: the clicker only parks the cursor now
         target = self._target
         if target is not None and target.kind == "select" and target.battle_list_row == row:
             return False

@@ -408,7 +408,7 @@ def test_absolute_jumps_then_clicks_without_reading_the_cursor() -> None:
 
 
 def test_absolute_parks_off_the_minimap_after_a_minimap_click() -> None:
-    fake, clicker = _absolute(park_region=(800, 0, 100, 100))
+    fake, clicker = _absolute(park_point=(784, 50), park_after_clicks_in=((800, 0, 100, 100),))
     clicker.request((850, 50))
     clicker.step()
     clicker.step()
