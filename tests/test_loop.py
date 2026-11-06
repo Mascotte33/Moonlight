@@ -661,6 +661,19 @@ class TestSelectClick:
         ticks(gl, clock, 3)
         assert inp.sent_lines == ["A 189 288", "C L"]  # 200+11+3*22+11
 
+    # doc: docs/prs/near-targeting.md#moved-row
+    def test_a_click_is_aimed_again_when_its_row_moves(self) -> None:
+        ws = make_state()
+        with ws.lock():
+            ws.monsters = [Monster("Wolf", 50.0)]
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp)
+        ticks(gl, clock, 1)  # the mouse jumps to row 0
+        with ws.lock():
+            ws.monsters = [Monster("Wolf", 50.0, battle_list_row=1)]  # the list reordered
+        ticks(gl, clock, 4)
+        assert inp.sent_lines == ["A 189 222", "A 189 244", "C L"]
+
     def test_one_click_in_flight_until_the_outline_shows(self) -> None:
         ws = make_state()
         wolf = Monster("Wolf", 50.0)

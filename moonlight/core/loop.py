@@ -881,6 +881,9 @@ class GameLoop:
             return
         now = self._clock()
         if clicker.busy:
+            if self._battle_list_moved_under_the_click():
+                clicker.cancel()  # judged as "cancelled before it went out" next tick
+                return
             self._send(snap, lambda: self._step_click(clicker, now))
             return
         if self._select_click is not None:
@@ -974,6 +977,22 @@ class GameLoop:
         hotkey = attack_hotkeys.decide(snap, row, now)
         if hotkey is not None:
             self._send(snap, lambda: attack_hotkeys.send(hotkey, self.input, now))
+
+    # doc: docs/prs/near-targeting.md#moved-row
+    def _battle_list_moved_under_the_click(self) -> bool:
+        """A battle-list click not sent yet whose row no longer holds the pick.
+
+        The rows reorder while the mouse travels; the old row may now hold an
+        ignored monster or the current target (a click there stops the attack).
+        """
+        if self._select_click is None or self._select_click[0] == -1:
+            return False
+        row = self._select_click[0]
+        target = self._target
+        if target is not None and target.kind == "select" and target.battle_list_row == row:
+            return False
+        logger.info("battle list moved under the click on row %d, aiming again", row)
+        return True
 
     def _step_click(self, clicker: ClickController, now: float) -> bool | None:
         """One clicker step; on the click, record what it did."""

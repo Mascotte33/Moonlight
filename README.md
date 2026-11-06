@@ -555,7 +555,9 @@ or in the `targeting` section of your profile config:
   the nearest monster when the client's battle list is sorted by distance).
   A tie goes to the top row. It finishes the current target even when a higher priority monster
   comes, and never clicks it twice (a second click untargets). A selected
-  "never attack" monster is left for the next one.
+  "never attack" monster is left for the next one. When the rows reorder
+  while the mouse is on its way, the click is dropped and aimed again
+  (log: `battle list moved under the click on row N, aiming again`).
 - **Only monsters within N tiles** (Targeting > Settings, `only_attack_within_range`,
   `attack_range_tiles`, default off and 3): the bot attacks only creatures in the
   box of N tiles around you (7x7 at 3). It right-clicks them on the game screen
