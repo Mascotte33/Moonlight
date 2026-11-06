@@ -468,18 +468,18 @@ class TestGameLoopRateLimit:
         )
         modules = DecisionModules(healing=cast(HealingDecision, always_heal))
         gl, clock = make_loop(ws, inp, modules=modules)
-        # 20 ticks with no time passing: the bucket (capacity 2) allows
-        # a 2-heal burst; every other attempt is rate-limited.
+        # 20 ticks with no time passing: the bucket (capacity 3) allows
+        # a 3-heal burst; every other attempt is rate-limited.
         for _ in range(20):
             gl.tick()
         stats = gl.get_stats()
-        assert stats["actions_sent"] == 2
-        assert stats["actions_dropped_rate_limit"] == 18
+        assert stats["actions_sent"] == 3
+        assert stats["actions_dropped_rate_limit"] == 17
 
         # Advance 0.1s (one token at 10/s): exactly one more action.
         clock.advance(0.1)
         gl.tick()
-        assert gl.get_stats()["actions_sent"] == 3
+        assert gl.get_stats()["actions_sent"] == 4
 
     def test_heal_never_waits_behind_attack(self) -> None:
         ws = make_state(hp=100.0)
@@ -766,6 +766,26 @@ class TestAttackHotkeys:
         assert inp.sent_lines == ["K F6"]
         ticks(gl, clock, 25)
         assert inp.sent_lines == ["K F6", "K F6"]
+
+    # doc: docs/prs/near-targeting.md#same-tick
+    def test_a_heal_and_the_attack_go_out_on_one_tick(self) -> None:
+        ws = self._wolf_selected()
+        ws.hp_percent = 45.0  # the F2 spell only
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, F6_ROWS)
+        ticks(gl, clock, 1)
+        assert inp.sent_lines == ["K F2", "K F6"]
+
+    def test_after_spell_and_potion_the_attack_waits_for_a_token(self) -> None:
+        ws = self._wolf_selected()
+        ws.hp_percent = 30.0  # the F2 spell and the F3 potion
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, F6_ROWS)
+        ticks(gl, clock, 1)
+        assert inp.sent_lines == ["K F2", "K F3"]  # both tokens spent on heals
+        ws.hp_percent = 100.0
+        ticks(gl, clock, 4)
+        assert inp.sent_lines == ["K F2", "K F3", "K F6"]
 
     # doc: docs/prs/first-spell.md#fresh-cooldown
     def test_the_next_target_after_a_kill_is_attacked_at_once(self) -> None:
@@ -1142,6 +1162,27 @@ class TestExtras:
         gl, _ = make_loop(ws, inp, clock=clock, modules=DecisionModules(extras=extras))
         gl.tick()
         assert gl.current_state is BotState.ATTACK and inp.sent_lines == ["K F8"]
+
+    # doc: docs/prs/near-targeting.md#same-tick
+    def test_no_haste_in_a_fight_while_a_heal_is_due_even_on_cooldown(self) -> None:
+        clock = FakeClock()
+        extras = self.extras(clock, ExtrasConfig(haste=True, haste_hotkey="F8"))
+        ws = make_state(hp=30.0)
+        wolf = Monster("Wolf", 50.0)
+        with ws.lock():
+            ws.monsters = [wolf]
+            ws.selected_target = wolf
+        inp = FakeInput()
+        modules = DecisionModules(extras=extras, healing=HealingDecision(clock=clock))
+        gl, _ = make_loop(ws, inp, clock=clock, modules=modules)
+        gl.tick()
+        clock.advance(0.1)
+        gl.tick()  # the heals are on cooldown, still due
+        assert inp.sent_lines == ["K F2", "K F3"]
+        ws.hp_percent = 100.0
+        clock.advance(0.1)
+        gl.tick()
+        assert inp.sent_lines == ["K F2", "K F3", "K F8"]
 
     def test_a_player_alarms_only_after_staying_and_sends_to_refill(self) -> None:
         clock = FakeClock()

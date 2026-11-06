@@ -348,8 +348,8 @@ always goes first.
 
 Extras (Settings > Extras, no module switch: a ticked extra is on) press a hotkey when a picture shows: food when
 hungry, ring or amulet when its slot is empty, haste while walking without
-haste or a protection zone (in a fight too, on a tick with no heal and the
-attack on cooldown), the buff potion or a spell buff (own hotkey) when its icon is gone. Still
+haste or a protection zone (in a fight too, last on the tick, never while a
+heal rule is due), the buff potion or a spell buff (own hotkey) when its icon is gone. Still
 hungry after 3 food presses (out of food) unticks food in Settings
 (`food paused` in bot.log); tick it again after restocking. Each extra
 is one row: its hotkey, then its checkbox at the far right (set the hotkey
@@ -431,7 +431,11 @@ The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start`
 
 - **Start** runs everything. Each tick the bot does one thing, in this order:
   healing, the fight and loot (haste in between), scripts, extras (food, haste, ring...),
-  walking. Extras wait until the fight and loot are done.
+  walking. Healing spells, potions and attack spells keep their own
+  cooldowns: in a fight a heal spell, a potion and the attack can go out on
+  the same tick (after spell + potion the attack waits for the key limit,
+  about 0.1 s). Haste comes last and only when no heal is needed. Other
+  extras wait until the fight and loot are done.
 - **Pause** stops the cavebot, targeting and scripts; healing, extras and
   alarms go on.
 - **Stop** presses nothing (no healing either) and raises no alarm, but the

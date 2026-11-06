@@ -73,7 +73,7 @@ Safety invariants (re-checked on every tick, never just at startup):
   :class:`~moonlight.core.safety.RateLimitedInput`, so multi-command actions (clicker moves,
   rope hotkey + click, MOVE steps) cannot exceed it. Heals have
   priority: non-heal commands leave one token in reserve, so a heal never
-  waits behind an attack (worst case 12 commands in the first second,
+  waits behind an attack (worst case 13 commands in the first second,
   10/s after). Releases are never rate-limited.
 * **F12 kill switch** -- a daemon thread polls the keyboard (10 ms,
   GetAsyncKeyState, no hook) and triggers the kill switch on a rising
@@ -761,21 +761,25 @@ class GameLoop:
             self._act_kill()
             return
         # Healing continues through every state.
-        if self.modules.healing is not None and self._heal(snap):
+        healing = self.modules.healing
+        healed = healing is not None and self._heal(snap)
+        if healed:
             self._task = "Healing"
-            return
+            if self._state is not BotState.ATTACK:
+                return
         looting = self.modules.looting
-        if looting is not None and looting.ring_due(RING_REACH, snap):
+        if not healed and looting is not None and looting.ring_due(RING_REACH, snap):
             self._send(snap, looting.press_ring)  # then carry on with this tick
         # doc: docs/prs/pause-stop.md#action-order
         # Healing, then the fight and loot, then scripts, extras and walking.
         match self._state:
             case BotState.ATTACK:
-                sent_before = self._actions_sent
-                self._act_attack(snap)
-                if self._actions_sent == sent_before and self.modules.extras is not None:
-                    # doc: docs/prs/near-targeting.md#haste-in-fight
-                    self._extra(snap, only_haste=True)  # no heal due, the attack is on cooldown
+                # doc: docs/prs/near-targeting.md#same-tick
+                self._act_attack(snap)  # on a heal tick too: each has its own cooldown
+                if self.modules.extras is not None and not (
+                    healing is not None and healing.heal_needed(snap)
+                ):
+                    self._extra(snap, only_haste=True)  # last, never while a heal is due
             case BotState.LOOT:
                 self._act_loot(snap)
             case BotState.MOVE | BotState.IDLE:
