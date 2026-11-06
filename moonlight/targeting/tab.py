@@ -240,6 +240,9 @@ class TargetingTab(Tab):
     """Targeting (monster rows), area spells, seen monsters, then Settings; saved to the config."""
 
     title = "Targeting"
+    polls_hidden = True  # a script's range toggle ticks the box even while hidden
+    #: The running bot's range setting at the last poll (None: bot off).
+    _live_only_attack_within_range: bool | None = None
 
     def build(self, parent: ctk.CTkFrame) -> None:
         settings_box = section(parent, "Settings")  # packed below Seen monsters
@@ -592,6 +595,19 @@ class TargetingTab(Tab):
             self._seen_empty.grid(row=0, column=0, sticky="w")
 
     def on_poll(self, snap: WorldState) -> None:
+        # doc: docs/prs/near-targeting.md#range-script
+        targeting = self.ctx.live_module("targeting")
+        live = None if targeting is None else targeting.config.only_attack_within_range
+        last, self._live_only_attack_within_range = self._live_only_attack_within_range, live
+        if last is not None and live is not None and live != last:
+            if live != bool(self._only_attack_within_range.get()):  # a script changed it
+                if live:
+                    self._only_attack_within_range.select()
+                else:
+                    self._only_attack_within_range.deselect()
+                self._save()
+        if not self.lbl_live.winfo_ismapped():
+            return
         names = ", ".join(m.name or "?" for m in snap.monsters) or "none"
         text = f"creatures on screen: {names}"
         if self.lbl_live.cget("text") != text:

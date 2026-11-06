@@ -219,3 +219,26 @@ def test_test_now_is_dropped_when_the_client_never_comes_to_front(tmp_path: Path
     assert not r.testing and r.test_missed == "t not tested: Tibia was not in front and readable"
     r.client_is_foreground = lambda: True
     assert r.poll() is None  # never runs later by surprise
+
+
+# doc: docs/prs/near-targeting.md#range-script
+def test_the_range_script_flips_both_targetings(tmp_path: Path) -> None:
+    from moonlight.targeting.targeting import TargetingConfig, TargetingDecision
+
+    src = (Path(__file__).parents[1] / "scripts" / "range_toggle.py").read_text()
+    r, inp = runner(tmp_path, range_toggle=src), FakeInput()
+    targeting, stuck = TargetingDecision(TargetingConfig()), TargetingDecision(TargetingConfig())
+    r.targetings = (targeting, stuck)
+    for expected in (True, False):
+        assert r.start("range_toggle")
+        ticks(r, inp, 3)
+        assert r.running is None and not r.failed
+        assert targeting.config.only_attack_within_range is expected
+        assert stuck.config.only_attack_within_range is expected
+
+
+def test_the_range_script_fails_without_targeting(tmp_path: Path) -> None:
+    r = runner(tmp_path, s="def run(bot):\n    yield bot.only_monsters_within_range(True)\n")
+    assert r.start("s")
+    ticks(r, FakeInput(), 3)
+    assert "needs targeting on" in r.failed["s"]

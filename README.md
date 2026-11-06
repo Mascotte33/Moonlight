@@ -335,6 +335,12 @@ window open. The bot also reads the stamina every 5 minutes, shows it on the
 Dashboard's Stamina card and logs it when it changes
 (`stamina 41:23`, with `(under 39:30)` once it is low).
 
+`bot.only_monsters_within_range(True)` / `(False)` turns Targeting's **Only
+monsters within N tiles** on or off; `(None)` flips it. The Targeting box
+follows and the change is saved to the config. The ready script
+`scripts/range_toggle.py` flips it: add a `script` waypoint with label
+`range_toggle`. Log: `script: only monsters within 3 tiles on` (or `off`).
+
 A running script pauses walking and waits during a fight or looting; healing
 always goes first.
 

@@ -12,6 +12,7 @@ tick back to the loop::
             yield bot.click(*spot)
         yield bot.say("hi")
         yield bot.goto("town")      # jump the route to label town
+        yield bot.only_monsters_within_range(None)  # flip Targeting's range box
 
 ``bot.press`` / ``say`` / ``click`` / ``goto`` return the wire commands to
 send; the runner sends one per tick, so the rate limit never drops them. A
@@ -42,7 +43,7 @@ import re
 import time
 import traceback
 from collections.abc import Callable, Generator, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
     from moonlight.cavebot.cavebot import Cavebot
     from moonlight.hardware.clicker import ClickController
     from moonlight.scripts.rotation import Rotation
+    from moonlight.targeting.targeting import TargetingDecision
 
 __all__ = [
     "DEFAULT_PAUSE_MS",
@@ -190,6 +192,11 @@ class Bot:
     def goto(self, label: str) -> list[Command]:
         return [functools.partial(self._runner.goto, label)]
 
+    # doc: docs/prs/near-targeting.md#range-script
+    def only_monsters_within_range(self, on: bool | None) -> list[Command]:
+        """Turn Targeting's "Only monsters within N tiles" on, off, or (None) flip it."""
+        return [functools.partial(self._runner.set_only_monsters_within_range, on)]
+
     def count(self, potion: str) -> int | None:
         """The action-bar total of ``"health"`` or ``"mana"`` potions; None when unknown."""
         if potion not in ("health", "mana"):
@@ -294,6 +301,8 @@ class ScriptRunner:
         self.snap = WorldState()
         self.input: InputBackend
         self.cavebot: Cavebot | None = None
+        #: The loop's targeting and stuck targeting, for ``bot.only_monsters_within_range``.
+        self.targetings: tuple[TargetingDecision | None, ...] = ()
         #: Account rotation: the ``rotate`` script is its switch (docs/prs/rotation.md).
         self.rotation: Rotation | None = None
 
@@ -319,6 +328,21 @@ class ScriptRunner:
         self.running = name
         self._commands, self._pending, self._wait_until = iter(()), None, 0.0
         return True
+
+    def set_only_monsters_within_range(self, on: bool | None) -> None:
+        """Set (None: flip) ``only_attack_within_range`` on the running targeting."""
+        live = [t for t in self.targetings if t is not None]
+        if not live:
+            raise RuntimeError("bot.only_monsters_within_range needs targeting on")
+        if on is None:
+            on = not live[0].config.only_attack_within_range
+        for targeting in live:
+            targeting.config = replace(targeting.config, only_attack_within_range=on)
+        log.info(
+            "script: only monsters within %d tiles %s",
+            live[0].config.attack_range_tiles,
+            "on" if on else "off",
+        )
 
     def stop(self) -> None:
         if self.running is not None:
