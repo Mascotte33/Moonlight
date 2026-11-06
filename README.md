@@ -516,6 +516,8 @@ or in the `targeting` section of your profile config:
   the screen health bar's HP decides by the same-priority order ("battle list" =
   nearest). Creatures further away act as if they were not there: the cavebot walks
   on and echo raids are not blocked. A selected target is kept when it walks away.
+  A walking creature is clicked on the tile it walks into (the client puts it there
+  when the step starts), except while you walk yourself.
   Turn on secure mode in the client: a click on a player or NPC then selects nothing,
   and the bot logs `nothing selected at x,y,z, skipping that tile 30 s`. A "never
   attack" monster selected this way gets Esc and its tile is skipped 30 s.

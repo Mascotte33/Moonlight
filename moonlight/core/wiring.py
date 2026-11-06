@@ -249,7 +249,7 @@ def make_perceive(
     from moonlight.calibration.autofind import ANCHORS_DIR, PLAYERS_HEADER, PlayerListFollower
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.chase_mode import read_chase_mode
-    from moonlight.perception.creatures import creature_bars
+    from moonlight.perception.creatures import CreatureTracker
     from moonlight.perception.echo_raid import find_echo_raids
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
@@ -257,6 +257,7 @@ def make_perceive(
     from moonlight.perception.vitals import VitalsReader
 
     vitals = VitalsReader(profile)
+    creatures = CreatureTracker()
     battle = BattleReader(profile, seen_monsters=seen_monsters)
     # doc: docs/prs/player-list.md#players-window
     players_window = PlayerListFollower()
@@ -333,7 +334,7 @@ def make_perceive(
                     status_icons.read_active_conditions(frame) if status_icons else frozenset()
                 )
             ticks_until_slow_read -= 1
-            bars = creature_bars(frame, creature_grid) if creature_grid else {}
+            bars = creatures.read(frame, creature_grid) if creature_grid else {}
             slots = tuple(sorted(bars))
             echo_raids = tuple(find_echo_raids(frame, creature_grid)) if creature_grid else ()
             position = minimap.read_position(frame)
