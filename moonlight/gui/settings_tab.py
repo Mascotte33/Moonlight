@@ -17,6 +17,7 @@ import customtkinter as ctk
 
 from moonlight.core.client_hotkeys import OFFICIAL_CLIENT_FILE, bot_keys, write_moonlight_set
 from moonlight.core.config import ConfigError
+from moonlight.core.state import WorldState
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import (
     config_names,
@@ -107,6 +108,13 @@ class SettingsTab(Tab):
 
     title = "Settings"
     options = [*OPTIONS, *MODULE_SWITCHES, *EXTRAS_OPTIONS, *ALARMS_OPTIONS, *ROTATION_OPTIONS]
+
+    def on_poll(self, snap: WorldState) -> None:
+        # doc: docs/prs/near-targeting.md#food-pause
+        extras = self.ctx.live_module("extras")
+        if extras is not None and not extras.config.food and self._readers["extras.food"]():
+            self._writers["extras.food"](False)
+            self.submit()
 
     def build(self, parent: ctk.CTkFrame) -> None:
         io_box = section(parent, "Config")

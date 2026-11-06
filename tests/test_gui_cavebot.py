@@ -79,17 +79,18 @@ def test_waypoint_line() -> None:
     assert waypoint_line(None, 2) == "Not running"
 
 
-def test_live_cavebot_is_none_without_a_running_bot() -> None:
+def test_live_module_is_none_without_a_running_bot() -> None:
     from types import SimpleNamespace
 
     from moonlight.gui.state_bridge import GuiContext
 
     ctx = SimpleNamespace(controller=None, bot_running=lambda: False)
-    assert GuiContext.live_cavebot(ctx) is None  # type: ignore[arg-type]
+    assert GuiContext.live_module(ctx, "cavebot") is None  # type: ignore[arg-type]
     cavebot = SimpleNamespace(route="r")
     loop = SimpleNamespace(modules=SimpleNamespace(cavebot=cavebot))
     ctx = SimpleNamespace(controller=SimpleNamespace(loop=loop), bot_running=lambda: True)
-    assert GuiContext.live_cavebot(ctx) is cavebot  # type: ignore[arg-type]
+    assert GuiContext.live_module(ctx, "cavebot") is cavebot  # type: ignore[arg-type]
+    assert GuiContext.live_module(ctx, "extras") is None  # type: ignore[arg-type]
 
 
 def test_start_waypoint_is_given_one_based(tmp_path: Path) -> None:
