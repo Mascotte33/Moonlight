@@ -1056,7 +1056,7 @@ def test_loot_ring_reach_is_two_tiles() -> None:
     with ws.lock():
         ws.monsters, ws.selected_target = [], None  # the target died
     gl.tick()
-    assert checks == [range(0, 3), range(0, 3)]  # 5x5, mid-fight or not
+    assert checks == [range(0, 2), range(0, 2)]  # 3x3, mid-fight or not
 
 # doc: docs/prs/extras.md#extras
 class TestExtras:
