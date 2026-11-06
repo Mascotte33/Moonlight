@@ -242,3 +242,26 @@ def test_the_range_script_fails_without_targeting(tmp_path: Path) -> None:
     assert r.start("s")
     ticks(r, FakeInput(), 3)
     assert "needs targeting on" in r.failed["s"]
+
+
+# doc: docs/prs/near-targeting.md#targeting-script
+def test_the_targeting_scripts_turn_targeting_off_and_on(tmp_path: Path) -> None:
+    from moonlight.targeting.targeting import TargetingConfig, TargetingDecision
+
+    folder = Path(__file__).parents[1] / "scripts"
+    off, on = ((folder / f"{n}.py").read_text() for n in ("targeting_off", "targeting_on"))
+    r, inp = runner(tmp_path, targeting_off=off, targeting_on=on), FakeInput()
+    r.targetings = (TargetingDecision(TargetingConfig()), None)
+    for name, turned_off in (("targeting_off", True), ("targeting_on", False)):
+        assert r.start(name)
+        ticks(r, inp, 3)
+        assert r.running is None and not r.failed
+        assert r.targeting_turned_off is turned_off
+
+
+def test_the_targeting_script_fails_with_targeting_switched_off(tmp_path: Path) -> None:
+    r = runner(tmp_path, s="def run(bot):\n    yield bot.targeting(True)\n")
+    r.targetings = (None, None)
+    assert r.start("s")
+    ticks(r, FakeInput(), 3)
+    assert "needs Targeting switched on" in r.failed["s"]

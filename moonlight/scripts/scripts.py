@@ -197,6 +197,11 @@ class Bot:
         """Turn Targeting's "Only monsters within N tiles" on, off, or (None) flip it."""
         return [functools.partial(self._runner.set_only_monsters_within_range, on)]
 
+    # doc: docs/prs/near-targeting.md#targeting-script
+    def targeting(self, on: bool) -> list[Command]:
+        """Turn targeting on or off until a script turns it back (or the bot restarts)."""
+        return [functools.partial(self._runner.set_targeting, on)]
+
     def count(self, potion: str) -> int | None:
         """The action-bar total of ``"health"`` or ``"mana"`` potions; None when unknown."""
         if potion not in ("health", "mana"):
@@ -303,6 +308,8 @@ class ScriptRunner:
         self.cavebot: Cavebot | None = None
         #: The loop's targeting and stuck targeting, for ``bot.only_monsters_within_range``.
         self.targetings: tuple[TargetingDecision | None, ...] = ()
+        #: ``bot.targeting(False)`` ran: the loop picks no target until ``(True)``.
+        self.targeting_turned_off = False
         #: Account rotation: the ``rotate`` script is its switch (docs/prs/rotation.md).
         self.rotation: Rotation | None = None
 
@@ -343,6 +350,12 @@ class ScriptRunner:
             live[0].config.attack_range_tiles,
             "on" if on else "off",
         )
+
+    def set_targeting(self, on: bool) -> None:
+        if not self.targetings or self.targetings[0] is None:
+            raise RuntimeError("bot.targeting needs Targeting switched on in Settings")
+        self.targeting_turned_off = not on
+        log.info("script: targeting %s", "on" if on else "off")
 
     def stop(self) -> None:
         if self.running is not None:

@@ -349,11 +349,15 @@ class GameLoop:
 
         Looting runs only with the cavebot on and not paused (owner 2026-11-04).
         """
-        if not self.paused:
-            if self.all_modules.cavebot is None and self.all_modules.looting is not None:
-                return replace(self.all_modules, looting=None)
-            return self.all_modules
         scripts = self.all_modules.scripts
+        if not self.paused:
+            modules = self.all_modules
+            if modules.cavebot is None and modules.looting is not None:
+                modules = replace(modules, looting=None)
+            if scripts is not None and scripts.targeting_turned_off:
+                # doc: docs/prs/near-targeting.md#targeting-script
+                modules = replace(modules, targeting=None)  # stuck targeting stays
+            return modules
         return replace(
             self.all_modules,
             cavebot=None,
@@ -993,7 +997,7 @@ class GameLoop:
             return False
         self._task = f"Script {scripts.running}"
         scripts.cavebot = self.modules.cavebot  # for bot.goto
-        scripts.targetings = (self.modules.targeting, self.modules.stuck_targeting)
+        scripts.targetings = (self.all_modules.targeting, self.modules.stuck_targeting)
         self._send(snap, lambda: scripts.step(snap, self.input))
         if scripts.running is None and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # script time is not "stuck"

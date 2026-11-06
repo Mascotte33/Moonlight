@@ -343,6 +343,12 @@ follows and the change is saved to the config. The ready script
 `scripts/range_toggle.py` flips it: add a `script` waypoint with label
 `range_toggle`. Log: `script: only monsters within 3 tiles on` (or `off`).
 
+`bot.targeting(False)` / `(True)` turns targeting off or on until a script
+turns it back or the bot restarts; stuck targeting still runs. Ready scripts:
+`scripts/targeting_off.py` and `scripts/targeting_on.py`, add `script`
+waypoints with labels `targeting_off` / `targeting_on`. Log:
+`script: targeting off` (or `on`). Targeting must be on in Settings.
+
 A running script pauses walking and waits during a fight or looting; healing
 always goes first.
 

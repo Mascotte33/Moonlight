@@ -787,6 +787,19 @@ class TestAttackHotkeys:
         ticks(gl, clock, 4)
         assert inp.sent_lines == ["K F2", "K F3", "K F6"]
 
+    # doc: docs/prs/near-targeting.md#targeting-script
+    def test_no_attack_while_a_script_turned_targeting_off(self, tmp_path: Path) -> None:
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self._wolf_selected(), inp, F6_ROWS)
+        scripts = ScriptRunner(tmp_path, clock=clock)
+        scripts.targeting_turned_off = True
+        gl.modules = replace(gl.all_modules, scripts=scripts)
+        ticks(gl, clock, 5)
+        assert inp.sent_lines == [] and gl.modules.targeting is None
+        scripts.targeting_turned_off = False
+        ticks(gl, clock, 2)
+        assert inp.sent_lines == ["K F6"]
+
     # doc: docs/prs/first-spell.md#fresh-cooldown
     def test_the_next_target_after_a_kill_is_attacked_at_once(self) -> None:
         inp = FakeInput()
