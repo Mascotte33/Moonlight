@@ -1884,6 +1884,21 @@ def test_use_goes_back_to_the_route_once_the_echo_raid_is_gone(
     assert sim.bot._echo_raid_goal is None and sim.route.current == 1  # the nearest waypoint
 
 
+# doc: docs/prs/near-targeting.md#echo-wait
+def test_cavebot_stands_still_2_s_after_an_echo_raid_next_to_the_player_is_gone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sim, echo = _next_to_echo_raid(monkeypatch, [walk(100, 104)])
+    echo.clear()  # the right-click triggered it
+    sim.step(1.1)
+    keys = len(pressed(sim))
+    sim.step(1.0)
+    sim.step(0.8)
+    assert len(pressed(sim)) == keys  # still waiting
+    sim.step(0.3)
+    assert len(pressed(sim)) > keys  # walks on
+
+
 def test_use_ignores_an_echo_raid_after_three_tries_until_30_s_off_screen(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

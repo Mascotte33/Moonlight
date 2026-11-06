@@ -187,7 +187,9 @@ what the bot does: **avoid** (default) never walks onto one and skips a
 waypoint on one; **use** walks next to the nearest one once no monster is in
 the battle list and HP is 50 % or above, right-clicks it, waits 1 s, and if it
 is still there left-clicks it (the character steps on), waits 1 s again. Once
-it is gone it fights what spawns, then goes on from the nearest waypoint.
+it is gone (clicked or walked into) the cavebot stands still 2 s (targeting
+and healing go on; log `gone next to the player, waiting 2 s`), fights what
+spawns, then goes on from the nearest waypoint.
 After 3 such tries, or with no way to it, the swirl is ignored until it was
 off the screen for 30 s. Swirls are read only while the character stands
 still (mid-step the screen is a tile off), and the step closer to a stuck
@@ -346,7 +348,8 @@ always goes first.
 
 Extras (Settings > Extras, no module switch: a ticked extra is on) press a hotkey when a picture shows: food when
 hungry, ring or amulet when its slot is empty, haste while walking without
-haste or a protection zone, the buff potion or a spell buff (own hotkey) when its icon is gone. Still
+haste or a protection zone (in a fight too, on a tick with no heal and the
+attack on cooldown), the buff potion or a spell buff (own hotkey) when its icon is gone. Still
 hungry after 3 food presses (out of food) unticks food in Settings
 (`food paused` in bot.log); tick it again after restocking. Each extra
 is one row: its hotkey, then its checkbox at the far right (set the hotkey
@@ -427,7 +430,7 @@ On Linux, also:
 The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start` starts it right away.
 
 - **Start** runs everything. Each tick the bot does one thing, in this order:
-  healing, the fight and loot, scripts, extras (food, haste, ring...),
+  healing, the fight and loot (haste in between), scripts, extras (food, haste, ring...),
   walking. Extras wait until the fight and loot are done.
 - **Pause** stops the cavebot, targeting and scripts; healing, extras and
   alarms go on.

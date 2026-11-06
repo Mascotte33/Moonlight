@@ -261,8 +261,9 @@ class Extras:
             return f"player in sight over {self.config.player_minutes:g} min"
         return None
 
-    def due(self, walking: bool) -> str | None:
-        """The hotkey to press now, or None. *walking*: the route walks, no fight."""
+    def due(self, walking: bool, only_haste: bool = False) -> str | None:
+        """The hotkey to press now, or None. *walking*: the route walks or the
+        player chases. *only_haste*: in a fight, between heals and attacks."""
         c, icons, seen = self.config, self.icons, self._pictures
         if "hungry" not in icons:
             self._food_presses = 0
@@ -284,6 +285,8 @@ class Extras:
         )
         now = self._clock()
         for on, key, need in wanted:
+            if only_haste and key != c.haste_hotkey:
+                continue  # doc: docs/prs/near-targeting.md#haste-in-fight
             if on and need and now - self._pressed.get(key, float("-inf")) >= PRESS_GAP:
                 if key == c.food_hotkey and self._food_presses >= FOOD_TRIES:
                     # doc: docs/prs/near-targeting.md#food-pause

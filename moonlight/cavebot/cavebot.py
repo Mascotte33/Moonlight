@@ -269,6 +269,9 @@ ECHO_RAID_CLICK_WAIT = 1.0
 ECHO_RAID_TRIES = 3
 #: Seconds off the screen after which an ignored trigger counts as new.
 ECHO_RAID_FORGET = 30.0
+#: Seconds the cavebot stands still after an echo raid next to the player is gone
+#: (clicked or walked into); targeting and healing go on.
+ECHO_RAID_AFTER_WAIT = 2.0
 #: Screenshots 1 s after each echo raid click, the clicked pixel circled (bot.log names each).
 ECHO_RAID_SHOTS_DIR = Path("logs") / "echo_raids"
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
@@ -638,6 +641,7 @@ class Cavebot:
         self._echo_raid_tries = 0
         #: Triggers given up on (no way, or tries used up) -> when last seen.
         self._ignored_echo_raids: dict[tuple[int, int], float] = {}
+        self._echo_raid_wait_until = float("-inf")
         self._previous_pos: Position | None = None  # where the view still is right after a step
         #: Bumped tiles a scan saw a creature on: free again once it walks off.
         self._bumped_into_creature: set[tuple[int, int, int]] = set()
@@ -882,6 +886,9 @@ class Cavebot:
         if self.alarm == "lost":
             logger.info("cavebot: back on floor %d, route goes on", pos.z)
             self.alarm = None
+        if now < self._echo_raid_wait_until:
+            self.release_walk_key()  # doc: docs/prs/near-targeting.md#echo-wait
+            return
         if self._walk_keys:
             echo_wp = self._echo_raid_waypoint(wp, pos, now)
             if echo_wp is None:
@@ -1804,6 +1811,18 @@ class Cavebot:
         if not self._trigger_echo_raids:
             for tile in sorted(echo_raids - self.echo_raids):
                 logger.info("cavebot: echo raid seen at %s,%s,%s, avoiding", *tile, pos.z)
+        gone_next_to_player = [
+            t
+            for t in self.echo_raids - echo_raids
+            if max(abs(t[0] - pos.x), abs(t[1] - pos.y)) <= 1
+        ]
+        if gone_next_to_player:
+            # doc: docs/prs/near-targeting.md#echo-wait
+            logger.info(
+                "cavebot: echo raid at %s,%s,%s gone next to the player, waiting %g s",
+                *gone_next_to_player[0], pos.z, ECHO_RAID_AFTER_WAIT,
+            )  # fmt: skip
+            self._echo_raid_wait_until = now + ECHO_RAID_AFTER_WAIT
         self.echo_raids = echo_raids
         for tile in echo_raids & self._ignored_echo_raids.keys():
             self._ignored_echo_raids[tile] = now

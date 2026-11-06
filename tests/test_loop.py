@@ -1128,6 +1128,21 @@ class TestExtras:
             gl.tick()
         assert inp.sent_lines == ["K f7", "K F9"]  # the script first, then the food
 
+    # doc: docs/prs/near-targeting.md#haste-in-fight
+    def test_haste_but_no_food_in_a_fight_when_nothing_else_is_sent(self) -> None:
+        clock = FakeClock()
+        config = ExtrasConfig(food=True, food_hotkey="F9", haste=True, haste_hotkey="F8")
+        extras = self.extras(clock, config, "hungry")
+        ws = make_state()
+        wolf = Monster("Wolf", 50.0)
+        with ws.lock():
+            ws.monsters = [wolf]
+            ws.selected_target = wolf
+        inp = FakeInput()
+        gl, _ = make_loop(ws, inp, clock=clock, modules=DecisionModules(extras=extras))
+        gl.tick()
+        assert gl.current_state is BotState.ATTACK and inp.sent_lines == ["K F8"]
+
     def test_a_player_alarms_only_after_staying_and_sends_to_refill(self) -> None:
         clock = FakeClock()
         config = ExtrasConfig(player_minutes=1.0, player_alarm=True, player_refill=True)

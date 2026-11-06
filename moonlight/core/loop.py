@@ -771,7 +771,11 @@ class GameLoop:
         # Healing, then the fight and loot, then scripts, extras and walking.
         match self._state:
             case BotState.ATTACK:
+                sent_before = self._actions_sent
                 self._act_attack(snap)
+                if self._actions_sent == sent_before and self.modules.extras is not None:
+                    # doc: docs/prs/near-targeting.md#haste-in-fight
+                    self._extra(snap, only_haste=True)  # no heal due, the attack is on cooldown
             case BotState.LOOT:
                 self._act_loot(snap)
             case BotState.MOVE | BotState.IDLE:
@@ -840,11 +844,11 @@ class GameLoop:
                 sent = True
         return sent
 
-    def _extra(self, snap: WorldState) -> bool:
+    def _extra(self, snap: WorldState, only_haste: bool = False) -> bool:
         """Extras: press the due hotkey (food, ring, amulet, haste, buff); True when sent."""
         extras = self.modules.extras
         assert extras is not None
-        key = extras.due(walking=self._state is BotState.MOVE)
+        key = extras.due(walking=self._state is not BotState.IDLE, only_haste=only_haste)
         if key is None or not self._send(snap, lambda: self.input.press_combo(key)):
             return False
         extras.pressed(key)
