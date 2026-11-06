@@ -1576,6 +1576,18 @@ def test_finddepo_waits_while_every_locker_is_taken_then_alarms(
     assert sim.route.current == 1
 
 
+
+def test_finddepo_one_tile_off_its_spot_is_not_done_without_a_locker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#finddepo-waypoint
+    # Owner 2026-11-07: the walk ran one tile past 100,100 and the route went
+    # on to deposit with no locker picked, so no stash ever opened.
+    sim = _depot_sim(monkeypatch, set())
+    sim.pos = Position(101, 100, 7)
+    run_until(sim, 2)
+    assert sim.route.current == 0 and sim.bot.depot_locker is None
+
 # -- deposit ------------------------------------------------------------------
 
 

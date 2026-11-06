@@ -232,7 +232,12 @@ _HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0, "step": 0.5, "
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
 
 #: Arrival distance in tiles; every other positional action uses 1.
-_REACH = {"node": 3, "stand": 0, "stairs": 0, "step": 0, "rope": 0, **dict.fromkeys(NO_TILE, 0)}
+# finddepo 0: it is done only on the stand tile next to the locker it picked
+# (doc: docs/prs/depot.md#finddepo-waypoint); its own tile is never reached.
+_REACH = {
+    "node": 3, "stand": 0, "stairs": 0, "step": 0, "rope": 0, "finddepo": 0,
+    **dict.fromkeys(NO_TILE, 0),
+}  # fmt: skip
 # doc: docs/prs/steps.md#rope-settle
 #: Seconds a rope waits standing on its tile before the rope is used.
 _ROPE_SETTLE = 0.2
