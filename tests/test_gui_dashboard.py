@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import sys
+
+import pytest
+
 from moonlight.core.state import Position, WorldState
 from moonlight.gui.dashboard_tab import card_values, uptime_text
 from moonlight.gui.tab_base import health
@@ -40,3 +44,21 @@ def test_each_dot_from_world_state() -> None:
 
 def test_stale_vitals_are_red() -> None:
     assert not _dots(WorldState(last_update=97.0))["Vitals"]
+
+
+# doc: docs/prs/near-targeting.md#machine-line
+def test_public_ip_is_the_reply_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    import io
+    import urllib.request
+
+    from moonlight.gui import dashboard_tab
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda url, timeout: io.BytesIO(b"1.2.3.4\n"))
+    assert dashboard_tab.public_ip() == "1.2.3.4"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the HWID is in the Windows registry")
+def test_hardware_id_is_a_guid() -> None:
+    from moonlight.gui.dashboard_tab import hardware_id
+
+    assert len(hardware_id()) == 36

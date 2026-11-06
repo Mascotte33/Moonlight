@@ -433,6 +433,10 @@ The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start`
 log (state changes, scripts, warnings, errors) is on the Diagnostics tab; the
 Dashboard shows only its warnings and errors, newest first. `logs/bot.log` has
 everything, keys included.
+The Dashboard's **Machine** line shows this PC's HWID (Windows' MachineGuid,
+the same until Windows is reinstalled) and its public IP, asked from
+api.ipify.org at start and every 5 minutes (a VPN change shows within 5
+minutes). No internet: `unknown (no internet?)` and a warning in the log.
 A crash of any part is written there too, and a GUI that cannot start shows
 a message box with the error.
 
