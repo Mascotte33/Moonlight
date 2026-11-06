@@ -389,7 +389,7 @@ route and settings. Scripts can type too: `bot.type("abc")`.
 
 ## Getting started
 
-Requirements: Windows, Python 3.12+, an Arduino Leonardo for real input
+Requirements: Windows or Linux (an X11 session; Wayland is not supported), Python 3.12+, an Arduino Leonardo for real input
 (optional — without one the bot runs against a fake input backend), and
 [Tesseract](https://github.com/tesseract-ocr/tesseract) if you want server-log OCR.
 
@@ -406,9 +406,24 @@ python tools/arduino_verify.py
 # 4. Check the setup (config, Arduino, profile, perception)
 python tools/check_setup.py
 
-# 5. Launch the desktop GUI (or double-click "Start Moonlight GUI.bat")
+# 5. Launch the desktop GUI (or double-click "Start Moonlight GUI.bat";
+#    on Linux run ./start-moonlight-gui.sh)
 python -m moonlight
 ```
+
+On Linux, also:
+
+- `sudo apt install python3-tk tesseract-ocr` (Tk for the GUI, Tesseract for OCR).
+- Add yourself to the `dialout` group so the bot can open the Arduino
+  (`/dev/ttyACM0`): `sudo usermod -aG dialout $USER`, then log out and in.
+- Log in to an "Xorg"/X11 session. `pip install -e .` pulls in python-xlib for
+  finding the client window, focus and keys.
+- The alert sound plays through `paplay` (PulseAudio/PipeWire).
+- The client's options file is read from
+  `~/.local/share/CipSoft GmbH/Tibia/packages/Tibia/conf/clientoptions.json`
+  (change it in Settings if yours is elsewhere).
+- Screen capture uses mss on Linux (dxcam, a faster Windows capture, is
+  installed only on Windows).
 
 The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start` starts it right away.
 
@@ -429,7 +444,7 @@ The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start`
 - A pause of its own (Tibia covered or not in front) never shuts the bot down:
   after 30 s it alerts once and resumes when Tibia is readable again.
 
-"Start Moonlight GUI.bat" opens the GUI without a console window. The bot's
+"Start Moonlight GUI.bat" (Windows) and `start-moonlight-gui.sh` (Linux) open the GUI without a console window. The bot's
 log (state changes, scripts, warnings, errors) is on the Diagnostics tab; the
 Dashboard shows only its warnings and errors, newest first. `logs/bot.log` has
 everything, keys included.
