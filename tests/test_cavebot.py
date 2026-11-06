@@ -777,8 +777,8 @@ def test_loop_calls_cavebot_resume_on_move_entry(
     resumed: list[float] = []
     original_resume = sim.bot.resume
 
-    def _spy_resume() -> None:
-        original_resume()
+    def _spy_resume(after_fight: bool = False) -> None:
+        original_resume(after_fight)
         resumed.append(sim.now)
 
     monkeypatch.setattr(sim.bot, "resume", _spy_resume)
@@ -949,6 +949,38 @@ def test_a_fight_chase_is_no_jump() -> None:
     sim.pos = Position(100, 100, 7)
     sim.step(1.0)
     assert pressed(sim)[-1] == "s"  # the tile below is still walkable
+
+
+# doc: docs/prs/near-targeting.md#skip-passed-waypoints
+def _chased_ahead(middle: Waypoint, **kw: Any) -> Sim:
+    """Waypoint 0 at (100, 110); a fight chased the character to (112, 110)."""
+    route = [walk(100, 110), walk(105, 110), middle, walk(115, 110), walk(140, 110)]
+    sim = Sim(route, Position(100, 100, 7), **kw)
+    sim.bot.start()
+    sim.pos = Position(112, 110, 7)
+    return sim
+
+
+def test_after_a_fight_the_farthest_no_farther_waypoint_is_next() -> None:
+    sim = _chased_ahead(walk(110, 110))
+    sim.bot.resume(after_fight=True)
+    assert sim.route.current == 3  # 3 tiles away; 4 is farther than waypoint 0
+
+
+def test_after_a_fight_no_skip_past_an_action_waypoint() -> None:
+    sim = _chased_ahead(Waypoint(110, 110, 7, "stairs"))
+    sim.bot.resume(after_fight=True)
+    assert sim.route.current == 1
+
+
+def test_no_skip_when_the_option_is_off_or_not_after_a_fight() -> None:
+    sim = _chased_ahead(walk(110, 110), skip_waypoints_passed_in_fight=False)
+    sim.bot.resume(after_fight=True)
+    assert sim.route.current == 0
+    sim = _chased_ahead(walk(110, 110))
+    sim.bot.resume()
+    assert sim.route.current == 0
+
 
 def test_walk_keys_hold_the_key_until_the_way_turns_or_stops() -> None:
     sim = Sim([walk(100, 103), walk(96, 102)], Position(100, 100, 7), walk_keys=True)

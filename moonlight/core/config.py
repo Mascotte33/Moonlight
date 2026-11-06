@@ -144,6 +144,8 @@ class CavebotConfig:
     shovel_hotkey: str = "F10"
     #: Opens the NPCs chat tab in the client (bank and trade talks).
     npc_tab_hotkey: str = "shift+F11"
+    #: After a fight, walk on from a later walk/node waypoint the chase got close to.
+    skip_waypoints_passed_in_fight: bool = True
     #: 0-based waypoint the route starts at.
     start_index: int = 0
     #: ``avoid``: never walk onto an echo raid trigger; ``use``: walk onto it when safe.
@@ -424,6 +426,7 @@ def _section(cfg: Any) -> dict[str, Any]:
             "rope_hotkey": cfg.rope_hotkey,
             "shovel_hotkey": cfg.shovel_hotkey,
             "npc_tab_hotkey": cfg.npc_tab_hotkey,
+            "skip_waypoints_passed_in_fight": cfg.skip_waypoints_passed_in_fight,
             "start_index": cfg.start_index,
             "echo_raid": cfg.echo_raid,
         }
@@ -443,6 +446,7 @@ def _cavebot(section: dict[str, Any], routes_dir: Path) -> CavebotConfig:
         "rope_hotkey": str,
         "shovel_hotkey": str,
         "npc_tab_hotkey": str,
+        "skip_waypoints_passed_in_fight": bool,
         "echo_raid": str,
     }
     _reject_unknown(section, set(kinds), "modules.cavebot")

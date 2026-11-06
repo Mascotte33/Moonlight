@@ -750,7 +750,8 @@ class GameLoop:
         if self.all_modules.cavebot is not None:
             self.all_modules.cavebot.release_walk_key()  # only MOVE walks
         if new_state is BotState.MOVE and self.modules.cavebot is not None:
-            self.modules.cavebot.resume()  # fight/loot time is not "stuck" (F-06)
+            # fight/loot time is not "stuck" (F-06)
+            self.modules.cavebot.resume(after_fight=old in (BotState.ATTACK, BotState.LOOT))
 
     # -- actions -------------------------------------------------------------
 

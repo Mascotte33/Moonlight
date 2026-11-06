@@ -700,6 +700,7 @@ def build_modules(
                 rope_hotkey=cb.rope_hotkey,
                 shovel_hotkey=cb.shovel_hotkey,
                 npc_tab_hotkey=cb.npc_tab_hotkey,
+                skip_waypoints_passed_in_fight=cb.skip_waypoints_passed_in_fight,
                 trigger_echo_raids=cb.echo_raid == "use",
                 walk_keys=config.walk_keys,
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,

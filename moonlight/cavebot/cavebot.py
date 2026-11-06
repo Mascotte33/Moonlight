@@ -514,6 +514,7 @@ class Cavebot:
         rope_hotkey: str = "F9",
         shovel_hotkey: str = "F10",
         npc_tab_hotkey: str = "shift+F11",
+        skip_waypoints_passed_in_fight: bool = True,
         trigger_echo_raids: bool = False,
         stuck_timeout: float = 60.0,
         reclick_interval: float = 1.0,
@@ -543,6 +544,9 @@ class Cavebot:
             rope_hotkey: Combo bound to "use rope" in the client.
             shovel_hotkey: Combo bound to "use shovel" in the client.
             npc_tab_hotkey: Combo that opens the NPCs chat tab in the client.
+            skip_waypoints_passed_in_fight: After a fight or loot, walk on from
+                the farthest of the next 5 walk/node waypoints that is no farther
+                than the current one.
             trigger_echo_raids: Walk onto echo raid triggers when safe
                 instead of only walking around them (*walk_keys* only).
             stuck_timeout: Seconds without movement before alarm "stuck".
@@ -587,6 +591,7 @@ class Cavebot:
         self._input = input_backend
         self._hotkeys = {"rope": rope_hotkey, "shovel": shovel_hotkey}
         self._npc_tab_hotkey = npc_tab_hotkey
+        self._skip_waypoints_passed_in_fight = skip_waypoints_passed_in_fight
         self._stuck_timeout = float(stuck_timeout)
         self._reclick_interval = float(reclick_interval)
         self._sidestep_after = float(sidestep_after)
@@ -719,14 +724,60 @@ class Cavebot:
         else:
             self.go_to(at)
 
-    def resume(self) -> None:
-        """MOVE (re)entered: restart the stuck timer and re-click at once."""
+    def resume(self, after_fight: bool = False) -> None:
+        """MOVE (re)entered: restart the stuck timer and re-click at once.
+
+        *after_fight*: back from ATTACK or LOOT, skip waypoints the chase passed.
+        """
+        if after_fight and self._skip_waypoints_passed_in_fight:
+            self._skip_waypoints_passed_in_fight_now()
         self._last_move = self._clock()
         self._last_cmd = float("-inf")
         self._sidesteps = 0
         self._clicker.cancel()  # a click queued before leaving MOVE is stale
         # A fight chased the character elsewhere: that is no jump to learn.
         self._last_pos = self._previous_pos = None
+
+    # doc: docs/prs/near-targeting.md#skip-passed-waypoints
+    def _skip_waypoints_passed_in_fight_now(self) -> None:
+        """Go on from the farthest of the next 5 walk/node waypoints that is no
+        farther to walk than the current one. Never past an action waypoint or
+        onto another floor, never backwards."""
+        pos = self._read_position()
+        current = self._positional_from(self.route.current)
+        if pos is None or current is None:
+            return
+        wps = self.route.waypoints
+        if wps[current].action not in ("walk", "node") or wps[current].z != pos.z:
+            return
+        ahead: list[int] = []
+        for index in range(current + 1, min(current + 6, len(wps))):
+            if wps[index].action not in ("walk", "node") or wps[index].z != pos.z:
+                break
+            ahead.append(index)
+        current_cost = self._walk_cost(pos, wps[current])
+        for index in reversed(ahead):
+            cost = self._walk_cost(pos, wps[index])
+            if cost is not None and (current_cost is None or cost <= current_cost):
+                logger.info(
+                    "cavebot: after the fight waypoint %d is no farther than %d, skipping %d-%d",
+                    index,
+                    current,
+                    current,
+                    index - 1,
+                )
+                self.route.current = index
+                self._target = self._retried_target = None
+                return
+
+    def _walk_cost(self, pos: Position, wp: Waypoint) -> int | None:
+        """Path cost to *wp* on the cost map (None: no path), else tiles in a straight line."""
+        if self._cost_map is None or self._cost_map.empty:
+            return max(abs(wp.x - pos.x), abs(wp.y - pos.y))
+        if (pos.x, pos.y) == (wp.x, wp.y):
+            return 0
+        found = next_step((pos.x, pos.y, pos.z), (wp.x, wp.y, wp.z), self._map_walkable)
+        return None if found is None else found[1]
 
     def stop(self) -> None:
         """Stop the route (no further input is sent)."""

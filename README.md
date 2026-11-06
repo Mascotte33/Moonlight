@@ -172,6 +172,15 @@ moved the character elsewhere when it walked onto it. Minimap-click walking
 lets the client pick the path and can cross them: turn on WSAD-key walking
 for routes next to holes or teleports.
 
+After a fight or loot the cavebot does not walk back to waypoints the chase
+already passed. Cavebot > Settings > **Skip waypoints passed in a fight** (on by
+default) looks at the next 5 walk/node waypoints, farthest first, and goes on
+from the first one whose walk is no longer than the walk back to the current
+one. It never skips past an action waypoint (stairs, rope, step, stand, say,
+...) or onto another floor, and never goes backwards. To keep a side room in
+the route, put a `stand` waypoint in it. Log: `cavebot: after the fight
+waypoint 13 is no farther than 10, skipping 10-12`.
+
 Echo raid triggers (the red swirl that spawns stronger monsters) are seen on
 the game screen while walking with WSAD keys. Cavebot > Settings > **Echo raid** picks
 what the bot does: **avoid** (default) never walks onto one and skips a

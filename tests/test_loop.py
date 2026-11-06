@@ -326,7 +326,7 @@ class TestGameLoopStates:
         cavebot = SimpleNamespace(
             is_active=lambda: True,
             step=lambda: steps.append(1),
-            resume=lambda: None,
+            resume=lambda after_fight=False: None,
             luring=lambda: False,
             route=SimpleNamespace(current=0),
             release_walk_key=lambda: released.append(1),
@@ -731,7 +731,7 @@ class TestSelectClick:
             targeting_paused=False,
             stuck_on_creatures=True,
             creature_in_the_way_clicked_until=1.5,  # it right-clicked the rat in the way
-            resume=lambda: None,
+            resume=lambda after_fight=False: None,
             refill_now=False,
         )
         inp = FakeInput()
@@ -1039,7 +1039,7 @@ class TestCurrentTask:
             is_active=lambda: True,
             luring=lambda: False,
             step=lambda: None,
-            resume=lambda: None,
+            resume=lambda after_fight=False: None,
             alarm=None,
         )
         modules = DecisionModules(cavebot=cast(Cavebot, cavebot))
@@ -1134,7 +1134,7 @@ class TestExtras:
         cavebot = SimpleNamespace(
             is_active=lambda: False,
             luring=lambda: False,
-            resume=lambda: None,
+            resume=lambda after_fight=False: None,
             release_walk_key=lambda: None,
             alarm=None,
             refill_now=False,
