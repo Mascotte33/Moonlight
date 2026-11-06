@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-
 import pytest
 
 from moonlight.core.state import Position, WorldState
@@ -57,8 +55,9 @@ def test_public_ip_is_the_reply_text(monkeypatch: pytest.MonkeyPatch) -> None:
     assert dashboard_tab.public_ip() == "1.2.3.4"
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="the HWID is in the Windows registry")
-def test_hardware_id_is_a_guid() -> None:
+def test_hardware_id_is_the_mac_address() -> None:
     from moonlight.gui.dashboard_tab import hardware_id
 
-    assert len(hardware_id()) == 36
+    assert hardware_id(0x0A1B2C3D4E5F) == "0a:1b:2c:3d:4e:5f"
+    with pytest.raises(OSError):
+        hardware_id(0x010000000000)  # the random-node bit: no card found

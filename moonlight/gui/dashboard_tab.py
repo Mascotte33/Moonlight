@@ -8,10 +8,10 @@ in Settings. A Machine line shows the HWID and the public IP.
 from __future__ import annotations
 
 import logging
-import sys
 import threading
 import time
 import urllib.request
+import uuid
 
 import customtkinter as ctk
 
@@ -38,20 +38,15 @@ PUBLIC_IP_REFRESH_SECONDS = 300
 
 
 # doc: docs/prs/near-targeting.md#machine-line
-def hardware_id() -> str:
-    """Windows' MachineGuid (stays the same until Windows is reinstalled)."""
-    if sys.platform != "win32":
-        raise OSError("the HWID is read from the Windows registry")
-    import winreg
+def hardware_id(node: int | None = None) -> str:
+    """The network card's hardware (MAC) address, ``aa:bb:cc:dd:ee:ff``, on any OS.
 
-    key = winreg.OpenKey(
-        winreg.HKEY_LOCAL_MACHINE,
-        r"SOFTWARE\Microsoft\Cryptography",
-        0,
-        winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
-    )
-    with key:
-        return str(winreg.QueryValueEx(key, "MachineGuid")[0])
+    # ponytail: the MAC changes with a new network card; read the OS machine ID if that matters.
+    """
+    node = uuid.getnode() if node is None else node
+    if node >> 40 & 1:  # Python made a random one up: no network card found
+        raise OSError("no network card hardware address found")
+    return ":".join(f"{node >> shift & 0xFF:02x}" for shift in range(40, -1, -8))
 
 
 def public_ip() -> str:
