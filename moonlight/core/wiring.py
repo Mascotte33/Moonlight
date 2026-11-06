@@ -362,6 +362,7 @@ def make_perceive(
             state.players = tuple(entry.name_hash for entry in names)
             state.creature_slots = slots
             state.creature_hp_percents = tuple(bars[slot] for slot in slots)
+            state.game_view_sliding = creatures.view_sliding
             state.echo_raid_slots = echo_raids
             state.active_status_icons = conditions
             state.chase_mode = chase_mode

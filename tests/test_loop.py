@@ -593,6 +593,20 @@ class TestScreenClick:
         assert gl.current_state is BotState.ATTACK
         assert inp.sent_lines == ["A 85 55", "C R"]  # the far (13, 5) one is never clicked
 
+    def test_the_click_waits_until_the_player_stands(self) -> None:
+        ws = self.near_state()
+        with ws.lock():
+            ws.game_view_sliding = True  # still finishing a step
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, self.NEAR)
+        ticks(gl, clock, 3)
+        assert gl.current_state is BotState.ATTACK  # walking stopped at once
+        assert inp.sent_lines == []
+        with ws.lock():
+            ws.game_view_sliding = False
+        ticks(gl, clock, 3)
+        assert inp.sent_lines == ["A 85 55", "C R"]
+
     def test_click_in_flight_holds_attack_when_the_creature_flickers(self) -> None:
         ws = self.near_state()
         inp = FakeInput()

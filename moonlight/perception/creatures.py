@@ -69,6 +69,8 @@ class CreatureTracker:
     def __init__(self) -> None:
         self._last_tops: list[tuple[int, int, float]] = []
         self._last_view: np.ndarray | None = None
+        #: True when the last :meth:`read` saw the whole view slide (player walking).
+        self.view_sliding = False
 
     def read(
         self, frame: np.ndarray, grid: tuple[int, int, int, int]
@@ -78,8 +80,12 @@ class CreatureTracker:
         view = _view_sample(frame, grid)
         last_tops, last_view = self._last_tops, self._last_view
         self._last_tops, self._last_view = tops, view
-        if last_view is None or last_view.shape != view.shape or not _view_still(last_view, view):
-            last_tops = []
+        if last_view is None or last_view.shape != view.shape:
+            self.view_sliding, last_tops = False, []
+        else:
+            self.view_sliding = not _view_still(last_view, view)
+            if self.view_sliding:
+                last_tops = []
         return _slots(tops, grid, last_tops)
 
 

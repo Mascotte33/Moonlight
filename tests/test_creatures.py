@@ -105,3 +105,4 @@ def test_no_creature_is_moved_ahead_while_the_player_walks() -> None:
     _bar(after, 4 * 96 + 33 - 70, 2 * 96 - 9)
     tracker.read(before, GRID)
     assert list(tracker.read(after, GRID)) == [(3, 2)]
+    assert tracker.view_sliding

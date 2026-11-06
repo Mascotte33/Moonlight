@@ -886,6 +886,9 @@ class GameLoop:
             return
         row = self._target.battle_list_row
         if self._target.kind == "select_on_screen":
+            if snap.game_view_sliding:
+                # doc: docs/prs/near-targeting.md#click-when-standing
+                return  # the walk key is let go: click the first still frame
             point, side = targeting.slot_center(self._target.creature_slot), ClickSide.RIGHT
             tile: tuple[int, int, int] | None = self._target.creature_tile
         else:
