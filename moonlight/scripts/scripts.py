@@ -133,6 +133,10 @@ def parse_timers(text: str) -> list[tuple[str, float]]:
     return timers
 
 
+#: Game-grid (column, row) step to the tile next to the player per screen side.
+_SCREEN_STEPS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+
+
 class Bot:
     """What a script sees: readings of this tick and commands to yield."""
 
@@ -188,6 +192,21 @@ class Bot:
         side = ClickSide.RIGHT if right else ClickSide.LEFT
         send = self._runner.input
         return [functools.partial(send.mouse_to, *point), functools.partial(send.click, side)]
+
+    # doc: docs/prs/near-targeting.md#door-scripts
+    def use_tile_next_to_player(self, direction: str) -> list[Command]:
+        """Right-click (use) the tile next to the player: "up", "down", "left" or "right"."""
+        from moonlight.perception.corpses import slot_ring
+        from moonlight.perception.creatures import PLAYER_SLOT
+
+        if direction not in _SCREEN_STEPS:
+            raise ValueError(f"direction {direction!r} is not up, down, left or right")
+        grid = self._runner.game_grid
+        if grid is None:
+            raise RuntimeError("bot.use_tile_next_to_player needs the game_grid region")
+        (dx, dy), (column, row) = _SCREEN_STEPS[direction], PLAYER_SLOT
+        x, y = slot_ring(grid, (column + dx, row + dy)).point
+        return self.click(x, y, right=True)
 
     def goto(self, label: str) -> list[Command]:
         return [functools.partial(self._runner.goto, label)]
@@ -275,6 +294,8 @@ class ScriptRunner:
         self.scripts_dir = Path(scripts_dir) if scripts_dir else DEFAULT_SCRIPTS_DIR
         self.clicker = clicker
         self.grab = grab
+        #: The ``game_grid`` region ``(x, y, w, h)`` for ``bot.use_tile_next_to_player``.
+        self.game_grid: tuple[int, int, int, int] | None = None
         #: The action-bar potion totals for ``bot.count``.
         self.potion_counts: Callable[[], dict[str, int | None]] | None = None
         #: Stamina minutes from the Skills window for ``bot.stamina`` and the log.

@@ -265,3 +265,32 @@ def test_the_targeting_script_fails_with_targeting_switched_off(tmp_path: Path) 
     assert r.start("s")
     ticks(r, FakeInput(), 3)
     assert "needs Targeting switched on" in r.failed["s"]
+
+
+# doc: docs/prs/near-targeting.md#door-scripts
+class AbsoluteClicker:
+    absolute = True
+
+    def to_wire(self, point: tuple[int, int]) -> tuple[int, int]:
+        return point
+
+
+@pytest.mark.parametrize(
+    ("direction", "pixel"),
+    [("up", "A 75 45"), ("down", "A 75 65"), ("left", "A 65 55"), ("right", "A 85 55")],
+)
+def test_the_door_scripts_right_click_the_tile_next_to_the_player(
+    tmp_path: Path, direction: str, pixel: str
+) -> None:
+    clock = Clock()
+    source = (Path(__file__).parents[1] / "scripts" / f"door_{direction}.py").read_text()
+    r, inp = runner(tmp_path, clock, door=source), FakeInput()
+    r.clicker = AbsoluteClicker()  # type: ignore[assignment]
+    r.game_grid = (0, 0, 150, 110)  # 15 x 11 tiles of 10 px, the player on (7, 5)
+    assert r.start("door")
+    ticks(r, inp, 4)  # jump, click, then the wait starts
+    assert inp.sent_lines == [pixel, "C R"]
+    assert r.running == "door"  # the 0.5 s wait
+    clock.now = 0.6
+    ticks(r, inp, 2)
+    assert r.running is None and not r.failed

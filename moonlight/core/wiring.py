@@ -665,6 +665,9 @@ def build_modules(
 
             m.scripts.stamina = StaminaReader(screen_grab).minutes
     m.scripts.clicker = m.clicker
+    m.scripts.game_grid = (
+        profile.regions["game_grid"].to_tuple if "game_grid" in profile.regions else None
+    )
     m.scripts.timers = config.scripts.timers()
     if config.rotation is None:
         m.scripts.rotation = None

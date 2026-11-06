@@ -349,6 +349,14 @@ turns it back or the bot restarts; stuck targeting still runs. Ready scripts:
 waypoints with labels `targeting_off` / `targeting_on`. Log:
 `script: targeting off` (or `on`). Targeting must be on in Settings.
 
+`bot.use_tile_next_to_player("up")` (or `"down"`, `"left"`, `"right"`)
+right-clicks the tile next to the character on screen; it needs the absolute
+clicker. Ready door scripts: `scripts/door_up.py`, `door_down.py`,
+`door_left.py`, `door_right.py`. Add a `script` waypoint on the tile in front
+of the door with the label for the door's side (`door_up` when the door is
+above the character). It right-clicks the door, waits 0.5 s, and the route
+walks on. Nothing checks that the door opened.
+
 A running script pauses walking and waits during a fight or looting; healing
 always goes first.
 
