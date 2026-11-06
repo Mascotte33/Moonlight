@@ -113,6 +113,7 @@ OPTIONS = [SWITCH, ROUTE]
 CAVEBOT_PAGE_OPTIONS = [
     Option("Rope hotkey", "cavebot.rope_hotkey", "hotkey"),
     Option("Shovel hotkey", "cavebot.shovel_hotkey", "hotkey"),
+    Option("NPC channel hotkey", "cavebot.npc_tab_hotkey", "hotkey"),
     # doc: docs/prs/echo-raid.md#setting
     Option("Echo raid", "cavebot.echo_raid", "dropdown", choices=list(ECHO_RAID_CHOICES)),
 ]

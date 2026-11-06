@@ -275,8 +275,6 @@ _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight throu
 # doc: docs/prs/depot.md#npc-pacing
 #: Seconds paused after each NPC line (owner's ranges: the NPC needs time to react).
 _NPC_PAUSE = {"hi": (0.4, 0.7), "deposit all": (0.7, 1.0), "trade": (0.7, 1.0), "yes": (0.4, 0.6)}
-#: The owner's hotkey that opens or selects the NPCs chat tab (only with the chat off).
-_NPC_TAB = "shift+f11"
 #: Seconds between the two rounds of bank lines.
 _BANK_ROUNDS_PAUSE = 1.0
 #: Seconds a chat button click gets to show before it is clicked again.
@@ -462,11 +460,12 @@ _SLIDER_MIN, _SLIDER_SPAN = (-20, 283), 93
 
 
 # doc: docs/prs/depot.md#npc-pacing
-def talk_steps(*rounds: tuple[str, ...]) -> list[TalkStep]:
+def talk_steps(npc_tab_hotkey: str, *rounds: tuple[str, ...]) -> list[TalkStep]:
     """An NPC talk: True / False turns the chat on / off, a float pauses
-    that many seconds, a string is a key. Chat off, Shift+F11 (NPCs tab),
-    chat on, each line typed with Enter and a random pause, chat off."""
-    steps: list[TalkStep] = [False, _NPC_TAB, True]
+    that many seconds, a string is a key. Chat off, *npc_tab_hotkey* (opens
+    or selects the NPCs tab; only with the chat off), chat on, each line
+    typed with Enter and a random pause, chat off."""
+    steps: list[TalkStep] = [False, npc_tab_hotkey, True]
     for i, lines in enumerate(rounds):
         if i:
             steps.append(_BANK_ROUNDS_PAUSE)
@@ -477,14 +476,15 @@ def talk_steps(*rounds: tuple[str, ...]) -> list[TalkStep]:
 
 
 # doc: docs/prs/depot.md#trade-waypoint
-def trade_steps(buy: list[tuple[str, int]]) -> list[TalkStep]:
+def trade_steps(buy: list[tuple[str, int]], npc_tab_hotkey: str) -> list[TalkStep]:
     """The ``trade`` talk, then the buy list in the trade window. Tuples are
     ``(op, a, b)``: ``win`` waits for the window, ``click`` / ``to`` click /
     move the mouse at (a, b) from the window's ``npc_trade.png``, ``down`` /
     ``up`` the left button, ``count`` reads the potions, ``health`` / ``mana``
     goes back to step a once when that total did not go up. Esc closes the
     window at the end so the walk goes on."""
-    steps: list[TalkStep] = [*talk_steps(("hi", "trade")), ("win", 0, 0), ("click", *_BUY_SWITCH)]
+    steps: list[TalkStep] = [*talk_steps(npc_tab_hotkey, ("hi", "trade"))]
+    steps += [("win", 0, 0), ("click", *_BUY_SWITCH)]
     for item, percent in buy:
         row = len(steps)
         steps += [("count", 0, 0), ("click", *_SEARCH_CLEAR), 0.3, ("click", *_SEARCH), 0.3]
@@ -513,6 +513,7 @@ class Cavebot:
         input_backend: InputBackend | None = None,
         rope_hotkey: str = "F9",
         shovel_hotkey: str = "F10",
+        npc_tab_hotkey: str = "shift+F11",
         trigger_echo_raids: bool = False,
         stuck_timeout: float = 60.0,
         reclick_interval: float = 1.0,
@@ -541,6 +542,7 @@ class Cavebot:
                 *walk_keys*.
             rope_hotkey: Combo bound to "use rope" in the client.
             shovel_hotkey: Combo bound to "use shovel" in the client.
+            npc_tab_hotkey: Combo that opens the NPCs chat tab in the client.
             trigger_echo_raids: Walk onto echo raid triggers when safe
                 instead of only walking around them (*walk_keys* only).
             stuck_timeout: Seconds without movement before alarm "stuck".
@@ -584,6 +586,7 @@ class Cavebot:
         self._game_region = game_region
         self._input = input_backend
         self._hotkeys = {"rope": rope_hotkey, "shovel": shovel_hotkey}
+        self._npc_tab_hotkey = npc_tab_hotkey
         self._stuck_timeout = float(stuck_timeout)
         self._reclick_interval = float(reclick_interval)
         self._sidestep_after = float(sidestep_after)
@@ -1173,9 +1176,11 @@ class Cavebot:
         """One step of an NPC talk (:func:`talk_steps`) per tick, then the route moves on."""
         if self._talk is None:
             self._talk = (
-                trade_steps(self.route.buy)
+                trade_steps(self.route.buy, self._npc_tab_hotkey)
                 if wp.action == "trade"
-                else talk_steps(("hi", "deposit all", "yes"), ("hi", "deposit all", "yes"))
+                else talk_steps(
+                    self._npc_tab_hotkey, ("hi", "deposit all", "yes"), ("hi", "deposit all", "yes")
+                )
             )
             self._talk_since, self._talk_wait = now, float("-inf")
         if now - self._talk_since >= _TALK_ALARM and self.alarm != wp.action:

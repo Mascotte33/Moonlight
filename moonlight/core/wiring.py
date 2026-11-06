@@ -697,6 +697,7 @@ def build_modules(
                 input_backend=backend,
                 rope_hotkey=cb.rope_hotkey,
                 shovel_hotkey=cb.shovel_hotkey,
+                npc_tab_hotkey=cb.npc_tab_hotkey,
                 trigger_echo_raids=cb.echo_raid == "use",
                 walk_keys=config.walk_keys,
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,

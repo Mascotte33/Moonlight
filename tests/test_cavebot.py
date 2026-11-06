@@ -1682,7 +1682,7 @@ def test_bank_talks_in_the_npcs_tab_with_the_chat_on_then_turns_it_off(
     assert len(chat_clicks) == 3  # off before Shift+F11, on, off at the end
     keys = [line[2:] for line in sim.fake.sent_lines if line.startswith("K ")]
     line = ["h", "i", "enter", *"deposit", "space", *"all", "enter", "y", "e", "s", "enter"]
-    assert keys == ["shift+f11", *line, *line]
+    assert keys == ["shift+F11", *line, *line]
 
 
 def test_trade_buys_each_row_and_buys_a_potion_again_when_its_total_did_not_go_up(

@@ -268,9 +268,10 @@ depot, the trade window and the chat button on screen when they run:
 - `bank`: also next to the NPC. Says `hi`, `deposit all`, `yes`, waits about
   1 s and says the three again. The bot never withdraws.
 
-NPC lines are typed only in the NPCs tab: chat off, Shift+F11 (opens or
-selects the NPCs tab; works only with the chat off), chat on, the lines with
-a short random pause after each, chat off. Bind Shift+F11 to the NPCs tab in
+NPC lines are typed only in the NPCs tab: chat off, the NPC channel hotkey
+(Settings, default Shift+F11; opens or selects the NPCs tab; works only with
+the chat off), chat on, the lines with
+a short random pause after each, chat off. Bind that key to the NPCs tab in
 the client. The chat is always off before the bot walks, and a walk key that
 typed a letter instead of moving turns the chat off. Every step retries until
 it works; the alarm goes off after 3 min without success. Pictures (cut from
