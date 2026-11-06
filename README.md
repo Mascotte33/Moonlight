@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A learning project in real-time computer vision and hardware input: a CPU-only
-automation pipeline for a Tibia-style game client that reads the screen, decides
+automation pipeline for a game client that reads the screen, decides
 what to do, and acts through an Arduino Leonardo emulating a USB keyboard and
 mouse.
 
@@ -306,8 +306,8 @@ checks the code: a broken script is saved but shown red, can't be ticked or
 tested, and its waypoints are skipped (red on the route, a warning in
 `logs/bot.log`). A script that fails while running is unticked and its error
 shown under the code; the bot goes on. Rename and Delete update (or remove)
-the waypoints that use the script. Test now brings the Tibia window to the
-front and runs the selected script once as soon as Tibia is in front and
+the waypoints that use the script. Test now brings the client window to the
+front and runs the selected script once as soon as the client is in front and
 readable (while the bot runs or is paused); after 5 s without that it says
 "not tested" and does not run later. Pause holds the ticked scripts. The files
 are kept in `scripts/`.
@@ -419,9 +419,8 @@ On Linux, also:
 - Log in to an "Xorg"/X11 session. `pip install -e .` pulls in python-xlib for
   finding the client window, focus and keys.
 - The alert sound plays through `paplay` (PulseAudio/PipeWire).
-- The client's options file is read from
-  `~/.local/share/CipSoft GmbH/Tibia/packages/Tibia/conf/clientoptions.json`
-  (change it in Settings if yours is elsewhere).
+- The client's options file is read from the official client's folder under
+  `~/.local/share` (Settings shows the path; change it there if yours is elsewhere).
 - Screen capture uses mss on Linux (dxcam, a faster Windows capture, is
   installed only on Windows).
 
@@ -441,8 +440,8 @@ The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start`
   and wait.
 - The Cavebot switch can be turned on or off while paused or stopped; the
   cavebot walks only after Start.
-- A pause of its own (Tibia covered or not in front) never shuts the bot down:
-  after 30 s it alerts once and resumes when Tibia is readable again.
+- A pause of its own (the client covered or not in front) never shuts the bot down:
+  after 30 s it alerts once and resumes when the client is readable again.
 
 "Start Moonlight GUI.bat" (Windows) and `start-moonlight-gui.sh` (Linux) open the GUI without a console window. The bot's
 log (state changes, scripts, warnings, errors) is on the Diagnostics tab; the
@@ -477,7 +476,7 @@ Settings > Client hotkeys puts the bot's keys into the game client, so the
 client does what the bot expects on every key it presses.
 
 1. **Client file**: the client's `conf/clientoptions.json`. Empty means the
-   official client (`%LOCALAPPDATA%\Tibia\packages\Tibia\conf`). For another
+   official client's `conf` folder (Settings shows the path). For another
    server, press Browse and pick the file in that client's `conf` folder. Each
    bot config remembers its own file.
 2. One row per key the bot uses (healing, cures, attack and area spells,
