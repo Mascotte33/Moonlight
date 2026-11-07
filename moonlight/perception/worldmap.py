@@ -172,6 +172,8 @@ class WorldMap:
         self._zooms = tuple(max(1, int(z)) for z in zooms)
         #: Radar px per sqm of the last match; the user can change the minimap zoom.
         self.zoom = self._zooms[-1]
+        #: Score of the last match (0 is a perfect fit).
+        self.score = 0.0
         self._near = int(near_sqm)
         self._every = float(full_search_every)
         self._max_score = float(max_score)
@@ -233,7 +235,7 @@ class WorldMap:
         limit = self._near_max_score if loose else self._max_score
         if best is None or not best[0] <= limit:
             return None
-        self.zoom = best[3]
+        self.zoom, self.score = best[3], best[0]
         return best[1], best[2]
 
     def _coarse_spot(

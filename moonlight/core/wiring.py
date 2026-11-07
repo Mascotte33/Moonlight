@@ -367,7 +367,7 @@ def make_perceive(
             state.active_status_icons = conditions
             state.chase_mode = chase_mode
             state.position_status = (
-                "lost" if minimap.lost else "estimated" if minimap.estimated else ""
+                "lost" if minimap.lost else "estimated" if minimap.source == "count" else ""
             )
             if minimap.lost:
                 # F-17: unknown until the next map match; the cavebot reads
