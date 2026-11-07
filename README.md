@@ -323,7 +323,11 @@ A `wait` waypoint holds the route for its label in seconds.
 **Delete**, the code box, **Save** and **Test now**. A ticked script runs by
 itself, one at a time, top of the list first; the ms box is its pause after it
 ends (empty = 1000 ms, at least 50). A `script` waypoint picks a script from
-the label dropdown on Route, and the route waits until it ends. Save
+the label dropdown on Route, and the route waits until it ends. A `script`
+waypoint with a tile starts only after the character has stood on that tile
+for half a second. When the next waypoint is on another floor (a wagon or door
+script), the route waits up to 5 s for that floor and runs the script again
+if the floor did not change. Save
 checks the code: a broken script is saved but shown red, can't be ticked or
 tested, and its waypoints are skipped (red on the route, a warning in
 `logs/bot.log`). A script that fails while running is unticked and its error

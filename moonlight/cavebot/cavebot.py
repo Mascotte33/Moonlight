@@ -244,6 +244,10 @@ _REACH = {
 # doc: docs/prs/steps.md#rope-settle
 #: Seconds a rope waits standing on its tile before the rope is used.
 _ROPE_SETTLE = 0.2
+# doc: docs/prs/position-tracking.md#script-tile
+#: Seconds a script waits for the floor its next waypoint is on (the wagon took 2.4 s)
+#: before it runs again.
+_SCRIPT_FLOOR_WAIT = 5.0
 # doc: docs/prs/steps.md#floor-change-tiles
 #: Waypoint actions whose tile moves the player when walked onto.
 _DANGER_ACTIONS = ("stairs", "shovel")
@@ -698,6 +702,8 @@ class Cavebot:
         self._moved_at = float("-inf")
         self._last_cmd = 0.0
         self._expected_z: int | None = None
+        #: (script waypoint, its floor, give-up time) while a script waits for the next floor.
+        self._script_floor_wait: tuple[int, int, float] | None = None
         #: Sidestep clicks sent since the player last moved (0-2).
         self._sidesteps = 0
         self._reset_tracking()
@@ -870,10 +876,13 @@ class Cavebot:
                 return
             wp = stand
         if (wp.action in _HAND_ACTIONS and not has_tile(wp)) or (
-            wp.action in (*_HAND_ACTIONS, "step") and self._stepped(wp, pos)
+            wp.action in (*_HAND_ACTIONS, "step") and self._stepped(wp, pos, now)
         ):
             self.release_walk_key()
             self._hand_action(wp, now)
+            return
+        if wp.action == "script" and has_tile(wp) and (pos.x, pos.y, pos.z) == (wp.x, wp.y, wp.z):
+            self.release_walk_key()  # on its tile, the step onto it not over yet
             return
         if moved_aside and wp.action == "walk":
             logger.info(
@@ -882,6 +891,20 @@ class Cavebot:
             )
             self._advance()
             return
+        if self._script_floor_wait is not None:
+            script_index, script_z, give_up_at = self._script_floor_wait
+            if pos.z != script_z:
+                self._script_floor_wait = None  # the script changed the floor
+            elif now < give_up_at:
+                self.release_walk_key()
+                return
+            else:
+                logger.warning(
+                    "cavebot: script %r at waypoint %d did not change the floor, running it again",
+                    self.route.waypoints[script_index].label, script_index,
+                )  # fmt: skip
+                self.route.current, self._script_floor_wait = script_index, None
+                return
         if self._expected_z is not None and pos.z == self._expected_z:
             self._advance()  # the rope/shovel/ladder action worked
             return
@@ -1102,6 +1125,7 @@ class Cavebot:
         self._last_move = self._clock()
         self._last_cmd = float("-inf")
         self._expected_z = None
+        self._script_floor_wait = None
         self._sidesteps = 0
         self.stuck_on_creatures = False
         self._sends_done, self._hand_done_at = 0, None
@@ -1235,7 +1259,14 @@ class Cavebot:
         hold = float(wp.label) if wp.action == "wait" else _HAND_HOLD[wp.action]
         if now - self._hand_done_at >= hold:
             self._sends_done, self._hand_done_at = 0, None
+            script_index = self.route.current
             self._advance()
+            following = [
+                w for w in self.route.waypoints[self.route.current :]
+                if has_tile(w) and w.action not in _JUMP_ACTIONS
+            ]  # fmt: skip
+            if wp.action == "script" and has_tile(wp) and following and following[0].z != wp.z:
+                self._script_floor_wait = (script_index, wp.z, now + _SCRIPT_FLOOR_WAIT)
 
     # doc: docs/prs/depot.md#chat-toggle
     # doc: docs/prs/depot.md#bank-deposit
@@ -1335,10 +1366,16 @@ class Cavebot:
             self._sends_done += 1
 
     # doc: docs/prs/steps.md#step-waypoint
-    def _stepped(self, wp: Waypoint, pos: Position) -> bool:
-        """True once a ``step`` or hand action is on its tile: from then on it runs."""
+    def _stepped(self, wp: Waypoint, pos: Position, now: float) -> bool:
+        """True once a ``step`` or hand action is on its tile: from then on it runs.
+
+        A script waits there until the step is over: it clicks tiles around the player.
+
+        # doc: docs/prs/position-tracking.md#script-tile
+        """
         started = self._sends_done > 0 or self._hand_done_at is not None or self._talk is not None
-        if not started and (pos.x, pos.y, pos.z) == (wp.x, wp.y, wp.z):
+        settled = wp.action != "script" or now - self._moved_at >= _VIEW_SETTLE
+        if not started and settled and (pos.x, pos.y, pos.z) == (wp.x, wp.y, wp.z):
             self._clicker.cancel()  # no walk click after the key
             return True
         return started
