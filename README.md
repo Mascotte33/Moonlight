@@ -122,6 +122,8 @@ below are tried near the last position (1 up, 1 down, 2 up, 2 down, up to 3),
 and a mostly black minimap is matched with a looser score near the last
 position, or anywhere on the floor when that spot is at least twice as good
 as any other (so a restart on an upper floor still finds the character).
+The minimap zoom (1 or 2 px per tile) is read from the minimap itself, so a
+cave never matches a look-alike spot at the other zoom.
 Only what the minimap shows is compared: the white player cross and black
 parts away from anything drawn are skipped, so a roof the minimap does not
 draw does not spoil the match. After a floor change the route goes on at the next waypoint on that
@@ -195,7 +197,8 @@ off the screen for 30 s. Swirls are read only while the character stands
 still (mid-step the screen is a tile off), and the step closer to a stuck
 target never lands on one. Log: `echo raid seen at x,y,z, triggering`, then
 `triggered`, or `did not trigger after 3 tries, ignoring it` /
-`no way to the echo raid ..., ignoring it`. 1 s after each click the bot saves
+`no way to the echo raid ..., ignoring it`. A red glow next to a monster's
+health bar (the tainted soul) is the monster, never a swirl. 1 s after each click the bot saves
 a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 (`<time>_<x>_<y>_<z>_<right|left>.png`); bot.log names each file.
 

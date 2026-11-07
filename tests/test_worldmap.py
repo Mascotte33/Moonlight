@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import pytest
 
-from moonlight.perception.worldmap import WorldMap
+from moonlight.perception.worldmap import WorldMap, _radar_zooms
 
 
 def _map(tmp_path: Path) -> np.ndarray:
@@ -53,7 +53,9 @@ def test_unknown_floor_or_bad_radar_is_none(tmp_path: Path) -> None:
 # doc: docs/prs/client-hotkeys.md#sparse-radar
 def test_a_near_search_accepts_a_looser_score(tmp_path: Path) -> None:
     radar = _radar(_map(tmp_path), 40, 60).astype(np.int32)
-    noise = np.random.RandomState(5).randint(-40, 40, radar.shape)
+    noise = np.random.RandomState(5).randint(-40, 40, (55, 53, 3))
+    # per tile, like the client draws it
+    noise = np.repeat(np.repeat(noise, 2, axis=0), 2, axis=1)[:109, :106]
     radar = np.clip(radar + noise, 0, 255).astype(np.uint8)  # scores above 0
     world = WorldMap(tmp_path, max_score=0.0, near_max_score=0.2)
     assert world.match(radar, 7) is None
@@ -92,3 +94,12 @@ def test_the_player_cross_and_black_radar_parts_are_not_compared(tmp_path: Path)
     world = WorldMap(tmp_path, full_search_every=0.0)
     assert world.match(radar, 7) == (32093, 31114)
     assert world.match(radar, 7, near=(32090, 31110)) == (32093, 31114)
+
+
+# doc: docs/prs/near-targeting.md#radar-zoom
+def test_the_radar_zoom_is_read_from_its_edges(tmp_path: Path) -> None:
+    tile = _map(tmp_path)
+    assert _radar_zooms(_radar(tile, 40, 60), (1, 2)) == (2,)
+    assert _radar_zooms(_radar(tile, 40, 60, dy=1), (1, 2)) == (2,)
+    assert _radar_zooms(tile[60:169, 40:146], (1, 2)) == (1,)
+    assert _radar_zooms(np.zeros((109, 106, 3), np.uint8), (1, 2)) == (1, 2)  # no edges: try both

@@ -68,6 +68,38 @@ def _lit(radar_rgb: np.ndarray) -> np.ndarray:
     return compare
 
 
+#: Share of the radar's colour edges on one pixel phase that makes it zoomed:
+#: zoom-2 radars 0.93-0.98, zoom-1 ones ~0.5 (logs, 2026-11-07).
+_ZOOMED_EDGE_SHARE = 0.75
+#: Fewer edges than this on either axis say nothing about the zoom (live radars: 430-1900).
+_ZOOM_MIN_EDGES = 200
+
+
+# doc: docs/prs/near-targeting.md#radar-zoom
+def _radar_zooms(radar_rgb: np.ndarray, zooms: tuple[int, ...]) -> tuple[int, ...]:
+    """The zoom the radar is drawn at, read from its edges; all *zooms* with too few edges.
+
+    At *zoom* px per tile every colour edge falls between tiles, so on one
+    pixel phase in *zoom*. Matching at the wrong zoom can win: a cave radar
+    with map marks scored 0.20 at its spot (zoom 1) and 0.09 on a grey area
+    735 sqm away at zoom 2 (Venore tainted caves, 2026-11-07).
+    """
+    total = radar_rgb[:, :, :3].astype(np.int32).sum(axis=2)
+    edges_per_column = (np.abs(np.diff(total, axis=1)) > 30).sum(axis=0)
+    edges_per_row = (np.abs(np.diff(total, axis=0)) > 30).sum(axis=1)
+    if min(edges_per_column.sum(), edges_per_row.sum()) < _ZOOM_MIN_EDGES:
+        return zooms
+    for zoom in sorted(zooms, reverse=True):
+        on_one_phase = all(
+            max(edges[phase::zoom].sum() for phase in range(zoom))
+            >= _ZOOMED_EDGE_SHARE * edges.sum()
+            for edges in (edges_per_column, edges_per_row)
+        )
+        if zoom == 1 or on_one_phase:
+            return (zoom,)
+    return zooms
+
+
 def _shrink(
     rgb: np.ndarray, lit: np.ndarray, size: tuple[int, int]
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -145,7 +177,7 @@ class WorldMap:
         h, w = radar_rgb.shape[:2]
         lit = _lit(radar_rgb)
         best: tuple[float, int, int, int, bool] | None = None
-        for z_ in self._zooms:
+        for z_ in _radar_zooms(radar_rgb, self._zooms):
             distinct = False
             if near is None:
                 spot, distinct = self._coarse_spot(radar_rgb, lit, z, image, x0, y0, z_)
