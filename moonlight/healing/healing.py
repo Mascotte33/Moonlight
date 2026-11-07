@@ -186,6 +186,14 @@ class HealingDecision:
             actions.append(action)
         return actions
 
+    # doc: docs/prs/near-targeting.md#same-tick
+    def heal_needed(self, state: WorldState) -> bool:
+        """A rule or cure is due now, even one whose slot is on cooldown."""
+        hp, mp = state.hp_percent, state.mp_percent
+        return any(self._first_due_rule(slot, hp, mp) for slot in _SLOTS) or bool(
+            self._first_due_cure(state)
+        )
+
     def _first_due_rule(self, slot: str, hp: float, mp: float) -> HealingAction | None:
         for rule in self.config.rules:
             if rule.kind != slot:

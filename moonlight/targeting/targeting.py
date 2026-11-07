@@ -18,17 +18,25 @@ is not adjacent); after the same time again it is ignored for 30 s. With
 nothing else to attack it gets a ``pause`` action instead: the loop turns
 targeting off for ``PAUSE_SECONDS`` so the cavebot walks on.
 
+With ``only_attack_within_range`` the battle list gives no tile, so a
+``select_on_screen`` action right-clicks the best creature within
+``attack_range_tiles`` on the game screen instead; monsters further away are
+treated as absent (:meth:`TargetingDecision.fight_in_range`).
+# doc: docs/prs/near-targeting.md#pick-on-screen
+
 ``client_focused`` / ``screen_ok`` gating is the loop's job. The module only
 reads a snapshot and returns a decision; one decision thread drives it.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from moonlight.core.state import Monster, WorldState
 from moonlight.healing.healing import check_hotkey
 from moonlight.perception.battle import NAME_START_X, NAME_WIDTH, SLOT_HEIGHT, TOP_PADDING
+from moonlight.perception.corpses import slot_ring
 from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
@@ -42,6 +50,8 @@ __all__ = [
     "TargetingDecision",
 ]
 
+logger = logging.getLogger(__name__)
+
 MOVEMENTS = ("follow", "none")
 # doc: docs/prs/GUI_visual_changes.md#target-order
 #: Which of the highest-priority monsters is attacked first. "battle list"
@@ -50,7 +60,7 @@ TARGET_ORDERS = ("lowest hp", "highest hp", "battle list")
 
 Rect = tuple[int, int, int, int]
 
-#: Seconds an unreachable target is left alone.
+#: Seconds an unreachable target (or a skipped on-screen tile) is left alone.
 _IGNORE_SECONDS = 30.0
 
 #: Seconds targeting stays off after a lone target's HP stood still.
@@ -118,6 +128,10 @@ class TargetingConfig:
     #: The client's "Toggle Chase Mode" key; "" = the bot leaves the owner's mode.
     toggle_chase_hotkey: str = ""
     target_order: str = "lowest hp"
+    # doc: docs/prs/near-targeting.md#in-range
+    only_attack_within_range: bool = False
+    #: Tiles from the character in any direction (3 = a 7x7 box).
+    attack_range_tiles: int = 3
 
     def validate(self) -> None:
         """Raise ValueError on a bad row or rule, a duplicate name or a bad delay."""
@@ -144,11 +158,16 @@ class TargetingConfig:
             )
         if self.toggle_chase_hotkey:
             check_hotkey(self.toggle_chase_hotkey, "targeting.toggle_chase_hotkey")
+        if isinstance(self.attack_range_tiles, bool) or self.attack_range_tiles < 1:
+            raise ValueError("targeting.attack_range_tiles must be 1 or more")
 
 
 @dataclass(frozen=True)
 class TargetingAction:
     """``"select"``: click battle-list row ``battle_list_row``.
+
+    ``"select_on_screen"``: right-click the creature at game-grid slot
+    ``creature_slot`` (world tile ``creature_tile``); ``battle_list_row`` is -1.
 
     ``"step_closer"``: press one arrow key for the unit step ``step``.
 
@@ -160,6 +179,8 @@ class TargetingAction:
     battle_list_row: int
     step: tuple[int, int] = (0, 0)
     reason: str = ""
+    creature_slot: tuple[int, int] = (0, 0)
+    creature_tile: tuple[int, int, int] = (0, 0, 0)
 
 
 def _step_toward_creature(
@@ -181,6 +202,12 @@ def _step_toward_creature(
     return next((s for s in steps if (px + s[0], py + s[1]) not in echo_raid_slots), None)
 
 
+def _world_tile(state: WorldState, slot: tuple[int, int]) -> tuple[int, int, int]:
+    """World tile under game-grid *slot*, from the player's position."""
+    pos = state.position
+    return pos.x + slot[0] - PLAYER_SLOT[0], pos.y + slot[1] - PLAYER_SLOT[1], pos.z
+
+
 # doc: docs/prs/targeting.md#target-choice
 # doc: docs/prs/targeting.md#unreachable-drop
 class TargetingDecision:
@@ -192,6 +219,7 @@ class TargetingDecision:
         battle_list_region: Rect | None = None,
         ui_scale: float = 1.0,
         attack_top_row_first: bool = False,
+        game_grid_region: Rect | None = None,
     ) -> None:
         self.config = config if config is not None else TargetingConfig()
         # Stuck in a corridor: the top row is the nearest creature (the battle
@@ -207,6 +235,9 @@ class TargetingDecision:
         self._watched_since = 0.0
         self._stepped = False
         self._ignored_until: dict[tuple[str, float], float] = {}
+        self._game_grid_region = game_grid_region
+        #: World tiles whose on-screen click selected nothing or an ignored monster.
+        self._skipped_tiles: dict[tuple[int, int, int], float] = {}
 
     def row_for(self, monster: Monster) -> MonsterRow:
         """The row for *monster*: its name's row, else ``default_monster``."""
@@ -272,6 +303,8 @@ class TargetingDecision:
             return None
         if state.selected_target in candidates:
             return None  # finish the current target, even when a higher priority one comes
+        if self.config.only_attack_within_range:
+            return self._pick_on_screen(state, now)
         if self._attack_top_row_first:
             best = min(candidates, key=lambda m: m.battle_list_row)
         else:
@@ -279,6 +312,66 @@ class TargetingDecision:
         priority = self.row_for(best).priority
         reason = f"{best.name or '?'} priority {priority}, hp {best.hp_percent:.0f}"
         return TargetingAction("select", best.battle_list_row, reason=reason)
+
+    def _near_creatures(self, state: WorldState, now: float) -> list[tuple[tuple[int, int], float]]:
+        """``(slot, hp)`` of the creatures within range whose tile is not skipped."""
+        self._skipped_tiles = {t: end for t, end in self._skipped_tiles.items() if end > now}
+        reach = self.config.attack_range_tiles
+        px, py = PLAYER_SLOT
+        return [
+            (slot, hp)
+            for slot, hp in zip(state.creature_slots, state.creature_hp_percents, strict=True)
+            if max(abs(slot[0] - px), abs(slot[1] - py)) <= reach
+            and _world_tile(state, slot) not in self._skipped_tiles
+        ]
+
+    # doc: docs/prs/near-targeting.md#fight-in-range
+    def fight_in_range(self, state: WorldState, now: float) -> bool:
+        """True while a fight holds the cavebot: a selected target or a creature in range.
+
+        Without ``only_attack_within_range``: any monster in the battle list.
+        """
+        if not self.config.only_attack_within_range:
+            return bool(state.monsters)
+        return state.selected_target is not None or bool(self._near_creatures(state, now))
+
+    def skip_tile(self, tile: tuple[int, int, int], now: float, why: str) -> None:
+        """Leave the creature on world *tile* alone for 30 s (an on-screen click went wrong)."""
+        logger.info("targeting: %s at %s,%s,%s, skipping that tile 30 s", why, *tile)
+        self._skipped_tiles[tile] = now + _IGNORE_SECONDS
+
+    def _pick_on_screen(self, state: WorldState, now: float) -> TargetingAction | None:
+        """Right-click the best creature in range: by ``target_order`` on its screen-bar HP."""
+        near = self._near_creatures(state, now)
+        if not near:
+            return None
+        px, py = PLAYER_SLOT
+
+        def distance(slot: tuple[int, int]) -> tuple[int, int]:
+            dx, dy = abs(slot[0] - px), abs(slot[1] - py)
+            return max(dx, dy), dx + dy
+
+        order = self.config.target_order
+        if self._attack_top_row_first or order == "battle list":
+            slot, hp = min(near, key=lambda c: distance(c[0]))
+        else:
+            sign = 1 if order == "lowest hp" else -1
+            slot, hp = min(near, key=lambda c: (sign * c[1], distance(c[0])))
+        tile = _world_tile(state, slot)
+        reason = f"creature at {tile[0]},{tile[1]} hp {hp:.0f}"
+        return TargetingAction(
+            "select_on_screen", -1, reason=reason, creature_slot=slot, creature_tile=tile
+        )
+
+    def slot_center(self, slot: tuple[int, int]) -> tuple[int, int]:
+        """Frame pixel at the middle of game-grid *slot*.
+
+        Raises:
+            ValueError: If no ``game_grid`` region was given.
+        """
+        if self._game_grid_region is None:
+            raise ValueError("targeting has no game_grid region to click in")
+        return slot_ring(self._game_grid_region, slot).point
 
     def _target_order_key(self, monster: Monster) -> tuple[float, ...]:
         """Sort key: highest priority first, then ``target_order``, then the top row."""

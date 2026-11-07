@@ -57,6 +57,21 @@ _BORDER = 3
 _NAME = re.compile(r"^(\d+)_(\d+)_(\d+)$")
 
 
+#: The minimap's rock grey. The client draws it over every explored tile
+#: with nothing else on it, the stored map only on rock, so a radar with a
+#: grey block where the map is black scored 0.30 at its spot (Venore tainted
+#: caves floor 11, 2026-11-07). Both count it as black.
+_ROCK = (102, 102, 102)
+
+
+# doc: docs/prs/near-targeting.md#rock-is-unexplored
+def _rock_as_black(rgb: np.ndarray) -> np.ndarray:
+    """A copy of *rgb* with the rock grey blacked out."""
+    out = rgb[:, :, :3].copy()
+    out[(out == _ROCK).all(axis=2)] = 0
+    return out
+
+
 def _lit(radar_rgb: np.ndarray) -> np.ndarray:
     """1.0 on the radar pixels to compare, else 0.0: the lit ones and the black
     ones within ``_BORDER`` px of them (the shapes' outline), never the white
@@ -66,6 +81,38 @@ def _lit(radar_rgb: np.ndarray) -> np.ndarray:
     near_lit = cv2.dilate(lit, np.ones((2 * _BORDER + 1,) * 2, np.uint8))
     compare: np.ndarray = ((near_lit > 0) & (total < 700)).astype(np.float32)
     return compare
+
+
+#: Share of the radar's colour edges on one pixel phase that makes it zoomed:
+#: zoom-2 radars 0.93-0.98, zoom-1 ones ~0.5 (logs, 2026-11-07).
+_ZOOMED_EDGE_SHARE = 0.75
+#: Fewer edges than this on either axis say nothing about the zoom (live radars: 430-1900).
+_ZOOM_MIN_EDGES = 200
+
+
+# doc: docs/prs/near-targeting.md#radar-zoom
+def _radar_zooms(radar_rgb: np.ndarray, zooms: tuple[int, ...]) -> tuple[int, ...]:
+    """The zoom the radar is drawn at, read from its edges; all *zooms* with too few edges.
+
+    At *zoom* px per tile every colour edge falls between tiles, so on one
+    pixel phase in *zoom*. Matching at the wrong zoom can win: a cave radar
+    with map marks scored 0.20 at its spot (zoom 1) and 0.09 on a grey area
+    735 sqm away at zoom 2 (Venore tainted caves, 2026-11-07).
+    """
+    total = radar_rgb[:, :, :3].astype(np.int32).sum(axis=2)
+    edges_per_column = (np.abs(np.diff(total, axis=1)) > 30).sum(axis=0)
+    edges_per_row = (np.abs(np.diff(total, axis=0)) > 30).sum(axis=1)
+    if min(edges_per_column.sum(), edges_per_row.sum()) < _ZOOM_MIN_EDGES:
+        return zooms
+    for zoom in sorted(zooms, reverse=True):
+        on_one_phase = all(
+            max(edges[phase::zoom].sum() for phase in range(zoom))
+            >= _ZOOMED_EDGE_SHARE * edges.sum()
+            for edges in (edges_per_column, edges_per_row)
+        )
+        if zoom == 1 or on_one_phase:
+            return (zoom,)
+    return zooms
 
 
 def _shrink(
@@ -142,10 +189,11 @@ class WorldMap:
             if self._last_full is not None and now - self._last_full < self._every:
                 return None
             self._last_full = now
+        radar_rgb = _rock_as_black(radar_rgb)
         h, w = radar_rgb.shape[:2]
         lit = _lit(radar_rgb)
         best: tuple[float, int, int, int, bool] | None = None
-        for z_ in self._zooms:
+        for z_ in _radar_zooms(radar_rgb, self._zooms):
             distinct = False
             if near is None:
                 spot, distinct = self._coarse_spot(radar_rgb, lit, z, image, x0, y0, z_)
@@ -218,5 +266,5 @@ class WorldMap:
                     image[y - y0 : y - y0 + _TILE, x - x0 : x - x0 + _TILE] = cv2.cvtColor(
                         tile[:_TILE, :_TILE], cv2.COLOR_BGR2RGB
                     )
-            self._floors[z] = (image, x0, y0)
+            self._floors[z] = (_rock_as_black(image), x0, y0)
         return self._floors[z]

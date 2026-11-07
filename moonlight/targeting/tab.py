@@ -78,6 +78,8 @@ class TargetingSettings(NamedTuple):
     unreachable_after_seconds: str
     toggle_chase_hotkey: str = ""
     target_order: str = "lowest hp"
+    only_attack_within_range: bool = False
+    attack_range_tiles: str = "3"
 
 
 def _number(text: str, cast: Callable[[str], float], where: str) -> float:
@@ -145,6 +147,8 @@ def apply_targeting(
         ),
         toggle_chase_hotkey=settings.toggle_chase_hotkey.strip(),
         target_order=settings.target_order,
+        only_attack_within_range=settings.only_attack_within_range,
+        attack_range_tiles=_number(settings.attack_range_tiles, int, "attack range tiles"),
     )
     return BotConfig.from_dict(data)
 
@@ -236,6 +240,9 @@ class TargetingTab(Tab):
     """Targeting (monster rows), area spells, seen monsters, then Settings; saved to the config."""
 
     title = "Targeting"
+    polls_hidden = True  # a script's range toggle ticks the box even while hidden
+    #: The running bot's range setting at the last poll (None: bot off).
+    _live_only_attack_within_range: bool | None = None
 
     def build(self, parent: ctk.CTkFrame) -> None:
         settings_box = section(parent, "Settings")  # packed below Seen monsters
@@ -272,6 +279,17 @@ class TargetingTab(Tab):
             command=lambda _v: self._save(),
         )
         self._target_order.pack(side="left", padx=(theme.UNIT, 0))
+        # doc: docs/prs/near-targeting.md#in-range
+        range_line = Row(settings_box)
+        range_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
+        self._only_attack_within_range = ctk.CTkCheckBox(
+            range_line, text="Only monsters within", command=self._save
+        )
+        self._only_attack_within_range.pack(side="left")
+        self._attack_range_tiles_entry = row_entry(range_line, "", 32, self._save)
+        Label(range_line, text="tiles", text_color=theme.TEXT_DIM).pack(
+            side="left", padx=(theme.UNIT, 0)
+        )
 
         monsters_box, self._monsters_frame = _card(parent, "Targeting")
         _header(
@@ -349,11 +367,16 @@ class TargetingTab(Tab):
         for entry, value in (
             (self._cooldown_entry, str(targeting.attack_cooldown_ms)),
             (self._unreachable_entry, f"{targeting.unreachable_after_seconds:g}"),
+            (self._attack_range_tiles_entry, str(targeting.attack_range_tiles)),
         ):
             entry.delete(0, "end")
             entry.insert(0, value)
         self._toggle_chase_hotkey.set(targeting.toggle_chase_hotkey)
         self._target_order.set(targeting.target_order)
+        if targeting.only_attack_within_range:
+            self._only_attack_within_range.select()
+        else:
+            self._only_attack_within_range.deselect()
 
     def _next_grid_row(self) -> int:
         self._last_grid_row += 1
@@ -457,6 +480,8 @@ class TargetingTab(Tab):
             self._unreachable_entry.get(),
             self._toggle_chase_hotkey.get(),
             self._target_order.get(),
+            bool(self._only_attack_within_range.get()),
+            self._attack_range_tiles_entry.get(),
         )
 
     def _save(self) -> None:
@@ -570,6 +595,19 @@ class TargetingTab(Tab):
             self._seen_empty.grid(row=0, column=0, sticky="w")
 
     def on_poll(self, snap: WorldState) -> None:
+        # doc: docs/prs/near-targeting.md#range-script
+        targeting = self.ctx.live_module("targeting")
+        live = None if targeting is None else targeting.config.only_attack_within_range
+        last, self._live_only_attack_within_range = self._live_only_attack_within_range, live
+        if last is not None and live is not None and live != last:
+            if live != bool(self._only_attack_within_range.get()):  # a script changed it
+                if live:
+                    self._only_attack_within_range.select()
+                else:
+                    self._only_attack_within_range.deselect()
+                self._save()
+        if not self.lbl_live.winfo_ismapped():
+            return
         names = ", ".join(m.name or "?" for m in snap.monsters) or "none"
         text = f"creatures on screen: {names}"
         if self.lbl_live.cget("text") != text:

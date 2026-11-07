@@ -201,10 +201,11 @@ class RateLimitedInput(InputBackend):
         rate: float,
         clock: Callable[[], float] | None = None,
     ) -> RateLimitedInput:
-        """*backend* behind a fresh wire limiter (capacity 2: one heal token)."""
+        """*backend* behind a fresh wire limiter (capacity 3: one heal token,
+        so a heal and an attack go out on one tick)."""
         if isinstance(backend, cls):
             return backend
-        return cls(backend, RateLimiter(rate=rate, capacity=2.0, clock=clock))
+        return cls(backend, RateLimiter(rate=rate, capacity=3.0, clock=clock))
 
 
 class F12Monitor:

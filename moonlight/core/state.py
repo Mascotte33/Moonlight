@@ -113,6 +113,11 @@ class WorldState:
     players: tuple[str, ...] = ()
     #: Game-grid slots ``(col, row)`` of the creatures on screen (health-bar scan).
     creature_slots: tuple[tuple[int, int], ...] = ()
+    #: HP percent of each ``creature_slots`` entry, from its screen bar (same order).
+    creature_hp_percents: tuple[float, ...] = ()
+    #: True while the whole game view slides between frames: the player is
+    #: mid-step (docs/prs/near-targeting.md#click-when-standing).
+    game_view_sliding: bool = False
     #: Game-grid slots of the echo raid triggers on screen (docs/prs/echo-raid.md#swirl-scan).
     echo_raid_slots: tuple[tuple[int, int], ...] = ()
 

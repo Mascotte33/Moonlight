@@ -2,10 +2,16 @@
 
 Five stat cards (Uptime, Ticks, Creatures, HP, Stamina) show hero-size values from
 the loop's stats and the live :class:`WorldState`. The module switches live
-in Settings.
+in Settings. A Machine line shows the HWID and the public IP.
 """
 
 from __future__ import annotations
+
+import logging
+import threading
+import time
+import urllib.request
+import uuid
 
 import customtkinter as ctk
 
@@ -14,9 +20,39 @@ from moonlight.gui import theme
 from moonlight.gui.state_bridge import LogFeed
 from moonlight.gui.tab_base import Label, Row, Tab, dot_color, health, section, set_label, stat_num
 
-__all__ = ["CARDS", "DashboardTab", "card_values", "recent_errors", "uptime_text"]
+__all__ = [
+    "CARDS",
+    "DashboardTab",
+    "card_values",
+    "hardware_id",
+    "public_ip",
+    "recent_errors",
+    "uptime_text",
+]
+
+log = logging.getLogger(__name__)
 
 CARDS = ("Uptime", "Ticks", "Creatures", "HP", "Stamina")
+#: Seconds between public IP lookups (a VPN or router restart changes it).
+PUBLIC_IP_REFRESH_SECONDS = 300
+
+
+# doc: docs/prs/near-targeting.md#machine-line
+def hardware_id(node: int | None = None) -> str:
+    """The network card's hardware (MAC) address, ``aa:bb:cc:dd:ee:ff``, on any OS.
+
+    # ponytail: the MAC changes with a new network card; read the OS machine ID if that matters.
+    """
+    node = uuid.getnode() if node is None else node
+    if node >> 40 & 1:  # Python made a random one up: no network card found
+        raise OSError("no network card hardware address found")
+    return ":".join(f"{node >> shift & 0xFF:02x}" for shift in range(40, -1, -8))
+
+
+def public_ip() -> str:
+    """This PC's public IP address, asked from api.ipify.org."""
+    with urllib.request.urlopen("https://api.ipify.org", timeout=10) as reply:
+        return str(reply.read().decode()).strip()
 
 
 def uptime_text(stats: dict[str, object]) -> str:
@@ -91,6 +127,21 @@ class DashboardTab(Tab):
             )
             self._dots[name].pack(side="left", padx=(0, theme.PAD))
 
+        # doc: docs/prs/near-targeting.md#machine-line
+        box = section(cards, "Machine")
+        box.grid(row=3, column=0, columnspan=len(CARDS), sticky="ew", pady=(theme.UNIT, 0))
+        try:
+            self._hardware_id = hardware_id()
+        except OSError as exc:
+            log.warning("dashboard: cannot read the HWID: %s", exc)
+            self._hardware_id = "unknown"
+        self._public_ip = "looking up..."
+        self.lbl_machine = Label(
+            box, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO), text_color=theme.TEXT
+        )
+        self.lbl_machine.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
+        threading.Thread(target=self._keep_public_ip, daemon=True, name="public-ip").start()
+
         body = Row(parent)
         body.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
         body.grid_columnconfigure(0, weight=1)
@@ -110,6 +161,16 @@ class DashboardTab(Tab):
         self.log_view.configure(state="disabled")
         self._last_log: str = ""
         self._last_battle: str = ""
+
+    def _keep_public_ip(self) -> None:
+        """Look the public IP up now and every few minutes (thread: never blocks the GUI)."""
+        while True:
+            try:
+                self._public_ip = public_ip()
+            except OSError as exc:
+                log.warning("dashboard: public IP lookup failed: %s", exc)
+                self._public_ip = "unknown (no internet?)"
+            time.sleep(PUBLIC_IP_REFRESH_SECONDS)
 
     def _set_text(self, box: ctk.CTkTextbox, text: str) -> None:
         box.configure(state="normal")
@@ -135,6 +196,9 @@ class DashboardTab(Tab):
             label = self._cards[name]
             if label.cget("text") != text:
                 label.configure(text=text)
+        machine = f"HWID {self._hardware_id}    Public IP {self._public_ip}"
+        if self.lbl_machine.cget("text") != machine:
+            self.lbl_machine.configure(text=machine)
         arduino = self.ctx.hardware.backend is not None
         for name, ok in health(snap, arduino, self.ctx.bot_running()):
             set_label(self._dots[name], color=dot_color(ok))

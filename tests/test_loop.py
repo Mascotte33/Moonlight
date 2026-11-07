@@ -326,7 +326,7 @@ class TestGameLoopStates:
         cavebot = SimpleNamespace(
             is_active=lambda: True,
             step=lambda: steps.append(1),
-            resume=lambda: None,
+            resume=lambda after_fight=False: None,
             luring=lambda: False,
             route=SimpleNamespace(current=0),
             release_walk_key=lambda: released.append(1),
@@ -468,18 +468,18 @@ class TestGameLoopRateLimit:
         )
         modules = DecisionModules(healing=cast(HealingDecision, always_heal))
         gl, clock = make_loop(ws, inp, modules=modules)
-        # 20 ticks with no time passing: the bucket (capacity 2) allows
-        # a 2-heal burst; every other attempt is rate-limited.
+        # 20 ticks with no time passing: the bucket (capacity 3) allows
+        # a 3-heal burst; every other attempt is rate-limited.
         for _ in range(20):
             gl.tick()
         stats = gl.get_stats()
-        assert stats["actions_sent"] == 2
-        assert stats["actions_dropped_rate_limit"] == 18
+        assert stats["actions_sent"] == 3
+        assert stats["actions_dropped_rate_limit"] == 17
 
         # Advance 0.1s (one token at 10/s): exactly one more action.
         clock.advance(0.1)
         gl.tick()
-        assert gl.get_stats()["actions_sent"] == 3
+        assert gl.get_stats()["actions_sent"] == 4
 
     def test_heal_never_waits_behind_attack(self) -> None:
         ws = make_state(hp=100.0)
@@ -507,28 +507,36 @@ class FakeClicker:
     def __init__(self) -> None:
         self.wire: InputBackend | None = None
         self.target: tuple[int, int] | None = None
+        self.side = ClickSide.LEFT
         self.jumped = False
+        #: Set, every click is followed by a jump here (the real one parks off
+        #: the minimap and the battle list).
+        self.park_point: tuple[int, int] | None = None
+        self.parking = False
 
     @property
     def busy(self) -> bool:
-        return self.target is not None
+        return self.target is not None or self.parking
 
-    def request(self, target: tuple[int, int]) -> None:
-        self.target, self.jumped = target, False
+    def request(self, target: tuple[int, int], side: ClickSide = ClickSide.LEFT) -> None:
+        self.target, self.side, self.jumped = target, side, False
 
     def cancel(self) -> None:
-        self.target = None
+        self.target, self.parking = None, False
 
     def step(self) -> bool | None:
-        if self.target is None:
-            return None
         assert self.wire is not None
+        if self.target is None:
+            if self.parking and self.park_point is not None:
+                self.wire.mouse_to(*self.park_point)
+                self.parking = False
+            return None
         if not self.jumped:
             self.wire.mouse_to(*self.target)
             self.jumped = True
             return None
-        self.wire.click(ClickSide.LEFT)
-        self.target = None
+        self.wire.click(self.side)
+        self.target, self.parking = None, self.park_point is not None
         return True
 
 
@@ -539,14 +547,19 @@ def make_targeting_loop(
     cavebot: object | None = None,
     toggle_chase_hotkey: str = "F9",
 ) -> tuple[GameLoop, FakeClock]:
-    """A loop with real targeting over battle list region (100, 200, 170, 300)."""
+    """A loop with real targeting over battle list region (100, 200, 170, 300).
+
+    The game grid is (0, 0, 150, 110): 10 px tiles, slot (8, 5) centred at (85, 55).
+    """
     clock = FakeClock()
     clicker = FakeClicker()
     config = targeting_config if targeting_config is not None else TargetingConfig()
     config = replace(config, toggle_chase_hotkey=toggle_chase_hotkey)
     modules = DecisionModules(
         healing=HealingDecision(clock=clock),
-        targeting=TargetingDecision(config, (100, 200, 170, 300)),
+        targeting=TargetingDecision(
+            config, (100, 200, 170, 300), game_grid_region=(0, 0, 150, 110)
+        ),
         attack_hotkeys=AttackHotkeys(config),
         cavebot=cast(Cavebot, cavebot),
         clicker=cast(ClickController, clicker),
@@ -563,6 +576,75 @@ def ticks(gl: GameLoop, clock: FakeClock, n: int) -> None:
 
 
 #: The Chase Opponent key a follow row presses before its first attack key.
+
+
+class TestScreenClick:
+    """near-targeting: only creatures within N tiles, right-clicked on the game screen."""
+
+    NEAR = TargetingConfig(
+        only_attack_within_range=True,
+        monsters=(MonsterRow(name="Rat", ignore=True),),
+    )
+
+    def near_state(self) -> WorldState:
+        ws = make_state()
+        with ws.lock():
+            ws.monsters = [Monster("Wolf", 50.0)]
+            ws.creature_slots, ws.creature_hp_percents = ((8, 5), (13, 5)), (50.0, 10.0)
+        return ws
+
+    def test_right_clicks_the_creature_in_range(self) -> None:
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self.near_state(), inp, self.NEAR)
+        ticks(gl, clock, 3)
+        assert gl.current_state is BotState.ATTACK
+        assert inp.sent_lines == ["A 85 55", "C R"]  # the far (13, 5) one is never clicked
+
+    def test_the_click_waits_until_the_player_stands(self) -> None:
+        ws = self.near_state()
+        with ws.lock():
+            ws.game_view_sliding = True  # still finishing a step
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, self.NEAR)
+        ticks(gl, clock, 3)
+        assert gl.current_state is BotState.ATTACK  # walking stopped at once
+        assert inp.sent_lines == []
+        with ws.lock():
+            ws.game_view_sliding = False
+        ticks(gl, clock, 3)
+        assert inp.sent_lines == ["A 85 55", "C R"]
+
+    def test_click_in_flight_holds_attack_when_the_creature_flickers(self) -> None:
+        ws = self.near_state()
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, self.NEAR)
+        ticks(gl, clock, 1)  # the mouse jumps
+        with ws.lock():
+            ws.creature_slots, ws.creature_hp_percents = (), ()  # its bar is gone a frame
+        ticks(gl, clock, 2)
+        assert gl.current_state is BotState.ATTACK  # no walk takes the click over
+        assert inp.sent_lines == ["A 85 55", "C R"]
+
+    def test_nothing_selected_skips_the_tile(self, caplog: pytest.LogCaptureFixture) -> None:
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self.near_state(), inp, self.NEAR)
+        with caplog.at_level(logging.INFO):
+            ticks(gl, clock, 3 + 18 + 4 + 40)  # no outline after the click (a player)
+        assert inp.sent_lines == ["A 85 55", "C R"]
+        assert "nothing selected at 1,0,0, skipping that tile 30 s" in caplog.text
+
+    def test_a_selected_ignored_monster_is_dropped_with_esc(self) -> None:
+        ws = self.near_state()
+        rat = Monster("Rat", 50.0, name_hash="r", battle_list_row=1)
+        with ws.lock():
+            ws.monsters.append(rat)
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, self.NEAR)
+        ticks(gl, clock, 3)
+        with ws.lock():
+            ws.selected_target = rat  # the click picked the never-attack Rat
+        ticks(gl, clock, 20)
+        assert inp.sent_lines == ["A 85 55", "C R", "K esc"]
 
 
 class TestSelectClick:
@@ -585,6 +667,34 @@ class TestSelectClick:
         gl, clock = make_targeting_loop(ws, inp)
         ticks(gl, clock, 3)
         assert inp.sent_lines == ["A 189 288", "C L"]  # 200+11+3*22+11
+
+    # doc: docs/prs/near-targeting.md#moved-row
+    def test_a_click_is_aimed_again_when_its_row_moves(self) -> None:
+        ws = make_state()
+        with ws.lock():
+            ws.monsters = [Monster("Wolf", 50.0)]
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp)
+        ticks(gl, clock, 1)  # the mouse jumps to row 0
+        with ws.lock():
+            ws.monsters = [Monster("Wolf", 50.0, battle_list_row=1)]  # the list reordered
+        ticks(gl, clock, 4)
+        assert inp.sent_lines == ["A 189 222", "A 189 244", "C L"]
+
+    # doc: docs/prs/near-targeting.md#park-cursor
+    def test_the_cursor_parks_after_the_click_once_the_target_is_chosen(self) -> None:
+        ws = make_state()
+        wolf = Monster("Wolf", 50.0)
+        with ws.lock():
+            ws.monsters = [wolf]
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp)
+        cast(FakeClicker, gl.modules.clicker).park_point = (5, 5)
+        ticks(gl, clock, 2)  # jump, click
+        with ws.lock():
+            ws.selected_target = wolf  # targeting now wants nothing more
+        ticks(gl, clock, 3)
+        assert inp.sent_lines == ["A 189 222", "C L", "A 5 5"]
 
     def test_one_click_in_flight_until_the_outline_shows(self) -> None:
         ws = make_state()
@@ -656,7 +766,7 @@ class TestSelectClick:
             targeting_paused=False,
             stuck_on_creatures=True,
             creature_in_the_way_clicked_until=1.5,  # it right-clicked the rat in the way
-            resume=lambda: None,
+            resume=lambda after_fight=False: None,
             refill_now=False,
         )
         inp = FakeInput()
@@ -691,6 +801,39 @@ class TestAttackHotkeys:
         assert inp.sent_lines == ["K F6"]
         ticks(gl, clock, 25)
         assert inp.sent_lines == ["K F6", "K F6"]
+
+    # doc: docs/prs/near-targeting.md#same-tick
+    def test_a_heal_and_the_attack_go_out_on_one_tick(self) -> None:
+        ws = self._wolf_selected()
+        ws.hp_percent = 45.0  # the F2 spell only
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, F6_ROWS)
+        ticks(gl, clock, 1)
+        assert inp.sent_lines == ["K F2", "K F6"]
+
+    def test_after_spell_and_potion_the_attack_waits_for_a_token(self) -> None:
+        ws = self._wolf_selected()
+        ws.hp_percent = 30.0  # the F2 spell and the F3 potion
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, F6_ROWS)
+        ticks(gl, clock, 1)
+        assert inp.sent_lines == ["K F2", "K F3"]  # both tokens spent on heals
+        ws.hp_percent = 100.0
+        ticks(gl, clock, 4)
+        assert inp.sent_lines == ["K F2", "K F3", "K F6"]
+
+    # doc: docs/prs/near-targeting.md#targeting-script
+    def test_no_attack_while_a_script_turned_targeting_off(self, tmp_path: Path) -> None:
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self._wolf_selected(), inp, F6_ROWS)
+        scripts = ScriptRunner(tmp_path, clock=clock)
+        scripts.targeting_turned_off = True
+        gl.modules = replace(gl.all_modules, scripts=scripts)
+        ticks(gl, clock, 5)
+        assert inp.sent_lines == [] and gl.modules.targeting is None
+        scripts.targeting_turned_off = False
+        ticks(gl, clock, 2)
+        assert inp.sent_lines == ["K F6"]
 
     # doc: docs/prs/first-spell.md#fresh-cooldown
     def test_the_next_target_after_a_kill_is_attacked_at_once(self) -> None:
@@ -964,7 +1107,7 @@ class TestCurrentTask:
             is_active=lambda: True,
             luring=lambda: False,
             step=lambda: None,
-            resume=lambda: None,
+            resume=lambda after_fight=False: None,
             alarm=None,
         )
         modules = DecisionModules(cavebot=cast(Cavebot, cavebot))
@@ -995,7 +1138,7 @@ def test_loot_ring_reach_is_two_tiles() -> None:
     with ws.lock():
         ws.monsters, ws.selected_target = [], None  # the target died
     gl.tick()
-    assert checks == [range(0, 3), range(0, 3)]  # 5x5, mid-fight or not
+    assert checks == [range(0, 2), range(0, 2)]  # 3x3, mid-fight or not
 
 # doc: docs/prs/extras.md#extras
 class TestExtras:
@@ -1053,13 +1196,49 @@ class TestExtras:
             gl.tick()
         assert inp.sent_lines == ["K f7", "K F9"]  # the script first, then the food
 
+    # doc: docs/prs/near-targeting.md#haste-in-fight
+    def test_haste_but_no_food_in_a_fight_when_nothing_else_is_sent(self) -> None:
+        clock = FakeClock()
+        config = ExtrasConfig(food=True, food_hotkey="F9", haste=True, haste_hotkey="F8")
+        extras = self.extras(clock, config, "hungry")
+        ws = make_state()
+        wolf = Monster("Wolf", 50.0)
+        with ws.lock():
+            ws.monsters = [wolf]
+            ws.selected_target = wolf
+        inp = FakeInput()
+        gl, _ = make_loop(ws, inp, clock=clock, modules=DecisionModules(extras=extras))
+        gl.tick()
+        assert gl.current_state is BotState.ATTACK and inp.sent_lines == ["K F8"]
+
+    # doc: docs/prs/near-targeting.md#same-tick
+    def test_no_haste_in_a_fight_while_a_heal_is_due_even_on_cooldown(self) -> None:
+        clock = FakeClock()
+        extras = self.extras(clock, ExtrasConfig(haste=True, haste_hotkey="F8"))
+        ws = make_state(hp=30.0)
+        wolf = Monster("Wolf", 50.0)
+        with ws.lock():
+            ws.monsters = [wolf]
+            ws.selected_target = wolf
+        inp = FakeInput()
+        modules = DecisionModules(extras=extras, healing=HealingDecision(clock=clock))
+        gl, _ = make_loop(ws, inp, clock=clock, modules=modules)
+        gl.tick()
+        clock.advance(0.1)
+        gl.tick()  # the heals are on cooldown, still due
+        assert inp.sent_lines == ["K F2", "K F3"]
+        ws.hp_percent = 100.0
+        clock.advance(0.1)
+        gl.tick()
+        assert inp.sent_lines == ["K F2", "K F3", "K F8"]
+
     def test_a_player_alarms_only_after_staying_and_sends_to_refill(self) -> None:
         clock = FakeClock()
         config = ExtrasConfig(player_minutes=1.0, player_alarm=True, player_refill=True)
         cavebot = SimpleNamespace(
             is_active=lambda: False,
             luring=lambda: False,
-            resume=lambda: None,
+            resume=lambda after_fight=False: None,
             release_walk_key=lambda: None,
             alarm=None,
             refill_now=False,

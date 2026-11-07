@@ -73,7 +73,7 @@ Safety invariants (re-checked on every tick, never just at startup):
   :class:`~moonlight.core.safety.RateLimitedInput`, so multi-command actions (clicker moves,
   rope hotkey + click, MOVE steps) cannot exceed it. Heals have
   priority: non-heal commands leave one token in reserve, so a heal never
-  waits behind an attack (worst case 12 commands in the first second,
+  waits behind an attack (worst case 13 commands in the first second,
   10/s after). Releases are never rate-limited.
 * **F12 kill switch** -- a daemon thread polls the keyboard (10 ms,
   GetAsyncKeyState, no hook) and triggers the kill switch on a rising
@@ -105,7 +105,7 @@ from typing import TYPE_CHECKING, Any
 from moonlight.cavebot.cavebot import WALK_KEYS
 from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import Monster, WorldState
-from moonlight.hardware.input import InputBackend
+from moonlight.hardware.input import ClickSide, InputBackend
 from moonlight.targeting.targeting import PAUSE_SECONDS
 
 if TYPE_CHECKING:
@@ -299,6 +299,8 @@ class GameLoop:
         self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
+        # The world tile an on-screen select click right-clicked (row -1 above).
+        self._screen_click_tile: tuple[int, int, int] | None = None
         # Until when a pressed chase toggle may not show on screen yet (no second press).
         self._chase_toggle_settles_at = 0.0
         self._warned_no_chase_toggle_key = False
@@ -347,11 +349,15 @@ class GameLoop:
 
         Looting runs only with the cavebot on and not paused (owner 2026-11-04).
         """
-        if not self.paused:
-            if self.all_modules.cavebot is None and self.all_modules.looting is not None:
-                return replace(self.all_modules, looting=None)
-            return self.all_modules
         scripts = self.all_modules.scripts
+        if not self.paused:
+            modules = self.all_modules
+            if modules.cavebot is None and modules.looting is not None:
+                modules = replace(modules, looting=None)
+            if scripts is not None and scripts.targeting_turned_off:
+                # doc: docs/prs/near-targeting.md#targeting-script
+                modules = replace(modules, targeting=None)  # stuck targeting stays
+            return modules
         return replace(
             self.all_modules,
             cavebot=None,
@@ -608,6 +614,11 @@ class GameLoop:
             self._target = None
         if m.cavebot is not None:
             m.cavebot.targeting_paused = self._targeting_paused(now)
+            # doc: docs/prs/near-targeting.md#fight-in-range
+            judge = targeting or m.stuck_targeting
+            m.cavebot.fight_in_range = (
+                judge.fight_in_range(snap, now) if judge is not None else bool(snap.monsters)
+            )
         names = Counter(mon.name for mon in snap.monsters)
         if m.attack_hotkeys is not None:
             # ponytail: one fewer monster named like the target while the
@@ -664,8 +675,11 @@ class GameLoop:
             pass  # a lone unreachable target: walk on
         elif targeting is not None:
             selected = snap.selected_target
-            if self._target is not None or (
-                selected is not None and not targeting.is_unreachable(selected)
+            # doc: docs/prs/near-targeting.md#pick-on-screen
+            if (
+                self._target is not None
+                or self._screen_click_tile is not None  # stand still until the click answers
+                or (selected is not None and not targeting.is_unreachable(selected))
             ):
                 return BotState.ATTACK
         elif snap.selected_target is not None and snap.selected_target.name:
@@ -713,6 +727,8 @@ class GameLoop:
         """Short human-readable reason for a transition (for logs)."""
         match new_state:
             case BotState.ATTACK:
+                if self._target is not None and self._target.kind == "select_on_screen":
+                    return f"click {self._target.reason}"
                 if self._target is not None:
                     return f"select row {self._target.battle_list_row} ({self._target.reason})"
                 name = snap.selected_target.name if snap.selected_target is not None else "?"
@@ -738,7 +754,8 @@ class GameLoop:
         if self.all_modules.cavebot is not None:
             self.all_modules.cavebot.release_walk_key()  # only MOVE walks
         if new_state is BotState.MOVE and self.modules.cavebot is not None:
-            self.modules.cavebot.resume()  # fight/loot time is not "stuck" (F-06)
+            # fight/loot time is not "stuck" (F-06)
+            self.modules.cavebot.resume(after_fight=old in (BotState.ATTACK, BotState.LOOT))
 
     # -- actions -------------------------------------------------------------
 
@@ -748,17 +765,25 @@ class GameLoop:
             self._act_kill()
             return
         # Healing continues through every state.
-        if self.modules.healing is not None and self._heal(snap):
+        healing = self.modules.healing
+        healed = healing is not None and self._heal(snap)
+        if healed:
             self._task = "Healing"
-            return
+            if self._state is not BotState.ATTACK:
+                return
         looting = self.modules.looting
-        if looting is not None and looting.ring_due(RING_REACH, snap):
+        if not healed and looting is not None and looting.ring_due(RING_REACH, snap):
             self._send(snap, looting.press_ring)  # then carry on with this tick
         # doc: docs/prs/pause-stop.md#action-order
         # Healing, then the fight and loot, then scripts, extras and walking.
         match self._state:
             case BotState.ATTACK:
-                self._act_attack(snap)
+                # doc: docs/prs/near-targeting.md#same-tick
+                self._act_attack(snap)  # on a heal tick too: each has its own cooldown
+                if self.modules.extras is not None and not (
+                    healing is not None and healing.heal_needed(snap)
+                ):
+                    self._extra(snap, only_haste=True)  # last, never while a heal is due
             case BotState.LOOT:
                 self._act_loot(snap)
             case BotState.MOVE | BotState.IDLE:
@@ -827,11 +852,11 @@ class GameLoop:
                 sent = True
         return sent
 
-    def _extra(self, snap: WorldState) -> bool:
+    def _extra(self, snap: WorldState, only_haste: bool = False) -> bool:
         """Extras: press the due hotkey (food, ring, amulet, haste, buff); True when sent."""
         extras = self.modules.extras
         assert extras is not None
-        key = extras.due(walking=self._state is BotState.MOVE)
+        key = extras.due(walking=self._state is not BotState.IDLE, only_haste=only_haste)
         if key is None or not self._send(snap, lambda: self.input.press_combo(key)):
             return False
         extras.pressed(key)
@@ -856,30 +881,67 @@ class GameLoop:
             return
         now = self._clock()
         if clicker.busy:
+            if self._battle_list_moved_under_the_click():
+                clicker.cancel()  # judged as "cancelled before it went out" next tick
+                return
             self._send(snap, lambda: self._step_click(clicker, now))
             return
         if self._select_click is not None:
             row, sent_at = self._select_click
             selected = snap.selected_target
-            outline_shows = selected is not None and selected.battle_list_row == row
-            if sent_at is not None and not outline_shows and now - sent_at < _SELECT_OUTLINE_WAIT:
+            outline_shows = selected is not None and (row == -1 or selected.battle_list_row == row)
+            if sent_at is None:  # cancelled before it went out: nothing to judge
+                self._screen_click_tile = None
+            elif not outline_shows and now - sent_at < _SELECT_OUTLINE_WAIT:
                 return
             self._select_click = None
+        if self._check_screen_click(snap, targeting, now):
+            return
         if self._target is None:
             self._press_attack_hotkey(snap, targeting, now)
             return
         row = self._target.battle_list_row
-        point = targeting.row_center(row)
+        if self._target.kind == "select_on_screen":
+            if snap.game_view_sliding:
+                # doc: docs/prs/near-targeting.md#click-when-standing
+                return  # the walk key is let go: click the first still frame
+            point, side = targeting.slot_center(self._target.creature_slot), ClickSide.RIGHT
+            tile: tuple[int, int, int] | None = self._target.creature_tile
+        else:
+            point, side, tile = targeting.row_center(row), ClickSide.LEFT, None
 
         def click() -> bool | None:
-            clicker.request(point)
+            clicker.request(point, side=side)
             self._select_click = (row, None)
+            self._screen_click_tile = tile
             if self.modules.attack_hotkeys is not None:
                 self.modules.attack_hotkeys.new_target()
             return self._step_click(clicker, now)
 
         if self._send(snap, click):
             logger.debug("select click row %d at %s", row, point)
+
+    # doc: docs/prs/near-targeting.md#pick-on-screen
+    def _check_screen_click(
+        self, snap: WorldState, targeting: TargetingDecision, now: float
+    ) -> bool:
+        """After an on-screen select click: skip its tile when it selected nothing
+        or an ignored monster (which Esc drops). True when the tile was skipped:
+        this tick's action still points at it."""
+        tile, self._screen_click_tile = self._screen_click_tile, None
+        selected = snap.selected_target
+        if tile is None:
+            return False
+        if selected is None:
+            targeting.skip_tile(tile, now, "nothing selected")
+            return True
+        if targeting.row_for(selected).ignore:
+            if self._send(snap, lambda: self.input.press_combo("esc")):
+                targeting.skip_tile(tile, now, f"{selected.name or '?'} is ignored")
+            else:
+                self._screen_click_tile = tile  # the limiter dropped Esc: retry next tick
+            return True
+        return False
 
     def _press_attack_hotkey(
         self, snap: WorldState, targeting: TargetingDecision, now: float
@@ -916,6 +978,24 @@ class GameLoop:
         if hotkey is not None:
             self._send(snap, lambda: attack_hotkeys.send(hotkey, self.input, now))
 
+    # doc: docs/prs/near-targeting.md#moved-row
+    def _battle_list_moved_under_the_click(self) -> bool:
+        """A battle-list click not sent yet whose row no longer holds the pick.
+
+        The rows reorder while the mouse travels; the old row may now hold an
+        ignored monster or the current target (a click there stops the attack).
+        """
+        if self._select_click is None or self._select_click[0] == -1:
+            return False
+        row, sent_at = self._select_click
+        if sent_at is not None:
+            return False  # already clicked: the clicker only parks the cursor now
+        target = self._target
+        if target is not None and target.kind == "select" and target.battle_list_row == row:
+            return False
+        logger.info("battle list moved under the click on row %d, aiming again", row)
+        return True
+
     def _step_click(self, clicker: ClickController, now: float) -> bool | None:
         """One clicker step; on the click, record what it did."""
         result = clicker.step()
@@ -938,6 +1018,7 @@ class GameLoop:
             return False
         self._task = f"Script {scripts.running}"
         scripts.cavebot = self.modules.cavebot  # for bot.goto
+        scripts.targetings = (self.all_modules.targeting, self.modules.stuck_targeting)
         self._send(snap, lambda: scripts.step(snap, self.input))
         if scripts.running is None and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # script time is not "stuck"

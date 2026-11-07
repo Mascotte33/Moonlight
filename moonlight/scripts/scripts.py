@@ -12,6 +12,7 @@ tick back to the loop::
             yield bot.click(*spot)
         yield bot.say("hi")
         yield bot.goto("town")      # jump the route to label town
+        yield bot.only_monsters_within_range(None)  # flip Targeting's range box
 
 ``bot.press`` / ``say`` / ``click`` / ``goto`` return the wire commands to
 send; the runner sends one per tick, so the rate limit never drops them. A
@@ -42,7 +43,7 @@ import re
 import time
 import traceback
 from collections.abc import Callable, Generator, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
     from moonlight.cavebot.cavebot import Cavebot
     from moonlight.hardware.clicker import ClickController
     from moonlight.scripts.rotation import Rotation
+    from moonlight.targeting.targeting import TargetingDecision
 
 __all__ = [
     "DEFAULT_PAUSE_MS",
@@ -131,6 +133,10 @@ def parse_timers(text: str) -> list[tuple[str, float]]:
     return timers
 
 
+#: Game-grid (column, row) step to the tile next to the player per screen side.
+_SCREEN_STEPS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+
+
 class Bot:
     """What a script sees: readings of this tick and commands to yield."""
 
@@ -187,8 +193,33 @@ class Bot:
         send = self._runner.input
         return [functools.partial(send.mouse_to, *point), functools.partial(send.click, side)]
 
+    # doc: docs/prs/near-targeting.md#door-scripts
+    def use_tile_next_to_player(self, direction: str) -> list[Command]:
+        """Right-click (use) the tile next to the player: "up", "down", "left" or "right"."""
+        from moonlight.perception.corpses import slot_ring
+        from moonlight.perception.creatures import PLAYER_SLOT
+
+        if direction not in _SCREEN_STEPS:
+            raise ValueError(f"direction {direction!r} is not up, down, left or right")
+        grid = self._runner.game_grid
+        if grid is None:
+            raise RuntimeError("bot.use_tile_next_to_player needs the game_grid region")
+        (dx, dy), (column, row) = _SCREEN_STEPS[direction], PLAYER_SLOT
+        x, y = slot_ring(grid, (column + dx, row + dy)).point
+        return self.click(x, y, right=True)
+
     def goto(self, label: str) -> list[Command]:
         return [functools.partial(self._runner.goto, label)]
+
+    # doc: docs/prs/near-targeting.md#range-script
+    def only_monsters_within_range(self, on: bool | None) -> list[Command]:
+        """Turn Targeting's "Only monsters within N tiles" on, off, or (None) flip it."""
+        return [functools.partial(self._runner.set_only_monsters_within_range, on)]
+
+    # doc: docs/prs/near-targeting.md#targeting-script
+    def targeting(self, on: bool) -> list[Command]:
+        """Turn targeting on or off until a script turns it back (or the bot restarts)."""
+        return [functools.partial(self._runner.set_targeting, on)]
 
     def count(self, potion: str) -> int | None:
         """The action-bar total of ``"health"`` or ``"mana"`` potions; None when unknown."""
@@ -263,6 +294,8 @@ class ScriptRunner:
         self.scripts_dir = Path(scripts_dir) if scripts_dir else DEFAULT_SCRIPTS_DIR
         self.clicker = clicker
         self.grab = grab
+        #: The ``game_grid`` region ``(x, y, w, h)`` for ``bot.use_tile_next_to_player``.
+        self.game_grid: tuple[int, int, int, int] | None = None
         #: The action-bar potion totals for ``bot.count``.
         self.potion_counts: Callable[[], dict[str, int | None]] | None = None
         #: Stamina minutes from the Skills window for ``bot.stamina`` and the log.
@@ -294,6 +327,10 @@ class ScriptRunner:
         self.snap = WorldState()
         self.input: InputBackend
         self.cavebot: Cavebot | None = None
+        #: The loop's targeting and stuck targeting, for ``bot.only_monsters_within_range``.
+        self.targetings: tuple[TargetingDecision | None, ...] = ()
+        #: ``bot.targeting(False)`` ran: the loop picks no target until ``(True)``.
+        self.targeting_turned_off = False
         #: Account rotation: the ``rotate`` script is its switch (docs/prs/rotation.md).
         self.rotation: Rotation | None = None
 
@@ -319,6 +356,27 @@ class ScriptRunner:
         self.running = name
         self._commands, self._pending, self._wait_until = iter(()), None, 0.0
         return True
+
+    def set_only_monsters_within_range(self, on: bool | None) -> None:
+        """Set (None: flip) ``only_attack_within_range`` on the running targeting."""
+        live = [t for t in self.targetings if t is not None]
+        if not live:
+            raise RuntimeError("bot.only_monsters_within_range needs targeting on")
+        if on is None:
+            on = not live[0].config.only_attack_within_range
+        for targeting in live:
+            targeting.config = replace(targeting.config, only_attack_within_range=on)
+        log.info(
+            "script: only monsters within %d tiles %s",
+            live[0].config.attack_range_tiles,
+            "on" if on else "off",
+        )
+
+    def set_targeting(self, on: bool) -> None:
+        if not self.targetings or self.targetings[0] is None:
+            raise RuntimeError("bot.targeting needs Targeting switched on in Settings")
+        self.targeting_turned_off = not on
+        log.info("script: targeting %s", "on" if on else "off")
 
     def stop(self) -> None:
         if self.running is not None:

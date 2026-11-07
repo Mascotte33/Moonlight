@@ -16,7 +16,7 @@ from moonlight.core.loop import (
     LoopConfig,
 )
 from moonlight.core.state import Monster, WorldState
-from moonlight.hardware.input import FakeInput
+from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.healing.healing import HealingConfig, HealingDecision
 
 
@@ -91,7 +91,7 @@ def test_targeting_decide_feeds_attack() -> None:
     targeting.decide.assert_called_once()
     assert gl.current_state is BotState.ATTACK
     targeting.row_center.assert_called_once_with(2)
-    clicker.request.assert_called_once_with((5, 6))
+    clicker.request.assert_called_once_with((5, 6), side=ClickSide.LEFT)
 
 
 def test_stuck_cavebot_hands_over_to_stuck_targeting_until_a_kill() -> None:
@@ -197,7 +197,7 @@ def test_ring_press_does_not_stop_the_attack() -> None:
     gl.tick()
     looting.press_ring.assert_called()  # a ring next to the player, any time
     assert gl.current_state is BotState.ATTACK
-    clicker.request.assert_called_with((5, 6))
+    clicker.request.assert_called_with((5, 6), side=ClickSide.LEFT)
 
 
 def test_no_looting_with_the_cavebot_off_or_paused() -> None:

@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -53,6 +53,8 @@ SCAN_GAP = 1.0  # s between picture scans
 #: Around a picture's first spot: the status row shifts sideways as icons come and go.
 SPOT_PAD_X, SPOT_PAD_Y = 100, 10
 PRESS_GAP = 2.0  # s between two presses of one key: the icon takes a moment to change
+#: Food presses with the hungry icon still shown before food pauses (out of food).
+FOOD_TRIES = 3
 PLAYER_GONE = 60.0  # s out of the player list before a player's timer resets
 SCREENSHOTS_DIR = Path("screenshots")
 KEEP_SCREENSHOTS = 20
@@ -190,6 +192,8 @@ class Extras:
         self._spots: dict[str, tuple[int, int]] = {}
         self._search_turn = 0
         self._pressed: dict[str, float] = {}
+        #: Food presses since the hungry icon last went away.
+        self._food_presses = 0
         #: Player name hash -> (first seen, last seen).
         self.players: dict[str, tuple[float, float]] = {}
         #: True on the tick a player starts staying, with player_refill on.
@@ -257,9 +261,12 @@ class Extras:
             return f"player in sight over {self.config.player_minutes:g} min"
         return None
 
-    def due(self, walking: bool) -> str | None:
-        """The hotkey to press now, or None. *walking*: the route walks, no fight."""
+    def due(self, walking: bool, only_haste: bool = False) -> str | None:
+        """The hotkey to press now, or None. *walking*: the route walks or the
+        player chases. *only_haste*: in a fight, between heals and attacks."""
         c, icons, seen = self.config, self.icons, self._pictures
+        if "hungry" not in icons:
+            self._food_presses = 0
         wanted = (
             (c.food, c.food_hotkey, "hungry" in icons),
             (c.ring, c.ring_hotkey, "ring_empty" in icons),
@@ -278,12 +285,24 @@ class Extras:
         )
         now = self._clock()
         for on, key, need in wanted:
+            if only_haste and key != c.haste_hotkey:
+                continue  # doc: docs/prs/near-targeting.md#haste-in-fight
             if on and need and now - self._pressed.get(key, float("-inf")) >= PRESS_GAP:
+                if key == c.food_hotkey and self._food_presses >= FOOD_TRIES:
+                    # doc: docs/prs/near-targeting.md#food-pause
+                    logger.warning(
+                        "extras: still hungry after %d food presses (out of food?), food paused",
+                        FOOD_TRIES,
+                    )
+                    self.config = replace(c, food=False)
+                    continue
                 return key
         return None
 
     def pressed(self, key: str) -> None:
         self._pressed[key] = self._clock()
+        if self.config.food and key == self.config.food_hotkey:
+            self._food_presses += 1
 
     def screenshot(self) -> None:
         """Save a screenshot of the client window (never raises)."""

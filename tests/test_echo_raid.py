@@ -93,3 +93,13 @@ def test_pink_crystals_are_not_triggers() -> None:
     frame = np.array(Image.open(Path(__file__).parent / "echo_raid_crystals.png").convert("RGB"))
     h, w = frame.shape[:2]
     assert find_echo_raids(frame, (0, 0, w, h)) == []
+
+
+def test_a_red_creature_is_no_trigger(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tainted soul's red orb has a core-sized salmon blob, but a health bar on its tile."""
+    monkeypatch.setattr("moonlight.perception.echo_raid.CORE_SHARE", 0.03)
+    crop = cv2.imread(str(Path(__file__).parent / "echo_raid_tainted_soul.png"))
+    assert crop is not None
+    frame = np.zeros((1369, 2560, 3), np.uint8)
+    frame[61 + 5 * 96 : 61 + 11 * 96, 330 : 330 + 3 * 96] = crop[..., ::-1]  # rows 5-10, cols 0-2
+    assert find_echo_raids(frame, (330, 61, 1440, 1056)) == []

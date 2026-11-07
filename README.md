@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A learning project in real-time computer vision and hardware input: a CPU-only
-automation pipeline for a Tibia-style game client that reads the screen, decides
+automation pipeline for a game client that reads the screen, decides
 what to do, and acts through an Arduino Leonardo emulating a USB keyboard and
 mouse.
 
@@ -122,6 +122,10 @@ below are tried near the last position (1 up, 1 down, 2 up, 2 down, up to 3),
 and a mostly black minimap is matched with a looser score near the last
 position, or anywhere on the floor when that spot is at least twice as good
 as any other (so a restart on an upper floor still finds the character).
+The minimap zoom (1 or 2 px per tile) is read from the minimap itself, so a
+cave never matches a look-alike spot at the other zoom.
+The grey rock counts as black on both sides: the client paints every explored
+tile grey, the map only real rock.
 Only what the minimap shows is compared: the white player cross and black
 parts away from anything drawn are skipped, so a roof the minimap does not
 draw does not spoil the match. After a floor change the route goes on at the next waypoint on that
@@ -139,7 +143,8 @@ no floor change left to take, the cavebot raises the `lost` alarm and waits;
 it walks on once the floor reads right again.
 
 Walking with keys finds its way on the client's walkability map
-(`data/map/cost/`). It never walks over a hole, stairs, a ladder or any other
+(`data/map/cost/`); a tile black on the colour map (`data/map/`) is a wall
+whatever the walkability map says. It never walks over a hole, stairs, a ladder or any other
 floor change: the tiles drawn yellow on the colour map (`data/map/`), the
 floor changes on the route and the ones it once fell through. It steps onto
 one only when a waypoint (`stairs`, `ladder`, `step`) is that tile. The map
@@ -171,19 +176,31 @@ moved the character elsewhere when it walked onto it. Minimap-click walking
 lets the client pick the path and can cross them: turn on WSAD-key walking
 for routes next to holes or teleports.
 
+After a fight or loot the cavebot does not walk back to waypoints the chase
+already passed. Cavebot > Settings > **Skip waypoints passed in a fight** (on by
+default) looks at the next 5 walk/node waypoints, farthest first, and goes on
+from the first one whose walk is no longer than the walk back to the current
+one. It never skips past an action waypoint (stairs, rope, step, stand, say,
+...) or onto another floor, and never goes backwards. To keep a side room in
+the route, put a `stand` waypoint in it. Log: `cavebot: after the fight
+waypoint 13 is no farther than 10, skipping 10-12`.
+
 Echo raid triggers (the red swirl that spawns stronger monsters) are seen on
 the game screen while walking with WSAD keys. Cavebot > Settings > **Echo raid** picks
 what the bot does: **avoid** (default) never walks onto one and skips a
 waypoint on one; **use** walks next to the nearest one once no monster is in
 the battle list and HP is 50 % or above, right-clicks it, waits 1 s, and if it
 is still there left-clicks it (the character steps on), waits 1 s again. Once
-it is gone it fights what spawns, then goes on from the nearest waypoint.
+it is gone (clicked or walked into) the cavebot stands still 2 s (targeting
+and healing go on; log `gone next to the player, waiting 2 s`), fights what
+spawns, then goes on from the nearest waypoint.
 After 3 such tries, or with no way to it, the swirl is ignored until it was
 off the screen for 30 s. Swirls are read only while the character stands
 still (mid-step the screen is a tile off), and the step closer to a stuck
 target never lands on one. Log: `echo raid seen at x,y,z, triggering`, then
 `triggered`, or `did not trigger after 3 tries, ignoring it` /
-`no way to the echo raid ..., ignoring it`. 1 s after each click the bot saves
+`no way to the echo raid ..., ignoring it`. A red glow next to a monster's
+health bar (the tainted soul) is the monster, never a swirl. 1 s after each click the bot saves
 a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 (`<time>_<x>_<y>_<z>_<right|left>.png`); bot.log names each file.
 
@@ -267,9 +284,10 @@ depot, the trade window and the chat button on screen when they run:
 - `bank`: also next to the NPC. Says `hi`, `deposit all`, `yes`, waits about
   1 s and says the three again. The bot never withdraws.
 
-NPC lines are typed only in the NPCs tab: chat off, Shift+F11 (opens or
-selects the NPCs tab; works only with the chat off), chat on, the lines with
-a short random pause after each, chat off. Bind Shift+F11 to the NPCs tab in
+NPC lines are typed only in the NPCs tab: chat off, the NPC channel hotkey
+(Settings, default Shift+F11; opens or selects the NPCs tab; works only with
+the chat off), chat on, the lines with
+a short random pause after each, chat off. Bind that key to the NPCs tab in
 the client. The chat is always off before the bot walks, and a walk key that
 typed a letter instead of moving turns the chat off. Every step retries until
 it works; the alarm goes off after 3 min without success. Pictures (cut from
@@ -295,8 +313,8 @@ checks the code: a broken script is saved but shown red, can't be ticked or
 tested, and its waypoints are skipped (red on the route, a warning in
 `logs/bot.log`). A script that fails while running is unticked and its error
 shown under the code; the bot goes on. Rename and Delete update (or remove)
-the waypoints that use the script. Test now brings the Tibia window to the
-front and runs the selected script once as soon as Tibia is in front and
+the waypoints that use the script. Test now brings the client window to the
+front and runs the selected script once as soon as the client is in front and
 readable (while the bot runs or is paused); after 5 s without that it says
 "not tested" and does not run later. Pause holds the ticked scripts. The files
 are kept in `scripts/`.
@@ -324,12 +342,35 @@ window open. The bot also reads the stamina every 5 minutes, shows it on the
 Dashboard's Stamina card and logs it when it changes
 (`stamina 41:23`, with `(under 39:30)` once it is low).
 
+`bot.only_monsters_within_range(True)` / `(False)` turns Targeting's **Only
+monsters within N tiles** on or off; `(None)` flips it. The Targeting box
+follows and the change is saved to the config. The ready script
+`scripts/range_toggle.py` flips it: add a `script` waypoint with label
+`range_toggle`. Log: `script: only monsters within 3 tiles on` (or `off`).
+
+`bot.targeting(False)` / `(True)` turns targeting off or on until a script
+turns it back or the bot restarts; stuck targeting still runs. Ready scripts:
+`scripts/targeting_off.py` and `scripts/targeting_on.py`, add `script`
+waypoints with labels `targeting_off` / `targeting_on`. Log:
+`script: targeting off` (or `on`). Targeting must be on in Settings.
+
+`bot.use_tile_next_to_player("up")` (or `"down"`, `"left"`, `"right"`)
+right-clicks the tile next to the character on screen; it needs the absolute
+clicker. Ready door scripts: `scripts/door_up.py`, `door_down.py`,
+`door_left.py`, `door_right.py`. Add a `script` waypoint on the tile in front
+of the door with the label for the door's side (`door_up` when the door is
+above the character). It right-clicks the door, waits 0.5 s, and the route
+walks on. Nothing checks that the door opened.
+
 A running script pauses walking and waits during a fight or looting; healing
 always goes first.
 
 Extras (Settings > Extras, no module switch: a ticked extra is on) press a hotkey when a picture shows: food when
 hungry, ring or amulet when its slot is empty, haste while walking without
-haste or a protection zone, the buff potion or a spell buff (own hotkey) when its icon is gone. Each extra
+haste or a protection zone (in a fight too, last on the tick, never while a
+heal rule is due), the buff potion or a spell buff (own hotkey) when its icon is gone. Still
+hungry after 3 food presses (out of food) unticks food in Settings
+(`food paused` in bot.log); tick it again after restocking. Each extra
 is one row: its hotkey, then its checkbox at the far right (set the hotkey
 first). A hotkey box takes the next key you press and saves it; Escape cancels. Cut each
 picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `spell_buff`, `ring_empty`,
@@ -370,7 +411,7 @@ route and settings. Scripts can type too: `bot.type("abc")`.
 
 ## Getting started
 
-Requirements: Windows, Python 3.12+, an Arduino Leonardo for real input
+Requirements: Windows or Linux (an X11 session; Wayland is not supported), Python 3.12+, an Arduino Leonardo for real input
 (optional — without one the bot runs against a fake input backend), and
 [Tesseract](https://github.com/tesseract-ocr/tesseract) if you want server-log OCR.
 
@@ -387,15 +428,33 @@ python tools/arduino_verify.py
 # 4. Check the setup (config, Arduino, profile, perception)
 python tools/check_setup.py
 
-# 5. Launch the desktop GUI (or double-click "Start Moonlight GUI.bat")
+# 5. Launch the desktop GUI (or double-click "Start Moonlight GUI.bat";
+#    on Linux run ./start-moonlight-gui.sh)
 python -m moonlight
 ```
+
+On Linux, also:
+
+- `sudo apt install python3-tk tesseract-ocr` (Tk for the GUI, Tesseract for OCR).
+- Add yourself to the `dialout` group so the bot can open the Arduino
+  (`/dev/ttyACM0`): `sudo usermod -aG dialout $USER`, then log out and in.
+- Log in to an "Xorg"/X11 session. `pip install -e .` pulls in python-xlib for
+  finding the client window, focus and keys.
+- The alert sound plays through `paplay` (PulseAudio/PipeWire).
+- The client's options file is read from the official client's folder under
+  `~/.local/share` (Settings shows the path; change it there if yours is elsewhere).
+- Screen capture uses mss on Linux (dxcam, a faster Windows capture, is
+  installed only on Windows).
 
 The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start` starts it right away.
 
 - **Start** runs everything. Each tick the bot does one thing, in this order:
-  healing, the fight and loot, scripts, extras (food, haste, ring...),
-  walking. Extras wait until the fight and loot are done.
+  healing, the fight and loot (haste in between), scripts, extras (food, haste, ring...),
+  walking. Healing spells, potions and attack spells keep their own
+  cooldowns: in a fight a heal spell, a potion and the attack can go out on
+  the same tick (after spell + potion the attack waits for the key limit,
+  about 0.1 s). Haste comes last and only when no heal is needed. Other
+  extras wait until the fight and loot are done.
 - **Pause** stops the cavebot, targeting and scripts; healing, extras and
   alarms go on.
 - **Stop** presses nothing (no healing either) and raises no alarm, but the
@@ -407,13 +466,18 @@ The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start`
   and wait.
 - The Cavebot switch can be turned on or off while paused or stopped; the
   cavebot walks only after Start.
-- A pause of its own (Tibia covered or not in front) never shuts the bot down:
-  after 30 s it alerts once and resumes when Tibia is readable again.
+- A pause of its own (the client covered or not in front) never shuts the bot down:
+  after 30 s it alerts once and resumes when the client is readable again.
 
-"Start Moonlight GUI.bat" opens the GUI without a console window. The bot's
+"Start Moonlight GUI.bat" (Windows) and `start-moonlight-gui.sh` (Linux) open the GUI without a console window. The bot's
 log (state changes, scripts, warnings, errors) is on the Diagnostics tab; the
 Dashboard shows only its warnings and errors, newest first. `logs/bot.log` has
 everything, keys included.
+The Dashboard's **Machine** line shows this PC's HWID (the network card's
+hardware address, the same on Windows, Linux and macOS until the card is
+changed) and its public IP, asked from
+api.ipify.org at start and every 5 minutes (a VPN change shows within 5
+minutes). No internet: `unknown (no internet?)` and a warning in the log.
 A crash of any part is written there too, and a GUI that cannot start shows
 a message box with the error.
 
@@ -438,7 +502,7 @@ Settings > Client hotkeys puts the bot's keys into the game client, so the
 client does what the bot expects on every key it presses.
 
 1. **Client file**: the client's `conf/clientoptions.json`. Empty means the
-   official client (`%LOCALAPPDATA%\Tibia\packages\Tibia\conf`). For another
+   official client's `conf` folder (Settings shows the path). For another
    server, press Browse and pick the file in that client's `conf` folder. Each
    bot config remembers its own file.
 2. One row per key the bot uses (healing, cures, attack and area spells,
@@ -504,7 +568,24 @@ or in the `targeting` section of your profile config:
   the nearest monster when the client's battle list is sorted by distance).
   A tie goes to the top row. It finishes the current target even when a higher priority monster
   comes, and never clicks it twice (a second click untargets). A selected
-  "never attack" monster is left for the next one.
+  "never attack" monster is left for the next one. When the rows reorder
+  while the mouse is on its way, the click is dropped and aimed again
+  (log: `battle list moved under the click on row N, aiming again`).
+  After a battle-list click the mouse moves just left of the minimap, so it
+  never covers the minimap or brings up the battle list's name tooltip.
+- **Only monsters within N tiles** (Targeting > Settings, `only_attack_within_range`,
+  `attack_range_tiles`, default off and 3): the bot attacks only creatures in the
+  box of N tiles around you (7x7 at 3). It right-clicks them on the game screen
+  (needs the `game_grid` region), so with this on the priority column is not used:
+  the screen health bar's HP decides by the same-priority order ("battle list" =
+  nearest). Creatures further away act as if they were not there: the cavebot walks
+  on and echo raids are not blocked. A selected target is kept when it walks away.
+  A walking creature is clicked on the tile it walks into (the client puts it there
+  when the step starts). The moment one is in range the cavebot lets go of the walk
+  key, and the click goes out on the first frame you stand still.
+  Turn on secure mode in the client: a click on a player or NPC then selects nothing,
+  and the bot logs `nothing selected at x,y,z, skipping that tile 30 s`. A "never
+  attack" monster selected this way gets Esc and its tile is skipped 30 s.
 - **Area rules** press a hotkey when at least `minimum_adjacent_monsters`
   creatures stand next to you and MP is at least `minimum_mana` mana points.
   Default: no mana floor. A rule is used only while it is
@@ -536,6 +617,9 @@ or in the `targeting` section of your profile config:
 - **Cavebot around monsters:** with walk keys on, the cavebot reads the
   monsters' health bars in the game view before every step and walks around
   them when that costs at most 8 more steps, instead of bumping into them.
+  A monster standing on the waypoint's exact tile (a `stand` sqm) is
+  right-clicked and killed once the bot bumps into it, even one targeting
+  ignores (`attacking the creature in the way`).
 - **What the bot sees:** Diagnostics > "Show what the bot sees" shows the
   game view with a red box on each monster found, the cavebot's planned walk
   as a blue line (walk keys only) and a gold circle for 10 s where a monster

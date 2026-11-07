@@ -777,8 +777,8 @@ def test_loop_calls_cavebot_resume_on_move_entry(
     resumed: list[float] = []
     original_resume = sim.bot.resume
 
-    def _spy_resume() -> None:
-        original_resume()
+    def _spy_resume(after_fight: bool = False) -> None:
+        original_resume(after_fight)
         resumed.append(sim.now)
 
     monkeypatch.setattr(sim.bot, "resume", _spy_resume)
@@ -950,6 +950,38 @@ def test_a_fight_chase_is_no_jump() -> None:
     sim.step(1.0)
     assert pressed(sim)[-1] == "s"  # the tile below is still walkable
 
+
+# doc: docs/prs/near-targeting.md#skip-passed-waypoints
+def _chased_ahead(middle: Waypoint, **kw: Any) -> Sim:
+    """Waypoint 0 at (100, 110); a fight chased the character to (112, 110)."""
+    route = [walk(100, 110), walk(105, 110), middle, walk(115, 110), walk(140, 110)]
+    sim = Sim(route, Position(100, 100, 7), **kw)
+    sim.bot.start()
+    sim.pos = Position(112, 110, 7)
+    return sim
+
+
+def test_after_a_fight_the_farthest_no_farther_waypoint_is_next() -> None:
+    sim = _chased_ahead(walk(110, 110))
+    sim.bot.resume(after_fight=True)
+    assert sim.route.current == 3  # 3 tiles away; 4 is farther than waypoint 0
+
+
+def test_after_a_fight_no_skip_past_an_action_waypoint() -> None:
+    sim = _chased_ahead(Waypoint(110, 110, 7, "stairs"))
+    sim.bot.resume(after_fight=True)
+    assert sim.route.current == 1
+
+
+def test_no_skip_when_the_option_is_off_or_not_after_a_fight() -> None:
+    sim = _chased_ahead(walk(110, 110), skip_waypoints_passed_in_fight=False)
+    sim.bot.resume(after_fight=True)
+    assert sim.route.current == 0
+    sim = _chased_ahead(walk(110, 110))
+    sim.bot.resume()
+    assert sim.route.current == 0
+
+
 def test_walk_keys_hold_the_key_until_the_way_turns_or_stops() -> None:
     sim = Sim([walk(100, 103), walk(96, 102)], Position(100, 100, 7), walk_keys=True)
     sim.bot.start()
@@ -1006,6 +1038,20 @@ def _corridor_map(tmp_path: Path, blocked: tuple[int, int] | None = None,
     cv2.imwrite(str(tmp_path / "cost" / "0_0_7.png"), cost)
     cv2.imwrite(str(tmp_path / "0_0_7.png"), colour)
     return CostMap(tmp_path / "cost")
+
+
+def test_a_tile_black_on_the_minimap_is_never_walked(tmp_path: Path) -> None:
+    costs = _corridor_map(tmp_path)
+    colour = cv2.imread(str(tmp_path / "0_0_7.png"))
+    assert colour is not None
+    colour[8, 5] = 0  # black on the minimap, walkable on the cost map
+    cv2.imwrite(str(tmp_path / "0_0_7.png"), colour)
+    costs = CostMap(tmp_path / "cost")
+    assert not costs.walkable(5, 8, 7) and costs.walkable(5, 7, 7)
+    sim = Sim([walk(5, 4), walk(5, 12)], Position(5, 4, 7), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    _step_until_planned(sim)
+    assert sim.bot.planned_path and (5, 8) not in sim.bot.planned_path
 
 
 # doc: docs/prs/avoid-holes.md#floor-change-tiles
@@ -1530,6 +1576,18 @@ def test_finddepo_waits_while_every_locker_is_taken_then_alarms(
     assert sim.route.current == 1
 
 
+
+def test_finddepo_one_tile_off_its_spot_is_not_done_without_a_locker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#finddepo-waypoint
+    # Owner 2026-11-07: the walk ran one tile past 100,100 and the route went
+    # on to deposit with no locker picked, so no stash ever opened.
+    sim = _depot_sim(monkeypatch, set())
+    sim.pos = Position(101, 100, 7)
+    run_until(sim, 2)
+    assert sim.route.current == 0 and sim.bot.depot_locker is None
+
 # -- deposit ------------------------------------------------------------------
 
 
@@ -1668,7 +1726,7 @@ def test_bank_talks_in_the_npcs_tab_with_the_chat_on_then_turns_it_off(
     assert len(chat_clicks) == 3  # off before Shift+F11, on, off at the end
     keys = [line[2:] for line in sim.fake.sent_lines if line.startswith("K ")]
     line = ["h", "i", "enter", *"deposit", "space", *"all", "enter", "y", "e", "s", "enter"]
-    assert keys == ["shift+f11", *line, *line]
+    assert keys == ["shift+F11", *line, *line]
 
 
 def test_trade_buys_each_row_and_buys_a_potion_again_when_its_total_did_not_go_up(
@@ -1838,6 +1896,21 @@ def test_use_goes_back_to_the_route_once_the_echo_raid_is_gone(
     assert sim.bot._echo_raid_goal is None and sim.route.current == 1  # the nearest waypoint
 
 
+# doc: docs/prs/near-targeting.md#echo-wait
+def test_cavebot_stands_still_2_s_after_an_echo_raid_next_to_the_player_is_gone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sim, echo = _next_to_echo_raid(monkeypatch, [walk(100, 104)])
+    echo.clear()  # the right-click triggered it
+    sim.step(1.1)
+    keys = len(pressed(sim))
+    sim.step(1.0)
+    sim.step(0.8)
+    assert len(pressed(sim)) == keys  # still waiting
+    sim.step(0.3)
+    assert len(pressed(sim)) > keys  # walks on
+
+
 def test_use_ignores_an_echo_raid_after_three_tries_until_30_s_off_screen(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -1894,3 +1967,22 @@ def test_walked_tiles_with_two_waypoints_on_one_tile() -> None:
     # bot.log 2026-11-01 14:23: a stand and a rope on one tile raised ZeroDivisionError
     wps = [walk(100, 100), Waypoint(100, 100, 7, "rope"), walk(102, 100)]
     assert walked_tiles(wps, loop=False) == {(100, 100, 7), (101, 100, 7), (102, 100, 7)}
+
+def test_walk_keys_fight_an_ignored_creature_on_the_exact_tile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: [(7, 6)])
+    sim = Sim(
+        [Waypoint(100, 101, 7, "stand")],
+        Position(100, 100, 7),
+        walk_keys=True,
+        frames=lambda: np.zeros((1, 1, 3), np.uint8),
+    )
+    sim.state.monsters = [Monster("Ghost", 100.0)]
+    sim.bot.fight_in_range = False  # targeting ignores the ghost
+    sim.bot.start()
+    for _ in range(_BLOCK_STEPS):
+        sim.step()
+    assert pressed(sim) == ["s", "s"]  # into it, then the bump
+    assert sim.bot.stuck_on_creatures
+    assert sim.clicker.clicks == [((440, 176 + 32), ClickSide.RIGHT)]  # the ghost on the stand tile

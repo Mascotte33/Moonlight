@@ -12,6 +12,9 @@ core big enough to be a trigger. The sprite is 2x2 tiles drawn up and to
 the left of its own tile, so the core's centre lies just inside the
 top-left corner of that tile.
 
+A core next to a creature's health bar is the creature itself (the tainted
+soul is a red orb of the same salmon), so it is never a trigger.
+
 # doc: docs/prs/echo-raid.md#swirl-scan
 """
 
@@ -19,6 +22,8 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
+
+from moonlight.perception.creatures import find_creatures
 
 __all__ = ["CORE_SHARE", "find_echo_raids"]
 
@@ -68,4 +73,12 @@ def find_echo_raids(frame: np.ndarray, grid: tuple[int, int, int, int]) -> list[
         next_to_a_core = any(max(abs(col - c), abs(row - r)) <= 1 for c, r in slots)
         if 0 <= col < _COLS and 0 <= row < _ROWS and not next_to_a_core:
             slots.append((col, row))  # a smaller blob next to a core is one of its rays
-    return sorted(slots)
+    if not slots:
+        return []
+    # doc: docs/prs/near-targeting.md#echo-not-creature
+    creatures = find_creatures(frame, grid)
+    return sorted(
+        (col, row)
+        for col, row in slots
+        if not any(max(abs(col - c), abs(row - r)) <= 1 for c, r in creatures)
+    )

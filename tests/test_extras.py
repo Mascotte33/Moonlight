@@ -76,6 +76,31 @@ def test_one_key_waits_between_presses() -> None:
     assert e.due(walking=False) == "F1"
 
 
+def test_food_pauses_when_still_hungry_after_three_presses() -> None:
+    clock = Clock()
+    e = extras(ALL, clock, "hungry")
+    for press in range(3):
+        clock.now = press * 2.0
+        assert e.due(walking=False) == "F1"
+        e.pressed("F1")
+    clock.now = 6.0
+    assert e.due(walking=False) is None
+    assert not e.config.food
+
+
+def test_food_presses_count_again_once_the_hungry_icon_went_away() -> None:
+    clock = Clock()
+    e = extras(ALL, clock, "hungry")
+    for press in range(3):
+        clock.now = press * 2.0
+        e.pressed("F1")
+    e.icons = frozenset()
+    e.due(walking=False)
+    e.icons = frozenset({"hungry"})
+    clock.now = 6.0
+    assert e.due(walking=False) == "F1"
+
+
 def test_haste_only_walking_without_haste_or_pz() -> None:
     clock = Clock()
     assert extras(ALL, clock).due(walking=True) == "F2"
@@ -84,6 +109,13 @@ def test_haste_only_walking_without_haste_or_pz() -> None:
     assert extras(ALL, clock, "pz").due(walking=True) is None
     # No haste picture: the bot cannot tell, so it never presses.
     assert extras(ALL, clock, pictures=("pz",)).due(walking=True) is None
+
+
+# doc: docs/prs/near-targeting.md#haste-in-fight
+def test_only_haste_skips_the_other_extras() -> None:
+    clock = Clock()
+    assert extras(ALL, clock, "hungry").due(walking=True, only_haste=True) == "F2"
+    assert extras(ALL, clock, "hungry", "haste").due(walking=True, only_haste=True) is None
 
 
 def test_buff_when_its_icon_is_missing() -> None:

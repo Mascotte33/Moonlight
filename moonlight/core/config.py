@@ -142,6 +142,10 @@ class CavebotConfig:
     route: Route
     rope_hotkey: str = "F9"
     shovel_hotkey: str = "F10"
+    #: Opens the NPCs chat tab in the client (bank and trade talks).
+    npc_tab_hotkey: str = "shift+F11"
+    #: After a fight, walk on from a later walk/node waypoint the chase got close to.
+    skip_waypoints_passed_in_fight: bool = True
     #: 0-based waypoint the route starts at.
     start_index: int = 0
     #: ``avoid``: never walk onto an echo raid trigger; ``use``: walk onto it when safe.
@@ -421,6 +425,8 @@ def _section(cfg: Any) -> dict[str, Any]:
             "route": cfg.route.name,
             "rope_hotkey": cfg.rope_hotkey,
             "shovel_hotkey": cfg.shovel_hotkey,
+            "npc_tab_hotkey": cfg.npc_tab_hotkey,
+            "skip_waypoints_passed_in_fight": cfg.skip_waypoints_passed_in_fight,
             "start_index": cfg.start_index,
             "echo_raid": cfg.echo_raid,
         }
@@ -435,7 +441,14 @@ def _cavebot(section: dict[str, Any], routes_dir: Path) -> CavebotConfig:
         route = RouteFileLoader.load(routes_dir / f"{name}.json")
     except RouteError as exc:
         raise ConfigError(f"modules.cavebot: {exc}") from exc
-    kinds = {"start_index": int, "rope_hotkey": str, "shovel_hotkey": str, "echo_raid": str}
+    kinds = {
+        "start_index": int,
+        "rope_hotkey": str,
+        "shovel_hotkey": str,
+        "npc_tab_hotkey": str,
+        "skip_waypoints_passed_in_fight": bool,
+        "echo_raid": str,
+    }
     _reject_unknown(section, set(kinds), "modules.cavebot")
     keys = {k: _coerce(v, kinds[k], f"modules.cavebot.{k}") for k, v in section.items()}
     if keys.get("echo_raid", "avoid") not in ECHO_RAID_CHOICES:

@@ -219,3 +219,78 @@ def test_test_now_is_dropped_when_the_client_never_comes_to_front(tmp_path: Path
     assert not r.testing and r.test_missed == "t not tested: Tibia was not in front and readable"
     r.client_is_foreground = lambda: True
     assert r.poll() is None  # never runs later by surprise
+
+
+# doc: docs/prs/near-targeting.md#range-script
+def test_the_range_script_flips_both_targetings(tmp_path: Path) -> None:
+    from moonlight.targeting.targeting import TargetingConfig, TargetingDecision
+
+    src = (Path(__file__).parents[1] / "scripts" / "range_toggle.py").read_text()
+    r, inp = runner(tmp_path, range_toggle=src), FakeInput()
+    targeting, stuck = TargetingDecision(TargetingConfig()), TargetingDecision(TargetingConfig())
+    r.targetings = (targeting, stuck)
+    for expected in (True, False):
+        assert r.start("range_toggle")
+        ticks(r, inp, 3)
+        assert r.running is None and not r.failed
+        assert targeting.config.only_attack_within_range is expected
+        assert stuck.config.only_attack_within_range is expected
+
+
+def test_the_range_script_fails_without_targeting(tmp_path: Path) -> None:
+    r = runner(tmp_path, s="def run(bot):\n    yield bot.only_monsters_within_range(True)\n")
+    assert r.start("s")
+    ticks(r, FakeInput(), 3)
+    assert "needs targeting on" in r.failed["s"]
+
+
+# doc: docs/prs/near-targeting.md#targeting-script
+def test_the_targeting_scripts_turn_targeting_off_and_on(tmp_path: Path) -> None:
+    from moonlight.targeting.targeting import TargetingConfig, TargetingDecision
+
+    folder = Path(__file__).parents[1] / "scripts"
+    off, on = ((folder / f"{n}.py").read_text() for n in ("targeting_off", "targeting_on"))
+    r, inp = runner(tmp_path, targeting_off=off, targeting_on=on), FakeInput()
+    r.targetings = (TargetingDecision(TargetingConfig()), None)
+    for name, turned_off in (("targeting_off", True), ("targeting_on", False)):
+        assert r.start(name)
+        ticks(r, inp, 3)
+        assert r.running is None and not r.failed
+        assert r.targeting_turned_off is turned_off
+
+
+def test_the_targeting_script_fails_with_targeting_switched_off(tmp_path: Path) -> None:
+    r = runner(tmp_path, s="def run(bot):\n    yield bot.targeting(True)\n")
+    r.targetings = (None, None)
+    assert r.start("s")
+    ticks(r, FakeInput(), 3)
+    assert "needs Targeting switched on" in r.failed["s"]
+
+
+# doc: docs/prs/near-targeting.md#door-scripts
+class AbsoluteClicker:
+    absolute = True
+
+    def to_wire(self, point: tuple[int, int]) -> tuple[int, int]:
+        return point
+
+
+@pytest.mark.parametrize(
+    ("direction", "pixel"),
+    [("up", "A 75 45"), ("down", "A 75 65"), ("left", "A 65 55"), ("right", "A 85 55")],
+)
+def test_the_door_scripts_right_click_the_tile_next_to_the_player(
+    tmp_path: Path, direction: str, pixel: str
+) -> None:
+    clock = Clock()
+    source = (Path(__file__).parents[1] / "scripts" / f"door_{direction}.py").read_text()
+    r, inp = runner(tmp_path, clock, door=source), FakeInput()
+    r.clicker = AbsoluteClicker()  # type: ignore[assignment]
+    r.game_grid = (0, 0, 150, 110)  # 15 x 11 tiles of 10 px, the player on (7, 5)
+    assert r.start("door")
+    ticks(r, inp, 4)  # jump, click, then the wait starts
+    assert inp.sent_lines == [pixel, "C R"]
+    assert r.running == "door"  # the 0.5 s wait
+    clock.now = 0.6
+    ticks(r, inp, 2)
+    assert r.running is None and not r.failed

@@ -46,6 +46,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   kill, so the cavebot looks for a way again over the tiles it bumped too.
   While a target is selected it stands still, whatever selected it, and
   walks on once nothing is (or while :attr:`Cavebot.targeting_paused`).
+  A creature on the waypoint's own tile (a ``stand`` on its exact sqm)
+  is stuck too once bumped, with any monster listed, even one targeting
+  ignores: it is right-clicked and fought.
   Stuck after a bump with nothing to fight and no way over tiles not bumped
   yet: the waypoint is skipped, and the next ones in route order, until one
   on this floor has such a way; none: it stands still and retries the
@@ -232,7 +235,12 @@ _HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0, "step": 0.5, "
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
 
 #: Arrival distance in tiles; every other positional action uses 1.
-_REACH = {"node": 3, "stand": 0, "stairs": 0, "step": 0, "rope": 0, **dict.fromkeys(NO_TILE, 0)}
+# finddepo 0: it is done only on the stand tile next to the locker it picked
+# (doc: docs/prs/depot.md#finddepo-waypoint); its own tile is never reached.
+_REACH = {
+    "node": 3, "stand": 0, "stairs": 0, "step": 0, "rope": 0, "finddepo": 0,
+    **dict.fromkeys(NO_TILE, 0),
+}  # fmt: skip
 # doc: docs/prs/steps.md#rope-settle
 #: Seconds a rope waits standing on its tile before the rope is used.
 _ROPE_SETTLE = 0.2
@@ -269,14 +277,15 @@ ECHO_RAID_CLICK_WAIT = 1.0
 ECHO_RAID_TRIES = 3
 #: Seconds off the screen after which an ignored trigger counts as new.
 ECHO_RAID_FORGET = 30.0
+#: Seconds the cavebot stands still after an echo raid next to the player is gone
+#: (clicked or walked into); targeting and healing go on.
+ECHO_RAID_AFTER_WAIT = 2.0
 #: Screenshots 1 s after each echo raid click, the clicked pixel circled (bot.log names each).
 ECHO_RAID_SHOTS_DIR = Path("logs") / "echo_raids"
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
 # doc: docs/prs/depot.md#npc-pacing
 #: Seconds paused after each NPC line (owner's ranges: the NPC needs time to react).
 _NPC_PAUSE = {"hi": (0.4, 0.7), "deposit all": (0.7, 1.0), "trade": (0.7, 1.0), "yes": (0.4, 0.6)}
-#: The owner's hotkey that opens or selects the NPCs chat tab (only with the chat off).
-_NPC_TAB = "shift+f11"
 #: Seconds between the two rounds of bank lines.
 _BANK_ROUNDS_PAUSE = 1.0
 #: Seconds a chat button click gets to show before it is clicked again.
@@ -462,11 +471,12 @@ _SLIDER_MIN, _SLIDER_SPAN = (-20, 283), 93
 
 
 # doc: docs/prs/depot.md#npc-pacing
-def talk_steps(*rounds: tuple[str, ...]) -> list[TalkStep]:
+def talk_steps(npc_tab_hotkey: str, *rounds: tuple[str, ...]) -> list[TalkStep]:
     """An NPC talk: True / False turns the chat on / off, a float pauses
-    that many seconds, a string is a key. Chat off, Shift+F11 (NPCs tab),
-    chat on, each line typed with Enter and a random pause, chat off."""
-    steps: list[TalkStep] = [False, _NPC_TAB, True]
+    that many seconds, a string is a key. Chat off, *npc_tab_hotkey* (opens
+    or selects the NPCs tab; only with the chat off), chat on, each line
+    typed with Enter and a random pause, chat off."""
+    steps: list[TalkStep] = [False, npc_tab_hotkey, True]
     for i, lines in enumerate(rounds):
         if i:
             steps.append(_BANK_ROUNDS_PAUSE)
@@ -477,14 +487,15 @@ def talk_steps(*rounds: tuple[str, ...]) -> list[TalkStep]:
 
 
 # doc: docs/prs/depot.md#trade-waypoint
-def trade_steps(buy: list[tuple[str, int]]) -> list[TalkStep]:
+def trade_steps(buy: list[tuple[str, int]], npc_tab_hotkey: str) -> list[TalkStep]:
     """The ``trade`` talk, then the buy list in the trade window. Tuples are
     ``(op, a, b)``: ``win`` waits for the window, ``click`` / ``to`` click /
     move the mouse at (a, b) from the window's ``npc_trade.png``, ``down`` /
     ``up`` the left button, ``count`` reads the potions, ``health`` / ``mana``
     goes back to step a once when that total did not go up. Esc closes the
     window at the end so the walk goes on."""
-    steps: list[TalkStep] = [*talk_steps(("hi", "trade")), ("win", 0, 0), ("click", *_BUY_SWITCH)]
+    steps: list[TalkStep] = [*talk_steps(npc_tab_hotkey, ("hi", "trade"))]
+    steps += [("win", 0, 0), ("click", *_BUY_SWITCH)]
     for item, percent in buy:
         row = len(steps)
         steps += [("count", 0, 0), ("click", *_SEARCH_CLEAR), 0.3, ("click", *_SEARCH), 0.3]
@@ -513,6 +524,8 @@ class Cavebot:
         input_backend: InputBackend | None = None,
         rope_hotkey: str = "F9",
         shovel_hotkey: str = "F10",
+        npc_tab_hotkey: str = "shift+F11",
+        skip_waypoints_passed_in_fight: bool = True,
         trigger_echo_raids: bool = False,
         stuck_timeout: float = 60.0,
         reclick_interval: float = 1.0,
@@ -541,6 +554,10 @@ class Cavebot:
                 *walk_keys*.
             rope_hotkey: Combo bound to "use rope" in the client.
             shovel_hotkey: Combo bound to "use shovel" in the client.
+            npc_tab_hotkey: Combo that opens the NPCs chat tab in the client.
+            skip_waypoints_passed_in_fight: After a fight or loot, walk on from
+                the farthest of the next 5 walk/node waypoints that is no farther
+                than the current one.
             trigger_echo_raids: Walk onto echo raid triggers when safe
                 instead of only walking around them (*walk_keys* only).
             stuck_timeout: Seconds without movement before alarm "stuck".
@@ -584,6 +601,8 @@ class Cavebot:
         self._game_region = game_region
         self._input = input_backend
         self._hotkeys = {"rope": rope_hotkey, "shovel": shovel_hotkey}
+        self._npc_tab_hotkey = npc_tab_hotkey
+        self._skip_waypoints_passed_in_fight = skip_waypoints_passed_in_fight
         self._stuck_timeout = float(stuck_timeout)
         self._reclick_interval = float(reclick_interval)
         self._sidestep_after = float(sidestep_after)
@@ -611,6 +630,10 @@ class Cavebot:
         self.stuck_on_creatures = False
         #: Set by the loop while targeting is paused: walk on past a selected target.
         self.targeting_paused = False
+        # doc: docs/prs/near-targeting.md#fight-in-range
+        #: Set by the loop: a fight holds the walk (monsters out of range do not
+        #: count). None (no loop) = any monster in the battle list.
+        self.fight_in_range: bool | None = None
         self._stuck_allowed_until = float("-inf")
         self._creatures: set[tuple[int, int]] = set()  # tiles the last scan saw
         # doc: docs/prs/echo-raid.md#avoid
@@ -626,6 +649,7 @@ class Cavebot:
         self._echo_raid_tries = 0
         #: Triggers given up on (no way, or tries used up) -> when last seen.
         self._ignored_echo_raids: dict[tuple[int, int], float] = {}
+        self._echo_raid_wait_until = float("-inf")
         self._previous_pos: Position | None = None  # where the view still is right after a step
         #: Bumped tiles a scan saw a creature on: free again once it walks off.
         self._bumped_into_creature: set[tuple[int, int, int]] = set()
@@ -712,14 +736,60 @@ class Cavebot:
         else:
             self.go_to(at)
 
-    def resume(self) -> None:
-        """MOVE (re)entered: restart the stuck timer and re-click at once."""
+    def resume(self, after_fight: bool = False) -> None:
+        """MOVE (re)entered: restart the stuck timer and re-click at once.
+
+        *after_fight*: back from ATTACK or LOOT, skip waypoints the chase passed.
+        """
+        if after_fight and self._skip_waypoints_passed_in_fight:
+            self._skip_waypoints_passed_in_fight_now()
         self._last_move = self._clock()
         self._last_cmd = float("-inf")
         self._sidesteps = 0
         self._clicker.cancel()  # a click queued before leaving MOVE is stale
         # A fight chased the character elsewhere: that is no jump to learn.
         self._last_pos = self._previous_pos = None
+
+    # doc: docs/prs/near-targeting.md#skip-passed-waypoints
+    def _skip_waypoints_passed_in_fight_now(self) -> None:
+        """Go on from the farthest of the next 5 walk/node waypoints that is no
+        farther to walk than the current one. Never past an action waypoint or
+        onto another floor, never backwards."""
+        pos = self._read_position()
+        current = self._positional_from(self.route.current)
+        if pos is None or current is None:
+            return
+        wps = self.route.waypoints
+        if wps[current].action not in ("walk", "node") or wps[current].z != pos.z:
+            return
+        ahead: list[int] = []
+        for index in range(current + 1, min(current + 6, len(wps))):
+            if wps[index].action not in ("walk", "node") or wps[index].z != pos.z:
+                break
+            ahead.append(index)
+        current_cost = self._walk_cost(pos, wps[current])
+        for index in reversed(ahead):
+            cost = self._walk_cost(pos, wps[index])
+            if cost is not None and (current_cost is None or cost <= current_cost):
+                logger.info(
+                    "cavebot: after the fight waypoint %d is no farther than %d, skipping %d-%d",
+                    index,
+                    current,
+                    current,
+                    index - 1,
+                )
+                self.route.current = index
+                self._target = self._retried_target = None
+                return
+
+    def _walk_cost(self, pos: Position, wp: Waypoint) -> int | None:
+        """Path cost to *wp* on the cost map (None: no path), else tiles in a straight line."""
+        if self._cost_map is None or self._cost_map.empty:
+            return max(abs(wp.x - pos.x), abs(wp.y - pos.y))
+        if (pos.x, pos.y) == (wp.x, wp.y):
+            return 0
+        found = next_step((pos.x, pos.y, pos.z), (wp.x, wp.y, wp.z), self._map_walkable)
+        return None if found is None else found[1]
 
     def stop(self) -> None:
         """Stop the route (no further input is sent)."""
@@ -824,6 +894,9 @@ class Cavebot:
         if self.alarm == "lost":
             logger.info("cavebot: back on floor %d, route goes on", pos.z)
             self.alarm = None
+        if now < self._echo_raid_wait_until:
+            self.release_walk_key()  # doc: docs/prs/near-targeting.md#echo-wait
+            return
         if self._walk_keys:
             echo_wp = self._echo_raid_waypoint(wp, pos, now)
             if echo_wp is None:
@@ -897,7 +970,7 @@ class Cavebot:
             return None
         safe = (
             self._trigger_echo_raids
-            and not self._state.monsters
+            and not self._fight()
             and self._state.hp_percent >= ECHO_RAID_MIN_HP
         )
         if goal is not None and self._echo_raid_click is not None:
@@ -1169,9 +1242,11 @@ class Cavebot:
         """One step of an NPC talk (:func:`talk_steps`) per tick, then the route moves on."""
         if self._talk is None:
             self._talk = (
-                trade_steps(self.route.buy)
+                trade_steps(self.route.buy, self._npc_tab_hotkey)
                 if wp.action == "trade"
-                else talk_steps(("hi", "deposit all", "yes"), ("hi", "deposit all", "yes"))
+                else talk_steps(
+                    self._npc_tab_hotkey, ("hi", "deposit all", "yes"), ("hi", "deposit all", "yes")
+                )
             )
             self._talk_since, self._talk_wait = now, float("-inf")
         if now - self._talk_since >= _TALK_ALARM and self.alarm != wp.action:
@@ -1616,8 +1691,14 @@ class Cavebot:
         if path is not None and self._creatures:
             short = next_step(start, goal, free)
             detour_too_long = short is not None and path[1] > short[1] + _DETOUR
-        stuck = path is None or detour_too_long
-        fight = self._state.monsters and not self.targeting_paused
+        # doc: docs/prs/near-targeting.md#kill-on-goal
+        # The goal counts as walkable, so a creature on it never makes the way
+        # "stuck": once bumped it is fought, even a monster targeting ignores.
+        creature_on_goal = (
+            goal in self._blocked and (wp.x, wp.y) in self._creatures and bool(self._state.monsters)
+        )
+        stuck = path is None or detour_too_long or creature_on_goal
+        fight = (self._fight() or creature_on_goal) and not self.targeting_paused
         if stuck and fight and now < self._stuck_allowed_until:
             if not self.stuck_on_creatures:
                 logger.info(
@@ -1667,6 +1748,12 @@ class Cavebot:
         """
         seen_before = self._creatures
         return self._scan(pos, now) and self._creatures != seen_before
+
+    def _fight(self) -> bool:
+        """A fight is on: the loop's :attr:`fight_in_range`, else any battle-list monster."""
+        if self.fight_in_range is None:
+            return bool(self._state.monsters)
+        return self.fight_in_range
 
     def _attack_creature_in_the_way(
         self, path: list[tuple[int, int]], pos: Position, now: float
@@ -1738,6 +1825,18 @@ class Cavebot:
         if not self._trigger_echo_raids:
             for tile in sorted(echo_raids - self.echo_raids):
                 logger.info("cavebot: echo raid seen at %s,%s,%s, avoiding", *tile, pos.z)
+        gone_next_to_player = [
+            t
+            for t in self.echo_raids - echo_raids
+            if max(abs(t[0] - pos.x), abs(t[1] - pos.y)) <= 1
+        ]
+        if gone_next_to_player:
+            # doc: docs/prs/near-targeting.md#echo-wait
+            logger.info(
+                "cavebot: echo raid at %s,%s,%s gone next to the player, waiting %g s",
+                *gone_next_to_player[0], pos.z, ECHO_RAID_AFTER_WAIT,
+            )  # fmt: skip
+            self._echo_raid_wait_until = now + ECHO_RAID_AFTER_WAIT
         self.echo_raids = echo_raids
         for tile in echo_raids & self._ignored_echo_raids.keys():
             self._ignored_echo_raids[tile] = now

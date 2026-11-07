@@ -249,7 +249,7 @@ def make_perceive(
     from moonlight.calibration.autofind import ANCHORS_DIR, PLAYERS_HEADER, PlayerListFollower
     from moonlight.perception.battle import BattleReader, entries_to_state
     from moonlight.perception.chase_mode import read_chase_mode
-    from moonlight.perception.creatures import find_creatures
+    from moonlight.perception.creatures import CreatureTracker
     from moonlight.perception.echo_raid import find_echo_raids
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
@@ -257,6 +257,7 @@ def make_perceive(
     from moonlight.perception.vitals import VitalsReader
 
     vitals = VitalsReader(profile)
+    creatures = CreatureTracker()
     battle = BattleReader(profile, seen_monsters=seen_monsters)
     # doc: docs/prs/player-list.md#players-window
     players_window = PlayerListFollower()
@@ -333,7 +334,8 @@ def make_perceive(
                     status_icons.read_active_conditions(frame) if status_icons else frozenset()
                 )
             ticks_until_slow_read -= 1
-            slots = tuple(find_creatures(frame, creature_grid)) if creature_grid else ()
+            bars = creatures.read(frame, creature_grid) if creature_grid else {}
+            slots = tuple(sorted(bars))
             echo_raids = tuple(find_echo_raids(frame, creature_grid)) if creature_grid else ()
             position = minimap.read_position(frame)
             z = floor.read_floor(frame)
@@ -359,6 +361,8 @@ def make_perceive(
             state.players_on_screen = players
             state.players = tuple(entry.name_hash for entry in names)
             state.creature_slots = slots
+            state.creature_hp_percents = tuple(bars[slot] for slot in slots)
+            state.game_view_sliding = creatures.view_sliding
             state.echo_raid_slots = echo_raids
             state.active_status_icons = conditions
             state.chase_mode = chase_mode
@@ -403,6 +407,19 @@ def _absolute_screen() -> tuple[int, int, int, int]:
     with mss.MSS() as sct:
         mon = sct.monitors[1 if sys.platform == "win32" else 0]
     return (mon["left"], mon["top"], mon["width"], mon["height"])
+
+
+
+# doc: docs/prs/near-targeting.md#park-cursor
+def _park_point(profile: CalibrationProfile) -> tuple[int, int] | None:
+    """Where the cursor rests after a minimap or battle-list click: just left of the minimap."""
+    if "minimap" not in profile.regions:
+        return None
+    mx, my, _mw, mh = profile.regions["minimap"].to_tuple
+    # ponytail: 16 px left of the minimap is the game view's right edge in the
+    # default layout; make it a config knob if a layout puts something
+    # hover-sensitive there.
+    return (mx - 16, my + mh // 2)
 
 
 def _pointer_screen(
@@ -595,6 +612,7 @@ def build_modules(
             config.targeting,
             profile.get_region("battle_list").to_tuple,
             profile.ui_scale,
+            game_grid_region=profile.get_region("game_grid").to_tuple,
         )
     # doc: docs/prs/targeting.md#stuck-targeting
     # The owner's rows (kept while targeting is off) with every row attacking.
@@ -609,6 +627,7 @@ def build_modules(
             profile.get_region("battle_list").to_tuple,
             profile.ui_scale,
             attack_top_row_first=True,
+            game_grid_region=profile.get_region("game_grid").to_tuple,
         )
     if (config.targeting is not None or m.stuck_targeting) and m.attack_hotkeys is None:
         m.attack_hotkeys = AttackHotkeys(rows)
@@ -638,8 +657,11 @@ def build_modules(
             roi_provider=roi_provider,
             window_origin=window_origin,
             screen=_pointer_screen(window_origin) if config.clicker.absolute else None,
-            park_region=(
-                profile.regions["minimap"].to_tuple if "minimap" in profile.regions else None
+            park_point=_park_point(profile),
+            park_after_clicks_in=tuple(
+                profile.regions[name].to_tuple
+                for name in ("minimap", "battle_list")
+                if name in profile.regions
             ),
         )
         if on_clicker is not None:
@@ -659,6 +681,9 @@ def build_modules(
 
             m.scripts.stamina = StaminaReader(screen_grab).minutes
     m.scripts.clicker = m.clicker
+    m.scripts.game_grid = (
+        profile.regions["game_grid"].to_tuple if "game_grid" in profile.regions else None
+    )
     m.scripts.timers = config.scripts.timers()
     if config.rotation is None:
         m.scripts.rotation = None
@@ -693,6 +718,8 @@ def build_modules(
                 input_backend=backend,
                 rope_hotkey=cb.rope_hotkey,
                 shovel_hotkey=cb.shovel_hotkey,
+                npc_tab_hotkey=cb.npc_tab_hotkey,
+                skip_waypoints_passed_in_fight=cb.skip_waypoints_passed_in_fight,
                 trigger_echo_raids=cb.echo_raid == "use",
                 walk_keys=config.walk_keys,
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,

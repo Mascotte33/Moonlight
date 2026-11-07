@@ -71,9 +71,11 @@ calibrated ``mouse_scale`` (pixels per count; T33 calibrates it).
 **Absolute** (a ``screen`` rect passed to the controller): the firmware's
 absolute HID pointer jumps the cursor straight to the target with one
 ``A`` command, then the next step clicks. No cursor reads, no gain, no
-homing, and nothing OS-specific. After a click inside ``park_region``
-(the minimap) the cursor jumps just left of it, so it never hides the
-minimap the next tick reads.
+homing, and nothing OS-specific. After a click inside one of
+``park_after_clicks_in`` (the minimap, the battle list) the cursor jumps to
+``park_point``, so it never hides what the next tick reads.
+
+# doc: docs/prs/near-targeting.md#park-cursor
 
 The controller takes a *frame provider* callable (in production it wraps
 ``moonlight.perception.capture``; in tests it renders a synthetic cursor at the
@@ -179,7 +181,8 @@ class ClickController:
         roi_provider: Callable[[Rect], np.ndarray] | None = None,
         window_origin: Callable[[], tuple[int, int]] | None = None,
         screen: Rect | None = None,
-        park_region: Rect | None = None,
+        park_point: tuple[int, int] | None = None,
+        park_after_clicks_in: tuple[Rect, ...] = (),
         clock: Callable[[], float] = time.monotonic,
         sleep_fn: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -200,8 +203,10 @@ class ClickController:
             screen: ``(left, top, width, height)`` of the screen the
                 firmware's absolute pointer spans. Set, it switches to
                 absolute moves (no cursor reads).
-            park_region: Absolute mode: after a click inside this frame
-                rect (the minimap) the cursor parks just left of it.
+            park_point: Absolute mode: frame point the cursor parks on
+                after a click inside one of *park_after_clicks_in*.
+            park_after_clicks_in: Frame rects (the minimap, the battle
+                list) a click inside of which is followed by the park.
             clock: Monotonic clock (settle timing).
             sleep_fn: Sleep used for the settle delay.
         """
@@ -213,7 +218,8 @@ class ClickController:
         self._roi_provider = roi_provider
         self._window_origin = window_origin
         self._screen = screen
-        self._park_region = park_region
+        self._park_point = park_point
+        self._park_after_clicks_in = park_after_clicks_in
         #: Absolute mode: wire point the cursor parks on once the queue empties.
         self._park: tuple[int, int] | None = None
         self._clock = clock
@@ -384,13 +390,11 @@ class ClickController:
         if not self._sent(lambda: self._input.click(job.side)):
             return None  # rate limited: click on the next step
         self._jobs.popleft()
-        if self._park_region is not None:
-            mx, my, mw, mh = self._park_region
-            if mx <= job.target[0] < mx + mw and my <= job.target[1] < my + mh:
-                # ponytail: 16 px left of the minimap is the game view's right
-                # edge in the default layout; make it a config knob if a
-                # layout puts something hover-sensitive there.
-                self._park = self.to_wire((mx - 16, my + mh // 2))
+        tx, ty = job.target
+        if self._park_point is not None and any(
+            x <= tx < x + w and y <= ty < y + h for x, y, w, h in self._park_after_clicks_in
+        ):
+            self._park = self.to_wire(self._park_point)
         return True
 
     def to_wire(self, point: tuple[int, int]) -> tuple[int, int]:

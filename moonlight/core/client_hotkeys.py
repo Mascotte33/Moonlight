@@ -24,7 +24,8 @@ from moonlight.core.config import BotConfig
 __all__ = [
     "ITEMS",
     "OFFICIAL_CLIENT_FILE",
-    "SET_NAME",     "BotKey",
+    "SET_NAME",
+    "BotKey",
     "bot_keys",
     "client_combo",
     "write_moonlight_set",
@@ -32,9 +33,13 @@ __all__ = [
 
 SET_NAME = "Moonlight"
 #: The official client's hotkey file; other servers' clients keep theirs in their own folder.
+#: Where the official client keeps its options: %LOCALAPPDATA% on Windows,
+#: ~/.local/share/CipSoft GmbH on Linux.
 OFFICIAL_CLIENT_FILE = (
-    Path(os.environ.get("LOCALAPPDATA", "")) / "Tibia/packages/Tibia/conf/clientoptions.json"
-)
+    Path(os.environ["LOCALAPPDATA"])
+    if "LOCALAPPDATA" in os.environ
+    else Path.home() / ".local/share/CipSoft GmbH"
+) / "Tibia/packages/Tibia/conf/clientoptions.json"
 
 #: Item names the text box understands; any other item goes in as its id number.
 ITEMS = {
