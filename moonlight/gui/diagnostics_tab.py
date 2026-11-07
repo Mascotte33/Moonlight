@@ -4,8 +4,8 @@ The Health card (T10.F1.K1) shows the same dots as the Dashboard, each with
 its last value. The module switches live in Settings.
 
 "Show what the bot sees" opens a window with the game grid, a red box on
-every creature the health-bar scan finds, the cavebot's path in blue and
-fresh kills in gold. It scans 15 times a second, in its own thread, only while
+every creature the health-bar scan finds and the cavebot's path in blue.
+It scans 15 times a second, in its own thread, only while
 open, and never sends input.
 """
 
@@ -41,8 +41,6 @@ LOG_LINES = 150
 SEES_MS = 66
 #: The player's (col, row) on the 15x11 game grid.
 PLAYER_SLOT = (7, 5)
-#: How long a killed monster's tile keeps its gold circle (docs/prs/extras.md#seen-path).
-CORPSE_SECONDS = 10.0
 #: Debug window width, px.
 SEES_W = 720
 
@@ -52,12 +50,10 @@ def seen_view(
     grid: tuple[int, int, int, int],
     creatures: list[tuple[int, int]],
     path: Sequence[tuple[int, int]] = (),
-    corpses: Sequence[tuple[int, int]] = (),
 ) -> np.ndarray:
     """The game grid of *frame* (BGR) with tile lines and the scan's boxes.
 
-    *path* (a blue line from the player) and *corpses* (gold circles) are
-    (col, row) slots of the grid.
+    *path* (a blue line from the player) is (col, row) slots of the grid.
 
     # doc: docs/prs/keys-walking.md#creature-scan
     # doc: docs/prs/extras.md#seen-path
@@ -82,8 +78,6 @@ def seen_view(
     if path:
         points = np.array([centre(PLAYER_SLOT), *map(centre, path)], np.int32)
         cv2.polylines(view, [points], False, (255, 120, 0), 3)
-    for slot in corpses:
-        cv2.circle(view, centre(slot), round(min(tw, th) / 2.5), (0, 215, 255), 3)
     return view
 
 
@@ -184,7 +178,6 @@ class DiagnosticsTab(Tab):
 
         def grab_and_scan() -> None:
             """Off the Tk thread: a grab and scan take ~25 ms, too long to run in Tk."""
-            dead: dict[str, Any] = {"count": 0, "seen": set(), "corpses": {}}
             try:
                 cap = ScreenCapture(window_title=cfg.window_title)  # mss belongs to its thread
             except Exception as exc:  # shown in the window, never raised in a thread
@@ -202,20 +195,10 @@ class DiagnosticsTab(Tab):
                     frame = cv2.cvtColor(full[gy : gy + gh, gx : gx + gw], cv2.COLOR_RGB2BGR)
                     slots = find_creatures(frame, game_view)
                     snap = self.ctx.state.snapshot()
-                    player, now = snap.position, time.monotonic()
-                    px, py = player.x - PLAYER_SLOT[0], player.y - PLAYER_SLOT[1]
-                    seen = {(c + px, r + py) for c, r in slots}
-                    if (
-                        len(snap.monsters) < dead["count"]
-                    ):  # a kill: its tile is the box that vanished
-                        for tile in dead["seen"] - seen:
-                            dead["corpses"][tile] = now + CORPSE_SECONDS
-                    dead.update(count=len(snap.monsters), seen=seen)
-                    dead["corpses"] = {t: end for t, end in dead["corpses"].items() if end > now}
+                    player = snap.position
                     cavebot = self.ctx.live_cavebot()
                     path = slots_of(cavebot.planned_path, player) if cavebot is not None else []
-                    corpses = slots_of(dead["corpses"], player)
-                    view = seen_view(frame, game_view, slots, path, corpses)
+                    view = seen_view(frame, game_view, slots, path)
                     latest.update(view=view, error="")
                     stop.wait(max(0.0, SEES_MS / 1000 - (time.monotonic() - started)))
             finally:
