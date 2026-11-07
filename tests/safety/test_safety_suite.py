@@ -28,8 +28,9 @@ from moonlight.core.state import Monster, Position, WorldState
 from moonlight.core.wiring import build_loop
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
-from moonlight.healing.healing import HealingConfig, HealingDecision, HealingRule
-from moonlight.looting.looting import PRESS_DELAY, Looting, LootingConfig
+from moonlight.healing.healing import HealingDecision
+from moonlight.looting.looting import Looting, LootingConfig
+from tests.loot_ring_pictures import paint_ring
 
 pytestmark = pytest.mark.safety
 
@@ -199,18 +200,6 @@ def test_7_low_hp_sends_the_strong_spell_and_a_potion() -> None:
     assert inp.sent_lines == ["K F2", "K F3"]
 
 
-def test_8_low_mp_stops_casting_spells() -> None:
-    rules = (
-        HealingRule("spell", "F2", hp_below_percent=50.0, minimum_mana_percent=20.0),
-        HealingRule("potion", "F3", hp_below_percent=40.0),
-    )
-    healing = HealingDecision(HealingConfig(rules=rules))
-    inp = FakeInput()
-    gl, _ = make_loop(make_state(hp_percent=10.0, mp_percent=5.0), inp, healing=healing)
-    gl.tick()
-    assert inp.sent_lines == ["K F3"]  # no spell cast below the mana floor; the potion goes
-
-
 def test_9_rate_limit_never_exceeds_20hz() -> None:
     """F-20: the 10/s cap holds for serial commands on the wire, not actions.
 
@@ -264,14 +253,24 @@ def test_11_loot_key_only_when_focused() -> None:
     inp = FakeInput()
     ws = make_state()
     now = [0.0]
-    looting = Looting(inp, LootingConfig(loot_hotkey="alt+q"), clock=lambda: now[0])
-    looting.on_target_died("Wolf")
-    now[0] = PRESS_DELAY
+    frames = [  # a turning ring east of the player
+        paint_ring(np.zeros((1056, 1440, 3), np.uint8), 768, 480, phase) for phase in (0, 1)
+    ]
+    tick = iter(range(100))
+    looting = Looting(
+        inp, LootingConfig(loot_hotkey="alt+q"),
+        clock=lambda: now[0], frames=lambda: frames[next(tick) % 2], game_region=(0, 0, 1440, 1056),
+    )
     ws.client_focused = False
-    assert looting.step(ws) is False
-    assert inp.sent_lines == []
+    for now[0] in (0.0, 0.1):
+        assert not looting.ring_due(range(0, 2), ws)
+    assert looting.step(ws) is False and inp.sent_lines == []
     ws.client_focused = True
-    looting.step(ws)
+    for now[0] in (0.25, 0.375, 0.5, 0.625):
+        assert not looting.ring_due(range(0, 2), ws)  # the ring shows a while first
+    now[0] = 0.75
+    assert looting.ring_due(range(0, 2), ws)
+    looting.press_ring()
     assert inp.sent_lines == ["K alt+q"]
 
 

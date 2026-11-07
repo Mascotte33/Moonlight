@@ -11,7 +11,7 @@ state the bot is in, using a strict priority order (highest wins):
                    once perception is healthy again.
 3. ATTACK          A target is selected (or, with targeting wired, the
                    targeting module chose one).
-4. LOOT            A kill is waiting to be looted (looting wired).
+4. LOOT            A loot ring's corpse is looted (looting wired).
 5. MOVE            A waypoint route is active (cavebot / move_provider);
                    the town trip is part of the route (refill).
 6. IDLE            Nothing to do.
@@ -42,9 +42,8 @@ without it the loop keeps its built-in behaviour.
   first in every non-KILL state; a heal
   sent this tick skips the rest of the dispatch.
   # doc: docs/prs/healing.md#healing-rules
-* **looting** -- a selected target that vanishes from the battle list is
-  reported via ``Looting.on_target_died``; ``should_loot`` -> LOOT,
-  which runs ``Looting.step``.
+* **looting** -- ``Looting.ring_due`` every tick loots a ringed corpse
+  (``press_ring``); ``should_loot`` -> LOOT, which runs ``Looting.step``.
 * **cavebot** -- default ``move_provider``/``move_action``
   (``is_active`` / ``step``).
 
@@ -105,7 +104,7 @@ from typing import TYPE_CHECKING, Any
 
 from moonlight.cavebot.cavebot import WALK_KEYS
 from moonlight.core.safety import F12Monitor, RateLimitedInput
-from moonlight.core.state import WorldState
+from moonlight.core.state import Monster, WorldState
 from moonlight.hardware.input import InputBackend
 from moonlight.targeting.targeting import PAUSE_SECONDS
 
@@ -143,10 +142,12 @@ _SELECT_OUTLINE_WAIT = 1.0
 #: While stopped only every 4th tick reads the screen (5 a second at 20 Hz).
 STOPPED_READ_EVERY_TICKS = 4
 
-#: Seconds after the target died in which a loot ring counts: a ring comes
-#: from a kill; without one, hits flashing on the player look the same, and
-#: monsters walking out of view drop the battle list count every few seconds.
-RING_AFTER_KILL_SECONDS = 3.0
+
+#: The tiles the loot hotkey loots, at any time: the 3x3 around and under the
+#: character (owner 2026-11-04: back to the hotkey; a ring one tile farther
+#: is walked to when no fight is on).
+# doc: docs/prs/client-hotkeys.md#hotkey-loot
+RING_REACH = range(0, 2)
 
 
 @dataclass(frozen=True)
@@ -293,9 +294,8 @@ class GameLoop:
         # Per-tick module decisions (refreshed by _observe each tick).
         self._target: TargetingAction | None = None
         self._targeting_paused_until = 0.0  # a lone unreachable target: walk on
-        self._last_target: str | None = None
+        self._last_target: Monster | None = None
         self._last_names: Counter[str] = Counter()
-        self._target_died_at = float("-inf")
         self._had_selection = False
         # The select click: (battle-list row, when sent; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
@@ -343,8 +343,13 @@ class GameLoop:
 
     @property
     def modules(self) -> DecisionModules:
-        """The modules that run this tick (``all_modules`` minus the paused ones)."""
+        """The modules that run this tick (``all_modules`` minus the paused ones).
+
+        Looting runs only with the cavebot on and not paused (owner 2026-11-04).
+        """
         if not self.paused:
+            if self.all_modules.cavebot is None and self.all_modules.looting is not None:
+                return replace(self.all_modules, looting=None)
             return self.all_modules
         scripts = self.all_modules.scripts
         return replace(
@@ -352,6 +357,7 @@ class GameLoop:
             cavebot=None,
             targeting=None,
             attack_hotkeys=None,
+            looting=None,
             # doc: docs/prs/scripts-page.md#test-now
             scripts=scripts if scripts is not None and scripts.testing else None,
         )
@@ -577,6 +583,8 @@ class GameLoop:
         m = self.modules
         self._report_alarm(snap)
         self._report_module_alarm()
+        if m.scripts is not None:
+            m.scripts.log_stamina()
         selected = snap.selected_target
         if self._had_selection and selected is None and m.cavebot is not None:
             m.cavebot.on_target_killed()
@@ -601,24 +609,26 @@ class GameLoop:
         if m.cavebot is not None:
             m.cavebot.targeting_paused = self._targeting_paused(now)
         names = Counter(mon.name for mon in snap.monsters)
-        if m.looting is not None:
-            # ponytail: one fewer monster named like the target = kill (the
-            # client may select the next one at once; one walking off screen
-            # counts too); use the server-log OCR (perception/logocr.py) if
-            # false loot attempts matter.
+        if m.attack_hotkeys is not None:
+            # ponytail: one fewer monster named like the target while the
+            # selection went, changed name or jumped to more HP (the client
+            # may select the next one at once) = kill. A monster leaving the
+            # battle list while the target stays selected is none. Use the
+            # server-log OCR (perception/logocr.py) if it misfires.
             prev = self._last_target
             cur = snap.selected_target
-            self._last_target = cur.name if cur is not None else None
-            if prev and (
-                names[prev] < self._last_names[prev] or (cur is None and not names[prev])
+            self._last_target = cur
+            target_changed = (
+                cur is None
+                or prev is None
+                or cur.name != prev.name
+                or cur.hp_percent > prev.hp_percent
+            )
+            if prev is not None and (
+                (names[prev.name] < self._last_names[prev.name] and target_changed)
+                or (cur is None and not names[prev.name])
             ):
-                m.looting.on_target_died(prev)
-                self._target_died_at = now
-                if m.attack_hotkeys is not None:
-                    m.attack_hotkeys.new_target()  # the client may select the next at once
-            elif self._last_names and not names:
-                m.looting.on_target_died("")  # the battle list emptied: loot again
-                self._target_died_at = now
+                m.attack_hotkeys.new_target()  # the client may select the next at once
         self._last_names = names
         if m.extras is not None:
             m.extras.observe(snap)
@@ -646,7 +656,7 @@ class GameLoop:
         """
         m = self.modules
         if m.looting is not None and m.looting.loot_first(snap):
-            return BotState.LOOT  # loot each kill before the next target
+            return BotState.LOOT  # loot each ringed corpse before the next target
         targeting = self._targeting()
         if m.cavebot is not None and m.cavebot.luring():
             pass  # a lure waypoint walks past monsters
@@ -742,8 +752,7 @@ class GameLoop:
             self._task = "Healing"
             return
         looting = self.modules.looting
-        ring_may_show = self._clock() - self._target_died_at < RING_AFTER_KILL_SECONDS
-        if looting is not None and ring_may_show and looting.ring_due():
+        if looting is not None and looting.ring_due(RING_REACH, snap):
             self._send(snap, looting.press_ring)  # then carry on with this tick
         # doc: docs/prs/pause-stop.md#action-order
         # Healing, then the fight and loot, then scripts, extras and walking.
@@ -1022,6 +1031,9 @@ class GameLoop:
             "state_transitions": {s.value: n for s, n in self._state_transitions.items()},
             "kill_switch_active": self.kill_switch_active,
             "stop_requested": self.stop_requested,
+            "stamina_minutes": (
+                None if self.modules.scripts is None else self.modules.scripts.last_stamina_minutes
+            ),
         }
 
     def _task_text(self) -> str:

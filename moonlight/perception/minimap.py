@@ -32,7 +32,9 @@ How the position is obtained
   stairs/ropes: x, y are kept (the step is at most a tile).
 * **(x, y) — absolute**: a pluggable :class:`MapMatcher` (the bot uses
   :class:`moonlight.perception.worldmap.WorldMap`) finds the radar on the
-  map, near the last position first. With no match the position is moved
+  map, near the last position first, then on the whole floor, then near the
+  last position on the floors above and below (z+1, z-1, z+2, ...: a misread
+  floor indicator). With no match the position is moved
   by the terrain shift (kept when the shift is not trusted either) and is
   :attr:`MinimapReader.estimated`; after ``estimate_for`` seconds without a
   match the reader is :attr:`lost` until the next match.
@@ -79,6 +81,10 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+#: Floors tried near the last position when the read floor has no match.
+# doc: docs/prs/client-hotkeys.md#nearby-floors
+_NEARBY_FLOOR_STEPS = (1, -1, 2, -2, 3, -3)
 
 #: A rectangle as ``(x, y, width, height)`` (matches ``calibrate.Rect``).
 Rect = tuple[int, int, int, int]
@@ -272,10 +278,16 @@ class MinimapReader:
             z = self._read_z(frame)
             if self._radar_unchanged_since_last_match(gray, z):
                 return self._position
-            near = None if self._lost else (self._position.x, self._position.y)
-            xy = self._map_matcher.match(crop, z, near)
-            if xy is None and near is not None:
-                xy = self._map_matcher.match(crop, z, None)
+            near = (self._position.x, self._position.y)
+            xy = self._map_matcher.match(crop, z, near) or self._map_matcher.match(crop, z, None)
+            for step in _NEARBY_FLOOR_STEPS:
+                if xy is not None:
+                    break
+                if 0 <= z + step <= 15:
+                    xy = self._map_matcher.match(crop, z + step, near)
+                    if xy is not None:
+                        logger.info("minimap: found on floor %d, not %d", z + step, z)
+                        z += step
             if xy is not None:
                 self._position = Position(int(xy[0]), int(xy[1]), z)
                 self._px = float(getattr(self._map_matcher, "zoom", self._px))

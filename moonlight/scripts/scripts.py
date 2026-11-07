@@ -199,6 +199,14 @@ class Bot:
             raise RuntimeError("bot.count needs a screen capture")
         return counts()[potion]
 
+    # doc: docs/prs/client-hotkeys.md#stamina
+    def stamina(self) -> int | None:
+        """Stamina in minutes from the open Skills window (39:30 is 2370); None when unread."""
+        reader = self._runner.stamina
+        if reader is None:
+            raise RuntimeError("bot.stamina needs a screen capture")
+        return reader()
+
     # doc: docs/prs/scripts.md#find-picture
     def find(self, image: str) -> tuple[int, int] | None:
         """Centre of picture *image* (a file in ``scripts/``) on screen, or None."""
@@ -257,6 +265,11 @@ class ScriptRunner:
         self.grab = grab
         #: The action-bar potion totals for ``bot.count``.
         self.potion_counts: Callable[[], dict[str, int | None]] | None = None
+        #: Stamina minutes from the Skills window for ``bot.stamina`` and the log.
+        self.stamina: Callable[[], int | None] | None = None
+        self._stamina_logged_at: float | None = None
+        #: The last stamina read (minutes) for the dashboard; None when unread.
+        self.last_stamina_minutes: int | None = None
         #: Ticked scripts: (name, pause in seconds after it ended), in order.
         self.timers = timers or []
         self._clock = clock
@@ -376,6 +389,16 @@ class ScriptRunner:
             log.warning("script %s: goto %r without a cavebot", self.running, label)
         else:
             self.cavebot.goto(label)
+
+    def log_stamina(self) -> None:
+        """Read the stamina every 5 minutes (the reader logs each change)."""
+        now = self._clock()
+        if self.stamina is None or (
+            self._stamina_logged_at is not None and now - self._stamina_logged_at < 300.0
+        ):
+            return
+        self._stamina_logged_at = now
+        self.last_stamina_minutes = self.stamina()
 
     def step(self, snap: WorldState, input: InputBackend) -> bool:  # noqa: A002
         """One tick of the running script: one command, a wait, or the script's next yield.

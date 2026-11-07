@@ -14,12 +14,13 @@ def test_uptime_text() -> None:
 
 def test_stopped_bot_shows_dash() -> None:
     values = card_values({}, WorldState())
-    assert values["Uptime"] == values["Ticks"] == "—"
+    assert values["Uptime"] == values["Ticks"] == values["Stamina"] == "—"
 
 
 def test_card_values_from_stats() -> None:
     values = card_values({"uptime_seconds": 61, "tick_count": 42}, WorldState())
     assert values["Ticks"] == "42" and values["Uptime"] == "0:01:01"
+    assert card_values({"stamina_minutes": 2463}, WorldState())["Stamina"] == "41:03"
 
 
 def _dots(snap: WorldState, arduino: bool = False, running: bool = False) -> dict[str, bool]:

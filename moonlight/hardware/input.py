@@ -609,11 +609,11 @@ class ArduinoInput(InputBackend):
         self._stop_event = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
 
-        # An explicit port is honored exclusively; auto-detect otherwise.
-        if not self._open_and_verify(allow_detected=port is None):
-            where = (
-                f"on port {port!r}" if port is not None else f"with VID 0x{vid:04x}"
-            )
+        # A typed port is tried first; the VID-detected one too, since Windows
+        # gives the board a new COM port after a re-plug or on another PC.
+        if not self._open_and_verify():
+            where = f"on port {port!r} or " if port is not None else ""
+            where += f"with VID 0x{vid:04x}"
             raise NoArduinoFoundError(
                 f"no Arduino found {where} "
                 "(is it plugged in and flashed? see firmware/README.md)"
@@ -868,9 +868,7 @@ class ArduinoInput(InputBackend):
             self._close_port_locked()
         backoff = self.reconnect_backoff
         while not self._stop_event.is_set():
-            # On reconnect also allow the VID-detected port: after a re-plug
-            # the OS may have assigned a different COM port.
-            if self._open_and_verify(allow_detected=True):
+            if self._open_and_verify():
                 with self._lock:
                     self._device_lost = False
                     self._consecutive_missed = 0
@@ -879,13 +877,13 @@ class ArduinoInput(InputBackend):
             self._stop_event.wait(backoff)
             backoff = min(backoff * 2.0, self.max_reconnect_backoff)
 
-    def _open_and_verify(self, allow_detected: bool) -> bool:
+    def _open_and_verify(self) -> bool:
         """Open a candidate port and verify it answers P -> PONG.
 
         Tries the candidates in priority order. On success the connection is
         kept open and True is returned.
         """
-        for candidate in self._candidate_ports(allow_detected):
+        for candidate in self._candidate_ports():
             try:
                 ser = open_serial_port(candidate, self.baudrate, self.read_timeout)
             except ImportError:
@@ -910,18 +908,15 @@ class ArduinoInput(InputBackend):
             return False
         return raw.strip() == b"PONG"
 
-    def _candidate_ports(self, allow_detected: bool) -> list[str]:
+    def _candidate_ports(self) -> list[str]:
         """Ports to try, in priority order.
 
-        The explicit port comes first (and alone, when given); the
-        VID-detected port is an extra candidate only when *allow_detected*
-        (i.e. during auto-detect or reconnect).
+        The explicit port first, then the VID-detected one.
         """
         candidates: list[str] = []
         if self._explicit_port is not None:
             candidates.append(self._explicit_port)
-        if allow_detected:
-            detected = find_arduino_port(self._vid, self._pid)
-            if detected is not None and detected not in candidates:
-                candidates.append(detected)
+        detected = find_arduino_port(self._vid, self._pid)
+        if detected is not None and detected not in candidates:
+            candidates.append(detected)
         return candidates

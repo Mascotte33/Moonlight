@@ -31,13 +31,13 @@ def test_rows_become_default_monster_named_rows_and_area_rules() -> None:
     targeting = cfg.targeting
     assert targeting is not None
     assert (targeting.default_monster.priority, targeting.default_monster.hotkey) == (2, "F5")
-    assert targeting.default_monster.minimum_mana_percent == 10.0
+    assert targeting.default_monster.minimum_mana == 10
     assert [(r.name, r.priority, r.ignore, r.hotkey, r.movement) for r in targeting.monsters] == [
         ("Troll", 4, False, "F6", "none"),
         ("Rat", 1, True, "", "follow"),
     ]
     assert [
-        (r.hotkey, r.minimum_adjacent_monsters, r.minimum_mana_percent)
+        (r.hotkey, r.minimum_adjacent_monsters, r.minimum_mana)
         for r in targeting.area_rules
     ] == [
         ("F7", 3, 25.0),

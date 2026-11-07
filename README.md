@@ -117,8 +117,25 @@ full live session (2026-10-28) verified looting.
 The position comes from matching the minimap against the client's map tiles
 in `data/map/`. A frame that does not match (a map mark or a tooltip over the
 minimap) keeps the last position as an estimate; only 10 s without any match
-makes it unknown. If the floor reads as one with no waypoint on the route
-(for a moment after a pause), the cavebot raises the `lost` alarm and waits;
+makes it unknown. When the floor shown has no match, the floors above and
+below are tried near the last position (1 up, 1 down, 2 up, 2 down, up to 3),
+and a mostly black minimap is matched with a looser score near the last
+position, or anywhere on the floor when that spot is at least twice as good
+as any other (so a restart on an upper floor still finds the character).
+Only what the minimap shows is compared: the white player cross and black
+parts away from anything drawn are skipped, so a roof the minimap does not
+draw does not spoil the match. After a floor change the route goes on at the next waypoint on that
+floor the map can reach. When the map shows no way to any waypoint on that
+floor (a fight or a step led onto a closed-off platform), it keeps its place on
+the route and walks onto the nearest floor change instead (`leaving by the
+floor change at 32437,31729`), then goes on with the same waypoint; only with no
+floor change left does it try the next waypoint on that floor anyway. When
+there is no way to the waypoint at all, it tries the next waypoint on the same
+floor, wrapping round the route, until one gets it unstuck (`no way to
+waypoint 24, trying waypoint 8` in the log). A floor with no waypoint on the route (a roof a fight chased the
+character onto) is left the same way, by its nearest floor change; stairs that
+led to such a floor are not taken again (`not taken again` in the log). With
+no floor change left to take, the cavebot raises the `lost` alarm and waits;
 it walks on once the floor reads right again.
 
 Walking with keys finds its way on the client's walkability map
@@ -158,7 +175,7 @@ Echo raid triggers (the red swirl that spawns stronger monsters) are seen on
 the game screen while walking with WSAD keys. Cavebot > Settings > **Echo raid** picks
 what the bot does: **avoid** (default) never walks onto one and skips a
 waypoint on one; **use** walks next to the nearest one once no monster is in
-the battle list and HP is 80 % or above, right-clicks it, waits 1 s, and if it
+the battle list and HP is 50 % or above, right-clicks it, waits 1 s, and if it
 is still there left-clicks it (the character steps on), waits 1 s again. Once
 it is gone it fights what spawns, then goes on from the nearest waypoint.
 After 3 such tries, or with no way to it, the swirl is ignored until it was
@@ -170,29 +187,33 @@ target never lands on one. Log: `echo raid seen at x,y,z, triggering`, then
 a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
 (`<time>_<x>_<y>_<z>_<right|left>.png`); bot.log names each file.
 
-Looting presses the loot hotkey (the OTS loots every corpse around on
-Alt+Q) 0.3 s after each kill (also when more monsters of that name are left),
-before attacking the next monster, and again
-when the battle list empties, then stands
-still for the set wait (400 ms by default) before walking on. Below the set
-HP (70 % by default) it holds still and heals first, then loots. It also
-loots while an alarm is up. Set it in Cavebot > Settings. Every key tap and
-mouse click holds 60 ms, like a real press; combo hotkeys (Alt+Q, Shift+F1)
-hold all their keys down together. Reflash the Leonardo after updating.
-
-Cavebot > Settings has a switch for each loot trigger. **Loot after every kill**
-(on by default) is the above. **Loot ringed corpses next to me** (off by
-default) presses the loot hotkey whenever a corpse's turning loot ring shows
-on the character's tile or the 8 around it, mid-fight too, without stopping;
-presses are the set wait apart, and at least 0.5 s. A ring counts only within
-3 s of the target dying: monsters hitting the character
-flash the same way and kept the cavebot from walking. The ring is also seen
-while the character walks (the scroll is undone first); after a
-ring press the cavebot stands for the set wait so the loot lands. With only
-this switch on, the cavebot stands still for up to 1 s after a kill
-(attacking goes on) until the ring press. bot.log shows `loot triggered`
-when a ring is found and `looting` at each loot press. A ring
-whose press could not go out at once is pressed on the next free slot.
+Looting runs only while the cavebot is on and the bot is not paused (F12 or
+Pause). It looks for the corpse's loot ring every tick: the ring shows the
+moment the monster dies, so there is no wait after a kill. When a ring shows
+on the character's tile or one of the 8 around it, for 0.4 s (a spell flash
+does not) and with no creature with a health bar on its tile (a live
+amazon's outfit sparkles the same blue), the bot presses the loot hotkey
+(Alt+Q by default, set it in Cavebot > Settings), any time, also mid-fight.
+The client's quick loot takes every corpse in that 3x3 at once. The ring's
+light-blue dots must form its own circle (its 16 animation frames are kept in
+`moonlight/perception/loot_ring.png`), so outfits, spell smoke, fire fields,
+grass, campfires, water, skulls, white text and "puff" clouds do not count; a
+corpse with no ring has no loot. After the press the bot stands still for the
+set wait (400 ms by default) and then until no ring shows around it for 0.8 s
+(bot.log `looting: rings around the player gone`); the next attack and the
+walk wait too. Rings still there 1.5 s after a press get one more press
+(`looting: rings still there, pressing again`); after that they are left until
+the character moves (`... left here`, e.g. a full backpack). With no fight
+on, a ring 2 tiles away is walked to one step at a time and then looted
+(`looting: ring at (x, y) 2 tiles away: step d`); after 3 steps that do not
+bring it in reach it is left. Farther rings are ignored. Below the set HP (70 %
+by default) it holds still and heals first, then loots. It also loots while an
+alarm is up. bot.log shows `looting: ring at (x, y), N tiles away: press
+alt+q` for each press, and each press is saved as a screenshot (the ring
+circled in yellow) in `logs/loot_rings/<time>_ring.png`; the newest 40 stay.
+Every key tap and mouse click holds 60 ms, like a real
+press; combo hotkeys (Alt+Q, Shift+F1) hold all their keys down together.
+Reflash the Leonardo after updating.
 
 Every waypoint button in Route adds the waypoint on the character's
 tile; there are no typed X, Y, Z fields. The bot walks onto that tile before
@@ -201,7 +222,7 @@ it does the waypoint: a `label`, `goto`, `say`, `key`, `drag`, `script` or
 stands. One click on a row in the waypoint list highlights it; the ▲ and ▼
 buttons above the list move it one row up or down, and ✕ (or the Delete key)
 deletes it, with no popup; the row below is highlighted next. Press Save to
-keep the change. The buttons are grayed out while Cavebot is on. The list
+keep the change. The buttons are grayed out while Cavebot is on (except Refill now). The list
 keeps its scroll position when it changes. The cavebot starts from the highlighted
 waypoint, or from waypoint 1 when none is highlighted; picking another route
 clears the highlight.
@@ -213,7 +234,9 @@ the set number (Cavebot > Refill > `cap <`, 0 = off: the number shows gray with 
 health or mana potions than set there (0 = off; spirit potions count for
 both), or after **Refill now** is pressed; otherwise it goes on to the next
 waypoint. The potions are found on the action bar by their
-picture (`data/templates/potions/<health|mana|spirit>/`), the Cap box by
+picture (`data/templates/potions/<health|mana|spirit>/`; a few potions look
+different from a full stack, and a faded slot, saved as `*_empty.png`, means 0
+left), the Cap box by
 `data/templates/cap_label.png`; their digits must match known shapes
 (learned from the golden screenshots), or be twice as close to one digit as to any other. A cap or count that does not read never
 sends the bot to town. Each `check` logs one line per number that is on, such
@@ -231,13 +254,14 @@ depot, the trade window and the chat button on screen when they run:
   the locker window and drags the loot backpack onto it (every stashable item
   goes in, the backpack stays). Pick the backpack once with **Pick backpack**
   on Cavebot > Refill: drag a box around it on a grab of the client
-  (saved as `loot_backpack.png` in the profiles folder).
+  (saved as `loot_backpack.png` in the profiles folder; the tab shows it after
+  a restart).
 - `trade`: record it on the tile right next to the NPC (NPCs answer within 3
   sqm and wander). The bot stands on that tile, says `hi`, `trade`, waits up
   to 3 s for the trade window (else talks again), clicks Buy and buys the
   route's buy list in order: search the name, pick the first result, drag the
   amount slider to the row's percent, Buy. A health or mana potion whose
-  action-bar total did not go up is bought again. Write the buy list on
+  action-bar total did not go up is bought once more, then Esc closes the trade window and the walk goes on. Write the buy list on
   Cavebot > Refill, one `item, percent` per line (`strong mana potion, 80`);
   it is saved in the route file.
 - `bank`: also next to the NPC. Says `hi`, `deposit all`, `yes`, waits about
@@ -291,7 +315,14 @@ def run(bot):
     if (bot.count("mana") or 0) < 50:  # action-bar potions, None when unknown
         yield bot.goto("town")    # walk on from route label town
     yield bot.press("f5")
+    if (bot.stamina() or 99 * 60) < 39 * 60 + 30:  # minutes, None when unread
+        yield bot.goto("relog")
 ```
+
+`bot.stamina()` reads the Stamina line of the Skills window, so keep that
+window open. The bot also reads the stamina every 5 minutes, shows it on the
+Dashboard's Stamina card and logs it when it changes
+(`stamina 41:23`, with `(under 39:30)` once it is low).
 
 A running script pauses walking and waits during a fight or looting; healing
 always goes first.
@@ -371,6 +402,9 @@ The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start`
   bot keeps reading the screen (HP, MP, position on the Dashboard, 5 times a
   second) and the Arduino stays connected. Start goes on from the nearest
   waypoint.
+- The Arduino connects on its own (found by its USB id, whatever the COM
+  port). When none answers, the GUI tries again every 30 s, so plug it in
+  and wait.
 - The Cavebot switch can be turned on or off while paused or stopped; the
   cavebot walks only after Start.
 - A pause of its own (Tibia covered or not in front) never shuts the bot down:
@@ -383,14 +417,52 @@ everything, keys included.
 A crash of any part is written there too, and a GUI that cannot start shows
 a message box with the error.
 
+The client can be on any monitor, fully on one. Calibrate on the monitor you
+play on: a profile made on another one stops with "Layout changed, recalibrate".
+Calibration works while the bot is stopped (Stop); it is grayed only while
+the bot runs. Clicks are fastest with the client on the main monitor: Windows
+points the Arduino's jump-to-spot mouse at the main monitor only, so on another
+monitor the mouse moves step by step (bot.log: `client is not on the main
+monitor`). To keep fast clicks on the other monitor, make it the main display
+(Windows Settings > Display > "Make this my main display").
+
+The window and its taskbar button show the Moonlight logo
+(`moonlight/gui/icon.ico`). For a desktop icon, right-click
+"Start Moonlight GUI.bat" > Show more options > Create shortcut, move the
+shortcut to the desktop, then Properties > Change Icon > Browse to
+`moonlight\gui\icon.ico`.
+
+## Client hotkeys
+
+Settings > Client hotkeys puts the bot's keys into the game client, so the
+client does what the bot expects on every key it presses.
+
+1. **Client file**: the client's `conf/clientoptions.json`. Empty means the
+   official client (`%LOCALAPPDATA%\Tibia\packages\Tibia\conf`). For another
+   server, press Browse and pick the file in that client's `conf` folder. Each
+   bot config remembers its own file.
+2. One row per key the bot uses (healing, cures, attack and area spells,
+   rope, shovel, ticked extras). Type the spell words (`exura vita`), an item
+   name (`great mana potion`, `sudden death rune`, `rope`...) or an item id
+   number. Logout, loot and toggle chase need nothing: they are client
+   actions. A row left empty is skipped.
+3. Close the game client, then press **Write Moonlight hotkeys**.
+
+It writes a hotkey set named **Moonlight**: a copy of the set in use (or the
+Moonlight set from last time) with the bot's keys changed, so your other keys
+stay. Spells and items go on free buttons of action bar 1; a key that already
+had a button keeps it. The client opens with the Moonlight set and stops
+switching sets per character. The old file is kept as
+`clientoptions.json.bak`. The log lists each key and its button.
+
 ## Healing and cures
 
 Healing presses your action-bar hotkeys. It never types spell names. Set it up
 in the GUI's Healing tab, or in the `healing` section of your profile config:
 
 - **Rules** are checked top to bottom. Each has a kind (`spell` or `potion`), a
-  hotkey, an HP trigger (`hp_below_percent`), an MP trigger
-  (`mp_below_percent`) and a mana floor (`minimum_mana_percent`). 0 means unused.
+  hotkey, an HP trigger (`hp_below_percent`) and an MP trigger
+  (`mp_below_percent`). 0 means unused.
 - Each tick sends the first due spell and the first due potion, so both can
   land together. Spells and potions have their own cooldowns
   (`spell_cooldown_ms`, `potion_cooldown_ms`, default 1000).
@@ -419,12 +491,13 @@ or in the `targeting` section of your profile config:
 
 - **Monster rows** match a battle-list name (ignoring case). Each has a
   priority (1-5, higher first), `ignore` ("never attack" in the tab), an
-  attack `hotkey` (empty = melee only), a mana floor (`minimum_mana_percent`)
-  and a `movement`: `follow` (chase) or `none` (stand still). Players are
+  attack `hotkey` (empty = melee only), a mana floor in mana points
+  (`minimum_mana`, e.g. 200) and a `movement`: `follow` (chase) or `none`
+  (stand still). Players are
   never targeted.
 - **`default_monster`** is the row for every monster without its own row, so
   everything is attacked unless you ignore it. The tab shows it as "all others".
-  Default: priority 1, F6, 10% mana, follow.
+  Default: priority 1, no mana floor, follow.
 - The bot picks the highest priority first. Among the same priority,
   Targeting > Settings > **Same priority: attack first the** picks:
   **lowest hp** (default), **highest hp** or **battle list** (the top row;
@@ -433,11 +506,15 @@ or in the `targeting` section of your profile config:
   comes, and never clicks it twice (a second click untargets). A selected
   "never attack" monster is left for the next one.
 - **Area rules** press a hotkey when at least `minimum_adjacent_monsters`
-  creatures stand next to you and MP is at least `minimum_mana_percent`.
-  Default: F5 at 3 monsters, 30% mana. A rule is used only while it is
+  creatures stand next to you and MP is at least `minimum_mana` mana points.
+  Default: no mana floor. A rule is used only while it is
   ticked (`enabled`). A ticked rule is grayed in the tab so it isn't edited
   by accident. All attack keys share `attack_cooldown_ms` (default 2000); a new
   target starts it fresh, so its first spell goes out at once.
+- **Mana points**: the bot reads your max mana off the `115/295` text on the
+  MP bar (Tesseract) every 30 s and logs `max mana: 295`. Until it is read,
+  MP counts as 0, so a hotkey with a mana floor waits. An old
+  `minimum_mana_percent` in a config is dropped with a warning: set it again.
 - **Unreachable:** when the target's HP stands still for
   `unreachable_after_seconds` (default 4), the bot takes one step toward it.
   After the same time again, it skips that monster for 30 s. With no other

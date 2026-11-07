@@ -1027,6 +1027,73 @@ def test_walk_keys_walk_onto_a_hole_when_it_is_the_waypoint(tmp_path: Path) -> N
     assert sim.bot.planned_path[-1] == (5, 8)  # the route asks for it: onto it
 
 
+# doc: docs/prs/client-hotkeys.md#leave-floor
+def test_a_floor_with_no_reachable_waypoint_goes_to_the_next_one_on_it(tmp_path: Path) -> None:
+    costs = _corridor_map(tmp_path)  # no floor change to leave by
+    route = [walk(5, 4, 6), walk(5, 12, 6), walk(100, 100, 7)]  # (100, 100) is off the corridor
+    sim = Sim(route, Position(5, 4, 6), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(5, 4, 7)  # a fight chased the character up a ramp
+    sim.step()
+    assert sim.route.current == 2 and sim.bot.alarm is None  # tried anyway, not "lost"
+
+
+# doc: docs/prs/client-hotkeys.md#keep-route-on-a-wrong-floor
+def test_a_step_onto_a_closed_off_platform_goes_back_down_and_on(tmp_path: Path) -> None:
+    costs = _corridor_map(tmp_path, hole=(5, 8))
+    # waypoint 2 is on floor 7 but off the corridor: the platform does not reach it
+    route = [walk(5, 4, 6), walk(5, 12, 6), walk(100, 100, 7), walk(5, 20, 6)]
+    sim = Sim(route, Position(5, 4, 6), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    sim.step()
+    assert sim.route.current == 1
+    sim.pos = Position(5, 4, 7)  # waypoint 0's step led up onto the platform
+    _step_until_planned(sim)
+    assert sim.route.current == 1  # not resynced to waypoint 2: the route stays put
+    assert sim.bot.planned_path[-1] == (5, 8)  # back down by the stairs
+    sim.pos = Position(5, 8, 6)
+    sim.step()
+    assert sim.route.current == 1 and sim.bot.alarm is None  # goes on where it left off
+
+
+# doc: docs/prs/client-hotkeys.md#leave-floor
+def test_stuck_with_no_reachable_waypoint_on_the_floor_leaves_by_the_floor_change(
+    tmp_path: Path,
+) -> None:
+    costs = _corridor_map(tmp_path, hole=(5, 8))
+    route = [walk(5, 4, 6), walk(5, 12, 6), walk(100, 100, 7)]  # (100, 100) is off the corridor
+    sim = Sim(route, Position(5, 4, 6), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(5, 4, 7)  # a fight chased the character onto a closed-off platform
+    sim.bot._skip_unreachable(sim.pos, sim.bot._map_walkable)  # stuck: no way to waypoint 2
+    _step_until_planned(sim)
+    assert sim.bot.planned_path[-1] == (5, 8)  # off this floor, not to (100, 100)
+    sim.pos = Position(5, 8, 6)  # back down
+    sim.step()
+    assert sim.route.current == 1 and sim.bot.alarm is None
+
+
+# doc: docs/prs/client-hotkeys.md#waypointless-floor
+def test_a_floor_with_no_waypoint_is_left_and_a_dead_exit_not_taken_again(
+    tmp_path: Path,
+) -> None:
+    costs = _corridor_map(tmp_path, hole=(5, 8))
+    sim = Sim([walk(5, 4, 6), walk(5, 12, 6)], Position(5, 4, 6), walk_keys=True, cost_map=costs)
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(5, 4, 7)  # chased up onto a roof with no waypoint
+    _step_until_planned(sim)
+    assert sim.bot.planned_path[-1] == (5, 8) and sim.bot.alarm is None
+    sim.pos = Position(5, 8, 8)  # those stairs led to another floor with no waypoint
+    sim.step()
+    assert (5, 8, 7) in sim.bot._dead_exits
+    sim.pos = Position(5, 4, 7)
+    sim.step()
+    assert sim.bot.alarm == "lost"  # the only floor change is the dead one
+
+
 # doc: docs/prs/avoid-holes.md#route-lines-last
 def test_route_lines_only_where_the_map_shows_no_way(tmp_path: Path) -> None:
     costs = _corridor_map(tmp_path, blocked=(5, 8))  # a way around it exists
@@ -1328,6 +1395,29 @@ def test_walk_keys_skip_unreachable_waypoints_until_one_has_a_way(
     assert sim.bot.is_active()
 
 
+# doc: docs/prs/client-hotkeys.md#next-waypoint-when-stuck
+def test_walk_keys_with_no_way_anywhere_try_the_next_waypoint_on_the_floor(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    tile = np.full((256, 256, 3), 100, np.uint8)
+    for y in (100, 110):  # walls all around both waypoints
+        tile[y - 1 : y + 2, 109:112] = (0, 255, 255)
+        tile[y, 110] = 100
+    cv2.imwrite(str(tmp_path / "0_0_7.png"), tile)
+    sim = Sim(
+        [walk(110, 100), walk(110, 110)],
+        Position(100, 100, 7),
+        walk_keys=True,
+        cost_map=CostMap(tmp_path),
+    )
+    sim.bot.start()
+    with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
+        while sim.now < 30 and "trying waypoint 1" not in caplog.text:
+            sim.step()
+    assert "no way to waypoint 0, trying waypoint 1" in caplog.text
+    assert sim.route.current == 1 and sim.bot.is_active()
+
+
 def test_walk_keys_never_skips_back_to_the_waypoint_it_stands_on(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -1415,7 +1505,7 @@ def test_finddepo_walks_to_the_free_tile_below_the_nearest_locker(
     # Lockers in slots (7, 3) and (9, 3): the player (slot 7, 5) is at 100,100.
     sim = _depot_sim(monkeypatch, {(7, 3), (9, 3)})
     sim.seen["creatures"] = {(7, 4)}  # type: ignore[attr-defined]  # someone at the first
-    sim.step()
+    run_until(sim, 0.6)  # stood still long enough for a settled view
     assert sim.bot.depot_locker == (102, 98, 7)
     assert sim.clicker.clicks  # walking to 102,99
     sim.pos = Position(102, 99, 7)
@@ -1430,10 +1520,10 @@ def test_finddepo_waits_while_every_locker_is_taken_then_alarms(
     sim.seen["creatures"] = {(7, 4)}  # type: ignore[attr-defined]
     run_until(sim, 299)
     assert sim.bot.alarm is None and sim.route.current == 0 and not sim.clicker.clicks
-    run_until(sim, 302)
+    run_until(sim, 304)
     assert sim.bot.alarm == "depot_taken" and sim.bot.is_active()
     sim.seen["creatures"] = set()  # type: ignore[attr-defined]
-    run_until(sim, 306)
+    run_until(sim, 307)
     assert sim.bot.alarm is None and sim.bot.depot_locker == (100, 98, 7)
     sim.pos = Position(100, 99, 7)
     sim.step()
@@ -1455,6 +1545,8 @@ def _deposit_sim(
               frames=lambda: frame, backpack=bag, clicker=SteppedClicker())  # fmt: skip
     sim.bot.start()
     sim.bot.depot_locker = (100, 98, 7)
+    sim.step()  # sees the position
+    sim.now += 0.5  # the view settled
     return sim
 
 
@@ -1489,8 +1581,22 @@ def test_finddepo_looks_as_soon_as_its_tile_is_in_view(monkeypatch: pytest.Monke
     # Its tile 100,100 is blocked by a player: the bot is 3 tiles off.
     sim = _depot_sim(monkeypatch, {(7, 3)})
     sim.pos = Position(97, 100, 7)
-    sim.step()
+    run_until(sim, 0.6)
     assert sim.bot.depot_locker == (97, 98, 7)
+
+
+def test_finddepo_reads_the_lockers_only_once_the_player_stands_still(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#finddepo-waypoint
+    # Mid-step the view is scrolled: a locker read then lands a tile off.
+    sim = _depot_sim(monkeypatch, {(7, 3)})
+    for x in range(95, 99):  # walking in, a new tile every 0.3 s
+        sim.pos = Position(x, 100, 7)
+        sim.step(0.3)
+    assert sim.bot.depot_locker is None
+    run_until(sim, sim.now + 0.6)
+    assert sim.bot.depot_locker == (98, 98, 7)
 
 
 def test_walk_keys_turn_the_chat_off_instead_of_calling_the_tile_blocked(
@@ -1591,10 +1697,34 @@ def test_trade_buys_each_row_and_buys_a_potion_again_when_its_total_did_not_go_u
     assert points.count((816, 725)) == 3  # Buy: the potion twice, the rope once
     keys = "".join(line[2:] for line in sim.fake.sent_lines if line.startswith("K "))
     assert keys.count("strong") == 2 and keys.count("rope") == 1
+    last_key = [line for line in sim.fake.sent_lines if line.startswith("K ")][-1]
+    assert last_key == "K esc"  # closes the trade window before walking on
     a, b = clicker.to_wire((680, 683)), clicker.to_wire((680 + 46, 683))
     drag = [f"A {a[0]} {a[1]}", "H L", f"A {b[0]} {b[1]}", "R L"]
     mouse = [line for line in sim.fake.sent_lines if line[0] in "AHR"]
     assert mouse == drag * 2  # the rope's 0 % leaves the slider at 1
+
+
+def test_trade_buys_a_potion_at_most_twice_when_its_total_never_goes_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc: docs/prs/depot.md#trade-waypoint
+    import moonlight.cavebot.cavebot as cb
+
+    clicker = SteppedClicker()
+    monkeypatch.setattr(cb, "find_chat", lambda frame: (
+        [c[0] for c in clicker.clicks].count((500, 600)) % 2 == 0, (500, 600)))  # fmt: skip
+    monkeypatch.setattr(cb, "find_picture", lambda frame, path: (700, 400))
+    frame = np.zeros((10, 10, 3), np.uint8)
+    sim = Sim([Waypoint(100, 100, 7, "trade"), walk(110, 100)], Position(100, 100, 7),
+              frames=lambda: frame, clicker=clicker,
+              potion_counts=lambda: {"health": 5, "mana": 10})  # fmt: skip
+    sim.route.buy = [("strong mana potion", 50), ("strong health potion", 50)]
+    sim.bot.start()
+    run_until(sim, 60)
+    assert sim.route.current == 1
+    keys = "".join(line[2:] for line in sim.fake.sent_lines if line.startswith("K "))
+    assert keys.count("mana") == 2 and keys.count("health") == 2
 
 
 def test_bank_alarms_after_3_min_of_a_chat_that_will_not_turn_on(
@@ -1754,7 +1884,7 @@ def test_use_waits_for_no_monsters_and_hp(monkeypatch: pytest.MonkeyPatch, unsaf
     if unsafe == "monster":
         sim.state.monsters = [Monster("Rat", 100.0)]
     else:
-        sim.state.hp_percent = 79.0
+        sim.state.hp_percent = 49.0
     sim.step()
     sim.step()
     assert "d" not in pressed(sim)

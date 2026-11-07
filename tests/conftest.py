@@ -17,3 +17,6 @@ def _empty_profiles_dir(
     profiles = tmp_path_factory.mktemp("profiles")
     monkeypatch.setattr("moonlight.calibration.calibrate.default_profiles_dir", lambda: profiles)
     monkeypatch.setattr("moonlight.calibration.profile.default_profiles_dir", lambda: profiles)
+    monkeypatch.setattr(
+        "moonlight.looting.looting.LOOT_SHOTS_DIR", tmp_path_factory.mktemp("loot_rings")
+    )

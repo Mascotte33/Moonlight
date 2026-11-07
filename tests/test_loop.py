@@ -916,6 +916,18 @@ class TestGameLoopStats:
         assert gl.get_stats()["actions_sent"] == 0
 
 
+#: A cavebot that is on but walks nowhere: looting runs only with the cavebot on.
+IDLE_CAVEBOT = SimpleNamespace(
+    route=SimpleNamespace(current=0),
+    release_walk_key=lambda: None,
+    is_active=lambda: False,
+    luring=lambda: False,
+    stuck_on_creatures=False,
+    on_target_killed=lambda: None,
+    alarm=None,
+)
+
+
 class TestCurrentTask:
     def _task(self, ws: WorldState, modules: DecisionModules | None = None) -> object:
         if modules is None:
@@ -938,10 +950,11 @@ class TestCurrentTask:
         looting = SimpleNamespace(
             should_loot=lambda s: True,
             loot_first=lambda s: True,
-            ring_due=lambda: False,
+            ring_due=lambda reach, snap: False,
             step=lambda s: None,
         )
-        modules = DecisionModules(looting=cast(Looting, looting))
+        cavebot = cast(Cavebot, IDLE_CAVEBOT)
+        modules = DecisionModules(looting=cast(Looting, looting), cavebot=cavebot)
         assert self._task(make_state(), modules=modules) == "Looting"
 
     def test_walking_to_waypoint(self) -> None:
@@ -959,35 +972,30 @@ class TestCurrentTask:
 
 
 
-def test_a_loot_ring_counts_only_after_the_target_died() -> None:
+def test_loot_ring_reach_is_two_tiles() -> None:
     ws = make_state()
     rat = Monster("Rat")
     with ws.lock():
         ws.monsters = [rat, Monster("Cave Rat", battle_list_row=1)]
         ws.selected_target = rat
-    checks: list[int] = []
+    checks: list[range] = []
 
-    def ring_due() -> bool:
-        checks.append(1)
+    def ring_due(reach: range, snap: WorldState) -> bool:
+        checks.append(reach)
         return False
 
     looting = SimpleNamespace(
         should_loot=lambda s: False,
         loot_first=lambda s: False,
         ring_due=ring_due,
-        on_target_died=lambda name: None,
     )
-    gl, _ = make_loop(ws, FakeInput(), modules=DecisionModules(looting=cast(Looting, looting)))
+    modules = DecisionModules(looting=cast(Looting, looting), cavebot=cast(Cavebot, IDLE_CAVEBOT))
+    gl, clock = make_loop(ws, FakeInput(), modules=modules)
     gl.tick()
-    assert checks == []  # rats hitting the player flash like a ring
-    with ws.lock():
-        ws.monsters = [rat]  # the cave rat walked out of view
-    gl.tick()
-    assert checks == []
     with ws.lock():
         ws.monsters, ws.selected_target = [], None  # the target died
     gl.tick()
-    assert checks == [1]
+    assert checks == [range(0, 3), range(0, 3)]  # 5x5, mid-fight or not
 
 # doc: docs/prs/extras.md#extras
 class TestExtras:

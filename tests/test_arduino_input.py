@@ -292,9 +292,17 @@ class TestConstruction:
         with pytest.raises(NoArduinoFoundError):
             ArduinoInput()
 
-    def test_explicit_missing_port_raises(self, fake_serial: types.SimpleNamespace) -> None:
+    def test_gone_typed_port_falls_back_to_the_detected_one(
+        self, fake_serial: types.SimpleNamespace
+    ) -> None:
         fake_serial.add_port(COM)
-        with pytest.raises(NoArduinoFoundError):
+        with ArduinoInput(port="COM99") as ard:
+            assert ard.connected_port == COM
+
+    def test_gone_typed_port_and_no_arduino_raises(
+        self, fake_serial: types.SimpleNamespace
+    ) -> None:
+        with pytest.raises(NoArduinoFoundError, match="'COM99' or with VID"):
             ArduinoInput(port="COM99")
 
     def test_vid_mismatch_not_detected(self, fake_serial: types.SimpleNamespace) -> None:

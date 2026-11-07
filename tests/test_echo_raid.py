@@ -85,3 +85,11 @@ def test_the_live_client_trigger_is_found_and_crates_are_not() -> None:
     # Owner's client 2026-11-01: the trigger top-left, wooden crates and fire basins around.
     frame = np.array(Image.open(Path(__file__).parent / "echo_raid_live.png").convert("RGB"))
     assert find_echo_raids(frame, (0, 0, 562, 412)) == [(4, 1)]
+
+
+def test_pink_crystals_are_not_triggers() -> None:
+    # Owner's client 2026-11-05: two pink crystals by a city wall, no trigger
+    # (the bot clicked them: "You cannot use this object"). Game view at half size.
+    frame = np.array(Image.open(Path(__file__).parent / "echo_raid_crystals.png").convert("RGB"))
+    h, w = frame.shape[:2]
+    assert find_echo_raids(frame, (0, 0, w, h)) == []

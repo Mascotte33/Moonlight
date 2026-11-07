@@ -111,7 +111,8 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   to 3 s for the trade window (else talks again), clicks Buy, then buys each
   row of the route's buy list: search the name, pick the first result, drag
   the amount slider to the row's percent, Buy. A health or mana potion whose
-  action-bar total did not go up is bought again. Alarm ``"trade"`` after 3 min.
+  action-bar total did not go up is bought once more, then the trade moves on.
+  Alarm ``"trade"`` after 3 min.
 * **script**: runs the user script named by its label
   (:mod:`moonlight.scripts.scripts`); the route holds until it ends.
 * **End of route**: a hunting route starts over at waypoint 0; a route
@@ -261,7 +262,7 @@ _CREATURE_IN_THE_WAY_CLICK_WAIT = 1.5
 _VIEW_SETTLE = 0.5
 # doc: docs/prs/echo-raid.md#use
 #: HP % at or above which an echo raid trigger is walked onto (with no monster around).
-ECHO_RAID_MIN_HP = 80.0
+ECHO_RAID_MIN_HP = 50.0
 #: Seconds after each click on an echo raid trigger before looking whether it is gone.
 ECHO_RAID_CLICK_WAIT = 1.0
 #: Right-click + left-click tries on one trigger before it is ignored.
@@ -481,7 +482,8 @@ def trade_steps(buy: list[tuple[str, int]]) -> list[TalkStep]:
     ``(op, a, b)``: ``win`` waits for the window, ``click`` / ``to`` click /
     move the mouse at (a, b) from the window's ``npc_trade.png``, ``down`` /
     ``up`` the left button, ``count`` reads the potions, ``health`` / ``mana``
-    goes back to step a when that total did not go up."""
+    goes back to step a once when that total did not go up. Esc closes the
+    window at the end so the walk goes on."""
     steps: list[TalkStep] = [*talk_steps(("hi", "trade")), ("win", 0, 0), ("click", *_BUY_SWITCH)]
     for item, percent in buy:
         row = len(steps)
@@ -494,7 +496,7 @@ def trade_steps(buy: list[tuple[str, int]]) -> list[TalkStep]:
             steps += [("to", x, y), ("down", 0, 0), ("to", right, y), ("up", 0, 0), 0.3]
         steps += [("click", *_BUY), 1.0]
         steps += [(kind, row, 0) for kind in ("health", "mana") if kind in item.lower()]
-    return [*steps, False]
+    return [*steps, False, "esc"]
 
 
 class Cavebot:
@@ -652,6 +654,8 @@ class Cavebot:
         self._trade_at: tuple[int, int] | None = None
         self._trade_wait_since: float | None = None
         self._potions_before: dict[str, int | None] = {}
+        #: ``trade``: buy rows already bought again (each gets one more try).
+        self._rebought_rows: set[int] = set()
         self._potion_counts = potion_counts
 
         #: Why the route stopped on its own ("stuck", "lost", "goto_loop"),
@@ -659,6 +663,12 @@ class Cavebot:
         self.alarm: str | None = None
         self._active = False
         self._last_pos: Position | None = None
+        #: Floor-change tile walked to when no waypoint on this floor is reachable.
+        self._floor_exit: Waypoint | None = None
+        #: The floor change last walked through by :meth:`_leave_floor`.
+        self._left_by: Waypoint | None = None
+        #: Floor changes that led to a floor with no waypoint: never left by again.
+        self._dead_exits: set[tuple[int, int, int]] = set()
         self._last_move = 0.0
         #: Last position change (resume() also restarts _last_move, a fight is not "stuck").
         self._moved_at = float("-inf")
@@ -775,7 +785,14 @@ class Cavebot:
             return
 
         wp = self.route.waypoints[self.route.current]
-        if wp.action == "finddepo":
+        exit_ = self._floor_exit
+        if exit_ is not None and (pos.z != exit_.z or (pos.x, pos.y) == (exit_.x, exit_.y)):
+            if pos.z != exit_.z:
+                self._left_by = exit_
+            self._floor_exit = exit_ = None  # left the floor, or the tile did not change it
+        if exit_ is not None:
+            wp = exit_
+        elif wp.action == "finddepo":
             stand = self._find_depot(wp, pos, now)
             if stand is None:
                 self.release_walk_key()
@@ -802,7 +819,7 @@ class Cavebot:
             return
         if pos.z != wp.z:
             self.release_walk_key()
-            self._resync_floor(pos.z)
+            self._resync_floor(pos)
             return
         if self.alarm == "lost":
             logger.info("cavebot: back on floor %d, route goes on", pos.z)
@@ -1215,9 +1232,13 @@ class Cavebot:
             else:
                 before, after = self._potions_before.get(op), counts.get(op)
                 if before is not None and after is not None and after <= before:
-                    logger.info("cavebot: trade: %s potions did not go up, buying again", op)
-                    self._sends_done = a
-                    return
+                    if a in self._rebought_rows:
+                        logger.warning("cavebot: trade: %s potions still not up, moving on", op)
+                    else:
+                        logger.info("cavebot: trade: %s potions did not go up, buying again", op)
+                        self._rebought_rows.add(a)
+                        self._sends_done = a
+                        return
             self._sends_done += 1
             return
         send = self._input
@@ -1270,8 +1291,17 @@ class Cavebot:
 
     # doc: docs/prs/walking.md#skip-unreachable
     def _skip_unreachable(self, pos: Position, walkable: Callable[[int, int, int], bool]) -> None:
-        """Move on to the next waypoint with a path over *walkable*; none: alarm "stuck"."""
+        """Move on to the next waypoint with a path over *walkable*.
+
+        None has one: try the next waypoint on this floor anyway (wrapping), so
+        an earlier waypoint gets the character unstuck. The map reaches none on
+        this floor (a closed-off platform): leave by the nearest floor change.
+        None on this floor: retry the blocked tiles.
+
+        # doc: docs/prs/client-hotkeys.md#next-waypoint-when-stuck
+        """
         start, index = (pos.x, pos.y, pos.z), self.route.current
+        same_floor: int | None = None
         for _ in range(len(self.route.waypoints)):
             following = self._positional_from(index + 1)
             if following is None or following == self.route.current:
@@ -1281,6 +1311,8 @@ class Cavebot:
             goal = (wp.x, wp.y, wp.z)
             if max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= _REACH.get(wp.action, 1):
                 continue  # reached at once: straight back to the unreachable one
+            if wp.z == pos.z and same_floor is None:
+                same_floor = index
             if wp.z == pos.z and next_step(start, goal, walkable) is not None:
                 logger.info(
                     "cavebot: [stuck: unreachable] waypoint %d unreachable, skipping to %d",
@@ -1291,6 +1323,18 @@ class Cavebot:
                 self._target = self._retried_target = None
                 return
         if not self._active:  # a goto loop already halted it
+            return
+        on_floor = [w for w in self.route.waypoints if has_tile(w) and w.z == pos.z]
+        if not any(self._map_reaches(pos, w) for w in on_floor) and self._leave_floor(pos):
+            return
+        if same_floor is not None:
+            logger.info(
+                "cavebot: [stuck: no-way-past] no way to waypoint %d, trying waypoint %d",
+                self.route.current,
+                same_floor,
+            )
+            self.route.current = same_floor
+            self._target = self._retried_target = None
             return
         if not self._blocked_wait:
             logger.info(
@@ -1318,6 +1362,7 @@ class Cavebot:
         self._deposit_drag, self._locker_clicked = None, float("-inf")
         self._talk, self._sends_done = None, 0
         self._trade_at = self._trade_wait_since = None
+        self._rebought_rows = set()
         self._expected_z = None
         self._last_cmd = float("-inf")
         self._clicker.cancel()  # the pending click targeted the old waypoint
@@ -1336,7 +1381,8 @@ class Cavebot:
         on_tile = dx == dy == 0
         if on_tile:
             self._last_move = now  # waiting here is not being stuck
-        if now - self._depot_looked < _DEPOT_RELOOK:
+        settled = now - self._moved_at >= _VIEW_SETTLE  # mid-step a locker is a tile off
+        if not settled or now - self._depot_looked < _DEPOT_RELOOK:
             return None if on_tile else wp
         self._depot_looked = now
         frame = self._frames() if self._frames is not None else None
@@ -1388,8 +1434,8 @@ class Cavebot:
                 self.alarm = None
             self._deposit_drag = (bag, stash)
             return
-        if now - self._locker_clicked < _DEPOT_RELOOK:
-            return
+        if now - self._locker_clicked < _DEPOT_RELOOK or now - self._moved_at < _VIEW_SETTLE:
+            return  # mid-step the click lands a tile off
         if self._locker_clicked > float("-inf") and self.alarm != "deposit":
             found = (("stash", stash), ("backpack", bag))
             missing = " and ".join(name for name, at in found if at is None)
@@ -1400,25 +1446,93 @@ class Cavebot:
         if locker is not None and pos is not None and locker[2] == pos.z:
             self._clicker.request(self._tile_pixel(locker[:2], pos), side=ClickSide.RIGHT)
 
-    def _resync_floor(self, z: int) -> None:
-        """Jump to the next positional waypoint on floor *z* (wrapping)."""
+    def _resync_floor(self, pos: Position) -> None:
+        """Jump to the next waypoint on the new floor the map can reach (wrapping).
+
+        None reachable (a step or a fight led onto a closed-off platform or
+        roof): keep the route where it was and leave by the nearest floor
+        change, so the route goes on where it left off. A floor change that
+        led to a floor with no waypoint is not taken again. No floor change
+        either: the next waypoint on the floor anyway, or with none wait as
+        ``lost``.
+
+        # doc: docs/prs/client-hotkeys.md#keep-route-on-a-wrong-floor
+        """
         wps = self.route.waypoints
-        n = len(wps)
-        for k in range(n):
-            i = (self.route.current + k) % n
-            if has_tile(wps[i]) and wps[i].z == z:
-                logger.info("cavebot: floor changed to %d, resync to waypoint %d", z, i)
-                self.route.current = i
-                self._expected_z = None
-                self._last_cmd = float("-inf")
-                self._clicker.cancel()
-                return
+        n, z = len(wps), pos.z
+        on_floor = [
+            i for i in ((self.route.current + k) % n for k in range(n))
+            if has_tile(wps[i]) and wps[i].z == z
+        ]  # fmt: skip
+        reachable = [i for i in on_floor if self._map_reaches(pos, wps[i])]
+        if reachable:
+            self._resync_to(reachable[0], z)
+            return
+        left_by = self._left_by
+        if not on_floor and left_by is not None and left_by.z != z:
+            logger.info(
+                "cavebot: floor change at %d,%d,%d leads to floor %d with no waypoint, "
+                "not taken again",
+                left_by.x, left_by.y, left_by.z, z,
+            )  # fmt: skip
+            self._dead_exits.add((left_by.x, left_by.y, left_by.z))
+            self._left_by = None
+        if self._leave_floor(pos):
+            return
+        if on_floor:
+            self._resync_to(on_floor[0], z)
+            return
         # doc: docs/prs/position-lost.md#wait-on-an-unknown-floor
         # The route used to stop here for good: a floor misread for one tick
         # after a pause (bot.log 2026-10-31 22:44:01) ended the hunt.
         if self.alarm != "lost":
             logger.warning("cavebot: [stuck: lost] no waypoint on floor %d, waiting", z)
             self.alarm = "lost"
+
+    def _resync_to(self, index: int, z: int) -> None:
+        logger.info("cavebot: floor changed to %d, resync to waypoint %d", z, index)
+        self.route.current = index
+        self._expected_z = None
+        self._last_cmd = float("-inf")
+        self._clicker.cancel()
+
+    def _map_reaches(self, pos: Position, wp: Waypoint) -> bool:
+        """True without a cost map, or when it (or the route's lines) shows a way to *wp*."""
+        if self._cost_map is None or self._cost_map.empty or (pos.x, pos.y) == (wp.x, wp.y):
+            return True
+        self._trust_route = True  # _step_toward sets it again before it walks
+        return next_step((pos.x, pos.y, pos.z), (wp.x, wp.y, wp.z), self._map_walkable) is not None
+
+    # doc: docs/prs/client-hotkeys.md#leave-floor
+    def _leave_floor(self, pos: Position) -> bool:
+        """Head for the nearest reachable floor change within 30 sqm; False when none.
+
+        Floor changes next to a dead exit (the same stairs) are skipped.
+        """
+        cost = self._cost_map
+        if cost is None or cost.empty:
+            return False
+        near = sorted(
+            ((x, y) for x in range(pos.x - 30, pos.x + 31) for y in range(pos.y - 30, pos.y + 31)),
+            key=lambda t: max(abs(t[0] - pos.x), abs(t[1] - pos.y)),
+        )
+        for x, y in near[1:]:  # [0] is the player's own tile
+            stairs = Waypoint(x, y, pos.z, "stairs")
+            dead = any(
+                dz == pos.z and max(abs(dx - x), abs(dy - y)) <= 1
+                for dx, dy, dz in self._dead_exits
+            )  # fmt: skip
+            if not dead and cost.floor_change(x, y, pos.z) and self._map_reaches(pos, stairs):
+                logger.warning(
+                    "cavebot: [stuck: off-route] no reachable waypoint on floor %d, "
+                    "leaving by the floor change at %d,%d",
+                    pos.z, x, y,
+                )  # fmt: skip
+                self._floor_exit = stairs
+                self._target = self._retried_target = None
+                self._clicker.cancel()
+                return True
+        return False
 
     def _retry_if_idle(self, now: float, command: Callable[[], None]) -> None:
         """Send *command* first time, then only after standing still a while."""

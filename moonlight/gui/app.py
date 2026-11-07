@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import customtkinter as ctk
+from PIL import Image
 
 from moonlight import x11
 from moonlight.calibration.tab import CalibrationTab
@@ -48,6 +49,7 @@ from moonlight.gui.state_bridge import (
 from moonlight.gui.status_tab import StatusTab
 from moonlight.gui.sysinfo import cpu_percent, cpu_times, memory_text
 from moonlight.gui.tab_base import Label, Tab, dot_color, health, set_bar, set_label
+from moonlight.hardware.input import NoArduinoFoundError
 from moonlight.hardware.tab import HardwareTab
 from moonlight.healing.tab import HealingTab
 from moonlight.scripts.tab import ScriptsTab
@@ -56,6 +58,7 @@ from moonlight.targeting.tab import TargetingTab
 #: Poller period in ms (10 Hz — light enough for a low-spec laptop).
 POLL_MS = 100
 RETRY_S = 5.0  # seconds between tries to start a bot that is down
+ARDUINO_RETRY_S = 30.0  # seconds between tries while no Arduino answers
 WATCH_S = 0.2  # seconds between position reads while the bot is stopped
 _VK_F12 = 0x7B
 logger = logging.getLogger("moonlight.gui.app")
@@ -146,6 +149,12 @@ __all__ = [
 ]
 
 
+#: The moon-eye logo (owner 2026-11-04): white on clear for the sidebar ...
+LOGO = Path(__file__).with_name("logo.png")
+#: ... and white on black for the window and taskbar.
+ICON = Path(__file__).with_name("icon.ico")
+
+
 class GuiApp:
     """customtkinter shell hosting the tabs and the state poller."""
 
@@ -166,8 +175,13 @@ class GuiApp:
         )
         self.ctx.on_config_change = self.apply_config
 
+        if sys.platform == "win32":
+            # Its own taskbar button with the Moonlight icon, not pythonw's.
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("moonlight.bot")
         self.root = ctk.CTk()
         self.root.title("MOONLIGHT — Tibia automation")
+        if sys.platform == "win32":
+            self.root.iconbitmap(default=str(ICON))  # also replaces customtkinter's icon
         self.root.geometry("1100x740")
         self.root.minsize(880, 580)
 
@@ -184,9 +198,11 @@ class GuiApp:
         ctk.CTkFrame(body, width=1, fg_color=theme.RAISED, corner_radius=0).pack(
             side="left", fill="y"
         )
-        Label(
+        ctk.CTkLabel(  # a CTkLabel: tab_base.Label shows no picture
             sidebar,
-            text="MOONLIGHT",
+            text=" MOONLIGHT",
+            image=ctk.CTkImage(Image.open(LOGO), size=(36, 36)),
+            compound="left",
             font=ctk.CTkFont(size=theme.SIZE_HEADING, weight="bold"),
             text_color=theme.TEXT,
         ).pack(anchor="w", padx=theme.PAD, pady=(theme.PAD, theme.GAP))
@@ -417,8 +433,12 @@ class GuiApp:
         try:
             loop = build_gui_loop(hardware=self.hardware, state=self.state)
         except Exception as exc:  # noqa: BLE001 - report, don't crash the app
+            if isinstance(exc, NoArduinoFoundError):
+                self._retry_at = time.monotonic() + ARDUINO_RETRY_S
             if repr(exc) != self._start_error:  # the retry repeats it every few seconds
                 logger.error("could not start bot: %r", exc)  # the GUI log and bot.log
+                if isinstance(exc, NoArduinoFoundError):
+                    logger.info("trying the Arduino again every %.0f s", ARDUINO_RETRY_S)
             self._start_error = repr(exc)
             return
         self._start_error = ""

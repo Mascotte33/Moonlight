@@ -1,6 +1,6 @@
 """Dashboard tab: stat cards, bot health, battle list and log tail (T1).
 
-Four stat cards (Uptime, Ticks, Creatures, HP) show hero-size values from
+Five stat cards (Uptime, Ticks, Creatures, HP, Stamina) show hero-size values from
 the loop's stats and the live :class:`WorldState`. The module switches live
 in Settings.
 """
@@ -16,7 +16,7 @@ from moonlight.gui.tab_base import Label, Row, Tab, dot_color, health, section, 
 
 __all__ = ["CARDS", "DashboardTab", "card_values", "recent_errors", "uptime_text"]
 
-CARDS = ("Uptime", "Ticks", "Creatures", "HP")
+CARDS = ("Uptime", "Ticks", "Creatures", "HP", "Stamina")
 
 
 def uptime_text(stats: dict[str, object]) -> str:
@@ -29,11 +29,13 @@ def uptime_text(stats: dict[str, object]) -> str:
 
 def card_values(stats: dict[str, object], snap: WorldState) -> dict[str, str]:
     """The text of each stat card."""
+    stamina = stats.get("stamina_minutes")  # doc: docs/prs/client-hotkeys.md#stamina
     return {
         "Uptime": uptime_text(stats),
         "Ticks": str(int(stat_num(stats, "tick_count"))) if stats else "—",
         "Creatures": str(len(snap.monsters)),
         "HP": f"{snap.hp_percent:.0f}%",
+        "Stamina": f"{stamina // 60}:{stamina % 60:02d}" if isinstance(stamina, int) else "—",
     }
 
 

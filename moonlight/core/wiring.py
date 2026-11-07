@@ -73,6 +73,8 @@ MODULE_REGIONS: dict[str, tuple[str, ...]] = {
 #: (200 ms at 20 Hz): they change slowly, and skipping them saves ~3 ms a tick.
 # doc: docs/prs/tick-speed.md#slow-readers
 SLOW_READ_EVERY_TICKS = 4
+#: Seconds between two reads of the max mana text (a Tesseract run, about 95 ms).
+MAX_MP_READ_SECONDS = 30.0
 
 #: Regions :func:`make_perceive` reads every tick.
 _PERCEIVE_REGIONS = (
@@ -90,14 +92,13 @@ def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect
 
     ``None`` (grab the full window) when any of them is not calibrated.
     ``game_grid`` is left out unless targeting or the cavebot (walking with
-    keys) scans it for creatures; for clicks it is only geometry, and the
+    keys) scans it for creatures, or looting for loot rings; for clicks it is only geometry, and the
     clicker grabs its own small cursor ROI.
     """
     names = set(_PERCEIVE_REGIONS) | {n for n in OPTIONAL_REGIONS if n in profile.regions}
     for module in _enabled_modules(config):
         names.update(MODULE_REGIONS.get(module, ()))
-    rings = config.looting is not None and config.looting.ringed_corpses
-    if not config.walk_keys and config.targeting is None and not rings:
+    if not config.walk_keys and config.targeting is None and config.looting is None:
         names.discard("game_grid")
     if any(name not in profile.regions for name in names):
         return None
@@ -289,11 +290,14 @@ def make_perceive(
     )
 
     ticks_until_slow_read = 0
+    max_mp: int | None = None
+    max_mp_read_at = float("-inf")
     names: list[BattleEntry] = []
     conditions: frozenset[str] = frozenset()
 
     def perceive() -> None:
         nonlocal player_box, ticks_until_slow_read, names, conditions, last_failure
+        nonlocal max_mp, max_mp_read_at
         focused = focus_check() if focus_check is not None else True
         try:
             if not focused:
@@ -302,6 +306,13 @@ def make_perceive(
             if seen_monsters is not None and client_is_foreground is not None:
                 seen_monsters.learns_new_names = client_is_foreground()
             hp, mp = vitals.read_vitals(frame)
+            # doc: docs/prs/client-hotkeys.md#mana-points
+            if time.monotonic() - max_mp_read_at >= (MAX_MP_READ_SECONDS if max_mp else 1.0):
+                max_mp_read_at = time.monotonic()
+                read_max = vitals.read_max_mp(frame)
+                if read_max != max_mp:
+                    logger.info("max mana: %s", read_max)
+                max_mp = read_max or max_mp
             monsters, selected, players = entries_to_state(battle.read_battle_list(frame))
             if ticks_until_slow_read == 0:
                 ticks_until_slow_read = SLOW_READ_EVERY_TICKS
@@ -342,6 +353,7 @@ def make_perceive(
             state.screen_ok = True
             state.hp_percent = float(hp) if hp is not None else 0.0
             state.mp_percent = float(mp) if mp is not None else 0.0
+            state.mp_points = round(state.mp_percent * max_mp / 100) if max_mp else 0
             state.monsters = monsters
             state.selected_target = selected
             state.players_on_screen = players
@@ -391,6 +403,26 @@ def _absolute_screen() -> tuple[int, int, int, int]:
     with mss.MSS() as sct:
         mon = sct.monitors[1 if sys.platform == "win32" else 0]
     return (mon["left"], mon["top"], mon["width"], mon["height"])
+
+
+def _pointer_screen(
+    window_origin: Callable[[], tuple[int, int]] | None,
+) -> tuple[int, int, int, int] | None:
+    """The absolute pointer's screen, or None (relative moves) when it can't reach the client.
+
+    # doc: docs/prs/client-hotkeys.md#second-monitor
+    """
+    if window_origin is None:
+        return None
+    left, top, width, height = screen = _absolute_screen()
+    x, y = window_origin()
+    if left <= x < left + width and top <= y < top + height:
+        return screen
+    logger.warning(
+        "client is not on the main monitor: the mouse moves step by step (slower)."
+        " Move the client to the main monitor for fast clicks"
+    )
+    return None
 
 
 def build_loop(
@@ -605,7 +637,7 @@ def build_modules(
             config=config.clicker,
             roi_provider=roi_provider,
             window_origin=window_origin,
-            screen=_absolute_screen() if config.clicker.absolute and window_origin else None,
+            screen=_pointer_screen(window_origin) if config.clicker.absolute else None,
             park_region=(
                 profile.regions["minimap"].to_tuple if "minimap" in profile.regions else None
             ),
@@ -623,6 +655,9 @@ def build_modules(
             from moonlight.perception.potions import PotionCounter
 
             m.scripts.potion_counts = PotionCounter(screen_grab).counts
+            from moonlight.perception.stamina import StaminaReader
+
+            m.scripts.stamina = StaminaReader(screen_grab).minutes
     m.scripts.clicker = m.clicker
     m.scripts.timers = config.scripts.timers()
     if config.rotation is None:
@@ -681,11 +716,7 @@ def build_modules(
                 config.looting,
                 clock=clock or time.monotonic,
                 frames=frames,
-                game_region=(
-                    profile.get_region("game_grid").to_tuple
-                    if config.looting.ringed_corpses
-                    else None
-                ),
+                game_region=profile.get_region("game_grid").to_tuple,
             )
     return m
 

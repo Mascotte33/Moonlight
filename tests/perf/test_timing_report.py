@@ -120,8 +120,8 @@ def _decision_stats(tmp: Path) -> dict[str, Stats]:
     looting = Looting(inp, clock=clock)
 
     def loot_step(_: int) -> None:
-        looting.on_target_died("Wolf")
-        looting.step(ws)
+        looting.ring_due(range(0, 2), ws.snapshot())
+        looting.step(ws.snapshot())
 
     return {
         "healing": _measure(lambda _: healing.decide(ws.snapshot())),

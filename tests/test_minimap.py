@@ -466,6 +466,31 @@ class TestMapMatcher:
         assert reader.read_position(moved, region) == Position(102, 100, 0)
         assert len(calls) == 2
 
+    # doc: docs/prs/client-hotkeys.md#nearby-floors
+    def test_no_match_on_the_read_floor_tries_nearby_floors(self) -> None:
+        tried: list[tuple[int, tuple[int, int] | None]] = []
+
+        class _Floor:
+            def read_floor(
+                self, frame: np.ndarray, region: tuple[int, int, int, int] | None = None
+            ) -> int | None:
+                return 7
+
+        class _Matcher:
+            def match(
+                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+            ) -> tuple[int, int] | None:
+                tried.append((z, near))
+                return (5, 6) if z == 5 else None
+
+        reader = make_reader(
+            floor_reader=_Floor(), map_matcher=_Matcher(), initial_position=Position(1, 2, 7)
+        )
+        frame, region = make_frame(1)
+        assert reader.read_position(frame, region) == Position(5, 6, 5)
+        near = (1, 2)
+        assert tried == [(7, near), (7, None), (8, near), (6, near), (9, near), (5, near)]
+
 
 class TestFloorIntegration:
     """z comes from an injected FloorSource (the last floor when unreadable)."""

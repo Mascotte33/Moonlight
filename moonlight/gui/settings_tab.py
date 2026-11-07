@@ -9,10 +9,13 @@ baud rate and simulation live in Hardware.
 
 from __future__ import annotations
 
-from tkinter import messagebox
+from dataclasses import replace
+from pathlib import Path
+from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
+from moonlight.core.client_hotkeys import OFFICIAL_CLIENT_FILE, bot_keys, write_moonlight_set
 from moonlight.core.config import ConfigError
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import (
@@ -23,7 +26,16 @@ from moonlight.gui.loop_factory import (
     save_config_as,
     window_titles,
 )
-from moonlight.gui.tab_base import Label, Option, Row, Tab, section, write_option
+from moonlight.gui.tab_base import (
+    Label,
+    Option,
+    Row,
+    Tab,
+    row_button,
+    row_entry,
+    section,
+    write_option,
+)
 
 __all__ = [
     "ALARMS_OPTIONS",
@@ -134,6 +146,7 @@ class SettingsTab(Tab):
         box_scripts = section(parent, "Scripts")
         box_scripts.pack(fill="x", padx=10, pady=4)
         self.build_options(box_scripts, ROTATION_OPTIONS)
+        self._build_client_hotkeys(parent)
         rows = [w for w in self.box_options.winfo_children() if isinstance(w, Row)]
         Label(
             self.box_options,
@@ -163,6 +176,97 @@ class SettingsTab(Tab):
                     reason = Label(row, text="", anchor="w", text_color=theme.BLOOD)
                     reason.pack(side="left", padx=theme.UNIT)
                     self._reasons[option.field] = reason
+
+    # -- client hotkeys ------------------------------------------------------
+    # doc: docs/prs/client-hotkeys.md#moonlight-set
+
+    def _build_client_hotkeys(self, parent: ctk.CTkFrame) -> None:
+        box = section(parent, "Client hotkeys")
+        box.pack(fill="x", padx=10, pady=4)
+        file_row = Row(box)
+        file_row.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        Label(file_row, text="Client file", anchor="w", text_color=theme.TEXT_DIM).pack(side="left")
+        self._client_file = row_entry(file_row, "", 420, self._save_client_hotkeys)
+        row_button(file_row, "Browse", self._browse_client_file, width=80)
+        self._client_keys_box = ctk.CTkFrame(box, fg_color="transparent")
+        self._client_keys_box.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self._client_texts: dict[str, ctk.CTkEntry] = {}
+        self._client_combos: list[str] | None = None
+        button_row = Row(box)
+        button_row.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
+        row_button(button_row, "Write Moonlight hotkeys", self._write_client_hotkeys, width=180)
+        self.lbl_client = Label(box, text="", anchor="w", text_color=theme.TEXT_DIM, wraplength=600)
+        self.lbl_client.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
+        self.ctx.config_listeners.append(self._fill_client_hotkeys)
+        self._fill_client_hotkeys()
+
+    def _fill_client_hotkeys(self) -> None:
+        """Refill the client file and one row per bot key (rebuilt when the keys change)."""
+        cfg = load_real_config()
+        self._client_file.delete(0, "end")
+        self._client_file.insert(0, str(cfg.client_options_file or OFFICIAL_CLIENT_FILE))
+        keys = bot_keys(cfg)
+        if [k.combo for k in keys] == self._client_combos:
+            return
+        self._client_combos = [k.combo for k in keys]
+        for child in self._client_keys_box.winfo_children():
+            child.destroy()
+        self._client_texts = {}
+        for key in keys:
+            row = Row(self._client_keys_box)
+            row.pack(fill="x", pady=(theme.UNIT, 0))
+            ctk.CTkLabel(row, text=key.combo, width=90, anchor="w").pack(side="left")
+            ctk.CTkLabel(
+                row, text=key.purpose, width=200, anchor="w", text_color=theme.TEXT_DIM
+            ).pack(side="left")
+            if key.client_action:
+                Label(row, text="client action", anchor="w", text_color=theme.TEXT_MUTED).pack(
+                    side="left", padx=(theme.UNIT, 0)
+                )
+                continue
+            text = cfg.client_hotkeys.get(key.combo, key.suggested)
+            self._client_texts[key.combo] = row_entry(row, text, 260, self._save_client_hotkeys)
+
+    def _browse_client_file(self) -> None:
+        name = filedialog.askopenfilename(
+            title="The client's conf/clientoptions.json",
+            filetypes=[("Client options", "clientoptions.json"), ("JSON", "*.json")],
+        )
+        if name:
+            self._client_file.delete(0, "end")
+            self._client_file.insert(0, name)
+            self._save_client_hotkeys()
+
+    def _save_client_hotkeys(self) -> None:
+        """Save the client file and typed texts; the running bot doesn't use them."""
+        cfg = load_real_config()
+        texts = dict(cfg.client_hotkeys)
+        texts.update({combo: entry.get().strip() for combo, entry in self._client_texts.items()})
+        typed = Path(self._client_file.get().strip())
+        client_file = None if typed in (Path(), OFFICIAL_CLIENT_FILE) else typed
+        replace(cfg, client_options_file=client_file, client_hotkeys=texts).save(picked_config())
+
+    def _write_client_hotkeys(self) -> None:
+        self._save_client_hotkeys()
+        cfg = load_real_config()
+        # ponytail: matches the game window title, not the client's folder.
+        if any(t.startswith(cfg.window_title) for t in window_titles()):
+            self.lbl_client.configure(
+                text="Close the game client first: it writes its own hotkeys back when it closes."
+            )
+            return
+        path = cfg.client_options_file or OFFICIAL_CLIENT_FILE
+        try:
+            report = write_moonlight_set(path, bot_keys(cfg), cfg.client_hotkeys)
+        except (OSError, ValueError, KeyError) as exc:
+            self.lbl_client.configure(text=f"Not written: {exc}")
+            return
+        for line in report:
+            self.ctx.log.info(f"client hotkeys: {line}")
+        self.lbl_client.configure(
+            text=f"Wrote the Moonlight set to {path} (the old file is {path.name}.bak). "
+            "Open the client: the set is in use."
+        )
 
     def _refresh_windows(self) -> None:
         self.menu_window.configure(values=window_titles() or ["No windows found"])

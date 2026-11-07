@@ -4,7 +4,8 @@ An echo raid trigger is a turning red swirl that stays on one tile until
 someone walks into it, which spawns stronger monsters. Its arms turn from
 frame to frame, but every frame has the same bright salmon core: light
 red, orange and pink pixels with some blue in them. Fire and lava have
-almost no blue; health bars and blood are darker; light wood is less red.
+almost no blue; health bars and blood are darker; light wood is less red;
+pink crystals have more blue than green (the core has less).
 
 :func:`find_echo_raids` returns the game-grid slot ``(col, row)`` of each
 core big enough to be a trigger. The sprite is 2x2 tiles drawn up and to
@@ -34,6 +35,9 @@ _CLOSE_KERNEL = np.ones((3, 3), np.uint8)
 _CORE_LOW, _CORE_HIGH = np.array([230, 60, 30]), np.array([255, 255, 215])
 #: Red minus green of a core pixel at least: light wood (crates) is 30-50, the core ~110.
 _CORE_RED_OVER_GREEN = 60
+# Green minus blue of a core pixel at least: the core's salmon is 16..142 (5th..95th
+# percentile), the pink city crystals -100..-25 (tests/echo_raid_crystals.png).
+_CORE_GREEN_OVER_BLUE = 0
 
 
 def find_echo_raids(frame: np.ndarray, grid: tuple[int, int, int, int]) -> list[tuple[int, int]]:
@@ -46,7 +50,9 @@ def find_echo_raids(frame: np.ndarray, grid: tuple[int, int, int, int]) -> list[
     if crop.size == 0:
         return []
     core = cv2.inRange(crop, _CORE_LOW, _CORE_HIGH)
-    core[crop[..., 0].astype(np.int16) - crop[..., 1] < _CORE_RED_OVER_GREEN] = 0
+    red, green, blue = (crop[..., i].astype(np.int16) for i in range(3))
+    core[red - green < _CORE_RED_OVER_GREEN] = 0
+    core[green - blue < _CORE_GREEN_OVER_BLUE] = 0
     if not cv2.countNonZero(core):
         return []
     mask = cv2.morphologyEx(core, cv2.MORPH_CLOSE, _CLOSE_KERNEL)

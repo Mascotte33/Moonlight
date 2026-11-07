@@ -58,7 +58,7 @@ class MonsterRowFields(NamedTuple):
     priority: str
     ignore: bool
     hotkey: str
-    minimum_mana_percent: str
+    minimum_mana: str
     movement: str
 
 
@@ -67,7 +67,7 @@ class AreaRuleFields(NamedTuple):
 
     hotkey: str
     minimum_adjacent_monsters: str
-    minimum_mana_percent: str
+    minimum_mana: str
     enabled: bool = True
 
 
@@ -112,8 +112,8 @@ def apply_targeting(
             "priority": _number(row.priority, int, f"monster row {number} priority"),
             "ignore": row.ignore,
             "hotkey": row.hotkey.strip(),
-            "minimum_mana_percent": _number(
-                row.minimum_mana_percent, float, f"monster row {number} minimum mana"
+            "minimum_mana": _number(
+                row.minimum_mana, int, f"monster row {number} minimum mana"
             ),
             "movement": row.movement,
         }
@@ -126,8 +126,8 @@ def apply_targeting(
             "minimum_adjacent_monsters": _number(
                 row.minimum_adjacent_monsters, int, f"area rule {number} adjacent monsters"
             ),
-            "minimum_mana_percent": _number(
-                row.minimum_mana_percent, float, f"area rule {number} minimum mana"
+            "minimum_mana": _number(
+                row.minimum_mana, int, f"area rule {number} minimum mana"
             ),
             "enabled": row.enabled,
         }
@@ -276,7 +276,7 @@ class TargetingTab(Tab):
         monsters_box, self._monsters_frame = _card(parent, "Targeting")
         _header(
             self._monsters_frame,
-            ["Monster", "Priority", "", "Attack key", "Min mana %", "Movement", ""],
+            ["Monster", "Priority", "", "Attack key", "Min mana", "Movement", ""],
         )
         _add_button(monsters_box, "+ Add monster", self._add_monster)
 
@@ -284,7 +284,7 @@ class TargetingTab(Tab):
             parent,
             "Area spells (the first matching rule is used)",
         )
-        _header(self._area_frame, ["Use", "Key", "Monsters next to you", "Min mana %", ""])
+        _header(self._area_frame, ["Use", "Key", "Monsters next to you", "Min mana", ""])
         _add_button(area_box, "+ Add area spell", self._add_area_rule)
 
         _seen_box, self._seen_frame = _card(
@@ -333,7 +333,7 @@ class TargetingTab(Tab):
                     str(row.priority),
                     row.ignore,
                     row.hotkey,
-                    _blank_zero(row.minimum_mana_percent),
+                    _blank_zero(row.minimum_mana),
                     row.movement,
                 )
             )
@@ -342,7 +342,7 @@ class TargetingTab(Tab):
                 AreaRuleFields(
                     rule.hotkey,
                     str(rule.minimum_adjacent_monsters),
-                    _blank_zero(rule.minimum_mana_percent),
+                    _blank_zero(rule.minimum_mana),
                     rule.enabled,
                 )
             )
@@ -374,7 +374,7 @@ class TargetingTab(Tab):
             ignore.select()
         hotkey = HotkeyBox(rows, self._save)
         hotkey.set(row.hotkey)
-        mana = row_entry(rows, row.minimum_mana_percent, 48, self._save, pack_left=False)
+        mana = row_entry(rows, row.minimum_mana, 48, self._save, pack_left=False)
         movement = ctk.CTkOptionMenu(
             rows,
             values=list(MOVEMENT_LABELS.values()),
@@ -400,7 +400,7 @@ class TargetingTab(Tab):
         hotkey = HotkeyBox(rows, self._save)
         hotkey.set(row.hotkey)
         count = row_entry(rows, row.minimum_adjacent_monsters, 40, self._save, pack_left=False)
-        mana = row_entry(rows, row.minimum_mana_percent, 48, self._save, pack_left=False)
+        mana = row_entry(rows, row.minimum_mana, 48, self._save, pack_left=False)
         buttons = Row(rows)
         line = _AreaLine(enabled, hotkey, count, mana, [enabled, hotkey, count, mana, buttons])
         row_button(buttons, "↑", partial(self._move_area_rule, line, -1))

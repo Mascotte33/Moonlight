@@ -61,22 +61,22 @@ def test_first_due_rule_of_a_kind_wins() -> None:
     assert keys(healer, state(hp=100)) == []
 
 
-def test_hp_and_mp_triggers_and_mana_floor() -> None:
+def test_hp_and_mp_triggers() -> None:
     rules = (
-        HealingRule("spell", "F5", hp_below_percent=60, minimum_mana_percent=40),
+        HealingRule("spell", "F5", hp_below_percent=60),
         HealingRule("potion", "F4", mp_below_percent=30),
     )
     healer = HealingDecision(HealingConfig(rules=rules, cures=()))
     assert keys(healer, state(hp=60, mp=50)) == ["F5"]  # at the trigger counts
-    assert keys(healer, state(hp=60, mp=35)) == []  # below the mana floor
+    assert keys(healer, state(hp=60, mp=5)) == ["F5", "F4"]  # low mana still heals
     assert keys(healer, state(hp=90, mp=30)) == ["F4"]
 
 
 def test_unknown_readings() -> None:
-    rules = (HealingRule("spell", "F5", hp_below_percent=60, minimum_mana_percent=40),)
+    rules = (HealingRule("spell", "F5", hp_below_percent=60),)
     healer = HealingDecision(HealingConfig(rules=rules, cures=()))
     assert keys(healer, state(hp=0, mp=50)) == []  # unknown HP never heals
-    assert keys(healer, state(hp=50, mp=0)) == ["F5"]  # unknown MP passes the floor
+    assert keys(healer, state(hp=50, mp=0)) == ["F5"]
     mp_rule = (HealingRule("potion", "F4", mp_below_percent=30),)
     assert keys(HealingDecision(HealingConfig(rules=mp_rule, cures=())), state(mp=0)) == []
 

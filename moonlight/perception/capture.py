@@ -233,7 +233,6 @@ class ScreenCapture:
         backend: str = "mss",
         window_title: str = TIBIA_WINDOW_TITLE,
         device_idx: int = 0,
-        output_idx: int | None = None,
     ) -> None:
         """Create a capture source.
 
@@ -241,7 +240,6 @@ class ScreenCapture:
             backend: ``"mss"`` (default) or ``"dxcam"`` (Windows only).
             window_title: Client window title to locate (exact-or-prefix).
             device_idx: DXGI adapter index (dxcam only).
-            output_idx: Output index on the adapter; ``None`` = primary.
 
         Raises:
             CaptureError: If an unknown backend is requested, or ``dxcam`` is
@@ -256,12 +254,13 @@ class ScreenCapture:
         self.window_title = window_title
         self._hwnd: int | None = None
         self._device_idx = device_idx
-        self._output_idx = output_idx
 
         self._sct: mss.MSS | None = None
         # dxcam has no type stubs and is loaded via importlib, so it is Any.
         self._dxcam_mod: Any = None
         self._dxcam_cam: Any = None
+        #: The monitor (dxcam output) the camera shows.
+        self._dxcam_output: int | None = None
         self._last_frame: np.ndarray | None = None
         self._last_rect: tuple[int, int, int, int] | None = None
 
@@ -390,9 +389,10 @@ class ScreenCapture:
         mod = self._load_dxcam()
         if mod is None:
             raise CaptureError("dxcam backend requested but the module is not available")
-        cam = self._get_dxcam_cam(mod)
+        cam, (screen_left, screen_top) = self._get_dxcam_cam(mod, rect)
 
         left, top, width, height = rect
+        left, top = left - screen_left, top - screen_top  # dxcam counts from its monitor
         region = (left, top, left + width, top + height)
         # new_frame_only=True: None when there is no *new* desktop frame.
         frame = cam.grab(region=region, new_frame_only=True)
@@ -423,19 +423,46 @@ class ScreenCapture:
         _stop_dxcam_double_release()
         return self._dxcam_mod
 
-    def _get_dxcam_cam(self, mod: Any) -> Any:
-        """Lazily create (and reuse) the dxcam camera for this source."""
-        if self._dxcam_cam is None:
-            create_fn = getattr(mod, "create", None)
-            if create_fn is None:
-                raise CaptureError("dxcam module has no 'create' function")
-            self._dxcam_cam = create_fn(
+    # doc: docs/prs/client-hotkeys.md#second-monitor
+    def _get_dxcam_cam(
+        self, mod: Any, rect: tuple[int, int, int, int]
+    ) -> tuple[Any, tuple[int, int]]:
+        """The dxcam camera of the monitor holding the window *rect*, and
+        that monitor's top-left corner on the desktop.
+
+        One camera per monitor: a camera sees only its own monitor, so the
+        client moved to another one needs that monitor's camera
+        (bot.log 2026-11-04: "Region should be in 2560x1440").
+
+        Raises:
+            CaptureError: When no monitor holds the whole window.
+        """
+        left, top, width, height = rect
+        # dxcam keeps its outputs on a private factory; there is no public lookup.
+        outputs = mod.__dict__["__factory"].outputs[self._device_idx]
+        screens = [output.desc.DesktopCoordinates for output in outputs]
+        output_idx = next((
+            index for index, screen in enumerate(screens)
+            if screen.left <= left and screen.top <= top
+            and left + width <= screen.right and top + height <= screen.bottom
+        ), None)
+        if output_idx is None:
+            raise CaptureError(
+                f"The client window {rect} is not on one monitor: move it fully onto one"
+            )
+        screen = screens[output_idx]
+        if self._dxcam_output != output_idx:
+            if self._dxcam_cam is not None:
+                self._dxcam_cam.release()
+            self._dxcam_cam = mod.create(
                 device_idx=self._device_idx,
-                output_idx=self._output_idx,
+                output_idx=output_idx,
                 output_color="RGB",
                 backend="dxgi",
             )
-        return self._dxcam_cam
+            self._dxcam_output = output_idx
+            self._last_frame = None  # a frame of the other monitor
+        return self._dxcam_cam, (screen.left, screen.top)
 
     def get_frame(
         self, regions: Sequence[tuple[int, int, int, int]] | None = None

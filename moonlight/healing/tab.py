@@ -52,7 +52,6 @@ class RuleRow(NamedTuple):
     hotkey: str
     hp_below_percent: str
     mp_below_percent: str
-    minimum_mana_percent: str
 
 
 class CureRow(NamedTuple):
@@ -93,7 +92,6 @@ def apply_healing(
             row.hotkey.strip(),
             _percent(row.hp_below_percent, f"healing rule {number} HP"),
             _percent(row.mp_below_percent, f"healing rule {number} MP"),
-            _percent(row.minimum_mana_percent, f"healing rule {number} minimum mana"),
         )
         for number, row in enumerate(rules, start=1)
     )
@@ -127,7 +125,7 @@ class HealingTab(Tab):
         Label(
             rules_box,
             text="A rule presses its key when HP or MP is at or below its %. "
-            "Blank % = unused. Min mana % stops it below that MP.",
+            "Blank % = unused.",
             anchor="w",
             justify="left",
             wraplength=640,
@@ -175,7 +173,6 @@ class HealingTab(Tab):
                     r.hotkey,
                     blank_zero(r.hp_below_percent),
                     blank_zero(r.mp_below_percent),
-                    blank_zero(r.minimum_mana_percent),
                 )
                 for r in rules
             ]
@@ -227,7 +224,6 @@ class HealingTab(Tab):
             for label, value in (
                 ("HP <", row.hp_below_percent),
                 ("MP <", row.mp_below_percent),
-                ("min mana", row.minimum_mana_percent),
             ):
                 Label(line, text=label, text_color=theme.TEXT_DIM).pack(
                     side="left", padx=(theme.UNIT, 0)
@@ -256,7 +252,7 @@ class HealingTab(Tab):
 
     def _add_rule(self) -> None:
         """A blank spell rule at the bottom; it saves once it has a key and a trigger."""
-        self._draw_rules([*self._rule_rows(), RuleRow("spell", "", "", "", "")])
+        self._draw_rules([*self._rule_rows(), RuleRow("spell", "", "", "")])
 
     def _move_rule(self, index: int, step: int) -> None:
         rows = self._rule_rows()

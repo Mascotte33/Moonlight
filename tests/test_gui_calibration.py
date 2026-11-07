@@ -149,3 +149,20 @@ def test_summary_draws_boxes_on_a_copy() -> None:
     assert out[30, 40].any()  # top edge drawn
     assert not out[35, 45].any()  # inside left as is
     assert not shot.any()
+
+
+@pytest.mark.parametrize(
+    ("running", "stopped", "acting"),
+    [(False, False, False), (True, True, False), (True, False, True)],
+)
+def test_calibration_is_allowed_while_stop_holds_the_bot(
+    running: bool, stopped: bool, acting: bool
+) -> None:
+    """Stop keeps the loop reading only, so Start calibration stays clickable."""
+    from types import SimpleNamespace
+
+    from moonlight.calibration.tab import CalibrationTab
+
+    controller = SimpleNamespace(loop=SimpleNamespace(stopped=stopped)) if running else None
+    ctx = SimpleNamespace(controller=controller, bot_running=lambda: running)
+    assert CalibrationTab._bot_acting(SimpleNamespace(ctx=ctx)) is acting  # type: ignore[arg-type]

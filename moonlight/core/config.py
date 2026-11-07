@@ -24,6 +24,8 @@ JSON format (``moonlight_config.json``)::
       "clicker": {"open_loop": false},     # any ClickerConfig field (F-14)
       "monster_name_source": false,        # unused
       "capacity_source": false,            # unused
+      "client_options_file": null,         # null = the official client's clientoptions.json
+      "client_hotkeys": {"F1": "exura vita"},  # what the Client hotkeys button puts on each key
       "modules": {
         "healing":   {"enabled": true, "potion_cooldown_ms": 1000},
         "targeting": {"enabled": true},
@@ -55,6 +57,7 @@ The default profile is ``moonlight_user`` (F-11); the GUI and
 from __future__ import annotations
 
 import json
+import logging
 import types
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from pathlib import Path
@@ -71,6 +74,8 @@ from moonlight.refill.refill import RefillConfig
 from moonlight.scripts.rotation import RotationConfig
 from moonlight.scripts.scripts import ScriptsConfig
 from moonlight.targeting.targeting import TargetingConfig
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ALWAYS_ON",
@@ -114,6 +119,8 @@ _TOP_KEYS = {
     "routes_dir",
     "monster_name_source",
     "capacity_source",
+    "client_options_file",
+    "client_hotkeys",
     "loop",
     "clicker",
     "modules",
@@ -180,6 +187,11 @@ class BotConfig:
     #: reader triggers on Refill now only).
     monster_name_source: bool = False
     capacity_source: bool = False
+    #: The client's ``conf/clientoptions.json`` for the Client hotkeys button
+    #: (docs/prs/client-hotkeys.md#moonlight-set); None = the official client's.
+    client_options_file: Path | None = None
+    #: Spell words or item typed per bot combo for that button.
+    client_hotkeys: dict[str, str] = field(default_factory=dict)
     #: Kept values of modules that are off, by module name (T0.F1.K4).
     off: dict[str, Any] = field(default_factory=dict)
 
@@ -235,6 +247,8 @@ class BotConfig:
             "routes_dir",
             "monster_name_source",
             "capacity_source",
+            "client_options_file",
+            "client_hotkeys",
         ):
             if key in data:
                 kwargs[key] = _coerce(data[key], hints[key], key)
@@ -275,8 +289,18 @@ class BotConfig:
                 value = _cavebot(section, routes_dir)
             else:
                 if name == "looting":  # keys of removed loot rules
-                    for key in ("move_all_hotkey", "max_items_per_loot", "min_cap_to_loot"):
+                    for key in (
+                        "move_all_hotkey", "max_items_per_loot", "min_cap_to_loot",
+                        "after_kill", "ringed_corpses",  # looting is by the ring only now
+                        "loot_by_right_click",  # the loot hotkey only now
+                    ):
                         section.pop(key, None)
+                if name == "targeting":
+                    _drop_mana_percent(section)
+                if name == "healing":  # the mana floor of a rule, removed
+                    for rule in section.get("rules", ()):
+                        if isinstance(rule, dict):
+                            rule.pop("minimum_mana_percent", None)
                 if name == "refill":  # the refill route file's keys, gone with it
                     for key in (
                         "stop_cap", "route_name", "storage_hotkey", "deposit_hotkey", "routes_dir",
@@ -371,6 +395,17 @@ def _require_dict(value: object, where: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ConfigError(f"{where}: must be a JSON object")
     return value
+
+
+def _drop_mana_percent(targeting: dict[str, Any]) -> None:
+    """Old files: a percent mana floor is no mana-point floor, so it is dropped, with a warning."""
+    rows = [targeting.get("default_monster"), *targeting.get("monsters", ()),
+            *targeting.get("area_rules", ())]
+    for row in rows:
+        if isinstance(row, dict) and row.pop("minimum_mana_percent", 0):
+            logger.warning(
+                "targeting: a min mana %% was dropped (it is mana points now): set it again"
+            )
 
 
 def _reject_unknown(data: dict[str, Any], known: set[str], where: str) -> None:
