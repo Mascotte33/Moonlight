@@ -78,7 +78,7 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   tiles of ``stairs`` and ``shovel`` waypoints, the tile a ``step`` presses
   into, or a tile that moved the player elsewhere when walked onto
   (docs/prs/steps.md#floor-change-tiles); such a tile is only ever the goal.
-* **Tiles of label, goto, check and hand actions**: added in Edit route they
+* **Tiles of label, goto, check and hand actions**: added in Route they
   have the tile the character stood on; the bot walks onto it first, then
   does the action. Old routes have them positionless (x, y, z 0): done
   where the bot stands.
@@ -193,7 +193,7 @@ _JUMP_ACTIONS = ("label", "goto", "check")
 _HAND_ACTIONS = ("say", "key", "drag", "script", "wait", "deposit", "bank", "trade")
 #: Hand actions without a label.
 _NO_LABEL = ("deposit", "bank", "trade")
-#: Actions that may have no tile (x, y, z 0: old routes); added in Edit route they have one.
+#: Actions that may have no tile (x, y, z 0: old routes); added in Route they have one.
 NO_TILE = _JUMP_ACTIONS + _HAND_ACTIONS
 
 

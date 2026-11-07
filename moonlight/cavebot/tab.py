@@ -1,4 +1,4 @@
-"""Cavebot tab: Waypoints, and a Refill / Loot / Edit route switch
+"""Cavebot tab: Waypoints, and a Route / Refill / Settings switch
 (T3.F1.K1, T3.F7.K1, T3.F8.K1).
 
 Routes are the bot's own files, ``<routes_dir>/<name>.json``, read by
@@ -55,6 +55,7 @@ from moonlight.scripts.library import script_names
 from moonlight.scripts.scripts import DEFAULT_SCRIPTS_DIR
 
 __all__ = [
+    "CAVEBOT_PAGE_OPTIONS",
     "LOOT_OPTIONS",
     "OPTIONS",
     "REFILL_OPTIONS",
@@ -75,16 +76,21 @@ __all__ = [
 
 NO_ROUTES = "No routes"
 PICK = "Pick a route"
-NO_ROUTES_HINT = "No routes yet. Press New, then add waypoints in Edit route."
+NO_ROUTES_HINT = "No routes yet. Press New, then add waypoints in Route."
 #: The cavebot's only on/off switch (Settings has none for it).
 SWITCH = Option("Cavebot on", "cavebot.enabled", "switch")
 ROUTE = Option("Route", "cavebot.route", "dropdown")
-#: Waypoint buttons, one row each: walking, changing floor, jumping, hand actions, scripts,
-#: town (depot, NPCs).
+#: Waypoint buttons under a heading each, one tuple per button row.
 #: Stairs are walked over like any tile, so they get no button.
-KIND_ROWS = (
-    ACTIONS[:4], ACTIONS[4:7], ACTIONS[8:11], ACTIONS[11:14], ACTIONS[14:16], ACTIONS[17:],
-)  # fmt: skip
+KIND_SECTIONS = (
+    ("Movement", (ACTIONS[:4],)),
+    ("Tools", (ACTIONS[4:7],)),
+    ("Route flow", (ACTIONS[8:11],)),
+    ("Actions", (ACTIONS[11:14], ACTIONS[14:16])),
+    ("Town", (ACTIONS[17:],)),
+)
+#: Waypoint kinds recording adds every N tiles; "walk" first, the default.
+RECORD_AS = ("walk", "node", "stand")
 #: Shown under the position while the minimap matches no map tile.
 LOST_HINT = "No map match. Use minimap zoom 1 or 2, or explore the area first."
 #: Direction pad: (arrow, dx, dy) in 3x3 order. Up is north, y - 1.
@@ -99,12 +105,12 @@ DIRECTIONS = (
     ("↓", 0, 1),
     ("↘", 1, 1),
 )
-#: Shown 1-based; ``cavebot.start_index`` is 0-based.
+#: No control: the tab gives the highlighted row (1-based, 1 when none);
+#: ``cavebot.start_index`` is 0-based.
 START = Option("Start from waypoint", "cavebot.start_index", "entry")
-OPTIONS = [
-    SWITCH,
-    ROUTE,
-    START,
+OPTIONS = [SWITCH, ROUTE]
+#: Cavebot options on the Settings page, kept off the Waypoints card.
+CAVEBOT_PAGE_OPTIONS = [
     Option("Rope hotkey", "cavebot.rope_hotkey", "hotkey"),
     Option("Shovel hotkey", "cavebot.shovel_hotkey", "hotkey"),
     # doc: docs/prs/echo-raid.md#setting
@@ -231,7 +237,8 @@ def apply_cavebot(cfg: BotConfig, values: dict[str, object]) -> BotConfig:
                 values = {**values, START.field: int(str(start)) - 1}
             except ValueError:
                 raise ConfigError(f"start waypoint {start!r} is not a whole number") from None
-        for option in sorted(OPTIONS, key=lambda o: o is not ROUTE):
+        route_options = OPTIONS + [START] + CAVEBOT_PAGE_OPTIONS
+        for option in sorted(route_options, key=lambda o: o is not ROUTE):
             if option is not SWITCH and values.get(option.field, "") != "":
                 cfg = write_option(cfg, option, values[option.field])
     if SWITCH.field in values:
@@ -273,6 +280,17 @@ def _entry(parent: ctk.CTkFrame, hint: str, width: int) -> ctk.CTkEntry:
     return entry
 
 
+def _kind_heading(parent: ctk.CTkFrame, text: str) -> None:
+    """A small heading over a group of widgets on the right card."""
+    Label(
+        parent,
+        text=text,
+        anchor="w",
+        text_color=theme.TEXT_DIM,
+        font=ctk.CTkFont(size=theme.SIZE_TITLE, weight="bold"),
+    ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+
+
 def _button(parent: ctk.CTkFrame, text: str, command: Callable[[], None]) -> ctk.CTkButton:
     return ctk.CTkButton(
         parent, text=text, width=90, command=command, fg_color=theme.RAISED, hover_color=theme.HOVER
@@ -288,10 +306,10 @@ def refill_now(cavebot: Any) -> str:
 
 
 class CavebotTab(Tab):
-    """Waypoints card beside one card switching Refill, Loot and Edit route."""
+    """Waypoints card beside one card switching Route, Refill and Settings."""
 
     title = "Cavebot"
-    options = OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS
+    options = OPTIONS + CAVEBOT_PAGE_OPTIONS + LOOT_OPTIONS + REFILL_OPTIONS
     polls_hidden = True  # recording adds waypoints on each poll
 
     def build(self, parent: ctk.CTkFrame) -> None:
@@ -338,7 +356,7 @@ class CavebotTab(Tab):
         self.wp_list.bind("<Double-Button-1>", self._pick_waypoint)
         self.wp_list.bind("<Delete>", self._delete_key)
         moves = Row(box)
-        moves.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        moves.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0), before=self.wp_list)
         for arrow, by in (("▲", -1), ("▼", 1)):
             button = _button(moves, arrow, partial(self._move, by))
             button.configure(width=32)
@@ -346,16 +364,17 @@ class CavebotTab(Tab):
         button = _button(moves, "✕", self._delete_waypoint)
         button.configure(width=32)
         button.pack(side="left", padx=(0, theme.UNIT))
+        _button(moves, "Clear", self._clear).pack(side="left", padx=(0, theme.UNIT))
         self.lbl_current = Label(box, text="Not running", anchor="w")
         self.lbl_current.pack(fill="x", padx=theme.PAD)
         self.lbl_msg = Label(box, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=theme.PAD, pady=(0, theme.UNIT))
 
-        side = section(root, "Refill / Loot / Edit route")
+        side = section(root, "Route / Refill / Settings")
         side.grid(row=0, column=1, sticky="nsew")
         pages = {
             name: Row(side)
-            for name in ("Refill", "Loot", "Edit route")
+            for name in ("Route", "Refill", "Settings")
         }
 
         def show(name: str) -> None:
@@ -370,7 +389,7 @@ class CavebotTab(Tab):
             selected_hover_color=theme.HOVER,
         )
         switch.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        switch.set("Refill")
+        switch.set("Route")
         refill = pages["Refill"]
         Label(
             refill,
@@ -407,7 +426,7 @@ class CavebotTab(Tab):
         Label(
             refill,
             text="Buy at a 'trade' waypoint, one per line: item, percent of the amount slider."
-            " Saved with the route (Save in Edit route).",
+            " Saved with the route (Save in Route).",
             anchor="w",
             justify="left",
             wraplength=260,
@@ -418,12 +437,15 @@ class CavebotTab(Tab):
         self.txt_buy.bind("<KeyRelease>", lambda _event: self._buy_edited())
         self.lbl_buy = Label(refill, text="", anchor="w", text_color=theme.TEXT_DIM)
         self.lbl_buy.pack(fill="x", padx=theme.PAD)
-        self.build_options(pages["Loot"], LOOT_OPTIONS)
-        show("Refill")
+        self.build_options(pages["Settings"], CAVEBOT_PAGE_OPTIONS)
+        _kind_heading(pages["Settings"], "Loot")
+        self.build_options(pages["Settings"], LOOT_OPTIONS)
+        show("Route")
 
-        edit = pages["Edit route"]
+        edit = pages["Route"]
         add = Row(edit)
         add.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        Label(add, text="Label / script").pack(side="left")
         # doc: docs/prs/scripts-page.md#script-dropdown
         # The label, typed or a script picked for a script waypoint.
         self.ent_label = ctk.CTkComboBox(
@@ -442,36 +464,50 @@ class CavebotTab(Tab):
         )
         self.lbl_cursor.pack(fill="x", padx=theme.PAD)
         self._capture: Any = None  # ScreenCapture, made on the first draw
-        tools = Row(edit)
-        tools.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        for text, command in (("Undo", self._undo), ("Clear", self._clear)):
-            _button(tools, text, command).pack(side="left", padx=(0, theme.UNIT))
         # T3.F9.K2: one button per waypoint type, at the bot's position.
-        kinds = Row(edit)
-        kinds.pack(anchor="w", padx=theme.PAD, pady=(theme.PAD, 0))
-        for grid_row, group in enumerate(KIND_ROWS):
-            for col, action in enumerate(group):
-                button = _button(kinds, action.capitalize(), partial(self._add_action, action))
-                button.configure(width=64)
-                button.grid(row=grid_row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT))
+        for heading, button_rows in KIND_SECTIONS:
+            _kind_heading(edit, heading)
+            kinds = Row(edit)
+            kinds.pack(anchor="w", padx=theme.PAD)
+            for grid_row, group in enumerate(button_rows):
+                for col, action in enumerate(group):
+                    button = _button(kinds, action.capitalize(), partial(self._add_action, action))
+                    button.configure(width=64)
+                    button.grid(
+                        row=grid_row, column=col, padx=(0, theme.UNIT), pady=(0, theme.UNIT)
+                    )
         # doc: docs/prs/steps.md#step-waypoint
         # A step waypoint on X, Y, Z or the bot's sqm: one key press that way; the middle stands.
+        _kind_heading(edit, "Step (one key)")
         pad = Row(edit)
-        pad.pack(anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0))
+        pad.pack(anchor="w", padx=theme.PAD)
+        # Segoe UI lacks ↖ and ↘, so Windows drew those two from another font.
+        arrow_font = ctk.CTkFont(family="Segoe UI Symbol", size=theme.SIZE_BODY)
         for i, (arrow, dx, dy) in enumerate(DIRECTIONS):
             button = _button(pad, arrow, partial(self._add_step, dx, dy))
-            button.configure(width=32)
+            button.configure(width=32, font=arrow_font)
             button.grid(row=i // 3, column=i % 3, padx=1, pady=1)
 
+        # doc: docs/prs/GUI_visual_changes.md#record-as
         rec = Row(edit)
-        rec.pack(fill="x", padx=theme.PAD, pady=theme.PAD)
-        self.btn_record = _button(rec, "Start recording", self._toggle)
-        self.btn_record.configure(width=130)
-        self.btn_record.pack(side="left")
-        Label(rec, text="walk every").pack(side="left", padx=(theme.UNIT, 0))
+        rec.pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0))
+        Label(rec, text="Record").pack(side="left")
+        self.menu_record_as = ctk.CTkOptionMenu(
+            rec,
+            values=list(RECORD_AS),
+            width=80,
+            fg_color=theme.RAISED,
+            button_color=theme.RAISED,
+            button_hover_color=theme.HOVER,
+        )
+        self.menu_record_as.pack(side="left", padx=(theme.UNIT, 0))
+        Label(rec, text="every").pack(side="left", padx=(theme.UNIT, 0))
         self.ent_tiles = _entry(rec, "", 36)
         self.ent_tiles.insert(0, "5")
         Label(rec, text="tiles").pack(side="left", padx=theme.UNIT)
+        self.btn_record = _button(edit, "Start recording", self._toggle)
+        self.btn_record.configure(width=130)
+        self.btn_record.pack(anchor="w", padx=theme.PAD, pady=theme.PAD)
 
         self._pos = Position(0, 0, 0)
         #: The last position read, shown while the reader is lost.
@@ -508,8 +544,6 @@ class CavebotTab(Tab):
         names = self._refresh_names()
         picked = picked_route(cfg)
         self.menu_route.set(picked if picked in names else (PICK if names else NO_ROUTES))
-        start = read_option(cfg, START.field)
-        self._writers[START.field](start + 1 if isinstance(start, int) else 1)
         self._show_route(self.menu_route.get())
 
     def _discard_ok(self) -> bool:
@@ -653,6 +687,8 @@ class CavebotTab(Tab):
         self._selected = None if self._error else picked_waypoint(line, len(self._waypoints))
         self._mark_selected()
         self.wp_list.focus_set()  # for the Delete key
+        if self.ctx.live_cavebot() is None:  # a running cavebot would re-pick its waypoint
+            self.submit()  # the cavebot starts from the highlighted row
 
     def _move(self, by: int) -> None:
         """Move the selected waypoint one row up (-1) or down (+1)."""
@@ -726,7 +762,8 @@ class CavebotTab(Tab):
         i = None if self._error else picked_waypoint(line, len(self._waypoints))
         if i is None:
             return "break"
-        self._writers[START.field](i + 1)
+        self._selected = i
+        self._mark_selected()
         cavebot = self.ctx.live_cavebot()
         if cavebot is not None and cavebot.route.name == self._name:
             cavebot.go_to(i)
@@ -789,14 +826,9 @@ class CavebotTab(Tab):
             self.lbl_msg.configure(text=f"Added step {wp.label} ({len(self._waypoints)} waypoints)")
             self._changed()
 
-    def _undo(self) -> None:
-        if self._waypoints:
-            self._waypoints.pop()
-            self._changed()
-
     def _clear(self) -> None:
-        """Empty the editor; the route file keeps its waypoints until Save."""
-        if self._waypoints:
+        """Empty the editor, after confirming; the route file keeps its waypoints until Save."""
+        if self._waypoints and messagebox.askyesno("Clear", "Remove every waypoint?"):
             self._waypoints.clear()
             self._changed()
 
@@ -891,7 +923,9 @@ class CavebotTab(Tab):
                     self._waypoints.append(stairs)
             self._stood_before = stood or self._stood_before
             if stood is not None and should_add(self._waypoints, stood, tiles):
-                self._waypoints.append(Waypoint(stood.x, stood.y, stood.z))
+                self._waypoints.append(
+                    Waypoint(stood.x, stood.y, stood.z, self.menu_record_as.get())
+                )
                 self._changed()
         self._draw()
 
@@ -910,6 +944,8 @@ class CavebotTab(Tab):
     def apply(self) -> BotConfig:
         path = picked_config()
         values = {field: read() for field, read in self._readers.items()}
+        # doc: docs/prs/GUI_visual_changes.md#start-from-selected
+        values[START.field] = 1 if self._selected is None else self._selected + 1
         cfg = apply_cavebot(load_real_config(path), values)
         cfg.save(path)
         return cfg

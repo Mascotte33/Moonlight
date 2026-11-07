@@ -133,13 +133,16 @@ found by bumping into it.
 
 The route recorder saves the tile the character stood on, never the one it is
 walking to: a position counts after it held for 0.6 s, or once the character
-stepped off it. Recording stops and saves the route when the cavebot starts. Walking
+stepped off it. In Cavebot > Route, "Record [walk / node / stand] every N
+tiles" picks the waypoint kind it adds. Above the waypoint list, ▲ ▼ move the
+clicked waypoint, ✕ (or the Delete key) deletes it, and Clear removes them all
+after asking. Recording stops and saves the route when the cavebot starts. Walking
 over stairs or into a hole records a `stairs` waypoint on that tile, so the
 route plays back across floors; for a ladder (or a sewer grate: Ladder too),
-rope or shovel click its button while standing on the tile you use it from. While recording, every
+rope or shovel click its button while standing on the tile you use it from (the rope and shovel hotkeys are on Cavebot > Settings). While recording, every
 waypoint button adds a waypoint on the character's tile.
 
-The arrow pad in Cavebot > Edit route adds a `step` waypoint on the
+The arrow pad in Cavebot > Route adds a `step` waypoint on the
 character's tile: the bot walks onto that tile,
 presses that WSAD key exactly once (diagonals: Q, E, Z, C), waits 0.5 s and
 goes on to the next waypoint, wherever the step led. It never presses it
@@ -152,7 +155,7 @@ lets the client pick the path and can cross them: turn on WSAD-key walking
 for routes next to holes or teleports.
 
 Echo raid triggers (the red swirl that spawns stronger monsters) are seen on
-the game screen while walking with WSAD keys. Cavebot > **Echo raid** picks
+the game screen while walking with WSAD keys. Cavebot > Settings > **Echo raid** picks
 what the bot does: **avoid** (default) never walks onto one and skips a
 waypoint on one; **use** walks next to the nearest one once no monster is in
 the battle list and HP is 80 % or above, right-clicks it, waits 1 s, and if it
@@ -173,11 +176,11 @@ before attacking the next monster, and again
 when the battle list empties, then stands
 still for the set wait (400 ms by default) before walking on. Below the set
 HP (70 % by default) it holds still and heals first, then loots. It also
-loots while an alarm is up. Set it in Cavebot > Loot. Every key tap and
+loots while an alarm is up. Set it in Cavebot > Settings. Every key tap and
 mouse click holds 60 ms, like a real press; combo hotkeys (Alt+Q, Shift+F1)
 hold all their keys down together. Reflash the Leonardo after updating.
 
-Cavebot > Loot has a switch for each loot trigger. **Loot after every kill**
+Cavebot > Settings has a switch for each loot trigger. **Loot after every kill**
 (on by default) is the above. **Loot ringed corpses next to me** (off by
 default) presses the loot hotkey whenever a corpse's turning loot ring shows
 on the character's tile or the 8 around it, mid-fight too, without stopping;
@@ -191,15 +194,17 @@ this switch on, the cavebot stands still for up to 1 s after a kill
 when a ring is found and `looting` at each loot press. A ring
 whose press could not go out at once is pressed on the next free slot.
 
-Every waypoint button in Edit route adds the waypoint on the character's
+Every waypoint button in Route adds the waypoint on the character's
 tile; there are no typed X, Y, Z fields. The bot walks onto that tile before
 it does the waypoint: a `label`, `goto`, `say`, `key`, `drag`, `script` or
 `wait` too. Those from older routes have no tile and happen where the bot
 stands. One click on a row in the waypoint list highlights it; the ▲ and ▼
-buttons under the list move it one row up or down, and ✕ (or the Delete key)
+buttons above the list move it one row up or down, and ✕ (or the Delete key)
 deletes it, with no popup; the row below is highlighted next. Press Save to
 keep the change. The buttons are grayed out while Cavebot is on. The list
-keeps its scroll position when it changes.
+keeps its scroll position when it changes. The cavebot starts from the highlighted
+waypoint, or from waypoint 1 when none is highlighted; picking another route
+clears the highlight.
 
 Refill is part of the waypoint list. A `check` waypoint with label `town`
 is added on the character's tile and the bot walks there. On it, the bot
@@ -251,7 +256,7 @@ the live client, in `data/templates/anchors/`): `depot_locker.png`,
 `say` (presses Enter to open the chat box, types its label, Enter sends it),
 `key` (presses its label as a hotkey) and `drag` (label `x1 y1 x2 y2` in
 client pixels: drags the left button from one spot to the other) still work
-for anything else. Edit route shows the cursor in client pixels for drag
+for anything else. Route shows the cursor in client pixels for drag
 labels. End the town section with a `goto` back to the hunt. Drag, deposit
 and trade need the firmware's `H` / `R` mouse commands: reflash the Leonardo.
 
@@ -261,7 +266,7 @@ A `wait` waypoint holds the route for its label in seconds.
 **Delete**, the code box, **Save** and **Test now**. A ticked script runs by
 itself, one at a time, top of the list first; the ms box is its pause after it
 ends (empty = 1000 ms, at least 50). A `script` waypoint picks a script from
-the label dropdown on Edit route, and the route waits until it ends. Save
+the label dropdown on Route, and the route waits until it ends. Save
 checks the code: a broken script is saved but shown red, can't be ticked or
 tested, and its waypoints are skipped (red on the route, a warning in
 `logs/bot.log`). A script that fails while running is unticked and its error
@@ -420,8 +425,11 @@ or in the `targeting` section of your profile config:
 - **`default_monster`** is the row for every monster without its own row, so
   everything is attacked unless you ignore it. The tab shows it as "all others".
   Default: priority 1, F6, 10% mana, follow.
-- The bot picks the highest priority, then the lowest HP, then the closest
-  row. It finishes the current target even when a higher priority monster
+- The bot picks the highest priority first. Among the same priority,
+  Targeting > Settings > **Same priority: attack first the** picks:
+  **lowest hp** (default), **highest hp** or **battle list** (the top row;
+  the nearest monster when the client's battle list is sorted by distance).
+  A tie goes to the top row. It finishes the current target even when a higher priority monster
   comes, and never clicks it twice (a second click untargets). A selected
   "never attack" monster is left for the next one.
 - **Area rules** press a hotkey when at least `minimum_adjacent_monsters`
