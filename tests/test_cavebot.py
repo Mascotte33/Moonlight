@@ -1967,3 +1967,22 @@ def test_walked_tiles_with_two_waypoints_on_one_tile() -> None:
     # bot.log 2026-11-01 14:23: a stand and a rope on one tile raised ZeroDivisionError
     wps = [walk(100, 100), Waypoint(100, 100, 7, "rope"), walk(102, 100)]
     assert walked_tiles(wps, loop=False) == {(100, 100, 7), (101, 100, 7), (102, 100, 7)}
+
+def test_walk_keys_fight_an_ignored_creature_on_the_exact_tile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: [(7, 6)])
+    sim = Sim(
+        [Waypoint(100, 101, 7, "stand")],
+        Position(100, 100, 7),
+        walk_keys=True,
+        frames=lambda: np.zeros((1, 1, 3), np.uint8),
+    )
+    sim.state.monsters = [Monster("Ghost", 100.0)]
+    sim.bot.fight_in_range = False  # targeting ignores the ghost
+    sim.bot.start()
+    for _ in range(_BLOCK_STEPS):
+        sim.step()
+    assert pressed(sim) == ["s", "s"]  # into it, then the bump
+    assert sim.bot.stuck_on_creatures
+    assert sim.clicker.clicks == [((440, 176 + 32), ClickSide.RIGHT)]  # the ghost on the stand tile

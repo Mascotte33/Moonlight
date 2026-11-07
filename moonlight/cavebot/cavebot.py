@@ -46,6 +46,9 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   kill, so the cavebot looks for a way again over the tiles it bumped too.
   While a target is selected it stands still, whatever selected it, and
   walks on once nothing is (or while :attr:`Cavebot.targeting_paused`).
+  A creature on the waypoint's own tile (a ``stand`` on its exact sqm)
+  is stuck too once bumped, with any monster listed, even one targeting
+  ignores: it is right-clicked and fought.
   Stuck after a bump with nothing to fight and no way over tiles not bumped
   yet: the waypoint is skipped, and the next ones in route order, until one
   on this floor has such a way; none: it stands still and retries the
@@ -1688,8 +1691,14 @@ class Cavebot:
         if path is not None and self._creatures:
             short = next_step(start, goal, free)
             detour_too_long = short is not None and path[1] > short[1] + _DETOUR
-        stuck = path is None or detour_too_long
-        fight = self._fight() and not self.targeting_paused
+        # doc: docs/prs/near-targeting.md#kill-on-goal
+        # The goal counts as walkable, so a creature on it never makes the way
+        # "stuck": once bumped it is fought, even a monster targeting ignores.
+        creature_on_goal = (
+            goal in self._blocked and (wp.x, wp.y) in self._creatures and bool(self._state.monsters)
+        )
+        stuck = path is None or detour_too_long or creature_on_goal
+        fight = (self._fight() or creature_on_goal) and not self.targeting_paused
         if stuck and fight and now < self._stuck_allowed_until:
             if not self.stuck_on_creatures:
                 logger.info(

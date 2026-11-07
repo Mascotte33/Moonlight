@@ -612,6 +612,9 @@ or in the `targeting` section of your profile config:
 - **Cavebot around monsters:** with walk keys on, the cavebot reads the
   monsters' health bars in the game view before every step and walks around
   them when that costs at most 8 more steps, instead of bumping into them.
+  A monster standing on the waypoint's exact tile (a `stand` sqm) is
+  right-clicked and killed once the bot bumps into it, even one targeting
+  ignores (`attacking the creature in the way`).
 - **What the bot sees:** Diagnostics > "Show what the bot sees" shows the
   game view with a red box on each monster found, the cavebot's planned walk
   as a blue line (walk keys only) and a gold circle for 10 s where a monster
