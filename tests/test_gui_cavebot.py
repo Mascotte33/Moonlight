@@ -11,6 +11,7 @@ import pytest
 from moonlight.cavebot.cavebot import RouteFileLoader, Waypoint
 from moonlight.cavebot.tab import (
     apply_cavebot,
+    delete_waypoint,
     drop_route,
     move_waypoint,
     picked_route,
@@ -185,3 +186,12 @@ def test_move_waypoint_swaps_with_its_neighbour_and_stops_at_the_ends() -> None:
     assert move_waypoint(wps, 2, 1) == 2  # already at the bottom
     assert move_waypoint(wps, 1, 1) == 2
     assert wps == [b, c, a]
+
+
+# doc: docs/prs/echo-click.md#delete-waypoint
+def test_delete_waypoint_selects_the_row_below_then_above_then_none() -> None:
+    a, b, c = Waypoint(1, 1, 7), Waypoint(2, 2, 7), Waypoint(3, 3, 7)
+    wps = [a, b, c]
+    assert delete_waypoint(wps, 1) == 1 and wps == [a, c]  # c moved up into row 1
+    assert delete_waypoint(wps, 1) == 0 and wps == [a]  # the last row: the one above
+    assert delete_waypoint(wps, 0) is None and wps == []

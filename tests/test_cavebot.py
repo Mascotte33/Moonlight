@@ -9,6 +9,7 @@ Clicks go to a recording ClickController; hotkeys go to FakeInput.
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ import cv2
 import numpy as np
 import pytest
 
+import moonlight.cavebot.cavebot as cavebot_module
 from moonlight.cavebot.cavebot import (
     Cavebot,
     Route,
@@ -1624,6 +1626,8 @@ def _echo_sim(
     """Keys mode at 100,100,7 (slot (7, 5)); the scan sees triggers on *echo_slots*."""
     monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: [])
     monkeypatch.setattr("moonlight.cavebot.cavebot.find_echo_raids", lambda _f, _g: echo_slots)
+    shots = Path(tempfile.mkdtemp()) / "echo_raids"
+    monkeypatch.setattr("moonlight.cavebot.cavebot.ECHO_RAID_SHOTS_DIR", shots)
     sim = Sim(
         waypoints,
         Position(100, 100, 7),
@@ -1650,20 +1654,98 @@ def test_avoid_skips_a_waypoint_on_an_echo_raid(monkeypatch: pytest.MonkeyPatch)
     assert sim.route.current == 1
 
 
-def test_use_walks_onto_an_echo_raid_then_back_to_the_route(
+def _next_to_echo_raid(
+    monkeypatch: pytest.MonkeyPatch, waypoints: list[Waypoint] | None = None
+) -> tuple[Sim, list[tuple[int, int]]]:
+    """Use mode: walks east toward the trigger at 102,100 and stops next to it, settled."""
+    echo = [(9, 5)]
+    sim = _echo_sim(monkeypatch, waypoints or [walk(100, 104)], echo, trigger_echo_raids=True)
+    sim.step()  # the scan sees it
+    sim.step()
+    assert pressed(sim)[-1] == "d"  # next to it, not onto it
+    sim.pos = Position(101, 100, 7)
+    echo[:] = [(8, 5)]  # the view follows the player
+    sim.step()
+    assert sim.clicker.clicks == []  # the view still scrolls: a click would land a tile off
+    sim.step(0.5)
+    return sim, echo
+
+
+def _sides(sim: Sim) -> list[ClickSide]:
+    return [side for _pixel, side in sim.clicker.clicks]
+
+
+# doc: docs/prs/echo-raid.md#use
+def test_use_right_clicks_then_left_clicks_the_echo_raid(monkeypatch: pytest.MonkeyPatch) -> None:
+    sim, _echo = _next_to_echo_raid(monkeypatch)
+    pixel = sim.bot._tile_pixel((102, 100), Position(101, 100, 7))
+    assert sim.clicker.clicks == [(pixel, ClickSide.RIGHT)]
+    sim.step(0.5)
+    assert len(sim.clicker.clicks) == 1  # waits 1 s
+    sim.step(0.6)
+    assert sim.clicker.clicks[-1] == (pixel, ClickSide.LEFT)
+
+
+def test_use_saves_a_screenshot_one_second_after_each_echo_raid_click(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    echo = [(8, 5)]  # right of the player
+    sim, _echo = _next_to_echo_raid(monkeypatch)
+    shots = cavebot_module.ECHO_RAID_SHOTS_DIR
+    assert not shots.exists()  # the right-click was just sent
+    sim.step(1.1)
+    (shot,) = shots.iterdir()
+    assert shot.name.endswith("_102_100_7_right.png")
+
+
+def test_use_goes_back_to_the_route_once_the_echo_raid_is_gone(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    sim, echo = _next_to_echo_raid(monkeypatch, [walk(100, 104), walk(102, 101)])
+    echo.clear()  # the right-click triggered it
+    with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
+        sim.step(1.1)
+    assert "echo raid at 102,100,7 triggered" in caplog.text
+    assert sim.bot._echo_raid_goal is None and sim.route.current == 1  # the nearest waypoint
+
+
+def test_use_ignores_an_echo_raid_after_three_tries_until_30_s_off_screen(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    sim, echo = _next_to_echo_raid(monkeypatch)
+    with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
+        for _ in range(6):
+            sim.step(1.1)
+    R, L = ClickSide.RIGHT, ClickSide.LEFT
+    assert _sides(sim) == [R, L, R, L, R, L]
+    assert "did not trigger after 3 tries, ignoring it" in caplog.text
+    assert sim.bot._echo_raid_goal is None
+    for _ in range(40):
+        sim.step(1.0)  # seen all along: still ignored
+    assert len(sim.clicker.clicks) == 6 and sim.bot._echo_raid_goal is None
+    echo.clear()
+    for _ in range(31):
+        sim.step(1.0)  # off the screen for 30 s
+    echo[:] = [(8, 5)]
+    sim.step(1.0)  # the scan sees it
+    sim.step(1.0)
+    assert sim.bot._echo_raid_goal == (102, 100, 7)  # new again
+
+
+def test_use_never_reads_echo_raids_mid_step(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # bot.log 2026-11-01: "triggered" 0.3 s after "triggering", the tile read a step off
+    echo = [(10, 5)]
     sim = _echo_sim(monkeypatch, [walk(100, 104)], echo, trigger_echo_raids=True)
     sim.step()  # the scan sees it
     sim.step()
-    assert pressed(sim)[-1] == "d"
-    echo.clear()  # stepped on: it is gone
-    sim.pos = Position(101, 100, 7)
-    sim.step()
-    assert sim.route.current == 0 and sim.bot._echo_raid_goal is None
-    sim.step()
-    assert pressed(sim)[-1] != "d"  # back toward the route
+    assert sim.bot._echo_raid_goal == (103, 100, 7)
+    sim.pos = Position(101, 100, 7)  # the frame already scrolled on this tick
+    echo[:] = [(9, 5)]
+    with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
+        for _ in range(3):
+            sim.step(0.1)
+    assert "triggered" not in caplog.text and sim.bot._echo_raid_goal == (103, 100, 7)
 
 
 @pytest.mark.parametrize("unsafe", ["monster", "low_hp"])

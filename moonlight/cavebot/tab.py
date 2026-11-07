@@ -69,6 +69,7 @@ __all__ = [
     "route_names",
     "waypoint_line",
     "move_waypoint",
+    "delete_waypoint",
     "waypoint_table",
 ]
 
@@ -165,6 +166,13 @@ def move_waypoint(waypoints: list[Waypoint], index: int, by: int) -> int:
         return index
     waypoints[index], waypoints[to] = waypoints[to], waypoints[index]
     return to
+
+
+# doc: docs/prs/echo-click.md#delete-waypoint
+def delete_waypoint(waypoints: list[Waypoint], index: int) -> int | None:
+    """Remove waypoint *index*; the one now selected (the row below, else above), or None."""
+    del waypoints[index]
+    return min(index, len(waypoints) - 1) if waypoints else None
 
 
 #: After the label of a ``script`` waypoint whose script is broken or missing.
@@ -328,12 +336,16 @@ class CavebotTab(Tab):
         self.wp_list.tag_config("selected", background=theme.HOVER)
         self.wp_list.bind("<Button-1>", self._select_waypoint)
         self.wp_list.bind("<Double-Button-1>", self._pick_waypoint)
+        self.wp_list.bind("<Delete>", self._delete_key)
         moves = Row(box)
         moves.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         for arrow, by in (("▲", -1), ("▼", 1)):
             button = _button(moves, arrow, partial(self._move, by))
             button.configure(width=32)
             button.pack(side="left", padx=(0, theme.UNIT))
+        button = _button(moves, "✕", self._delete_waypoint)
+        button.configure(width=32)
+        button.pack(side="left", padx=(0, theme.UNIT))
         self.lbl_current = Label(box, text="Not running", anchor="w")
         self.lbl_current.pack(fill="x", padx=theme.PAD)
         self.lbl_msg = Label(box, text="", anchor="w", text_color=theme.AMBER)
@@ -640,6 +652,7 @@ class CavebotTab(Tab):
         line = int(str(self.wp_list.index(f"@{event.x},{event.y}")).split(".")[0])
         self._selected = None if self._error else picked_waypoint(line, len(self._waypoints))
         self._mark_selected()
+        self.wp_list.focus_set()  # for the Delete key
 
     def _move(self, by: int) -> None:
         """Move the selected waypoint one row up (-1) or down (+1)."""
@@ -651,6 +664,20 @@ class CavebotTab(Tab):
             self._selected = to
             self._changed()
             self.wp_list.see(f"{to + 2}.0")
+
+    def _delete_waypoint(self) -> None:
+        """Delete the selected waypoint (the ✕ button), no popup."""
+        if self._selected is None:
+            self.lbl_msg.configure(text="Click a waypoint first")
+            return
+        self._selected = delete_waypoint(self._waypoints, self._selected)
+        self._changed()
+
+    def _delete_key(self, _event: tk.Event) -> str:
+        """The Delete key on the list: like ✕, which is grayed out while Cavebot is on."""
+        if not self._locked:
+            self._delete_waypoint()
+        return "break"
 
     def _refill_now(self) -> None:
         self.lbl_msg.configure(text=refill_now(self.ctx.live_cavebot()))
