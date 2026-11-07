@@ -207,8 +207,8 @@ def check_module_regions(
 # -- integration seam ---------------------------------------------------------
 
 
-#: Copies of the client's minimap tiles, ``{x}_{y}_{z}.png`` (gitignored).
-MAP_DIR = Path("data/map")
+#: One folder per map (``MAP_CHOICES``) of the client's minimap tiles, ``{x}_{y}_{z}.png``.
+MAPS_DIR = Path("data/maps")
 
 
 @functools.lru_cache(maxsize=2)
@@ -228,7 +228,7 @@ def make_perceive(
     frame_provider: FrameProvider,
     focus_check: Callable[[], bool] | None = None,
     start: Position | None = None,
-    map_dir: Path = MAP_DIR,
+    map_dir: Path = MAPS_DIR / "igla",
     conditions_dir: Path = CONDITION_TEMPLATES_DIR,
     seen_monsters: SeenMonsters | None = None,
     creature_grid: Rect | None = None,
@@ -503,6 +503,7 @@ def build_loop(
             focus_check,
             # Search near where the last loop or the stopped-bot reader was.
             start=state.position,
+            map_dir=MAPS_DIR / config.game_map,
             seen_monsters=seen_monsters,
             creature_grid=(
                 profile.get_region("game_grid").to_tuple
@@ -720,7 +721,7 @@ def build_modules(
                 skip_waypoints_passed_in_fight=cb.skip_waypoints_passed_in_fight,
                 trigger_echo_raids=cb.echo_raid == "use",
                 walk_keys=config.walk_keys,
-                cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
+                cost_map=CostMap(MAPS_DIR / config.game_map / "cost") if config.walk_keys else None,
                 frames=frames,
                 clock=clock,
                 scripts=m.scripts,

@@ -1,6 +1,6 @@
 """Absolute position by matching the radar against the client's map tiles.
 
-``data/map/{x}_{y}_{z}.png`` are copies of the client's minimap tiles:
+``data/maps/<map>/{x}_{y}_{z}.png`` are copies of the client's minimap tiles:
 256x256 px, 1 px = 1 sqm, named by the world coordinate of their top-left
 corner. The radar draws ``zoom`` px per sqm (the player picks it, so each of
 ``zooms`` is tried), so the crop is downscaled by averaging ``zoom`` x

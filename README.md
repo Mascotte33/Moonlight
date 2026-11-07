@@ -117,7 +117,14 @@ full live session (2026-10-28) verified looting.
 The position comes from two sources, shown after it in the Cavebot tab and in
 the stuck warnings: `(count)` counts each step from how far the minimap slid
 since the last frame, `(map)` matches the minimap against the client's map
-tiles in `data/map/`. A match that agrees with the count, or fits very well,
+tiles of the map picked in Settings > **Map**: `igla` (the Igla server's own
+map, `data/maps/igla/`) or `tibia` (the global Tibia map most OTs use,
+`data/maps/tibia/`). To fill a map folder, copy the client's minimap folder
+(IglaOTS: `Season_Launcher/IglaOTS/minimap`): each `Minimap_Color_X_Y_Z.png`
+goes into `data/maps/<map>/` as `X_Y_Z.png`, each
+`Minimap_WaypointCost_X_Y_Z.png` into `data/maps/<map>/cost/` as `X_Y_Z.png`.
+A wrong map walks wrong: the global map draws the Venore bridge 2 wide, Igla's
+is 1 wide, so the cavebot stepped into the water. A match that agrees with the count, or fits very well,
 sets the position; a poor match never moves a counted one. The count keeps
 the position through any number of failed matches; only 10 s with neither a
 readable slide nor a match (a black or covered minimap) makes it unknown. A
@@ -150,9 +157,9 @@ no floor change left to take, the cavebot raises the `lost` alarm and waits;
 it walks on once the floor reads right again.
 
 Walking with keys finds its way on the client's walkability map
-(`data/map/cost/`); a tile black on the colour map (`data/map/`) is a wall
+(`data/maps/<map>/cost/`); a tile black on the colour map (`data/maps/<map>/`) is a wall
 whatever the walkability map says. It never walks over a hole, stairs, a ladder or any other
-floor change: the tiles drawn yellow on the colour map (`data/map/`), the
+floor change: the tiles drawn yellow on the colour map, the
 floor changes on the route and the ones it once fell through. It steps onto
 one only when a waypoint (`stairs`, `ladder`, `step`) is that tile. The map
 can be wrong (a corridor row drawn as a wall): only where it shows no way at
