@@ -57,6 +57,21 @@ _BORDER = 3
 _NAME = re.compile(r"^(\d+)_(\d+)_(\d+)$")
 
 
+#: The minimap's rock grey. The client draws it over every explored tile
+#: with nothing else on it, the stored map only on rock, so a radar with a
+#: grey block where the map is black scored 0.30 at its spot (Venore tainted
+#: caves floor 11, 2026-11-07). Both count it as black.
+_ROCK = (102, 102, 102)
+
+
+# doc: docs/prs/near-targeting.md#rock-is-unexplored
+def _rock_as_black(rgb: np.ndarray) -> np.ndarray:
+    """A copy of *rgb* with the rock grey blacked out."""
+    out = rgb[:, :, :3].copy()
+    out[(out == _ROCK).all(axis=2)] = 0
+    return out
+
+
 def _lit(radar_rgb: np.ndarray) -> np.ndarray:
     """1.0 on the radar pixels to compare, else 0.0: the lit ones and the black
     ones within ``_BORDER`` px of them (the shapes' outline), never the white
@@ -174,6 +189,7 @@ class WorldMap:
             if self._last_full is not None and now - self._last_full < self._every:
                 return None
             self._last_full = now
+        radar_rgb = _rock_as_black(radar_rgb)
         h, w = radar_rgb.shape[:2]
         lit = _lit(radar_rgb)
         best: tuple[float, int, int, int, bool] | None = None
@@ -250,5 +266,5 @@ class WorldMap:
                     image[y - y0 : y - y0 + _TILE, x - x0 : x - x0 + _TILE] = cv2.cvtColor(
                         tile[:_TILE, :_TILE], cv2.COLOR_BGR2RGB
                     )
-            self._floors[z] = (image, x0, y0)
+            self._floors[z] = (_rock_as_black(image), x0, y0)
         return self._floors[z]

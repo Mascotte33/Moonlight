@@ -103,3 +103,18 @@ def test_the_radar_zoom_is_read_from_its_edges(tmp_path: Path) -> None:
     assert _radar_zooms(_radar(tile, 40, 60, dy=1), (1, 2)) == (2,)
     assert _radar_zooms(tile[60:169, 40:146], (1, 2)) == (1,)
     assert _radar_zooms(np.zeros((109, 106, 3), np.uint8), (1, 2)) == (1, 2)  # no edges: try both
+
+
+# doc: docs/prs/near-targeting.md#rock-is-unexplored
+def test_the_rock_grey_counts_as_black(tmp_path: Path) -> None:
+    tile = np.zeros((256, 256, 3), np.uint8)  # a cave: two floor patches in rock
+    tile[60:200, 40:180] = (102, 102, 102)
+    tile[80:90, 60:75] = (153, 102, 51)
+    tile[100:130, 95:110] = (153, 102, 51)
+    tile[120:126, 70:80] = (0, 204, 0)
+    cv2.imwrite(str(tmp_path / "32000_31000_11.png"), cv2.cvtColor(tile, cv2.COLOR_RGB2BGR))
+    radar = tile[60:169, 40:146].copy()  # 1 px per sqm, center (93, 114)
+    radar[:, :30] = (102, 102, 102)  # explored tiles the map draws black
+    radar[:20] = 0
+    world = WorldMap(tmp_path, full_search_every=0.0)
+    assert world.match(radar, 11, near=(32090, 31110)) == (32093, 31114)
