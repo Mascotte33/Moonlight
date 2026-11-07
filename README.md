@@ -128,7 +128,8 @@ is 1 wide, so the cavebot stepped into the water. A match that agrees with the c
 sets the position; a poor match never moves a counted one. The count keeps
 the position through any number of failed matches; only 10 s with neither a
 readable slide nor a match (a black or covered minimap) makes it unknown. A
-rope, hole or stairs keeps x, y on the new floor until the map corrects it.
+rope, hole or stairs keeps x, y on the new floor as a guess, and any map match
+replaces the guess: a wagon or teleport that changes the floor lands far away.
 `bot.log` says `minimap: position x,y,z from the count` (or `map`) when the
 source switches. When the floor shown has neither, the floors above and
 below are tried near the last position (1 up, 1 down, 2 up, 2 down, up to 3),

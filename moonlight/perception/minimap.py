@@ -39,7 +39,9 @@ How the position is obtained
   (:attr:`MinimapReader.source` "map"); otherwise the count stands
   ("count"). With neither a slide nor a match (floor change, black radar)
   the floors above and below are searched near the last x, y (z+1, z-1,
-  z+2, ...: a misread floor indicator); a floor change keeps x, y. After
+  z+2, ...: a misread floor indicator); a floor change keeps x, y as a
+  guess, and any match replaces a guess (a wagon or teleport lands far
+  away). After
   ``estimate_for`` seconds with neither the reader is :attr:`lost` until
   the next match.
 * **(x, y) — relative tracking** (default, no map matcher): the terrain
@@ -226,6 +228,8 @@ class MinimapReader:
         self._clock = clock
         self._unreadable_since: float | None = None
         self._source = "count" if map_matcher is None else "map"
+        #: x, y were kept over a floor change and no match has confirmed them yet.
+        self._position_is_a_floor_change_guess = False
         self._floor_reader = floor_reader
         self._floor_region = floor_region
         self._map_matcher = map_matcher
@@ -323,6 +327,7 @@ class MinimapReader:
         self._lost = False
         self._unreadable_since = None
         self._source = "count" if self._map_matcher is None else "map"
+        self._position_is_a_floor_change_guess = False
 
     # -- helpers ------------------------------------------------------------
 
@@ -347,7 +352,8 @@ class MinimapReader:
                     logger.info("minimap: found on floor %d, not %d", z + step, z)
                     z += step
         strong = float(getattr(self._map_matcher, "score", 0.0)) <= STRONG_MATCH_SCORE
-        if xy is not None and (counted is None or xy == (counted.x, counted.y) or strong):
+        guess = self._position_is_a_floor_change_guess
+        if xy is not None and (counted is None or xy == (counted.x, counted.y) or strong or guess):
             self._px = float(getattr(self._map_matcher, "zoom", self._px))
             return self._settle(Position(int(xy[0]), int(xy[1]), z), "map", gray)
         if counted is not None:
@@ -356,6 +362,8 @@ class MinimapReader:
             return None
         if self._prev_gray is not None and z != self._prev_z:
             # A rope, hole or stairs: x, y stay; the next match on z corrects them.
+            # doc: docs/prs/position-tracking.md#teleport
+            self._position_is_a_floor_change_guess = True
             return self._settle(Position(self._position.x, self._position.y, z), "count", gray)
         now = self._clock()
         if self._unreadable_since is None:
@@ -382,6 +390,8 @@ class MinimapReader:
             x, y, z = position.x, position.y, position.z
             logger.info("minimap: position %d,%d,%d from the %s", x, y, z, source)
         self._position, self._source, self._lost = position, source, False
+        if source == "map":
+            self._position_is_a_floor_change_guess = False
         self._unreadable_since = None
         self._prev_gray, self._prev_z = gray, position.z
         return position
