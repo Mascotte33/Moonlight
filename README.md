@@ -126,8 +126,9 @@ The minimap zoom (1 or 2 px per tile) is read from the minimap itself, so a
 cave never matches a look-alike spot at the other zoom.
 The grey rock counts as black on both sides: the client paints every explored
 tile grey, the map only real rock.
-Only what the minimap shows is compared: the white player cross and black
-parts away from anything drawn are skipped, so a roof the minimap does not
+Only what the minimap shows is compared: the white player cross, your map
+marks (any colour off the map palette) and black parts away from anything
+drawn are skipped, so a roof the minimap does not
 draw does not spoil the match. After a floor change the route goes on at the next waypoint on that
 floor the map can reach. When the map shows no way to any waypoint on that
 floor (a fight or a step led onto a closed-off platform), it keeps its place on

@@ -72,14 +72,27 @@ def _rock_as_black(rgb: np.ndarray) -> np.ndarray:
     return out
 
 
+#: Every map colour has each channel a multiple of this (the client's 216-colour palette).
+_PALETTE_STEP = 51
+
+
+# doc: docs/prs/position-tracking.md#mask-marks
+def _off_palette(radar_rgb: np.ndarray) -> np.ndarray:
+    """True on the map marks: pixels off the map palette, and 1 px around them."""
+    off = (radar_rgb[:, :, :3] % _PALETTE_STEP != 0).any(axis=2).astype(np.uint8)
+    return cv2.dilate(off, np.ones((3, 3), np.uint8)) > 0
+
+
 def _lit(radar_rgb: np.ndarray) -> np.ndarray:
     """1.0 on the radar pixels to compare, else 0.0: the lit ones and the black
     ones within ``_BORDER`` px of them (the shapes' outline), never the white
-    player cross."""
+    player cross or a map mark."""
     total = radar_rgb[:, :, :3].astype(np.int32).sum(axis=2)
     lit = (total > 30).astype(np.uint8)
     near_lit = cv2.dilate(lit, np.ones((2 * _BORDER + 1,) * 2, np.uint8))
-    compare: np.ndarray = ((near_lit > 0) & (total < 700)).astype(np.float32)
+    compare: np.ndarray = (
+        (near_lit > 0) & (total < 700) & ~_off_palette(radar_rgb)
+    ).astype(np.float32)
     return compare
 
 
