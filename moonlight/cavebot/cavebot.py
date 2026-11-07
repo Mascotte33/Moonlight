@@ -844,7 +844,8 @@ class Cavebot:
                 logger.info("cavebot: moving again")
                 self.alarm = None
         elif now - self._last_move > self._stuck_timeout and self.alarm != "stuck":
-            seen = "unknown" if pos is None else f"{pos.x},{pos.y},{pos.z}"
+            source = self._state.position_status
+            seen = "unknown" if pos is None else f"{pos.x},{pos.y},{pos.z} ({source})"
             logger.warning(
                 "cavebot: [stuck: no-move] route %r: position %s unchanged for %g s, still trying",
                 self.route.name, seen, self._stuck_timeout,
@@ -1561,7 +1562,10 @@ class Cavebot:
         # The route used to stop here for good: a floor misread for one tick
         # after a pause (bot.log 2026-10-31 22:44:01) ended the hunt.
         if self.alarm != "lost":
-            logger.warning("cavebot: [stuck: lost] no waypoint on floor %d, waiting", z)
+            logger.warning(
+                "cavebot: [stuck: lost] no waypoint on floor %d (%s), waiting",
+                z, self._state.position_status,
+            )  # fmt: skip
             self.alarm = "lost"
 
     def _resync_to(self, index: int, z: int) -> None:

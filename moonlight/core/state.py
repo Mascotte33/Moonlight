@@ -123,7 +123,8 @@ class WorldState:
 
     # World.
     position: Position = field(default_factory=lambda: Position(0, 0, 0))
-    #: "" = map match, "estimated" = moved by the radar shift, "lost" = unknown.
+    #: "map" = map match, "count" = steps counted from the radar slide, "lost" = unknown.
+    # doc: docs/prs/position-tracking.md#position-source
     position_status: str = ""
     capacity: Capacity = field(default_factory=Capacity)
 

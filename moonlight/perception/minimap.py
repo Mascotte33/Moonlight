@@ -225,7 +225,7 @@ class MinimapReader:
         self._estimate_for = float(estimate_for)
         self._clock = clock
         self._unreadable_since: float | None = None
-        self._source = "map"
+        self._source = "count" if map_matcher is None else "map"
         self._floor_reader = floor_reader
         self._floor_region = floor_region
         self._map_matcher = map_matcher
@@ -322,7 +322,7 @@ class MinimapReader:
         self._prev_z = self._position.z
         self._lost = False
         self._unreadable_since = None
-        self._source = "map"
+        self._source = "count" if self._map_matcher is None else "map"
 
     # -- helpers ------------------------------------------------------------
 
@@ -378,6 +378,9 @@ class MinimapReader:
 
     def _settle(self, position: Position, source: str, gray: np.ndarray) -> Position:
         """Take *position* from *source*; this radar is the next slide's reference."""
+        if source != self._source:
+            x, y, z = position.x, position.y, position.z
+            logger.info("minimap: position %d,%d,%d from the %s", x, y, z, source)
         self._position, self._source, self._lost = position, source, False
         self._unreadable_since = None
         self._prev_gray, self._prev_z = gray, position.z

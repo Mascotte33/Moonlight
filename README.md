@@ -114,10 +114,16 @@ full live game session; 🟡 partial: verified on real hardware or real
 screenshots, but not yet in a full session; ❌ not yet verified live. The first
 full live session (2026-10-28) verified looting.
 
-The position comes from matching the minimap against the client's map tiles
-in `data/map/`. A frame that does not match (a map mark or a tooltip over the
-minimap) keeps the last position as an estimate; only 10 s without any match
-makes it unknown. When the floor shown has no match, the floors above and
+The position comes from two sources, shown after it in the Cavebot tab and in
+the stuck warnings: `(count)` counts each step from how far the minimap slid
+since the last frame, `(map)` matches the minimap against the client's map
+tiles in `data/map/`. A match that agrees with the count, or fits very well,
+sets the position; a poor match never moves a counted one. The count keeps
+the position through any number of failed matches; only 10 s with neither a
+readable slide nor a match (a black or covered minimap) makes it unknown. A
+rope, hole or stairs keeps x, y on the new floor until the map corrects it.
+`bot.log` says `minimap: position x,y,z from the count` (or `map`) when the
+source switches. When the floor shown has neither, the floors above and
 below are tried near the last position (1 up, 1 down, 2 up, 2 down, up to 3),
 and a mostly black minimap is matched with a looser score near the last
 position, or anywhere on the floor when that spot is at least twice as good

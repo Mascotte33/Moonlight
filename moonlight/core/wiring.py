@@ -366,9 +366,7 @@ def make_perceive(
             state.echo_raid_slots = echo_raids
             state.active_status_icons = conditions
             state.chase_mode = chase_mode
-            state.position_status = (
-                "lost" if minimap.lost else "estimated" if minimap.source == "count" else ""
-            )
+            state.position_status = "lost" if minimap.lost else minimap.source
             if minimap.lost:
                 # F-17: unknown until the next map match; the cavebot reads
                 # (0,0,0) as "no position" and halts instead of walking blind.
