@@ -287,8 +287,8 @@ def _keep_distance_goal(
     creature_slots: tuple[tuple[int, int], ...],
     blocked: set[tuple[int, int]],
     keep_distance_tiles: int,
-) -> tuple[tuple[int, int], tuple[int, int]] | None:
-    """``(first step, goal slot)`` toward the safest slot on screen, or None to stay.
+) -> list[tuple[int, int]] | None:
+    """The slots walked to the safest slot on screen (goal last), or None to stay.
 
     A slot's safety is its distance to the closest creature. The goal is the
     cheapest walk to a slot at least *keep_distance_tiles* from every
@@ -320,10 +320,10 @@ def _keep_distance_goal(
         goal = min(cost, key=lambda s: (-safety(s), cost[s]))
     if goal == PLAYER_SLOT:
         return None
-    slot = goal
-    while came_from[slot] != PLAYER_SLOT:
-        slot = came_from[slot]
-    return (slot[0] - PLAYER_SLOT[0], slot[1] - PLAYER_SLOT[1]), goal
+    path = [goal]
+    while came_from[path[-1]] != PLAYER_SLOT:
+        path.append(came_from[path[-1]])
+    return path[::-1]
 
 
 def _world_tile(state: WorldState, slot: tuple[int, int]) -> tuple[int, int, int]:
@@ -366,6 +366,9 @@ class TargetingDecision:
         #: World tiles whose on-screen click selected nothing or an ignored monster.
         self._skipped_tiles: dict[tuple[int, int, int], float] = {}
         self._stepped_away_at = float("-inf")
+        #: Screen slots of the last keep-distance walk (goal last), for the
+        #: "What the bot sees" view; empty when not keeping distance.
+        self.keep_distance_path: list[tuple[int, int]] = []
 
     def row_for(self, monster: Monster) -> MonsterRow:
         """The row for *monster*: its name's row, else ``default_monster``."""
@@ -418,6 +421,8 @@ class TargetingDecision:
     def decide(self, state: WorldState, now: float) -> TargetingAction | None:
         """The action to take, or None when the selection is already right."""
         self._ignored_until = {k: end for k, end in self._ignored_until.items() if end > now}
+        if state.selected_target is None:
+            self.keep_distance_path = []
         candidates = [
             m
             for m in state.monsters
@@ -446,16 +451,19 @@ class TargetingDecision:
         self, state: WorldState, now: float, selected: Monster
     ) -> TargetingAction | None:
         """A ``step_away`` toward the safest spot while fighting a "keep distance" target."""
-        if self.row_for(selected).movement != "keep distance" or state.game_view_sliding:
+        if self.row_for(selected).movement != "keep distance" or not state.creature_slots:
+            self.keep_distance_path = []
             return None
-        if not state.creature_slots or now - self._stepped_away_at < _STEP_AWAY_EVERY_SECONDS:
+        if state.game_view_sliding or now - self._stepped_away_at < _STEP_AWAY_EVERY_SECONDS:
             return None
         creatures = state.creature_slots
         blocked = set(creatures) | set(state.echo_raid_slots) | wall_slots(state, self._walkable)
-        found = _keep_distance_goal(creatures, blocked, self.config.keep_distance_tiles)
-        if found is None:
+        path = _keep_distance_goal(creatures, blocked, self.config.keep_distance_tiles)
+        self.keep_distance_path = path or []
+        if path is None:
             return None
-        step, goal = found
+        goal = path[-1]
+        step = (path[0][0] - PLAYER_SLOT[0], path[0][1] - PLAYER_SLOT[1])
         self._stepped_away_at = now
         here = min(_distance(PLAYER_SLOT, c) for c in creatures)
         there = min(_distance(goal, c) for c in creatures)

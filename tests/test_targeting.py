@@ -357,6 +357,18 @@ def test_keep_distance_steps_away_from_a_close_target() -> None:
     assert targeting.decide(keep_distance_state((10, 5)), 1.0) is None  # 3 tiles: far enough
 
 
+def test_keep_distance_keeps_its_path_for_the_view() -> None:
+    targeting = rows(MonsterRow(name="Wolf", movement="keep distance"))
+    action = targeting.decide(keep_distance_state((8, 5)), 0.0)
+    path = targeting.keep_distance_path
+    assert action is not None and path[0] == (7 + action.step[0], 5 + action.step[1])
+    assert max(abs(path[-1][0] - 8), abs(path[-1][1] - 5)) >= 3  # goal 3 tiles from the wolf
+    assert targeting.decide(keep_distance_state((8, 5)), 0.2) is None
+    assert targeting.keep_distance_path == path  # kept between steps
+    targeting.decide(keep_distance_state((10, 5)), 1.0)  # far enough: nothing to walk
+    assert targeting.keep_distance_path == []
+
+
 def test_keep_distance_walks_around_creatures_blocking_the_far_side() -> None:
     s = keep_distance_state((8, 5))
     s.creature_slots = ((8, 5), (6, 4), (6, 5), (6, 6))  # boxed in on the left
