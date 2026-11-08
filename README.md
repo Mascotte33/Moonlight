@@ -414,7 +414,7 @@ longer than (min), plus checkboxes for "Staying player: go refill" and a private
 stay); it never pauses walking, attacking or looting.
 
 Death stop: when the HP bar reads empty for 3 s (after it has read above 0
-once), the bot lets go of every key, saves a screenshot in `screenshots/`,
+once), also while the bot is on Stop, the bot lets go of every key, saves a screenshot in `screenshots/`,
 beeps, logs `OPERATOR ALERT: loop stopping: character died (HP bar empty for
 3 s)` and stops. It has no switch.
 

@@ -495,6 +495,11 @@ class GameLoop:
             self._perceive_time = self._clock() - t0
         snap = self.state.snapshot()
 
+        if snap.screen_ok and self._died(snap):  # stopped too: a death is always reported
+            self._death_stop()
+            self._record_tick_time(t0)
+            return
+
         if self.stopped:
             self._stand_stopped()
             self._record_tick_time(t0)
@@ -508,11 +513,6 @@ class GameLoop:
         # Pause gate: !screen_ok (unfocused / bad frame) pauses, fail-closed.
         if not snap.screen_ok:
             self._pause("screen not ok (client unfocused or perception failed)")
-            self._record_tick_time(t0)
-            return
-
-        if self._died(snap):
-            self._death_stop()
             self._record_tick_time(t0)
             return
 

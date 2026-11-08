@@ -400,6 +400,17 @@ class TestGameLoopStates:
         assert gl.stop_requested and save.called
         assert alerts == ["loop stopping: character died (HP bar empty for 3 s)"]
 
+    def test_a_death_is_reported_while_stopped(self) -> None:
+        ws = make_state(hp=50.0)
+        gl, clock = make_loop(ws, FakeInput())
+        gl.stopped = True
+        for hp in (50.0, 0.0, 0.0, 0.0):
+            ws.hp_percent = hp
+            for _ in range(4):  # stopped reads every 4th tick
+                gl.tick()
+            clock.advance(1.5)
+        assert gl.stop_requested
+
     def test_hp_never_read_is_no_death(self) -> None:
         ws = make_state(hp=0.0)
         gl, clock = make_loop(ws, FakeInput())
