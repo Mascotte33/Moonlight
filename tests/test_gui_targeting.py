@@ -23,7 +23,7 @@ SETTINGS = TargetingSettings("1500", "6")
 def test_rows_become_default_monster_named_rows_and_area_rules() -> None:
     monsters = [
         MonsterRowFields("", "2", False, "F5", "10", "none"),
-        MonsterRowFields(" Troll ", "4", False, "F6", "", "none"),
+        MonsterRowFields(" Troll ", "4", False, "F6", "", "none", "rune"),
         MonsterRowFields("Rat", "1", True, "", "", "follow"),
     ]
     areas = [AreaRuleFields("F7", "3", "25"), AreaRuleFields("F8", "1", "")]
@@ -32,9 +32,12 @@ def test_rows_become_default_monster_named_rows_and_area_rules() -> None:
     assert targeting is not None
     assert (targeting.default_monster.priority, targeting.default_monster.hotkey) == (2, "F5")
     assert targeting.default_monster.minimum_mana == 10
-    assert [(r.name, r.priority, r.ignore, r.hotkey, r.movement) for r in targeting.monsters] == [
-        ("Troll", 4, False, "F6", "none"),
-        ("Rat", 1, True, "", "follow"),
+    assert [
+        (r.name, r.priority, r.ignore, r.hotkey, r.movement, r.attack_type)
+        for r in targeting.monsters
+    ] == [
+        ("Troll", 4, False, "F6", "none", "rune"),
+        ("Rat", 1, True, "", "follow", "distance"),
     ]
     assert [
         (r.hotkey, r.minimum_adjacent_monsters, r.minimum_mana)

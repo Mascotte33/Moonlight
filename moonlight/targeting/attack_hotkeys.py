@@ -8,6 +8,11 @@ shares one ``attack_cooldown_ms``; a new target starts it fresh, so its first
 spell goes out at once (``new_target``). Mana is in points (``mp_points``);
 unknown MP (0) is below any mana minimum, so it blocks every rule that has one.
 
+The row's ``attack_type`` gates its key: ``melee`` only while the target's
+slot touches the player, ``rune`` only with a known target slot, which the
+loop aims the mouse at before the key.
+# doc: docs/prs/attack-types.md#attack-type
+
 The loop calls this only while the selection matches targeting's choice and
 never while a lure pulls; focus gating and the rate limit are its job too.
 """
@@ -21,7 +26,7 @@ import logging
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
 from moonlight.perception.creatures import PLAYER_SLOT
-from moonlight.targeting.targeting import MonsterRow, TargetingConfig
+from moonlight.targeting.targeting import MonsterRow, TargetingConfig, target_slot
 
 __all__ = ["AttackHotkeys", "count_adjacent_creatures"]
 
@@ -49,8 +54,13 @@ class AttackHotkeys:
         self.config = config
         self._last_pressed_at: float | None = None
 
-    def decide(self, state: WorldState, row: MonsterRow, now: float) -> str | None:
-        """The hotkey to press now for target *row*, or ``None``."""
+    def decide(
+        self, state: WorldState, row: MonsterRow, now: float
+    ) -> tuple[str, tuple[int, int] | None] | None:
+        """The hotkey to press now for target *row* and the slot to aim it at, or ``None``.
+
+        The slot is set only for a ``rune`` row's key.
+        """
         if (
             self._last_pressed_at is not None
             and (now - self._last_pressed_at) * 1000 < self.config.attack_cooldown_ms
@@ -64,9 +74,18 @@ class AttackHotkeys:
                 and adjacent_creatures >= rule.minimum_adjacent_monsters
                 and mana >= rule.minimum_mana
             ):
-                return rule.hotkey
-        if row.hotkey and mana >= row.minimum_mana:
-            return row.hotkey
+                return rule.hotkey, None
+        if not row.hotkey or mana < row.minimum_mana:
+            return None
+        if row.attack_type == "distance":
+            return row.hotkey, None
+        slot = target_slot(state)
+        if slot is None:
+            return None
+        if row.attack_type == "rune":
+            return row.hotkey, slot
+        if count_adjacent_creatures((slot,)):  # melee: the target touches the player
+            return row.hotkey, None
         return None
 
     # doc: docs/prs/first-spell.md#fresh-cooldown

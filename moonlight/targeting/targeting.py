@@ -40,6 +40,7 @@ from moonlight.perception.corpses import slot_ring
 from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
+    "ATTACK_TYPES",
     "MOVEMENTS",
     "PAUSE_SECONDS",
     "TARGET_ORDERS",
@@ -48,11 +49,14 @@ __all__ = [
     "TargetingAction",
     "TargetingConfig",
     "TargetingDecision",
+    "target_slot",
 ]
 
 logger = logging.getLogger(__name__)
 
 MOVEMENTS = ("follow", "none")
+# doc: docs/prs/attack-types.md#attack-type
+ATTACK_TYPES = ("distance", "melee", "rune")
 # doc: docs/prs/GUI_visual_changes.md#target-order
 #: Which of the highest-priority monsters is attacked first. "battle list"
 #: is the client's order: nearest first when its battle list sorts by distance.
@@ -79,14 +83,19 @@ class MonsterRow:
     #: Mana points (not percent) needed to press the hotkey; 0 = none.
     minimum_mana: int = 0
     movement: str = "follow"
+    attack_type: str = "distance"
 
     def validate(self) -> None:
-        """Raise ValueError on a bad priority, movement or hotkey."""
+        """Raise ValueError on a bad priority, movement, attack type or hotkey."""
         where = f"monster row {self.name!r}"
         if isinstance(self.priority, bool) or self.priority not in range(1, 6):
             raise ValueError(f"{where}: priority must be 1-5, got {self.priority!r}")
         if self.movement not in MOVEMENTS:
             raise ValueError(f"{where}: movement must be one of {MOVEMENTS}, got {self.movement!r}")
+        if self.attack_type not in ATTACK_TYPES:
+            raise ValueError(
+                f"{where}: attack_type must be one of {ATTACK_TYPES}, got {self.attack_type!r}"
+            )
         if self.hotkey:
             check_hotkey(self.hotkey, where)
         if isinstance(self.minimum_mana, bool) or self.minimum_mana < 0:
@@ -200,6 +209,27 @@ def _step_toward_creature(
     steps = along_x + along_y if abs(dx) >= abs(dy) else along_y + along_x
     # doc: docs/prs/echo-raid.md#avoid
     return next((s for s in steps if (px + s[0], py + s[1]) not in echo_raid_slots), None)
+
+
+# doc: docs/prs/attack-types.md#target-slot
+def target_slot(state: WorldState) -> tuple[int, int] | None:
+    """Game-grid slot of the selected target: the bar showing its HP, nearest first."""
+    # ponytail: two creatures at the same HP are told apart only by distance;
+    # read the client's red target square if that picks the wrong one.
+    selected = state.selected_target
+    if selected is None:
+        return None
+    px, py = PLAYER_SLOT
+    matches = [
+        slot
+        for slot, hp in zip(state.creature_slots, state.creature_hp_percents, strict=True)
+        if abs(hp - selected.hp_percent) <= 5
+    ]
+    return min(
+        matches,
+        key=lambda s: (max(abs(s[0] - px), abs(s[1] - py)), abs(s[0] - px) + abs(s[1] - py)),
+        default=None,
+    )
 
 
 def _world_tile(state: WorldState, slot: tuple[int, int]) -> tuple[int, int, int]:

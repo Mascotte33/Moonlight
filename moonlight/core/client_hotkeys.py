@@ -101,7 +101,12 @@ def bot_keys(cfg: BotConfig) -> list[BotKey]:
     targeting = _module(cfg, "targeting")
     if targeting is not None:
         keys += [
-            BotKey(row.hotkey, f"Attack {row.name}", "UseOnTarget")
+            # doc: docs/prs/attack-types.md#attack-type
+            BotKey(
+                row.hotkey,
+                f"Attack {row.name}",
+                "UseAtMouseCursor" if row.attack_type == "rune" else "UseOnTarget",
+            )
             for row in targeting.monsters
             if row.hotkey
         ]

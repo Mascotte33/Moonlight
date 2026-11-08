@@ -33,7 +33,7 @@ from moonlight.gui.tab_base import (
     section,
 )
 from moonlight.targeting.seen_monsters import SeenMonster, SeenMonsters
-from moonlight.targeting.targeting import TARGET_ORDERS, TargetingConfig
+from moonlight.targeting.targeting import ATTACK_TYPES, TARGET_ORDERS, TargetingConfig
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.core.state import WorldState
@@ -60,6 +60,7 @@ class MonsterRowFields(NamedTuple):
     hotkey: str
     minimum_mana: str
     movement: str
+    attack_type: str = "distance"
 
 
 class AreaRuleFields(NamedTuple):
@@ -118,6 +119,7 @@ def apply_targeting(
                 row.minimum_mana, int, f"monster row {number} minimum mana"
             ),
             "movement": row.movement,
+            "attack_type": row.attack_type,
         }
         for number, row in enumerate(monster_rows)
         if number == 0 or row.name.strip()
@@ -199,6 +201,7 @@ class _MonsterLine:
     hotkey: HotkeyBox
     mana: ctk.CTkEntry
     movement: ctk.CTkOptionMenu
+    attack_type: ctk.CTkOptionMenu
     widgets: list[Any]
 
     def fields(self) -> MonsterRowFields:
@@ -211,6 +214,7 @@ class _MonsterLine:
             self.hotkey.get(),
             self.mana.get(),
             movement,
+            self.attack_type.get(),
         )
 
 
@@ -294,7 +298,7 @@ class TargetingTab(Tab):
         monsters_box, self._monsters_frame = _card(parent, "Targeting")
         _header(
             self._monsters_frame,
-            ["Monster", "Priority", "", "Attack key", "Min mana", "Movement", ""],
+            ["Monster", "Priority", "", "Attack key", "Attack", "Min mana", "Movement", ""],
         )
         _add_button(monsters_box, "+ Add monster", self._add_monster)
 
@@ -353,6 +357,7 @@ class TargetingTab(Tab):
                     row.hotkey,
                     _blank_zero(row.minimum_mana),
                     row.movement,
+                    row.attack_type,
                 )
             )
         for rule in targeting.area_rules:
@@ -397,6 +402,17 @@ class TargetingTab(Tab):
             ignore.select()
         hotkey = HotkeyBox(rows, self._save)
         hotkey.set(row.hotkey)
+        # doc: docs/prs/attack-types.md#attack-type
+        attack_type = ctk.CTkOptionMenu(
+            rows,
+            values=list(ATTACK_TYPES),
+            width=90,
+            fg_color=theme.RAISED,
+            button_color=theme.RAISED,
+            button_hover_color=theme.HOVER,
+            command=lambda _v: self._save(),
+        )
+        attack_type.set(row.attack_type)
         mana = row_entry(rows, row.minimum_mana, 48, self._save, pack_left=False)
         movement = ctk.CTkOptionMenu(
             rows,
@@ -408,8 +424,8 @@ class TargetingTab(Tab):
             command=lambda _v: self._save(),
         )
         movement.set(MOVEMENT_LABELS[row.movement])
-        widgets: list[Any] = [name_widget, priority, ignore, hotkey, mana, movement]
-        line = _MonsterLine(name, priority, ignore, hotkey, mana, movement, widgets)
+        widgets: list[Any] = [name_widget, priority, ignore, hotkey, attack_type, mana, movement]
+        line = _MonsterLine(name, priority, ignore, hotkey, mana, movement, attack_type, widgets)
         if not first:
             widgets.append(
                 row_button(rows, "✕", partial(self._delete_monster, line), pack_left=False)

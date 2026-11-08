@@ -974,9 +974,26 @@ class GameLoop:
                 self._warned_no_chase_toggle_key = True
         if attack_hotkeys is None:
             return
-        hotkey = attack_hotkeys.decide(snap, row, now)
-        if hotkey is not None:
+        picked = attack_hotkeys.decide(snap, row, now)
+        if picked is None:
+            return
+        hotkey, aim_slot = picked
+        if aim_slot is None:
             self._send(snap, lambda: attack_hotkeys.send(hotkey, self.input, now))
+            return
+        # doc: docs/prs/attack-types.md#attack-type
+        clicker = self.modules.clicker
+        if clicker is None or not clicker.absolute:
+            raise RuntimeError("rune attacks need the absolute clicker to aim the mouse")
+        if snap.game_view_sliding:
+            return  # aim at a still frame
+        aim = clicker.to_wire(targeting.slot_center(aim_slot))
+
+        def cast_rune() -> None:
+            self.input.mouse_to(*aim)
+            attack_hotkeys.send(hotkey, self.input, now)
+
+        self._send(snap, cast_rune)
 
     # doc: docs/prs/near-targeting.md#moved-row
     def _battle_list_moved_under_the_click(self) -> bool:
