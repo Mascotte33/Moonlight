@@ -555,10 +555,21 @@ or in the `targeting` section of your profile config:
 
 - **Monster rows** match a battle-list name (ignoring case). Each has a
   priority (1-5, higher first), `ignore` ("never attack" in the tab), an
-  attack `hotkey` (empty = melee only), a mana floor in mana points
-  (`minimum_mana`, e.g. 200) and a `movement`: `follow` (chase) or `none`
-  (stand still). Players are
+  attack `hotkey` (empty = melee only), an **Attack** type (`attack_type`),
+  a mana floor in mana points (`minimum_mana`, e.g. 200) and a `movement`:
+  `follow` (chase), `none` (stand still) or `keep distance`. Players are
   never targeted.
+- **Attack type:** `distance` (default) presses the key any time; `melee`
+  presses it only while the target stands next to you; `rune` moves the
+  mouse onto the target's tile, then presses the key. Bind a rune key in the
+  client as **Use at mouse cursor** (Settings > Client hotkeys writes it so);
+  runes need the absolute clicker. The target's tile is the screen health bar
+  showing its HP; between two monsters at the same HP it takes the nearer one.
+- **Keep distance:** the row's movement `keep distance` sets the client to
+  stand still and steps away (diagonals too, never onto a creature) while the
+  target is closer than **Keep distance: N tiles** (Targeting > Settings,
+  `keep_distance_tiles`, default 3). One step per 0.4 s; walls are not known,
+  so in a corner it keeps pressing into the wall.
 - **`default_monster`** is the row for every monster without its own row, so
   everything is attacked unless you ignore it. The tab shows it as "all others".
   Default: priority 1, no mana floor, follow.
@@ -653,7 +664,7 @@ or in the `targeting` section of your profile config:
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
   These files are not profiles and never show in the profile lists.
-  The Targeting tab lists the ones with no monster row yet: the picture,
+  The Targeting tab's **Seen Monsters** page lists the ones with no monster row yet: the picture,
   then the guessed name (filled in once tesseract reads it). Correct the
   name, then click **Add to monsters** and the line leaves the list. The ✕
   forgets a line and its picture (it is learned again on its next sighting). You name
