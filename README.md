@@ -94,6 +94,7 @@ A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 | Healing + cures | ✅ | ✅ | 🟡 |
 | Targeting | ✅ | ✅ | 🟡 |
 | Alarms (low HP, fast HP drop, staying player, PM; no switch) | ✅ | ✅ | ❌ |
+| Death stop (empty HP bar for 3 s) | ✅ | ✅ | ❌ |
 | Cavebot (waypoint routing, route recorder) | ✅ | ✅ | ❌ |
 | Looting | ✅ | ✅ | ✅ |
 | Refill (check, say, key, drag waypoints) | ✅ | ✅ | ❌ |
@@ -411,6 +412,11 @@ each for Low HP below (%), Fast HP drop in 1 s (HP %) and Player in sight
 longer than (min), plus checkboxes for "Staying player: go refill" and a private message. An alarm beeps, logs
 `ALARM: ...` once and saves a screenshot in `screenshots/` (the newest 20
 stay); it never pauses walking, attacking or looting.
+
+Death stop: when the HP bar reads empty for 3 s (after it has read above 0
+once), the bot lets go of every key, saves a screenshot in `screenshots/`,
+beeps, logs `OPERATOR ALERT: loop stopping: character died (HP bar empty for
+3 s)` and stops. It has no switch.
 
 Account rotation plays accounts in turn (A, B, C, A...) in one client window.
 It has no switch: it is on when the config lists accounts (at least 2). It

@@ -15,7 +15,9 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
+from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 from moonlight.alarms.alarms import AlarmDecision
@@ -379,6 +381,32 @@ class TestGameLoopStates:
         gl.tick()
         assert gl.current_state is BotState.IDLE
         assert inp.sent_lines == []
+
+    # doc: docs/prs/death-stop.md#death-stop
+    def test_empty_hp_bar_for_three_seconds_stops_the_bot(self) -> None:
+        ws = make_state(hp=50.0)
+        alerts: list[str] = []
+        gl, clock = make_loop(ws, FakeInput(), alert=alerts.append)
+        gl.screen_grab = lambda: np.zeros((4, 4, 3), np.uint8)
+        gl.tick()
+        ws.hp_percent = 0.0
+        gl.tick()
+        clock.advance(2.9)
+        gl.tick()
+        assert not gl.stop_requested  # a living character is healed back in time
+        clock.advance(0.1)
+        with patch("moonlight.extras.extras.save_screenshot") as save:
+            gl.tick()
+        assert gl.stop_requested and save.called
+        assert alerts == ["loop stopping: character died (HP bar empty for 3 s)"]
+
+    def test_hp_never_read_is_no_death(self) -> None:
+        ws = make_state(hp=0.0)
+        gl, clock = make_loop(ws, FakeInput())
+        for _ in range(5):
+            gl.tick()
+            clock.advance(1.0)
+        assert not gl.stop_requested
 
     def test_priority_heal_over_attack(self) -> None:
         ws2 = make_state(hp=10.0, target=True)

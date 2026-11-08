@@ -527,6 +527,7 @@ def build_loop(
 
     loop.reconfigure = reconfigure
     loop.seen_monsters = seen_monsters
+    loop.screen_grab = screen_grab
     if client_is_foreground is not None and loop.all_modules.scripts is not None:
         loop.all_modules.scripts.client_is_foreground = client_is_foreground
     return loop
