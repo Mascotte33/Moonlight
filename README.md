@@ -114,10 +114,24 @@ full live game session; 🟡 partial: verified on real hardware or real
 screenshots, but not yet in a full session; ❌ not yet verified live. The first
 full live session (2026-10-28) verified looting.
 
-The position comes from matching the minimap against the client's map tiles
-in `data/map/`. A frame that does not match (a map mark or a tooltip over the
-minimap) keeps the last position as an estimate; only 10 s without any match
-makes it unknown. When the floor shown has no match, the floors above and
+The position comes from two sources, shown after it in the Cavebot tab and in
+the stuck warnings: `(count)` counts each step from how far the minimap slid
+since the last frame, `(map)` matches the minimap against the client's map
+tiles of the map picked in Settings > **Map**: `igla` (the Igla server's own
+map, `data/maps/igla/`) or `tibia` (the global Tibia map most OTs use,
+`data/maps/tibia/`). To fill a map folder, copy the client's minimap folder
+(IglaOTS: `Season_Launcher/IglaOTS/minimap`): each `Minimap_Color_X_Y_Z.png`
+goes into `data/maps/<map>/` as `X_Y_Z.png`, each
+`Minimap_WaypointCost_X_Y_Z.png` into `data/maps/<map>/cost/` as `X_Y_Z.png`.
+A wrong map walks wrong: the global map draws the Venore bridge 2 wide, Igla's
+is 1 wide, so the cavebot stepped into the water. A match that agrees with the count, or fits very well,
+sets the position; a poor match never moves a counted one. The count keeps
+the position through any number of failed matches; only 10 s with neither a
+readable slide nor a match (a black or covered minimap) makes it unknown. A
+rope, hole or stairs keeps x, y on the new floor as a guess, and any map match
+replaces the guess: a wagon or teleport that changes the floor lands far away.
+`bot.log` says `minimap: position x,y,z from the count` (or `map`) when the
+source switches. When the floor shown has neither, the floors above and
 below are tried near the last position (1 up, 1 down, 2 up, 2 down, up to 3),
 and a mostly black minimap is matched with a looser score near the last
 position, or anywhere on the floor when that spot is at least twice as good
@@ -126,8 +140,9 @@ The minimap zoom (1 or 2 px per tile) is read from the minimap itself, so a
 cave never matches a look-alike spot at the other zoom.
 The grey rock counts as black on both sides: the client paints every explored
 tile grey, the map only real rock.
-Only what the minimap shows is compared: the white player cross and black
-parts away from anything drawn are skipped, so a roof the minimap does not
+Only what the minimap shows is compared: the white player cross, your map
+marks (any colour off the map palette) and black parts away from anything
+drawn are skipped, so a roof the minimap does not
 draw does not spoil the match. After a floor change the route goes on at the next waypoint on that
 floor the map can reach. When the map shows no way to any waypoint on that
 floor (a fight or a step led onto a closed-off platform), it keeps its place on
@@ -143,9 +158,9 @@ no floor change left to take, the cavebot raises the `lost` alarm and waits;
 it walks on once the floor reads right again.
 
 Walking with keys finds its way on the client's walkability map
-(`data/map/cost/`); a tile black on the colour map (`data/map/`) is a wall
+(`data/maps/<map>/cost/`); a tile black on the colour map (`data/maps/<map>/`) is a wall
 whatever the walkability map says. It never walks over a hole, stairs, a ladder or any other
-floor change: the tiles drawn yellow on the colour map (`data/map/`), the
+floor change: the tiles drawn yellow on the colour map, the
 floor changes on the route and the ones it once fell through. It steps onto
 one only when a waypoint (`stairs`, `ladder`, `step`) is that tile. The map
 can be wrong (a corridor row drawn as a wall): only where it shows no way at
@@ -308,7 +323,11 @@ A `wait` waypoint holds the route for its label in seconds.
 **Delete**, the code box, **Save** and **Test now**. A ticked script runs by
 itself, one at a time, top of the list first; the ms box is its pause after it
 ends (empty = 1000 ms, at least 50). A `script` waypoint picks a script from
-the label dropdown on Route, and the route waits until it ends. Save
+the label dropdown on Route, and the route waits until it ends. A `script`
+waypoint with a tile starts only after the character has stood on that tile
+for half a second. When the next waypoint is on another floor (a wagon or door
+script), the route waits up to 5 s for that floor and runs the script again
+if the floor did not change. Save
 checks the code: a broken script is saved but shown red, can't be ticked or
 tested, and its waypoints are skipped (red on the route, a warning in
 `logs/bot.log`). A script that fails while running is unticked and its error
@@ -622,8 +641,7 @@ or in the `targeting` section of your profile config:
   ignores (`attacking the creature in the way`).
 - **What the bot sees:** Diagnostics > "Show what the bot sees" shows the
   game view with a red box on each monster found, the cavebot's planned walk
-  as a blue line (walk keys only) and a gold circle for 10 s where a monster
-  just died. It only shows; looting loots every corpse around.
+  as a blue line (walk keys only). It only shows, never sends input.
 - **Cavebot when blocked:** a step key that does not move the player in
   0.7 s is pressed once more (a lag looks the same); a second miss marks
   that tile blocked for 12 s (freed early once the monster on it
@@ -679,6 +697,7 @@ pip install -e ".[dev]"
 ruff check .
 mypy .
 pytest -q
+git config core.hooksPath .githooks   # once: ruff and mypy before every commit
 ```
 
 CI runs ruff, mypy, the test suite and the capture/perception benchmarks on every

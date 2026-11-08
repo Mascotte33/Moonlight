@@ -31,7 +31,7 @@ tools/arduino-cli/
 data/templates/anchors/
 data/templates/icons/
 screenshots/
-data/map/
+data/maps/
 
 # Owner-local: only code, the root README, build config and test data are
 # published. Docs, configs and calibrations stay on the owner's PC.

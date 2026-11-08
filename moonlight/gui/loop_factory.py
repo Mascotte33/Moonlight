@@ -33,7 +33,7 @@ from moonlight.calibration.profile import ProfileManager
 from moonlight.cavebot.cavebot import Waypoint
 from moonlight.core.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
 from moonlight.core.state import WorldState
-from moonlight.core.wiring import build_loop, capture_providers, make_perceive
+from moonlight.core.wiring import MAPS_DIR, build_loop, capture_providers, make_perceive
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -427,4 +427,6 @@ def build_position_reader(
     cfg = load_real_config(config_path)
     profile = load_profile(cfg.profile, profiles_dir or cfg.profiles_dir)
     capture = ScreenCapture(window_title=cfg.window_title)
-    return make_perceive(state, profile, capture.get_frame, start=state.position)
+    return make_perceive(
+        state, profile, capture.get_frame, start=state.position, map_dir=MAPS_DIR / cfg.game_map
+    )

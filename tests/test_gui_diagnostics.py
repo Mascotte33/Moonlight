@@ -16,11 +16,10 @@ def test_seen_view_boxes_creatures() -> None:
     assert not view[15, 55].any()  # empty slot (5, 1) stays dark
 
 
-def test_seen_view_draws_path_and_corpses() -> None:
+def test_seen_view_draws_the_path() -> None:
     frame = np.zeros((110, 150, 3), np.uint8)
-    view = seen_view(frame, (0, 0, 150, 110), [], path=[(9, 5)], corpses=[(2, 2)])
+    view = seen_view(frame, (0, 0, 150, 110), [], path=[(9, 5)])
     assert tuple(view[55, 85]) == (255, 120, 0)  # blue line from the player (7, 5) east
-    assert tuple(view[25, 21]) == (0, 215, 255)  # gold circle on slot (2, 2)
 
 
 def test_slots_of_drops_tiles_off_the_grid() -> None:

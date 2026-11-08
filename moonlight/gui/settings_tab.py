@@ -16,7 +16,7 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from moonlight.core.client_hotkeys import OFFICIAL_CLIENT_FILE, bot_keys, write_moonlight_set
-from moonlight.core.config import ConfigError
+from moonlight.core.config import MAP_CHOICES, ConfigError
 from moonlight.core.state import WorldState
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import (
@@ -52,6 +52,7 @@ OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
     Option("Game window", "window_title", "dropdown"),
     Option("Cavebot walks with WSAD keys", "walk_keys", "switch"),
+    Option("Map", "game_map", "dropdown", choices=list(MAP_CHOICES)),
 ]
 #: The only switch for each module (T2.F4.K2); cavebot has its own on its tab.
 MODULE_SWITCHES = [

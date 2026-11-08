@@ -13,7 +13,7 @@ from moonlight.perception.worldmap import WorldMap, _radar_zooms
 
 def _map(tmp_path: Path) -> np.ndarray:
     rng = np.random.RandomState(3)
-    tile = rng.randint(0, 255, (256, 256, 3), dtype=np.uint8)
+    tile = rng.randint(0, 255, (256, 256, 3), dtype=np.uint8) // 51 * 51  # the map palette
     cv2.imwrite(str(tmp_path / "32000_31000_7.png"), cv2.cvtColor(tile, cv2.COLOR_RGB2BGR))
     return tile
 
@@ -53,7 +53,7 @@ def test_unknown_floor_or_bad_radar_is_none(tmp_path: Path) -> None:
 # doc: docs/prs/client-hotkeys.md#sparse-radar
 def test_a_near_search_accepts_a_looser_score(tmp_path: Path) -> None:
     radar = _radar(_map(tmp_path), 40, 60).astype(np.int32)
-    noise = np.random.RandomState(5).randint(-40, 40, (55, 53, 3))
+    noise = np.random.RandomState(5).randint(-1, 2, (55, 53, 3)) * 51
     # per tile, like the client draws it
     noise = np.repeat(np.repeat(noise, 2, axis=0), 2, axis=1)[:109, :106]
     radar = np.clip(radar + noise, 0, 255).astype(np.uint8)  # scores above 0
@@ -70,7 +70,7 @@ def test_a_whole_floor_search_accepts_a_looser_score_only_at_a_distinct_spot(
     tile = np.zeros((256, 256, 3), np.uint8)  # mostly black, like an upper floor
     for _ in range(30):
         x, y, size = rng.randint(0, 240), rng.randint(0, 240), rng.randint(4, 12)
-        tile[y : y + size, x : x + size] = rng.randint(60, 255, 3)
+        tile[y : y + size, x : x + size] = rng.randint(60, 255, 3) // 51 * 51  # the map palette
     cv2.imwrite(str(tmp_path / "32000_31000_7.png"), cv2.cvtColor(tile, cv2.COLOR_RGB2BGR))
     radar = _radar(tile, 40, 60)
     world = WorldMap(tmp_path, max_score=-1.0, full_search_every=0.0)  # only "distinct" passes
@@ -118,3 +118,12 @@ def test_the_rock_grey_counts_as_black(tmp_path: Path) -> None:
     radar[:20] = 0
     world = WorldMap(tmp_path, full_search_every=0.0)
     assert world.match(radar, 11, near=(32090, 31110)) == (32093, 31114)
+
+
+# doc: docs/prs/position-tracking.md#mask-marks
+def test_map_marks_are_not_compared(tmp_path: Path) -> None:
+    radar = _map(tmp_path)[60:169, 40:146].copy()  # 1 px per sqm, center (93, 114)
+    radar[70:79, 20:29] = (182, 153, 134)  # a mark: colours off the map palette
+    radar[72:77, 22:27] = (0, 82, 31)
+    world = WorldMap(tmp_path, max_score=0.001, near_max_score=0.001)
+    assert world.match(radar, 7, near=(32090, 31110)) == (32093, 31114)
