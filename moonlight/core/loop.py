@@ -132,12 +132,6 @@ logger = logging.getLogger("moonlight.core.loop")
 #: How long a pressed chase toggle takes to show on the side panel.
 CHASE_TOGGLE_SETTLE_SECONDS = 0.5
 
-# doc: docs/prs/attack-types.md#keep-distance
-#: A targeting step holds its walk key this long: a 60 ms tap is dropped when
-#: the client is mid-step (as the cavebot found), a held key is not. Shorter
-#: than the 0.4 s between keep-distance steps, so each is one step.
-TARGETING_STEP_HOLD_SECONDS = 0.3
-
 #: How often the tick timing line goes to the log.
 TIMING_LOG_SECONDS = 10.0
 
@@ -343,8 +337,6 @@ class GameLoop:
         # (start, ticks, total s, perceive s, max s) of the current timing-log window.
         self._timing_window = (0.0, 0, 0.0, 0.0, 0.0)
         self._perceive_time = 0.0
-        #: (walk key, held since) of a targeting step still held down.
-        self._held_targeting_step: tuple[str, float] | None = None
         self._state_transitions: dict[BotState, int] = {}
         self._start_time: float | None = None
 
@@ -469,7 +461,6 @@ class GameLoop:
         t0 = self._clock()
         self._tick_count += 1
         self._perceive_time = 0.0  # a tick that skips reading must not count the last read
-        self._release_targeting_step(t0)
 
         # Priority 1: KILL beats everything, even a bad screen_ok.
         if self._kill_event.is_set():
@@ -574,15 +565,6 @@ class GameLoop:
         self._release("failure stop")
         self._alert(f"loop stopping: {reason}")
         self._stop_event.set()
-
-    def _release_targeting_step(self, now: float) -> None:
-        """Let go of a targeting step's walk key once it was held long enough."""
-        if self._held_targeting_step is None:
-            return
-        key, held_since = self._held_targeting_step
-        if now - held_since >= TARGETING_STEP_HOLD_SECONDS:
-            self.input.release_combo(key)
-            self._held_targeting_step = None
 
     def _release(self, why: str) -> None:
         """``release_all`` directly: ungated, never raises (safety path)."""
@@ -895,10 +877,7 @@ class GameLoop:
             raise RuntimeError("targeting is wired without a clicker")
         if self._target is not None and self._target.kind in ("step_closer", "step_away"):
             key = WALK_KEYS[self._target.step]
-            if self._held_targeting_step is None and self._send(
-                snap, lambda: self.input.hold_combo(key)
-            ):
-                self._held_targeting_step = (key, self._clock())
+            if self._send(snap, lambda: self.input.press_combo(key)):
                 logger.info("targeting: %s (%s)", self._target.reason, key)
             return
         now = self._clock()
