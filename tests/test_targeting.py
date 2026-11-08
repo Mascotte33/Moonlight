@@ -336,3 +336,33 @@ def test_skipped_tile_is_left_alone_for_30_seconds() -> None:
 def test_fight_without_the_option_is_any_battle_list_monster() -> None:
     s = state([Monster("Troll", 100.0, name_hash="t", battle_list_row=0)])
     assert rows().fight_in_range(s, 0.0)
+
+
+# doc: docs/prs/attack-types.md#keep-distance
+def keep_distance_state(target_slot: tuple[int, int]) -> WorldState:
+    wolf = Monster("Wolf", hp_percent=60.0, battle_list_row=0)
+    s = state([wolf], wolf)
+    s.creature_slots = (target_slot,)
+    s.creature_hp_percents = (60.0,)
+    return s
+
+
+def test_keep_distance_steps_away_from_a_close_target() -> None:
+    targeting = rows(MonsterRow(name="Wolf", movement="keep distance"))
+    action = targeting.decide(keep_distance_state((8, 5)), 0.0)  # right next to the player
+    assert action is not None and action.kind == "step_away"
+    assert action.step[0] == -1  # away from the target on the right
+    assert targeting.decide(keep_distance_state((8, 5)), 0.2) is None  # one step per 0.4 s
+    assert targeting.decide(keep_distance_state((8, 5)), 0.5) is not None
+    assert targeting.decide(keep_distance_state((10, 5)), 1.0) is None  # 3 tiles: far enough
+
+
+def test_keep_distance_never_steps_onto_a_creature() -> None:
+    s = keep_distance_state((8, 5))
+    s.creature_slots = ((8, 5), (6, 4), (6, 5), (6, 6))  # boxed in on the far side
+    s.creature_hp_percents = (60.0, 100.0, 100.0, 100.0)
+    assert rows(MonsterRow(name="Wolf", movement="keep distance")).decide(s, 0.0) is None
+
+
+def test_follow_row_does_not_step_away() -> None:
+    assert rows(MonsterRow(name="Wolf")).decide(keep_distance_state((8, 5)), 0.0) is None

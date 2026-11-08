@@ -48,7 +48,7 @@ __all__ = [
 ]
 
 #: Movement menu text for each config value.
-MOVEMENT_LABELS = {"follow": "chase", "none": "stand still"}
+MOVEMENT_LABELS = {"follow": "chase", "none": "stand still", "keep distance": "keep distance"}
 
 
 class MonsterRowFields(NamedTuple):
@@ -81,6 +81,7 @@ class TargetingSettings(NamedTuple):
     target_order: str = "lowest hp"
     only_attack_within_range: bool = False
     attack_range_tiles: str = "3"
+    keep_distance_tiles: str = "3"
 
 
 def _number(text: str, cast: Callable[[str], float], where: str) -> float:
@@ -151,6 +152,7 @@ def apply_targeting(
         target_order=settings.target_order,
         only_attack_within_range=settings.only_attack_within_range,
         attack_range_tiles=_number(settings.attack_range_tiles, int, "attack range tiles"),
+        keep_distance_tiles=_number(settings.keep_distance_tiles, int, "keep distance tiles"),
     )
     return BotConfig.from_dict(data)
 
@@ -294,6 +296,14 @@ class TargetingTab(Tab):
         Label(range_line, text="tiles", text_color=theme.TEXT_DIM).pack(
             side="left", padx=(theme.UNIT, 0)
         )
+        # doc: docs/prs/attack-types.md#keep-distance
+        distance_line = Row(settings_box)
+        distance_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
+        Label(distance_line, text="Keep distance:", text_color=theme.TEXT_DIM).pack(side="left")
+        self._keep_distance_tiles_entry = row_entry(distance_line, "", 32, self._save)
+        Label(distance_line, text="tiles from the target", text_color=theme.TEXT_DIM).pack(
+            side="left", padx=(theme.UNIT, 0)
+        )
 
         monsters_box, self._monsters_frame = _card(parent, "Targeting")
         _header(
@@ -373,6 +383,7 @@ class TargetingTab(Tab):
             (self._cooldown_entry, str(targeting.attack_cooldown_ms)),
             (self._unreachable_entry, f"{targeting.unreachable_after_seconds:g}"),
             (self._attack_range_tiles_entry, str(targeting.attack_range_tiles)),
+            (self._keep_distance_tiles_entry, str(targeting.keep_distance_tiles)),
         ):
             entry.delete(0, "end")
             entry.insert(0, value)
@@ -498,6 +509,7 @@ class TargetingTab(Tab):
             self._target_order.get(),
             bool(self._only_attack_within_range.get()),
             self._attack_range_tiles_entry.get(),
+            self._keep_distance_tiles_entry.get(),
         )
 
     def _save(self) -> None:

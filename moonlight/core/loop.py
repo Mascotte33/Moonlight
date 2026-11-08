@@ -867,7 +867,7 @@ class GameLoop:
 
         A click is in flight while the clicker is busy, and after it is sent
         until the row shows as selected or ``_SELECT_OUTLINE_WAIT`` passes.
-        A ``step_closer`` action presses one arrow key. Only once the
+        A ``step_closer`` or ``step_away`` action presses one walk key. Only once the
         selection matches targeting's choice does an attack hotkey go out.
         """
         targeting, clicker = self._targeting(), self.modules.clicker
@@ -875,7 +875,7 @@ class GameLoop:
             return
         if clicker is None:
             raise RuntimeError("targeting is wired without a clicker")
-        if self._target is not None and self._target.kind == "step_closer":
+        if self._target is not None and self._target.kind in ("step_closer", "step_away"):
             key = WALK_KEYS[self._target.step]
             self._send(snap, lambda: self.input.press_combo(key))
             return
@@ -956,7 +956,9 @@ class GameLoop:
         if row.ignore or targeting.is_unreachable(selected):
             return
         toggle = targeting.config.toggle_chase_hotkey
-        if snap.chase_mode is not None and snap.chase_mode != row.movement:
+        # doc: docs/prs/attack-types.md#keep-distance
+        wanted_chase_mode = "none" if row.movement == "keep distance" else row.movement
+        if snap.chase_mode is not None and snap.chase_mode != wanted_chase_mode:
             if toggle:
                 # The attack key waits until the screen shows the toggled mode.
                 if now >= self._chase_toggle_settles_at and self._send(
@@ -969,7 +971,7 @@ class GameLoop:
                     "chase mode is %r but %s's row wants %r: set the Toggle Chase Mode key",
                     snap.chase_mode,
                     selected.name,
-                    row.movement,
+                    wanted_chase_mode,
                 )
                 self._warned_no_chase_toggle_key = True
         if attack_hotkeys is None:
