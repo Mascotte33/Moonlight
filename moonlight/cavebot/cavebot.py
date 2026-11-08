@@ -234,6 +234,7 @@ _HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0, "step": 0.5, "
 #: Floor change each tile action causes (0 = sky, 15 = deepest).
 _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
 
+# doc: docs/prs/position-tracking.md#waypoint-actions
 #: Arrival distance in tiles; every other positional action uses 1.
 # finddepo 0: it is done only on the stand tile next to the locker it picked
 # (doc: docs/prs/depot.md#finddepo-waypoint); its own tile is never reached.
