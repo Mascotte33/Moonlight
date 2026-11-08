@@ -4,7 +4,8 @@ The Health card (T10.F1.K1) shows the same dots as the Dashboard, each with
 its last value. The module switches live in Settings.
 
 "Show what the bot sees" opens a window with the game grid, a red box on
-every creature the health-bar scan finds and the cavebot's path in blue.
+every creature the health-bar scan finds, the cavebot's path in blue and the
+keep-distance walk in yellow (a ring on its goal).
 It scans 15 times a second, in its own thread, only while
 open, and never sends input.
 """
@@ -50,10 +51,15 @@ def seen_view(
     grid: tuple[int, int, int, int],
     creatures: list[tuple[int, int]],
     path: Sequence[tuple[int, int]] = (),
+    keep_distance_path: Sequence[tuple[int, int]] = (),
 ) -> np.ndarray:
     """The game grid of *frame* (BGR) with tile lines and the scan's boxes.
 
-    *path* (a blue line from the player) is (col, row) slots of the grid.
+    *path* (the cavebot's, a blue line from the player) and
+    *keep_distance_path* (targeting's, yellow with a ring on the goal) are
+    (col, row) slots of the grid.
+
+    # doc: docs/prs/attack-types.md#keep-distance
 
     # doc: docs/prs/keys-walking.md#creature-scan
     # doc: docs/prs/extras.md#seen-path
@@ -78,6 +84,10 @@ def seen_view(
     if path:
         points = np.array([centre(PLAYER_SLOT), *map(centre, path)], np.int32)
         cv2.polylines(view, [points], False, (255, 120, 0), 3)
+    if keep_distance_path:
+        points = np.array([centre(PLAYER_SLOT), *map(centre, keep_distance_path)], np.int32)
+        cv2.polylines(view, [points], False, (0, 220, 255), 3)
+        cv2.circle(view, centre(keep_distance_path[-1]), round(min(tw, th) / 3), (0, 220, 255), 3)
     return view
 
 
@@ -198,7 +208,9 @@ class DiagnosticsTab(Tab):
                     player = snap.position
                     cavebot = self.ctx.live_cavebot()
                     path = slots_of(cavebot.planned_path, player) if cavebot is not None else []
-                    view = seen_view(frame, game_view, slots, path)
+                    targeting = self.ctx.live_module("targeting")
+                    away = list(targeting.keep_distance_path) if targeting is not None else []
+                    view = seen_view(frame, game_view, slots, path, away)
                     latest.update(view=view, error="")
                     stop.wait(max(0.0, SEES_MS / 1000 - (time.monotonic() - started)))
             finally:

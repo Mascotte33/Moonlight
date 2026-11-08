@@ -30,29 +30,53 @@ reads a snapshot and returns a decision; one decision thread drives it.
 
 from __future__ import annotations
 
+import heapq
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 
+from moonlight.cavebot.pathing import WALK_STEPS
 from moonlight.core.state import Monster, WorldState
 from moonlight.healing.healing import check_hotkey
 from moonlight.perception.battle import NAME_START_X, NAME_WIDTH, SLOT_HEIGHT, TOP_PADDING
 from moonlight.perception.corpses import slot_ring
-from moonlight.perception.creatures import PLAYER_SLOT
+from moonlight.perception.creatures import GRID_COLUMNS, GRID_ROWS, PLAYER_SLOT
 
 __all__ = [
+    "AREA_GRID_RADIUS",
+    "AREA_KINDS",
+    "CIRCLE_AREA",
     "MOVEMENTS",
     "PAUSE_SECONDS",
+    "SQUARE_AREA",
     "TARGET_ORDERS",
     "AreaRule",
     "MonsterRow",
     "TargetingAction",
     "TargetingConfig",
     "TargetingDecision",
+    "Walkable",
+    "screen_slots",
+    "target_slot",
+    "wall_slots",
 ]
 
 logger = logging.getLogger(__name__)
 
-MOVEMENTS = ("follow", "none")
+MOVEMENTS = ("none", "follow", "keep distance")
+# doc: docs/prs/attack-types.md#area-kinds
+AREA_KINDS = ("around me", "wave", "on a tile")
+#: Tiles from the middle to the edge of the area editor's grid (13x13).
+AREA_GRID_RADIUS = 6
+#: The 3x3 square around the middle: exori, exori mas.
+SQUARE_AREA = tuple((dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1))
+#: The big round area of great fireball, avalanche, thunderstorm, stone shower.
+CIRCLE_AREA = tuple(
+    (dx, dy) for dy in range(-3, 4) for dx in range(-3, 4) if dx * dx + dy * dy <= 10
+)
+
+#: World-tile walkability from the walk map: ``walkable(x, y, z)``.
+Walkable = Callable[[int, int, int], bool]
 # doc: docs/prs/GUI_visual_changes.md#target-order
 #: Which of the highest-priority monsters is attacked first. "battle list"
 #: is the client's order: nearest first when its battle list sorts by distance.
@@ -62,6 +86,9 @@ Rect = tuple[int, int, int, int]
 
 #: Seconds an unreachable target (or a skipped on-screen tile) is left alone.
 _IGNORE_SECONDS = 30.0
+
+#: Seconds between two keep-distance steps (one walk step takes about this long).
+_STEP_AWAY_EVERY_SECONDS = 0.4
 
 #: Seconds targeting stays off after a lone target's HP stood still.
 PAUSE_SECONDS = 5.0
@@ -94,24 +121,35 @@ class MonsterRow:
 
 
 # doc: docs/prs/targeting.md#area-rules
+# doc: docs/prs/attack-types.md#area-kinds
 @dataclass(frozen=True)
 class AreaRule:
-    """Press ``hotkey`` when this many creature slots touch the player (only while ``enabled``)."""
+    """Press ``hotkey`` when ``area`` would hit this many creatures (only while ``enabled``)."""
 
     hotkey: str
-    minimum_adjacent_monsters: int = 1
+    kind: str = "around me"
+    minimum_monsters: int = 1
     #: Mana points (not percent) needed to press the hotkey; 0 = none.
     minimum_mana: int = 0
     enabled: bool = True
+    #: Hit tiles as (dx, dy) from the middle: the player ("around me", "wave",
+    #: drawn facing up) or the landing tile ("on a tile").
+    area: tuple[tuple[int, int], ...] = SQUARE_AREA
 
     def validate(self) -> None:
-        """Raise ValueError on a bad hotkey, monster count or mana minimum."""
+        """Raise ValueError on a bad hotkey, kind, monster count, mana minimum or area."""
         where = f"area rule {self.hotkey!r}"
         check_hotkey(self.hotkey, where)
-        if isinstance(self.minimum_adjacent_monsters, bool) or self.minimum_adjacent_monsters < 1:
-            raise ValueError(f"{where}: minimum_adjacent_monsters must be >= 1")
+        if self.kind not in AREA_KINDS:
+            raise ValueError(f"{where}: kind must be one of {AREA_KINDS}, got {self.kind!r}")
+        if isinstance(self.minimum_monsters, bool) or self.minimum_monsters < 1:
+            raise ValueError(f"{where}: minimum_monsters must be >= 1")
         if isinstance(self.minimum_mana, bool) or self.minimum_mana < 0:
             raise ValueError(f"{where}: minimum_mana must be 0 or more mana points")
+        if not self.area:
+            raise ValueError(f"{where}: the area hits no tile")
+        if any(max(abs(dx), abs(dy)) > AREA_GRID_RADIUS for dx, dy in self.area):
+            raise ValueError(f"{where}: area tiles must be within {AREA_GRID_RADIUS} of the middle")
 
 
 @dataclass(frozen=True)
@@ -132,6 +170,9 @@ class TargetingConfig:
     only_attack_within_range: bool = False
     #: Tiles from the character in any direction (3 = a 7x7 box).
     attack_range_tiles: int = 3
+    # doc: docs/prs/attack-types.md#keep-distance
+    #: Tiles a "keep distance" row stays away from its target.
+    keep_distance_tiles: int = 3
 
     def validate(self) -> None:
         """Raise ValueError on a bad row or rule, a duplicate name or a bad delay."""
@@ -160,6 +201,8 @@ class TargetingConfig:
             check_hotkey(self.toggle_chase_hotkey, "targeting.toggle_chase_hotkey")
         if isinstance(self.attack_range_tiles, bool) or self.attack_range_tiles < 1:
             raise ValueError("targeting.attack_range_tiles must be 1 or more")
+        if isinstance(self.keep_distance_tiles, bool) or self.keep_distance_tiles < 1:
+            raise ValueError("targeting.keep_distance_tiles must be 1 or more")
 
 
 @dataclass(frozen=True)
@@ -169,7 +212,7 @@ class TargetingAction:
     ``"select_on_screen"``: right-click the creature at game-grid slot
     ``creature_slot`` (world tile ``creature_tile``); ``battle_list_row`` is -1.
 
-    ``"step_closer"``: press one arrow key for the unit step ``step``.
+    ``"step_closer"`` / ``"step_away"``: press the walk key for the unit step ``step``.
 
     ``"pause"``: the selected target is unreachable and nothing else is
     there to attack; the loop turns targeting off for ``PAUSE_SECONDS``.
@@ -202,6 +245,87 @@ def _step_toward_creature(
     return next((s for s in steps if (px + s[0], py + s[1]) not in echo_raid_slots), None)
 
 
+# doc: docs/prs/attack-types.md#target-slot
+def target_slot(state: WorldState) -> tuple[int, int] | None:
+    """Game-grid slot of the selected target: the bar showing its HP, nearest first."""
+    # ponytail: two creatures at the same HP are told apart only by distance;
+    # read the client's red target square if that picks the wrong one.
+    selected = state.selected_target
+    if selected is None:
+        return None
+    px, py = PLAYER_SLOT
+    matches = [
+        slot
+        for slot, hp in zip(state.creature_slots, state.creature_hp_percents, strict=True)
+        if abs(hp - selected.hp_percent) <= 5
+    ]
+    return min(
+        matches,
+        key=lambda s: (max(abs(s[0] - px), abs(s[1] - py)), abs(s[0] - px) + abs(s[1] - py)),
+        default=None,
+    )
+
+
+def _distance(a: tuple[int, int], b: tuple[int, int]) -> int:
+    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+def screen_slots() -> list[tuple[int, int]]:
+    """Every game-grid slot on the screen."""
+    return [(column, row) for column in range(GRID_COLUMNS) for row in range(GRID_ROWS)]
+
+
+def wall_slots(state: WorldState, walkable: Walkable | None) -> set[tuple[int, int]]:
+    """Screen slots the walk map marks blocked; none without a map or a known position."""
+    if walkable is None or state.position.x == 0:
+        return set()
+    return {slot for slot in screen_slots() if not walkable(*_world_tile(state, slot))}
+
+
+# doc: docs/prs/attack-types.md#keep-distance
+def _keep_distance_goal(
+    creature_slots: tuple[tuple[int, int], ...],
+    blocked: set[tuple[int, int]],
+    keep_distance_tiles: int,
+) -> list[tuple[int, int]] | None:
+    """The slots walked to the safest slot on screen (goal last), or None to stay.
+
+    A slot's safety is its distance to the closest creature. The goal is the
+    cheapest walk to a slot at least *keep_distance_tiles* from every
+    creature; with none, the safest slot, then the cheapest. The way there
+    may pass next to creatures but never onto a *blocked* slot.
+    """
+    cost = {PLAYER_SLOT: 0}
+    came_from: dict[tuple[int, int], tuple[int, int]] = {}
+    queue = [(0, PLAYER_SLOT)]
+    while queue:
+        so_far, slot = heapq.heappop(queue)
+        if so_far > cost[slot]:
+            continue
+        for (dx, dy), step_cost in WALK_STEPS:
+            nxt = (slot[0] + dx, slot[1] + dy)
+            if not (0 <= nxt[0] < GRID_COLUMNS and 0 <= nxt[1] < GRID_ROWS) or nxt in blocked:
+                continue
+            if so_far + step_cost < cost.get(nxt, so_far + step_cost + 1):
+                cost[nxt], came_from[nxt] = so_far + step_cost, slot
+                heapq.heappush(queue, (so_far + step_cost, nxt))
+
+    def safety(slot: tuple[int, int]) -> int:
+        return min(_distance(slot, creature) for creature in creature_slots)
+
+    safe = [slot for slot in cost if safety(slot) >= keep_distance_tiles]
+    if safe:
+        goal = min(safe, key=lambda s: (cost[s], -safety(s)))
+    else:
+        goal = min(cost, key=lambda s: (-safety(s), cost[s]))
+    if goal == PLAYER_SLOT:
+        return None
+    path = [goal]
+    while came_from[path[-1]] != PLAYER_SLOT:
+        path.append(came_from[path[-1]])
+    return path[::-1]
+
+
 def _world_tile(state: WorldState, slot: tuple[int, int]) -> tuple[int, int, int]:
     """World tile under game-grid *slot*, from the player's position."""
     pos = state.position
@@ -220,8 +344,11 @@ class TargetingDecision:
         ui_scale: float = 1.0,
         attack_top_row_first: bool = False,
         game_grid_region: Rect | None = None,
+        walkable: Walkable | None = None,
     ) -> None:
         self.config = config if config is not None else TargetingConfig()
+        #: The walk map, for keep distance; None: no walls known.
+        self._walkable = walkable
         # Stuck in a corridor: the top row is the nearest creature (the battle
         # list sorted by distance), most often the one in the way.
         self._attack_top_row_first = attack_top_row_first
@@ -238,6 +365,10 @@ class TargetingDecision:
         self._game_grid_region = game_grid_region
         #: World tiles whose on-screen click selected nothing or an ignored monster.
         self._skipped_tiles: dict[tuple[int, int, int], float] = {}
+        self._stepped_away_at = float("-inf")
+        #: Screen slots of the last keep-distance walk (goal last), for the
+        #: "What the bot sees" view; empty when not keeping distance.
+        self.keep_distance_path: list[tuple[int, int]] = []
 
     def row_for(self, monster: Monster) -> MonsterRow:
         """The row for *monster*: its name's row, else ``default_monster``."""
@@ -290,6 +421,8 @@ class TargetingDecision:
     def decide(self, state: WorldState, now: float) -> TargetingAction | None:
         """The action to take, or None when the selection is already right."""
         self._ignored_until = {k: end for k, end in self._ignored_until.items() if end > now}
+        if state.selected_target is None:
+            self.keep_distance_path = []
         candidates = [
             m
             for m in state.monsters
@@ -302,7 +435,8 @@ class TargetingDecision:
         if not candidates:
             return None
         if state.selected_target in candidates:
-            return None  # finish the current target, even when a higher priority one comes
+            # finish the current target, even when a higher priority one comes
+            return self._keep_distance(state, now, state.selected_target)
         if self.config.only_attack_within_range:
             return self._pick_on_screen(state, now)
         if self._attack_top_row_first:
@@ -312,6 +446,32 @@ class TargetingDecision:
         priority = self.row_for(best).priority
         reason = f"{best.name or '?'} priority {priority}, hp {best.hp_percent:.0f}"
         return TargetingAction("select", best.battle_list_row, reason=reason)
+
+    def _keep_distance(
+        self, state: WorldState, now: float, selected: Monster
+    ) -> TargetingAction | None:
+        """A ``step_away`` toward the safest spot while fighting a "keep distance" target."""
+        if self.row_for(selected).movement != "keep distance" or not state.creature_slots:
+            self.keep_distance_path = []
+            return None
+        if state.game_view_sliding or now - self._stepped_away_at < _STEP_AWAY_EVERY_SECONDS:
+            return None
+        creatures = state.creature_slots
+        blocked = set(creatures) | set(state.echo_raid_slots) | wall_slots(state, self._walkable)
+        path = _keep_distance_goal(creatures, blocked, self.config.keep_distance_tiles)
+        self.keep_distance_path = path or []
+        if path is None:
+            return None
+        goal = path[-1]
+        step = (path[0][0] - PLAYER_SLOT[0], path[0][1] - PLAYER_SLOT[1])
+        self._stepped_away_at = now
+        here = min(_distance(PLAYER_SLOT, c) for c in creatures)
+        there = min(_distance(goal, c) for c in creatures)
+        reason = (
+            f"keep distance from {selected.name or '?'}: closest monster {here} tiles away,"
+            f" going {goal[0] - PLAYER_SLOT[0]},{goal[1] - PLAYER_SLOT[1]} to a tile {there} away"
+        )
+        return TargetingAction("step_away", selected.battle_list_row, step, reason)
 
     def _near_creatures(self, state: WorldState, now: float) -> list[tuple[tuple[int, int], float]]:
         """``(slot, hp)`` of the creatures within range whose tile is not skipped."""

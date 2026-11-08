@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from moonlight.core.config import BotConfig, ConfigError
-from moonlight.core.state import Monster, WorldState
+from moonlight.core.state import Monster, Position, WorldState
 from moonlight.targeting.targeting import (
     MonsterRow,
     TargetingAction,
@@ -336,3 +336,66 @@ def test_skipped_tile_is_left_alone_for_30_seconds() -> None:
 def test_fight_without_the_option_is_any_battle_list_monster() -> None:
     s = state([Monster("Troll", 100.0, name_hash="t", battle_list_row=0)])
     assert rows().fight_in_range(s, 0.0)
+
+
+# doc: docs/prs/attack-types.md#keep-distance
+def keep_distance_state(target_slot: tuple[int, int]) -> WorldState:
+    wolf = Monster("Wolf", hp_percent=60.0, battle_list_row=0)
+    s = state([wolf], wolf)
+    s.creature_slots = (target_slot,)
+    s.creature_hp_percents = (60.0,)
+    return s
+
+
+def test_keep_distance_steps_away_from_a_close_target() -> None:
+    targeting = rows(MonsterRow(name="Wolf", movement="keep distance"))
+    action = targeting.decide(keep_distance_state((8, 5)), 0.0)  # right next to the player
+    assert action is not None and action.kind == "step_away"
+    assert action.step[0] == -1  # away from the target on the right
+    assert targeting.decide(keep_distance_state((8, 5)), 0.2) is None  # one step per 0.4 s
+    assert targeting.decide(keep_distance_state((8, 5)), 0.5) is not None
+    assert targeting.decide(keep_distance_state((10, 5)), 1.0) is None  # 3 tiles: far enough
+
+
+def test_keep_distance_keeps_its_path_for_the_view() -> None:
+    targeting = rows(MonsterRow(name="Wolf", movement="keep distance"))
+    action = targeting.decide(keep_distance_state((8, 5)), 0.0)
+    path = targeting.keep_distance_path
+    assert action is not None and path[0] == (7 + action.step[0], 5 + action.step[1])
+    assert max(abs(path[-1][0] - 8), abs(path[-1][1] - 5)) >= 3  # goal 3 tiles from the wolf
+    assert targeting.decide(keep_distance_state((8, 5)), 0.2) is None
+    assert targeting.keep_distance_path == path  # kept between steps
+    targeting.decide(keep_distance_state((10, 5)), 1.0)  # far enough: nothing to walk
+    assert targeting.keep_distance_path == []
+
+
+def test_keep_distance_walks_around_creatures_blocking_the_far_side() -> None:
+    s = keep_distance_state((8, 5))
+    s.creature_slots = ((8, 5), (6, 4), (6, 5), (6, 6))  # boxed in on the left
+    s.creature_hp_percents = (60.0, 100.0, 100.0, 100.0)
+    action = rows(MonsterRow(name="Wolf", movement="keep distance")).decide(s, 0.0)
+    assert action is not None and action.step in ((0, -1), (0, 1))  # up or down, never onto one
+
+
+def test_keep_distance_never_steps_into_a_wall() -> None:
+    s = keep_distance_state((8, 5))
+    s.position = Position(100, 100, 7)
+    # Every tile left of the player (world x below 100) is a wall: flee up or down.
+    targeting = TargetingDecision(
+        TargetingConfig(monsters=(MonsterRow(name="Wolf", movement="keep distance"),)),
+        walkable=lambda x, y, z: x >= 100,
+    )
+    action = targeting.decide(s, 0.0)
+    assert action is not None and action.step[0] == 0
+
+
+def test_keep_distance_with_no_safe_tile_runs_furthest_away() -> None:
+    s = keep_distance_state((8, 5))
+    s.creature_slots = tuple((x, y) for x in range(15) for y in range(11) if x >= 8)
+    s.creature_hp_percents = (60.0,) * len(s.creature_slots)
+    action = rows(MonsterRow(name="Wolf", movement="keep distance")).decide(s, 0.0)
+    assert action is not None and action.step[0] == -1  # toward the free left edge
+
+
+def test_follow_row_does_not_step_away() -> None:
+    assert rows(MonsterRow(name="Wolf")).decide(keep_distance_state((8, 5)), 0.0) is None

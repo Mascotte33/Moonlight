@@ -106,7 +106,12 @@ def bot_keys(cfg: BotConfig) -> list[BotKey]:
             if row.hotkey
         ]
         keys += [
-            BotKey(rule.hotkey, f"Area spell ({rule.minimum_adjacent_monsters}+)", "UseOnTarget")
+            # doc: docs/prs/attack-types.md#area-kinds
+            BotKey(
+                rule.hotkey,
+                f"Area {rule.kind} ({rule.minimum_monsters}+)",
+                "UseAtMouseCursor" if rule.kind == "on a tile" else "UseOnTarget",
+            )
             for rule in targeting.area_rules
         ]
         if targeting.toggle_chase_hotkey:

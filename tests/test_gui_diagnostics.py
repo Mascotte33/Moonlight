@@ -22,6 +22,12 @@ def test_seen_view_draws_the_path() -> None:
     assert tuple(view[55, 85]) == (255, 120, 0)  # blue line from the player (7, 5) east
 
 
+def test_seen_view_draws_the_keep_distance_path() -> None:
+    frame = np.zeros((110, 150, 3), np.uint8)
+    view = seen_view(frame, (0, 0, 150, 110), [], keep_distance_path=[(6, 5), (5, 5)])
+    assert tuple(view[55, 65]) == (0, 220, 255)  # yellow line from the player (7, 5) west
+
+
 def test_slots_of_drops_tiles_off_the_grid() -> None:
     player = Position(100, 200, 7)
     assert slots_of([(101, 200), (120, 200)], player) == [(8, 5)]

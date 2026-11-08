@@ -780,7 +780,7 @@ class TestSelectClick:
 
 F6_ROWS = TargetingConfig(
     default_monster=MonsterRow(hotkey="F6"),
-    area_rules=(AreaRule("F5", minimum_adjacent_monsters=2),),
+    area_rules=(AreaRule("F5", minimum_monsters=2),),
 )
 
 

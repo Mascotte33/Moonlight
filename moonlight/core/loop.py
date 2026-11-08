@@ -460,6 +460,7 @@ class GameLoop:
         """
         t0 = self._clock()
         self._tick_count += 1
+        self._perceive_time = 0.0  # a tick that skips reading must not count the last read
 
         # Priority 1: KILL beats everything, even a bad screen_ok.
         if self._kill_event.is_set():
@@ -476,7 +477,6 @@ class GameLoop:
             self._record_tick_time(t0)
             return  # stopped: the screen is read 5 times a second, enough to watch
 
-        self._perceive_time = 0.0
         if self._perceive is not None:
             self._perceive()
             self._perceive_time = self._clock() - t0
@@ -867,7 +867,7 @@ class GameLoop:
 
         A click is in flight while the clicker is busy, and after it is sent
         until the row shows as selected or ``_SELECT_OUTLINE_WAIT`` passes.
-        A ``step_closer`` action presses one arrow key. Only once the
+        A ``step_closer`` or ``step_away`` action presses one walk key. Only once the
         selection matches targeting's choice does an attack hotkey go out.
         """
         targeting, clicker = self._targeting(), self.modules.clicker
@@ -875,9 +875,10 @@ class GameLoop:
             return
         if clicker is None:
             raise RuntimeError("targeting is wired without a clicker")
-        if self._target is not None and self._target.kind == "step_closer":
+        if self._target is not None and self._target.kind in ("step_closer", "step_away"):
             key = WALK_KEYS[self._target.step]
-            self._send(snap, lambda: self.input.press_combo(key))
+            if self._send(snap, lambda: self.input.press_combo(key)):
+                logger.info("targeting: %s (%s)", self._target.reason, key)
             return
         now = self._clock()
         if clicker.busy:
@@ -956,7 +957,9 @@ class GameLoop:
         if row.ignore or targeting.is_unreachable(selected):
             return
         toggle = targeting.config.toggle_chase_hotkey
-        if snap.chase_mode is not None and snap.chase_mode != row.movement:
+        # doc: docs/prs/attack-types.md#keep-distance
+        wanted_chase_mode = "none" if row.movement == "keep distance" else row.movement
+        if snap.chase_mode is not None and snap.chase_mode != wanted_chase_mode:
             if toggle:
                 # The attack key waits until the screen shows the toggled mode.
                 if now >= self._chase_toggle_settles_at and self._send(
@@ -969,14 +972,36 @@ class GameLoop:
                     "chase mode is %r but %s's row wants %r: set the Toggle Chase Mode key",
                     snap.chase_mode,
                     selected.name,
-                    row.movement,
+                    wanted_chase_mode,
                 )
                 self._warned_no_chase_toggle_key = True
         if attack_hotkeys is None:
             return
-        hotkey = attack_hotkeys.decide(snap, row, now)
-        if hotkey is not None:
-            self._send(snap, lambda: attack_hotkeys.send(hotkey, self.input, now))
+        press = attack_hotkeys.decide(snap, row, now)
+        if press is None:
+            return
+        # doc: docs/prs/attack-types.md#area-kinds
+        if press.aim_slot is None:
+
+            def cast() -> None:
+                if press.turn_key:
+                    self.input.press_combo(press.turn_key)  # face the wave's best side
+                attack_hotkeys.send(press.hotkey, self.input, now)
+
+            self._send(snap, cast)
+            return
+        clicker = self.modules.clicker
+        if clicker is None or not clicker.absolute:
+            raise RuntimeError("on-a-tile attacks need the absolute clicker to aim the mouse")
+        if snap.game_view_sliding:
+            return  # aim at a still frame
+        aim = clicker.to_wire(targeting.slot_center(press.aim_slot))
+
+        def cast_on_tile() -> None:
+            self.input.mouse_to(*aim)
+            attack_hotkeys.send(press.hotkey, self.input, now)
+
+        self._send(snap, cast_on_tile)
 
     # doc: docs/prs/near-targeting.md#moved-row
     def _battle_list_moved_under_the_click(self) -> bool:

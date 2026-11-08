@@ -361,11 +361,11 @@ window open. The bot also reads the stamina every 5 minutes, shows it on the
 Dashboard's Stamina card and logs it when it changes
 (`stamina 41:23`, with `(under 39:30)` once it is low).
 
-`bot.only_monsters_within_range(True)` / `(False)` turns Targeting's **Only
-monsters within N tiles** on or off; `(None)` flips it. The Targeting box
+`bot.only_monsters_within_range(True)` / `(False)` turns Targeting's **Ignore
+monsters more than N tiles away** on or off; `(None)` flips it. The Targeting box
 follows and the change is saved to the config. The ready script
 `scripts/range_toggle.py` flips it: add a `script` waypoint with label
-`range_toggle`. Log: `script: only monsters within 3 tiles on` (or `off`).
+`range_toggle`. Log: `script: ignore monsters more than 3 tiles away: on` (or `off`).
 
 `bot.targeting(False)` / `(True)` turns targeting off or on until a script
 turns it back or the bot restarts; stuck targeting still runs. Ready scripts:
@@ -574,10 +574,17 @@ or in the `targeting` section of your profile config:
 
 - **Monster rows** match a battle-list name (ignoring case). Each has a
   priority (1-5, higher first), `ignore` ("never attack" in the tab), an
-  attack `hotkey` (empty = melee only), a mana floor in mana points
-  (`minimum_mana`, e.g. 200) and a `movement`: `follow` (chase) or `none`
-  (stand still). Players are
-  never targeted.
+  attack `hotkey` (empty = melee only, pressed every cooldown), a mana floor
+  in mana points (`minimum_mana`, e.g. 200) and a **Movement** (`movement`):
+  `none` (stand), `follow` (chase) or `keep distance`. Players are never
+  targeted.
+- **Keep distance:** the row's movement `keep distance` sets the client to
+  stand still and walks to the nearest tile at least **Keep distance: N
+  tiles** from every monster (Targeting > Settings, `keep_distance_tiles`,
+  default 3), around walls (from the cavebot's walk map) and creatures. With
+  no such tile it goes to the tile furthest from the closest monster. One
+  step per 0.4 s; it stays put on the best tile. Log: `keep distance from
+  Wolf: closest monster 1 tiles away, going -2,0 to a tile 3 away`.
 - **`default_monster`** is the row for every monster without its own row, so
   everything is attacked unless you ignore it. The tab shows it as "all others".
   Default: priority 1, no mana floor, follow.
@@ -592,7 +599,7 @@ or in the `targeting` section of your profile config:
   (log: `battle list moved under the click on row N, aiming again`).
   After a battle-list click the mouse moves just left of the minimap, so it
   never covers the minimap or brings up the battle list's name tooltip.
-- **Only monsters within N tiles** (Targeting > Settings, `only_attack_within_range`,
+- **Ignore monsters more than N tiles away** (Targeting > Settings, `only_attack_within_range`,
   `attack_range_tiles`, default off and 3): the bot attacks only creatures in the
   box of N tiles around you (7x7 at 3). It right-clicks them on the game screen
   (needs the `game_grid` region), so with this on the priority column is not used:
@@ -605,12 +612,23 @@ or in the `targeting` section of your profile config:
   Turn on secure mode in the client: a click on a player or NPC then selects nothing,
   and the bot logs `nothing selected at x,y,z, skipping that tile 30 s`. A "never
   attack" monster selected this way gets Esc and its tile is skipped 30 s.
-- **Area rules** press a hotkey when at least `minimum_adjacent_monsters`
-  creatures stand next to you and MP is at least `minimum_mana` mana points.
-  Default: no mana floor. A rule is used only while it is
-  ticked (`enabled`). A ticked rule is grayed in the tab so it isn't edited
-  by accident. All attack keys share `attack_cooldown_ms` (default 2000); a new
-  target starts it fresh, so its first spell goes out at once.
+- **Area rules** press a hotkey when the spell's shape hits at least
+  **Min monsters** creatures (`minimum_monsters`, 1 or more) and MP is at
+  least `minimum_mana` mana points. **Edit area** opens a 13x13 grid: click
+  tiles to mark what the spell hits (`area`, offsets from the middle). The
+  **Kind** (`kind`) says where the shape goes:
+  - `around me`: centred on you (default shape: the 3x3 square).
+  - `wave`: draw it facing up; the bot tries all 4 directions, presses
+    Ctrl+arrow to face the best one, then the key.
+  - `on a tile`: tried on every screen tile that is not a wall; most hits
+    wins, then the tile nearest you. The mouse moves there, then the key
+    (client: **Use at mouse cursor**, Settings > Client hotkeys writes it so;
+    needs the absolute clicker). Default shape: a circle.
+  The first rule that can fire wins, else the row's key. A rule is used only
+  while it is ticked (`enabled`); a ticked rule is grayed in the tab so it
+  isn't edited by accident. All attack keys share `attack_cooldown_ms`
+  (default 2000); a new target starts it fresh, so its first spell goes out
+  at once. An old `minimum_adjacent_monsters` key is read as `minimum_monsters`.
 - **Mana points**: the bot reads your max mana off the `115/295` text on the
   MP bar (Tesseract) every 30 s and logs `max mana: 295`. Until it is read,
   MP counts as 0, so a hotkey with a mana floor waits. An old
@@ -621,7 +639,7 @@ or in the `targeting` section of your profile config:
   monster to attack it pauses targeting for 5 s instead (the settings stay
   as they are) and the cavebot walks on; the dashboard shows
   "(targeting paused N s)".
-- **Chase mode:** each monster row is "chase" or "stand still". The bot reads
+- **Chase mode:** each monster row is "stand", "chase" or "keep distance" (stands still). The bot reads
   the active (red) chase button from the `chase_buttons` region (Calibration
   tab) and, when it differs from the target's row, presses
   `toggle_chase_hotkey` ("Client key: Toggle Chase Mode" in the tab) before
@@ -641,7 +659,8 @@ or in the `targeting` section of your profile config:
   ignores (`attacking the creature in the way`).
 - **What the bot sees:** Diagnostics > "Show what the bot sees" shows the
   game view with a red box on each monster found, the cavebot's planned walk
-  as a blue line (walk keys only). It only shows, never sends input.
+  as a blue line (walk keys only) and the keep-distance walk as a yellow line
+  with a ring on the tile it heads for. It only shows, never sends input.
 - **Cavebot when blocked:** a step key that does not move the player in
   0.7 s is pressed once more (a lag looks the same); a second miss marks
   that tile blocked for 12 s (freed early once the monster on it
@@ -671,7 +690,7 @@ or in the `targeting` section of your profile config:
 - **Seen monsters:** each new battle-list entry is saved with its picture
   (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
   These files are not profiles and never show in the profile lists.
-  The Targeting tab lists the ones with no monster row yet: the picture,
+  The Targeting tab's **Seen Monsters** page lists the ones with no monster row yet: the picture,
   then the guessed name (filled in once tesseract reads it). Correct the
   name, then click **Add to monsters** and the line leaves the list. The ✕
   forgets a line and its picture (it is learned again on its next sighting). You name

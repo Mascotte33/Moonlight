@@ -29,13 +29,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-__all__ = ["DIAGONAL_STEP_COST", "CostMap", "next_step"]
+__all__ = ["DIAGONAL_STEP_COST", "WALK_STEPS", "CostMap", "next_step"]
 
 _TILE = 256
 _NAME = re.compile(r"^(\d+)_(\d+)_(\d+)$")
 _YELLOW = (0, 255, 255)
 DIAGONAL_STEP_COST = 3
-_STEPS = (
+WALK_STEPS = (
     ((0, -1), 1), ((0, 1), 1), ((-1, 0), 1), ((1, 0), 1),
     ((-1, -1), DIAGONAL_STEP_COST), ((1, -1), DIAGONAL_STEP_COST),
     ((-1, 1), DIAGONAL_STEP_COST), ((1, 1), DIAGONAL_STEP_COST),
@@ -124,7 +124,7 @@ def next_step(
             return (tiles[0][0] - sx, tiles[0][1] - sy), cost, tiles
         if cost > best_cost[(x, y)]:
             continue  # a cheaper way here was already expanded
-        for (dx, dy), step_cost in _STEPS:
+        for (dx, dy), step_cost in WALK_STEPS:
             nx, ny = x + dx, y + dy
             new_cost = cost + step_cost
             if new_cost >= best_cost.get((nx, ny), new_cost + 1):

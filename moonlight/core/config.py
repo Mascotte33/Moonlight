@@ -309,7 +309,7 @@ class BotConfig:
                     ):
                         section.pop(key, None)
                 if name == "targeting":
-                    _drop_mana_percent(section)
+                    _migrate_old_targeting_keys(section)
                 if name == "healing":  # the mana floor of a rule, removed
                     for rule in section.get("rules", ()):
                         if isinstance(rule, dict):
@@ -412,8 +412,10 @@ def _require_dict(value: object, where: str) -> dict[str, Any]:
     return value
 
 
-def _drop_mana_percent(targeting: dict[str, Any]) -> None:
-    """Old files: a percent mana floor is no mana-point floor, so it is dropped, with a warning."""
+def _migrate_old_targeting_keys(targeting: dict[str, Any]) -> None:
+    """Old files: a percent mana floor is dropped (with a warning);
+    minimum_adjacent_monsters is renamed minimum_monsters.
+    """
     rows = [targeting.get("default_monster"), *targeting.get("monsters", ()),
             *targeting.get("area_rules", ())]
     for row in rows:
@@ -421,6 +423,10 @@ def _drop_mana_percent(targeting: dict[str, Any]) -> None:
             logger.warning(
                 "targeting: a min mana %% was dropped (it is mana points now): set it again"
             )
+    # doc: docs/prs/attack-types.md#area-kinds
+    for rule in targeting.get("area_rules", ()):
+        if isinstance(rule, dict) and "minimum_adjacent_monsters" in rule:
+            rule["minimum_monsters"] = rule.pop("minimum_adjacent_monsters")
 
 
 def _reject_unknown(data: dict[str, Any], known: set[str], where: str) -> None:
