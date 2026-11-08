@@ -826,9 +826,18 @@ class Cavebot:
 
     def on_waypoint_reached(self, index: int) -> None:
         """Hook called when positional waypoint *index* is reached."""
-        logger.debug("cavebot: reached waypoint %d", index)
+        logger.debug("cavebot: reached waypoint %d at %s", index, self._where())
         if self._callback is not None:
             self._callback(index)
+
+    # doc: docs/prs/position-tracking.md#script-tile
+    def _where(self) -> str:
+        """The player's tile, its source and how long it has stood there, for log lines."""
+        pos = self._last_pos
+        if pos is None:
+            return "unknown position"
+        still = self._clock() - self._moved_at
+        return f"{pos.x},{pos.y},{pos.z} ({self._state.position_status}), still {still:.2f} s"
 
     def step(self) -> None:
         """Run one tick of the route (see the module docstring)."""
@@ -1250,6 +1259,8 @@ class Cavebot:
         if self._hand_done_at is None:
             sends = self._hand_sends(wp)
             if self._sends_done < len(sends):
+                if self._sends_done == 0 and wp.action == "script":
+                    logger.info("cavebot: script %r from %s", wp.label, self._where())
                 dropped = getattr(self._input, "dropped", 0)
                 sends[self._sends_done]()
                 if getattr(self._input, "dropped", 0) == dropped:

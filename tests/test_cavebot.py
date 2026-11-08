@@ -9,6 +9,7 @@ Clicks go to a recording ClickController; hotkeys go to FakeInput.
 from __future__ import annotations
 
 import json
+import logging
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -476,7 +477,10 @@ def test_script_waypoint_starts_the_script_then_moves_on(tmp_path: Path) -> None
 
 
 # doc: docs/prs/position-tracking.md#script-tile
-def test_script_waits_out_the_step_and_runs_again_when_the_floor_stays(tmp_path: Path) -> None:
+def test_script_waits_out_the_step_and_runs_again_when_the_floor_stays(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO)
     (tmp_path / "s.py").write_text("def run(bot):\n    yield 0.0\n")
     runner = ScriptRunner(tmp_path)
     script = Waypoint(101, 100, 7, "script", "s")
@@ -489,6 +493,7 @@ def test_script_waits_out_the_step_and_runs_again_when_the_floor_stays(tmp_path:
     assert runner.running is None and sim.route.current == 1  # still mid-step
     sim.step(0.5)
     assert runner.running == "s"
+    assert "script 's' from 101,100,7 (), still 0.50 s" in caplog.text
     runner.step(sim.state, sim.fake)
     sim.step()
     assert sim.route.current == 2
