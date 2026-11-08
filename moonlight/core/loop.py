@@ -460,6 +460,7 @@ class GameLoop:
         """
         t0 = self._clock()
         self._tick_count += 1
+        self._perceive_time = 0.0  # a tick that skips reading must not count the last read
 
         # Priority 1: KILL beats everything, even a bad screen_ok.
         if self._kill_event.is_set():
@@ -476,7 +477,6 @@ class GameLoop:
             self._record_tick_time(t0)
             return  # stopped: the screen is read 5 times a second, enough to watch
 
-        self._perceive_time = 0.0
         if self._perceive is not None:
             self._perceive()
             self._perceive_time = self._clock() - t0
