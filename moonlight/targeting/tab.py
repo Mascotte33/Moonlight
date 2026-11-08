@@ -1,8 +1,9 @@
-"""Targeting tab: monster rows, seen monsters, area rules and the settings.
+"""Targeting tab: monster rows, area rules and the settings; seen monsters on their own page.
 
 # doc: docs/prs/targeting.md#monster-rows
 # doc: docs/prs/targeting.md#area-rules
 # doc: docs/prs/targeting.md#seen-monsters
+# doc: docs/prs/attack-types.md#inner-tabs
 
 Every change saves at once into the picked config, like the other tabs. A
 value the config refuses shows its reason in the message label and is not
@@ -243,7 +244,7 @@ class _AreaLine:
 
 
 class TargetingTab(Tab):
-    """Targeting (monster rows), area spells, seen monsters, then Settings; saved to the config."""
+    """Pages Targeting (monster rows, area spells, Settings) and Seen Monsters; saves the config."""
 
     title = "Targeting"
     polls_hidden = True  # a script's range toggle ticks the box even while hidden
@@ -251,7 +252,26 @@ class TargetingTab(Tab):
     _live_only_attack_within_range: bool | None = None
 
     def build(self, parent: ctk.CTkFrame) -> None:
-        settings_box = section(parent, "Settings")  # packed below Seen monsters
+        holder = Row(parent)
+        pages = {name: Row(holder) for name in ("Targeting", "Seen Monsters")}
+
+        def show(name: str) -> None:
+            for key, page in pages.items():
+                page.pack_forget() if key != name else page.pack(fill="x")
+
+        switch = ctk.CTkSegmentedButton(
+            parent,
+            values=list(pages),
+            command=show,
+            selected_color=theme.HOVER,
+            selected_hover_color=theme.HOVER,
+        )
+        switch.pack(fill="x", padx=10, pady=(10, 0))
+        holder.pack(fill="x")
+        switch.set("Targeting")
+        show("Targeting")
+        targeting_page, seen_page = pages["Targeting"], pages["Seen Monsters"]
+        settings_box = section(targeting_page, "Settings")  # packed below Area spells
         line = Row(settings_box)
         line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
         Label(line, text="Attack key every (ms)", text_color=theme.TEXT_DIM).pack(
@@ -305,7 +325,7 @@ class TargetingTab(Tab):
             side="left", padx=(theme.UNIT, 0)
         )
 
-        monsters_box, self._monsters_frame = _card(parent, "Targeting")
+        monsters_box, self._monsters_frame = _card(targeting_page, "Targeting")
         _header(
             self._monsters_frame,
             ["Monster", "Priority", "", "Attack key", "Attack", "Min mana", "Movement", ""],
@@ -313,14 +333,14 @@ class TargetingTab(Tab):
         _add_button(monsters_box, "+ Add monster", self._add_monster)
 
         area_box, self._area_frame = _card(
-            parent,
+            targeting_page,
             "Area spells (the first matching rule is used)",
         )
         _header(self._area_frame, ["Use", "Key", "Monsters next to you", "Min mana", ""])
         _add_button(area_box, "+ Add area spell", self._add_area_rule)
 
         _seen_box, self._seen_frame = _card(
-            parent,
+            seen_page,
             "Seen monsters",
             "Monsters the battle list showed that have no row yet. Check the name, then add it.",
         )
@@ -338,7 +358,7 @@ class TargetingTab(Tab):
         self.lbl_msg = Label(parent, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=10)
         self.lbl_live = Label(
-            parent, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
+            seen_page, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
         )
         self.lbl_live.pack(fill="x", padx=10)
 
