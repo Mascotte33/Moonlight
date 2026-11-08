@@ -397,7 +397,7 @@ class TestGameLoopStates:
         clock.advance(0.1)
         with patch("moonlight.extras.extras.save_screenshot") as save:
             gl.tick()
-        assert gl.stop_requested and save.called
+        assert gl.stop_requested and gl.died and save.called
         assert alerts == ["loop stopping: character died (HP bar empty for 3 s)"]
 
     def test_a_death_is_reported_while_stopped(self) -> None:

@@ -416,7 +416,8 @@ stay); it never pauses walking, attacking or looting.
 Death stop: when the HP bar reads empty for 3 s (after it has read above 0
 once), also while the bot is on Stop, the bot lets go of every key, saves a screenshot in `screenshots/`,
 beeps, logs `OPERATOR ALERT: loop stopping: character died (HP bar empty for
-3 s)` and stops. It has no switch.
+3 s)` and goes to Stop (reading only). Press Start to hunt again after you
+log back in. It has no switch.
 
 Account rotation plays accounts in turn (A, B, C, A...) in one client window.
 It has no switch: it is on when the config lists accounts (at least 2). It

@@ -298,6 +298,8 @@ class GameLoop:
         self.screen_grab: Callable[[], Any] | None = None
         self._hp_empty_since: float | None = None
         self._hp_was_read = False
+        #: True after a death stop: the GUI restarts the bot on Stop, not hunting.
+        self.died = False
         if move_provider is None and move_action is None:
             # Looked up every tick, so a cavebot swapped in by reconfigure is used.
             move_provider = self._cavebot_active
@@ -598,6 +600,7 @@ class GameLoop:
 
     def _death_stop(self) -> None:
         """Stop for good on a death: release, screenshot, alert."""
+        self.died = True
         self._release("death")
         if self.screen_grab is not None:
             from moonlight.extras.extras import save_screenshot
