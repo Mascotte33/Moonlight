@@ -697,6 +697,7 @@ pip install -e ".[dev]"
 ruff check .
 mypy .
 pytest -q
+git config core.hooksPath .githooks   # once: ruff and mypy before every commit
 ```
 
 CI runs ruff, mypy, the test suite and the capture/perception benchmarks on every
