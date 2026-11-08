@@ -38,7 +38,6 @@ from moonlight.targeting.seen_monsters import SeenMonster, SeenMonsters
 from moonlight.targeting.targeting import (
     AREA_GRID_RADIUS,
     AREA_KINDS,
-    ATTACK_TYPES,
     CIRCLE_AREA,
     SQUARE_AREA,
     TARGET_ORDERS,
@@ -58,7 +57,7 @@ __all__ = [
 ]
 
 #: Movement menu text for each config value.
-MOVEMENT_LABELS = {"follow": "chase", "none": "stand still", "keep distance": "keep distance"}
+MOVEMENT_LABELS = {"none": "stand", "follow": "chase", "keep distance": "keep distance"}
 
 
 class MonsterRowFields(NamedTuple):
@@ -70,7 +69,6 @@ class MonsterRowFields(NamedTuple):
     hotkey: str
     minimum_mana: str
     movement: str
-    attack_type: str = "distance"
 
 
 class AreaRuleFields(NamedTuple):
@@ -132,7 +130,6 @@ def apply_targeting(
                 row.minimum_mana, int, f"monster row {number} minimum mana"
             ),
             "movement": row.movement,
-            "attack_type": row.attack_type,
         }
         for number, row in enumerate(monster_rows)
         if number == 0 or row.name.strip()
@@ -217,7 +214,6 @@ class _MonsterLine:
     hotkey: HotkeyBox
     mana: ctk.CTkEntry
     movement: ctk.CTkOptionMenu
-    attack_type: ctk.CTkOptionMenu
     widgets: list[Any]
 
     def fields(self) -> MonsterRowFields:
@@ -230,7 +226,6 @@ class _MonsterLine:
             self.hotkey.get(),
             self.mana.get(),
             movement,
-            self.attack_type.get(),
         )
 
 
@@ -244,6 +239,7 @@ class _AreaLine:
     count: ctk.CTkEntry
     mana: ctk.CTkEntry
     edit_area: ctk.CTkButton
+    preview: tk.Canvas
     area: tuple[tuple[int, int], ...]
     widgets: list[Any] = field(default_factory=list)
 
@@ -263,6 +259,21 @@ class _AreaLine:
         for widget in (self.hotkey.btn, self.kind, self.count, self.mana, self.edit_area):
             widget.configure(state=state)
 
+    def draw_preview(self) -> None:
+        """The shape in small, so it shows without opening the editor; white = the middle."""
+        self.preview.delete("all")
+        for dy in range(-AREA_GRID_RADIUS, AREA_GRID_RADIUS + 1):
+            for dx in range(-AREA_GRID_RADIUS, AREA_GRID_RADIUS + 1):
+                color = _HIT_COLOR if (dx, dy) in self.area else _TILE_COLOR
+                if (dx, dy) == (0, 0):
+                    color = theme.TEXT
+                x = (dx + AREA_GRID_RADIUS) * _PREVIEW_TILE_PIXELS
+                y = (dy + AREA_GRID_RADIUS) * _PREVIEW_TILE_PIXELS
+                self.preview.create_rectangle(
+                    x, y, x + _PREVIEW_TILE_PIXELS - 1, y + _PREVIEW_TILE_PIXELS - 1,
+                    fill=color, width=0,
+                )
+
 
 def _default_area(kind: str) -> tuple[tuple[int, int], ...]:
     """The shape a new area rule of *kind* starts with."""
@@ -270,6 +281,7 @@ def _default_area(kind: str) -> tuple[tuple[int, int], ...]:
 
 
 _TILE_COLOR, _HIT_COLOR = "#4a4d52", theme.BLOOD
+_PREVIEW_TILE_PIXELS = 3
 
 
 # doc: docs/prs/attack-types.md#area-kinds
@@ -375,11 +387,11 @@ class TargetingTab(Tab):
         range_line = Row(settings_box)
         range_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
         self._only_attack_within_range = ctk.CTkCheckBox(
-            range_line, text="Only monsters within", command=self._save
+            range_line, text="Ignore monsters more than", command=self._save
         )
         self._only_attack_within_range.pack(side="left")
         self._attack_range_tiles_entry = row_entry(range_line, "", 32, self._save)
-        Label(range_line, text="tiles", text_color=theme.TEXT_DIM).pack(
+        Label(range_line, text="tiles away", text_color=theme.TEXT_DIM).pack(
             side="left", padx=(theme.UNIT, 0)
         )
         # doc: docs/prs/attack-types.md#keep-distance
@@ -394,7 +406,7 @@ class TargetingTab(Tab):
         monsters_box, self._monsters_frame = _card(targeting_page, "Targeting")
         _header(
             self._monsters_frame,
-            ["Monster", "Priority", "", "Attack key", "Attack", "Min mana", "Movement", ""],
+            ["Monster", "Priority", "", "Attack key", "Min mana", "Movement", ""],
         )
         _add_button(monsters_box, "+ Add monster", self._add_monster)
 
@@ -403,7 +415,7 @@ class TargetingTab(Tab):
             "Area spells (the first matching rule is used)",
         )
         _header(
-            self._area_frame, ["Use", "Kind", "Key", "Min monsters", "Min mana", "Area", ""]
+            self._area_frame, ["Use", "Kind", "Key", "Min monsters", "Min mana", "Area", "", ""]
         )
         _add_button(area_box, "+ Add area spell", self._add_area_rule)
 
@@ -455,7 +467,6 @@ class TargetingTab(Tab):
                     row.hotkey,
                     _blank_zero(row.minimum_mana),
                     row.movement,
-                    row.attack_type,
                 )
             )
         for rule in targeting.area_rules:
@@ -503,17 +514,6 @@ class TargetingTab(Tab):
             ignore.select()
         hotkey = HotkeyBox(rows, self._save)
         hotkey.set(row.hotkey)
-        # doc: docs/prs/attack-types.md#attack-type
-        attack_type = ctk.CTkOptionMenu(
-            rows,
-            values=list(ATTACK_TYPES),
-            width=90,
-            fg_color=theme.RAISED,
-            button_color=theme.RAISED,
-            button_hover_color=theme.HOVER,
-            command=lambda _v: self._save(),
-        )
-        attack_type.set(row.attack_type)
         mana = row_entry(rows, row.minimum_mana, 48, self._save, pack_left=False)
         movement = ctk.CTkOptionMenu(
             rows,
@@ -525,8 +525,8 @@ class TargetingTab(Tab):
             command=lambda _v: self._save(),
         )
         movement.set(MOVEMENT_LABELS[row.movement])
-        widgets: list[Any] = [name_widget, priority, ignore, hotkey, attack_type, mana, movement]
-        line = _MonsterLine(name, priority, ignore, hotkey, mana, movement, attack_type, widgets)
+        widgets: list[Any] = [name_widget, priority, ignore, hotkey, mana, movement]
+        line = _MonsterLine(name, priority, ignore, hotkey, mana, movement, widgets)
         if not first:
             widgets.append(
                 row_button(rows, "✕", partial(self._delete_monster, line), pack_left=False)
@@ -550,12 +550,19 @@ class TargetingTab(Tab):
         hotkey.set(row.hotkey)
         count = row_entry(rows, row.minimum_monsters, 40, self._save, pack_left=False)
         mana = row_entry(rows, row.minimum_mana, 48, self._save, pack_left=False)
+        preview_size = (2 * AREA_GRID_RADIUS + 1) * _PREVIEW_TILE_PIXELS
+        preview = tk.Canvas(
+            rows, width=preview_size, height=preview_size, bg=theme.NIGHT, highlightthickness=0
+        )
         edit_area = row_button(rows, "Edit area", lambda: None, 80, False)
         buttons = Row(rows)
-        line = _AreaLine(enabled, kind, hotkey, count, mana, edit_area, row.area)
-        line.widgets = [enabled, kind, hotkey, count, mana, edit_area, buttons]
+        line = _AreaLine(enabled, kind, hotkey, count, mana, edit_area, preview, row.area)
+        line.widgets = [enabled, kind, hotkey, count, mana, preview, edit_area, buttons]
+        line.draw_preview()
         kind.configure(command=partial(self._change_area_kind, line))
-        edit_area.configure(command=partial(_edit_area_window, rows, line, self._save))
+        edit_area.configure(
+            command=partial(_edit_area_window, rows, line, partial(self._area_changed, line))
+        )
         row_button(buttons, "↑", partial(self._move_area_rule, line, -1))
         row_button(buttons, "↓", partial(self._move_area_rule, line, 1))
         row_button(buttons, "✕", partial(self._delete_area_rule, line))
@@ -586,6 +593,10 @@ class TargetingTab(Tab):
         """A shape still at a kind's default follows the new kind's default."""
         if line.area in (SQUARE_AREA, CIRCLE_AREA):
             line.area = _default_area(kind)
+        self._area_changed(line)
+
+    def _area_changed(self, line: _AreaLine) -> None:
+        line.draw_preview()
         self._save()
 
     def _toggle_area_rule(self, line: _AreaLine) -> None:

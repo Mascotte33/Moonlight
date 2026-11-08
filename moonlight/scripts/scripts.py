@@ -213,7 +213,7 @@ class Bot:
 
     # doc: docs/prs/near-targeting.md#range-script
     def only_monsters_within_range(self, on: bool | None) -> list[Command]:
-        """Turn Targeting's "Only monsters within N tiles" on, off, or (None) flip it."""
+        """Turn Targeting's "Ignore monsters more than N tiles away" on, off, or (None) flip it."""
         return [functools.partial(self._runner.set_only_monsters_within_range, on)]
 
     # doc: docs/prs/near-targeting.md#targeting-script
@@ -367,7 +367,7 @@ class ScriptRunner:
         for targeting in live:
             targeting.config = replace(targeting.config, only_attack_within_range=on)
         log.info(
-            "script: only monsters within %d tiles %s",
+            "script: ignore monsters more than %d tiles away: %s",
             live[0].config.attack_range_tiles,
             "on" if on else "off",
         )

@@ -12,9 +12,7 @@ slots and MP is at least ``minimum_mana``:
   there before the key (client: Use at mouse cursor).
 # doc: docs/prs/attack-types.md#area-kinds
 
-Else the target row's ``hotkey`` fires, with its own mana minimum:
-``distance`` always, ``melee`` only while the target's slot touches the
-player. # doc: docs/prs/attack-types.md#attack-type
+Else the target row's ``hotkey`` fires, with its own mana minimum.
 
 Every key shares one ``attack_cooldown_ms``; a new target starts it fresh, so
 its first spell goes out at once (``new_target``). Mana is in points
@@ -40,7 +38,6 @@ from moonlight.targeting.targeting import (
     TargetingConfig,
     Walkable,
     screen_slots,
-    target_slot,
     wall_slots,
 )
 
@@ -133,12 +130,7 @@ class AttackHotkeys:
                     return press
         if not row.hotkey or mana < row.minimum_mana:
             return None
-        if row.attack_type == "distance":
-            return AttackPress(row.hotkey)
-        slot = target_slot(state)
-        if slot is not None and _distance(slot, PLAYER_SLOT) == 1:  # melee: next to the player
-            return AttackPress(row.hotkey)
-        return None
+        return AttackPress(row.hotkey)
 
     # doc: docs/prs/first-spell.md#fresh-cooldown
     def new_target(self) -> None:

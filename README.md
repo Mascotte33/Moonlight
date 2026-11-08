@@ -361,11 +361,11 @@ window open. The bot also reads the stamina every 5 minutes, shows it on the
 Dashboard's Stamina card and logs it when it changes
 (`stamina 41:23`, with `(under 39:30)` once it is low).
 
-`bot.only_monsters_within_range(True)` / `(False)` turns Targeting's **Only
-monsters within N tiles** on or off; `(None)` flips it. The Targeting box
+`bot.only_monsters_within_range(True)` / `(False)` turns Targeting's **Ignore
+monsters more than N tiles away** on or off; `(None)` flips it. The Targeting box
 follows and the change is saved to the config. The ready script
 `scripts/range_toggle.py` flips it: add a `script` waypoint with label
-`range_toggle`. Log: `script: only monsters within 3 tiles on` (or `off`).
+`range_toggle`. Log: `script: ignore monsters more than 3 tiles away: on` (or `off`).
 
 `bot.targeting(False)` / `(True)` turns targeting off or on until a script
 turns it back or the bot restarts; stuck targeting still runs. Ready scripts:
@@ -574,14 +574,10 @@ or in the `targeting` section of your profile config:
 
 - **Monster rows** match a battle-list name (ignoring case). Each has a
   priority (1-5, higher first), `ignore` ("never attack" in the tab), an
-  attack `hotkey` (empty = melee only), an **Attack** type (`attack_type`),
-  a mana floor in mana points (`minimum_mana`, e.g. 200) and a `movement`:
-  `follow` (chase), `none` (stand still) or `keep distance`. Players are
-  never targeted.
-- **Attack type:** `distance` (default) presses the key any time; `melee`
-  presses it only while the target stands next to you. The target's tile is
-  the screen health bar showing its HP; between two monsters at the same HP
-  it takes the nearer one.
+  attack `hotkey` (empty = melee only, pressed every cooldown), a mana floor
+  in mana points (`minimum_mana`, e.g. 200) and a **Movement** (`movement`):
+  `none` (stand), `follow` (chase) or `keep distance`. Players are never
+  targeted.
 - **Keep distance:** the row's movement `keep distance` sets the client to
   stand still and walks to the nearest tile at least **Keep distance: N
   tiles** from every monster (Targeting > Settings, `keep_distance_tiles`,
@@ -603,7 +599,7 @@ or in the `targeting` section of your profile config:
   (log: `battle list moved under the click on row N, aiming again`).
   After a battle-list click the mouse moves just left of the minimap, so it
   never covers the minimap or brings up the battle list's name tooltip.
-- **Only monsters within N tiles** (Targeting > Settings, `only_attack_within_range`,
+- **Ignore monsters more than N tiles away** (Targeting > Settings, `only_attack_within_range`,
   `attack_range_tiles`, default off and 3): the bot attacks only creatures in the
   box of N tiles around you (7x7 at 3). It right-clicks them on the game screen
   (needs the `game_grid` region), so with this on the priority column is not used:
@@ -643,7 +639,7 @@ or in the `targeting` section of your profile config:
   monster to attack it pauses targeting for 5 s instead (the settings stay
   as they are) and the cavebot walks on; the dashboard shows
   "(targeting paused N s)".
-- **Chase mode:** each monster row is "chase" or "stand still". The bot reads
+- **Chase mode:** each monster row is "stand", "chase" or "keep distance" (stands still). The bot reads
   the active (red) chase button from the `chase_buttons` region (Calibration
   tab) and, when it differs from the target's row, presses
   `toggle_chase_hotkey` ("Client key: Toggle Chase Mode" in the tab) before

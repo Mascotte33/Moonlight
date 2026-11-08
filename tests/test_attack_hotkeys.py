@@ -96,22 +96,6 @@ def test_a_new_target_gets_its_first_spell_at_once() -> None:
     assert keys.decide(state(), ROW, 0.5) == AttackPress("F6")
 
 
-def target_state(slot: tuple[int, int], target_hp: float = 40.0) -> WorldState:
-    """A creature at 40 % HP on *slot* and one at full HP; the target shows *target_hp*."""
-    ws = state((slot, (1, 1)))
-    ws.creature_hp_percents = (40.0, 100.0)
-    ws.selected_target = Monster("cyclops", hp_percent=target_hp)
-    return ws
-
-
-# doc: docs/prs/attack-types.md#attack-type
-def test_melee_key_fires_only_next_to_the_target() -> None:
-    melee = MonsterRow(name="cyclops", hotkey="F6", attack_type="melee")
-    assert hotkeys().decide(target_state((8, 6)), melee, 0.0) == AttackPress("F6")
-    assert hotkeys().decide(target_state((9, 5)), melee, 0.0) is None
-    assert hotkeys().decide(target_state((9, 5), target_hp=70), melee, 0.0) is None  # no bar
-
-
 # doc: docs/prs/attack-types.md#area-kinds
 def test_around_me_counts_creatures_on_the_drawn_shape() -> None:
     cross = ((0, -1), (0, 1), (-1, 0), (1, 0))

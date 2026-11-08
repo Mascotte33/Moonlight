@@ -45,7 +45,6 @@ from moonlight.perception.creatures import GRID_COLUMNS, GRID_ROWS, PLAYER_SLOT
 __all__ = [
     "AREA_GRID_RADIUS",
     "AREA_KINDS",
-    "ATTACK_TYPES",
     "CIRCLE_AREA",
     "MOVEMENTS",
     "PAUSE_SECONDS",
@@ -64,9 +63,7 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-MOVEMENTS = ("follow", "none", "keep distance")
-# doc: docs/prs/attack-types.md#attack-type
-ATTACK_TYPES = ("distance", "melee")
+MOVEMENTS = ("none", "follow", "keep distance")
 # doc: docs/prs/attack-types.md#area-kinds
 AREA_KINDS = ("around me", "wave", "on a tile")
 #: Tiles from the middle to the edge of the area editor's grid (13x13).
@@ -109,19 +106,14 @@ class MonsterRow:
     #: Mana points (not percent) needed to press the hotkey; 0 = none.
     minimum_mana: int = 0
     movement: str = "follow"
-    attack_type: str = "distance"
 
     def validate(self) -> None:
-        """Raise ValueError on a bad priority, movement, attack type or hotkey."""
+        """Raise ValueError on a bad priority, movement or hotkey."""
         where = f"monster row {self.name!r}"
         if isinstance(self.priority, bool) or self.priority not in range(1, 6):
             raise ValueError(f"{where}: priority must be 1-5, got {self.priority!r}")
         if self.movement not in MOVEMENTS:
             raise ValueError(f"{where}: movement must be one of {MOVEMENTS}, got {self.movement!r}")
-        if self.attack_type not in ATTACK_TYPES:
-            raise ValueError(
-                f"{where}: attack_type must be one of {ATTACK_TYPES}, got {self.attack_type!r}"
-            )
         if self.hotkey:
             check_hotkey(self.hotkey, where)
         if isinstance(self.minimum_mana, bool) or self.minimum_mana < 0:
