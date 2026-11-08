@@ -877,7 +877,8 @@ class GameLoop:
             raise RuntimeError("targeting is wired without a clicker")
         if self._target is not None and self._target.kind in ("step_closer", "step_away"):
             key = WALK_KEYS[self._target.step]
-            self._send(snap, lambda: self.input.press_combo(key))
+            if self._send(snap, lambda: self.input.press_combo(key)):
+                logger.info("targeting: %s (%s)", self._target.reason, key)
             return
         now = self._clock()
         if clicker.busy:
