@@ -62,6 +62,9 @@ Safety invariants (re-checked on every tick, never just at startup):
   screen, presses nothing and raises no alarm; keys are released once.
   The account switch (``rotate``) is no pause: it alone runs on the
   login screen, needing only ``client_focused``.
+* **Death stop** -- an empty HP bar on a readable screen for
+  ``DEATH_SECONDS`` stops the loop for good: keys released, alert (beep),
+  a screenshot. # doc: docs/prs/death-stop.md#death-stop
 * **No input unless focused** -- no action is sent unless the snapshot
   has both ``client_focused`` and ``screen_ok`` True. The one exception is
   ``release_all``: kill, pause, tick exceptions and shutdown call it
@@ -141,6 +144,12 @@ _SELECT_OUTLINE_WAIT = 1.0
 # doc: docs/prs/pause-stop.md#stop-reads-only
 #: While stopped only every 4th tick reads the screen (5 a second at 20 Hz).
 STOPPED_READ_EVERY_TICKS = 4
+
+
+# doc: docs/prs/death-stop.md#death-stop
+#: Seconds the HP bar must read empty before the bot calls it a death
+#: (a living character at 0 pixels of HP is healed back within this time).
+DEATH_SECONDS = 3.0
 
 
 #: The tiles the loot hotkey loots, at any time: the 3x3 around and under the
@@ -285,6 +294,12 @@ class GameLoop:
         self.reconfigure: Callable[[Any], bool] | None = None
         #: Monsters seen in the battle list, for the Targeting tab (set by ``build_loop``).
         self.seen_monsters: SeenMonsters | None = None
+        #: Grabs the client window for the death screenshot (set by ``build_loop``).
+        self.screen_grab: Callable[[], Any] | None = None
+        self._hp_empty_since: float | None = None
+        self._hp_was_read = False
+        #: True after a death stop: the GUI restarts the bot on Stop, not hunting.
+        self.died = False
         if move_provider is None and move_action is None:
             # Looked up every tick, so a cavebot swapped in by reconfigure is used.
             move_provider = self._cavebot_active
@@ -482,6 +497,11 @@ class GameLoop:
             self._perceive_time = self._clock() - t0
         snap = self.state.snapshot()
 
+        if snap.screen_ok and self._died(snap):  # stopped too: a death is always reported
+            self._death_stop()
+            self._record_tick_time(t0)
+            return
+
         if self.stopped:
             self._stand_stopped()
             self._record_tick_time(t0)
@@ -560,6 +580,36 @@ class GameLoop:
         self._pause("tick raised an exception")
         if self._consecutive_errors >= self.config.max_consecutive_errors:
             self._fail_stop(f"{self._consecutive_errors} consecutive tick exceptions")
+
+    # doc: docs/prs/death-stop.md#death-stop
+    def _died(self, snap: WorldState) -> bool:
+        """True once the HP bar has read empty for ``DEATH_SECONDS`` in a row.
+
+        Only after HP has read above 0 once: an uncalibrated bar reads 0 forever.
+        """
+        if snap.hp_percent > 0.0:
+            self._hp_was_read = True
+            self._hp_empty_since = None
+            return False
+        if not self._hp_was_read:
+            return False
+        now = self._clock()
+        if self._hp_empty_since is None:
+            self._hp_empty_since = now
+        return now - self._hp_empty_since >= DEATH_SECONDS
+
+    def _death_stop(self) -> None:
+        """Stop for good on a death: release, screenshot, alert."""
+        self.died = True
+        self._release("death")
+        if self.screen_grab is not None:
+            from moonlight.extras.extras import save_screenshot
+
+            try:
+                logger.warning("screenshot saved: %s", save_screenshot(self.screen_grab()))
+            except Exception:  # noqa: BLE001 - the stop matters more than the picture
+                logger.exception("death screenshot failed")
+        self._fail_stop(f"character died (HP bar empty for {DEATH_SECONDS:g} s)")
 
     def _fail_stop(self, reason: str) -> None:
         self._release("failure stop")

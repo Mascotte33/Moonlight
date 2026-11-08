@@ -513,8 +513,8 @@ class GuiApp:
     def _keep_running(self) -> None:
         """Start the bot when it is down: active, or reading only while Stop holds it."""
         ctrl = self.ctx.controller
-        if ctrl is not None and ctrl.loop.kill_switch_active:
-            self._held = True
+        if ctrl is not None and (ctrl.loop.kill_switch_active or ctrl.loop.died):
+            self._held = True  # restart reading only; Start hunts again
         if self.ctx.bot_running() or time.monotonic() < self._retry_at:
             return
         self.start_bot(resume=ctrl is not None)
