@@ -12,8 +12,9 @@ saved. :func:`apply_targeting` is the pure row-to-config step.
 
 from __future__ import annotations
 
+import tkinter as tk
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -34,7 +35,15 @@ from moonlight.gui.tab_base import (
     section,
 )
 from moonlight.targeting.seen_monsters import SeenMonster, SeenMonsters
-from moonlight.targeting.targeting import ATTACK_TYPES, TARGET_ORDERS, TargetingConfig
+from moonlight.targeting.targeting import (
+    AREA_GRID_RADIUS,
+    AREA_KINDS,
+    ATTACK_TYPES,
+    CIRCLE_AREA,
+    SQUARE_AREA,
+    TARGET_ORDERS,
+    TargetingConfig,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.core.state import WorldState
@@ -68,9 +77,11 @@ class AreaRuleFields(NamedTuple):
     """One area rule as the controls hold it."""
 
     hotkey: str
-    minimum_adjacent_monsters: str
+    kind: str
+    minimum_monsters: str
     minimum_mana: str
     enabled: bool = True
+    area: tuple[tuple[int, int], ...] = SQUARE_AREA
 
 
 class TargetingSettings(NamedTuple):
@@ -129,13 +140,15 @@ def apply_targeting(
     area_dicts = [
         {
             "hotkey": row.hotkey.strip(),
-            "minimum_adjacent_monsters": _number(
-                row.minimum_adjacent_monsters, int, f"area rule {number} adjacent monsters"
+            "kind": row.kind,
+            "minimum_monsters": _number(
+                row.minimum_monsters, int, f"area rule {number} minimum monsters"
             ),
             "minimum_mana": _number(
                 row.minimum_mana, int, f"area rule {number} minimum mana"
             ),
             "enabled": row.enabled,
+            "area": [list(offset) for offset in row.area],
         }
         for number, row in enumerate(area_rows, start=1)
         if row.hotkey.strip()
@@ -226,21 +239,74 @@ class _AreaLine:
     """The controls of one area rule."""
 
     enabled: ctk.CTkCheckBox
+    kind: ctk.CTkOptionMenu
     hotkey: HotkeyBox
     count: ctk.CTkEntry
     mana: ctk.CTkEntry
-    widgets: list[Any]
+    edit_area: ctk.CTkButton
+    area: tuple[tuple[int, int], ...]
+    widgets: list[Any] = field(default_factory=list)
 
     def fields(self) -> AreaRuleFields:
         return AreaRuleFields(
-            self.hotkey.get(), self.count.get(), self.mana.get(), bool(self.enabled.get())
+            self.hotkey.get(),
+            self.kind.get(),
+            self.count.get(),
+            self.mana.get(),
+            bool(self.enabled.get()),
+            self.area,
         )
 
     def show_lock(self) -> None:
         """A ticked (working) rule grays its values so they are not changed by accident."""
         state = "disabled" if self.enabled.get() else "normal"
-        for widget in (self.hotkey.btn, self.count, self.mana):
+        for widget in (self.hotkey.btn, self.kind, self.count, self.mana, self.edit_area):
             widget.configure(state=state)
+
+
+def _default_area(kind: str) -> tuple[tuple[int, int], ...]:
+    """The shape a new area rule of *kind* starts with."""
+    return CIRCLE_AREA if kind == "on a tile" else SQUARE_AREA
+
+
+_TILE_COLOR, _HIT_COLOR = "#4a4d52", theme.BLOOD
+
+
+# doc: docs/prs/attack-types.md#area-kinds
+def _edit_area_window(
+    parent: ctk.CTkFrame, line: _AreaLine, on_change: Callable[[], None]
+) -> None:
+    """A 13x13 grid of game tiles; a click lights a tile the spell hits or clears it.
+
+    The middle tile is the player ("around me", "wave": drawn facing up) or
+    the aimed tile ("on a tile").
+    """
+    window = ctk.CTkToplevel(parent)
+    window.title(f"Area: {line.kind.get()} (click tiles; a wave faces up)")
+    window.resizable(False, False)
+    grid = tk.Frame(window, bg=theme.NIGHT)
+    grid.pack(padx=theme.PAD, pady=theme.PAD)
+    middle_text = "X" if line.kind.get() == "on a tile" else "you"
+
+    def toggle(offset: tuple[int, int], tile: tk.Label, _event: object) -> None:
+        lit = offset not in line.area
+        line.area = tuple(sorted({*line.area, offset} if lit else set(line.area) - {offset}))
+        tile.configure(bg=_HIT_COLOR if lit else _TILE_COLOR)
+        on_change()
+
+    for dy in range(-AREA_GRID_RADIUS, AREA_GRID_RADIUS + 1):
+        for dx in range(-AREA_GRID_RADIUS, AREA_GRID_RADIUS + 1):
+            tile = tk.Label(
+                grid,
+                width=3,
+                height=1,
+                text=middle_text if (dx, dy) == (0, 0) else "",
+                fg=theme.TEXT,
+                bg=_HIT_COLOR if (dx, dy) in line.area else _TILE_COLOR,
+            )
+            tile.grid(row=dy + AREA_GRID_RADIUS, column=dx + AREA_GRID_RADIUS, padx=1, pady=1)
+            tile.bind("<Button-1>", partial(toggle, (dx, dy), tile))
+    window.after(100, window.lift)
 
 
 class TargetingTab(Tab):
@@ -321,7 +387,7 @@ class TargetingTab(Tab):
         distance_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
         Label(distance_line, text="Keep distance:", text_color=theme.TEXT_DIM).pack(side="left")
         self._keep_distance_tiles_entry = row_entry(distance_line, "", 32, self._save)
-        Label(distance_line, text="tiles from the target", text_color=theme.TEXT_DIM).pack(
+        Label(distance_line, text="tiles from every monster", text_color=theme.TEXT_DIM).pack(
             side="left", padx=(theme.UNIT, 0)
         )
 
@@ -336,7 +402,9 @@ class TargetingTab(Tab):
             targeting_page,
             "Area spells (the first matching rule is used)",
         )
-        _header(self._area_frame, ["Use", "Key", "Monsters next to you", "Min mana", ""])
+        _header(
+            self._area_frame, ["Use", "Kind", "Key", "Min monsters", "Min mana", "Area", ""]
+        )
         _add_button(area_box, "+ Add area spell", self._add_area_rule)
 
         _seen_box, self._seen_frame = _card(
@@ -394,9 +462,11 @@ class TargetingTab(Tab):
             self._add_area_line(
                 AreaRuleFields(
                     rule.hotkey,
-                    str(rule.minimum_adjacent_monsters),
+                    rule.kind,
+                    str(rule.minimum_monsters),
                     _blank_zero(rule.minimum_mana),
                     rule.enabled,
+                    rule.area,
                 )
             )
         for entry, value in (
@@ -467,12 +537,25 @@ class TargetingTab(Tab):
     def _add_area_line(self, row: AreaRuleFields) -> None:
         rows = self._area_frame
         enabled = ctk.CTkCheckBox(rows, text="", width=24)
+        kind = ctk.CTkOptionMenu(
+            rows,
+            values=list(AREA_KINDS),
+            width=100,
+            fg_color=theme.RAISED,
+            button_color=theme.RAISED,
+            button_hover_color=theme.HOVER,
+        )
+        kind.set(row.kind)
         hotkey = HotkeyBox(rows, self._save)
         hotkey.set(row.hotkey)
-        count = row_entry(rows, row.minimum_adjacent_monsters, 40, self._save, pack_left=False)
+        count = row_entry(rows, row.minimum_monsters, 40, self._save, pack_left=False)
         mana = row_entry(rows, row.minimum_mana, 48, self._save, pack_left=False)
+        edit_area = row_button(rows, "Edit area", lambda: None, 80, False)
         buttons = Row(rows)
-        line = _AreaLine(enabled, hotkey, count, mana, [enabled, hotkey, count, mana, buttons])
+        line = _AreaLine(enabled, kind, hotkey, count, mana, edit_area, row.area)
+        line.widgets = [enabled, kind, hotkey, count, mana, edit_area, buttons]
+        kind.configure(command=partial(self._change_area_kind, line))
+        edit_area.configure(command=partial(_edit_area_window, rows, line, self._save))
         row_button(buttons, "↑", partial(self._move_area_rule, line, -1))
         row_button(buttons, "↓", partial(self._move_area_rule, line, 1))
         row_button(buttons, "✕", partial(self._delete_area_rule, line))
@@ -497,7 +580,13 @@ class TargetingTab(Tab):
 
     def _add_area_rule(self) -> None:
         """A blank, unticked rule at the bottom; it saves once it has a key."""
-        self._add_area_line(AreaRuleFields("", "1", "", enabled=False))
+        self._add_area_line(AreaRuleFields("", "around me", "1", "", enabled=False))
+
+    def _change_area_kind(self, line: _AreaLine, kind: str) -> None:
+        """A shape still at a kind's default follows the new kind's default."""
+        if line.area in (SQUARE_AREA, CIRCLE_AREA):
+            line.area = _default_area(kind)
+        self._save()
 
     def _toggle_area_rule(self, line: _AreaLine) -> None:
         line.show_lock()

@@ -176,8 +176,18 @@ def test_area_rules_load_from_json() -> None:
     )
     targeting = BotConfig.from_dict(data).targeting
     assert targeting is not None
-    assert targeting.area_rules == (AreaRule("F5", 3, 30),)
+    # doc: docs/prs/attack-types.md#area-kinds
+    # The old key is read as minimum_monsters of an "around me" 3x3 square.
+    assert targeting.area_rules == (AreaRule("F5", minimum_monsters=3, minimum_mana=30),)
     assert targeting.attack_cooldown_ms == 1500
+
+
+def test_an_area_shape_survives_a_save() -> None:
+    rule = {"hotkey": "F5", "kind": "on a tile", "area": [[0, 0], [1, -2]]}
+    data = raw(targeting={"enabled": True, "area_rules": [rule]})
+    targeting = BotConfig.from_dict(BotConfig.from_dict(data).to_dict()).targeting
+    assert targeting is not None
+    assert targeting.area_rules == (AreaRule("F5", "on a tile", area=((0, 0), (1, -2))),)
 
 
 def test_an_old_percent_mana_minimum_is_dropped() -> None:
@@ -199,10 +209,13 @@ def test_an_old_healing_mana_floor_is_dropped() -> None:
 @pytest.mark.parametrize(
     "targeting",
     [
-        {"area_rules": [{"hotkey": "F5", "minimum_adjacent_monsters": 0}]},
-        {"area_rules": [{"hotkey": "", "minimum_adjacent_monsters": 2}]},
+        {"area_rules": [{"hotkey": "F5", "minimum_monsters": 0}]},
+        {"area_rules": [{"hotkey": "F5", "kind": "cone"}]},
+        {"area_rules": [{"hotkey": "F5", "area": []}]},
+        {"area_rules": [{"hotkey": "F5", "area": [[7, 0]]}]},
+        {"area_rules": [{"hotkey": "", "minimum_monsters": 2}]},
         {"area_rules": [{"hotkey": "F5", "minimum_mana": 1.5}]},
-        {"area_rules": [{"minimum_adjacent_monsters": 2}]},
+        {"area_rules": [{"minimum_monsters": 2}]},
         {"attack_cooldown_ms": -1},
         {"default_monster": {"minimum_mana": -5}},
     ],

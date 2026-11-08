@@ -977,26 +977,31 @@ class GameLoop:
                 self._warned_no_chase_toggle_key = True
         if attack_hotkeys is None:
             return
-        picked = attack_hotkeys.decide(snap, row, now)
-        if picked is None:
+        press = attack_hotkeys.decide(snap, row, now)
+        if press is None:
             return
-        hotkey, aim_slot = picked
-        if aim_slot is None:
-            self._send(snap, lambda: attack_hotkeys.send(hotkey, self.input, now))
+        # doc: docs/prs/attack-types.md#area-kinds
+        if press.aim_slot is None:
+
+            def cast() -> None:
+                if press.turn_key:
+                    self.input.press_combo(press.turn_key)  # face the wave's best side
+                attack_hotkeys.send(press.hotkey, self.input, now)
+
+            self._send(snap, cast)
             return
-        # doc: docs/prs/attack-types.md#attack-type
         clicker = self.modules.clicker
         if clicker is None or not clicker.absolute:
-            raise RuntimeError("rune attacks need the absolute clicker to aim the mouse")
+            raise RuntimeError("on-a-tile attacks need the absolute clicker to aim the mouse")
         if snap.game_view_sliding:
             return  # aim at a still frame
-        aim = clicker.to_wire(targeting.slot_center(aim_slot))
+        aim = clicker.to_wire(targeting.slot_center(press.aim_slot))
 
-        def cast_rune() -> None:
+        def cast_on_tile() -> None:
             self.input.mouse_to(*aim)
-            attack_hotkeys.send(hotkey, self.input, now)
+            attack_hotkeys.send(press.hotkey, self.input, now)
 
-        self._send(snap, cast_rune)
+        self._send(snap, cast_on_tile)
 
     # doc: docs/prs/near-targeting.md#moved-row
     def _battle_list_moved_under_the_click(self) -> bool:

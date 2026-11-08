@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from moonlight.core.config import BotConfig, ConfigError
-from moonlight.core.state import Monster, WorldState
+from moonlight.core.state import Monster, Position, WorldState
 from moonlight.targeting.targeting import (
     MonsterRow,
     TargetingAction,
@@ -357,11 +357,32 @@ def test_keep_distance_steps_away_from_a_close_target() -> None:
     assert targeting.decide(keep_distance_state((10, 5)), 1.0) is None  # 3 tiles: far enough
 
 
-def test_keep_distance_never_steps_onto_a_creature() -> None:
+def test_keep_distance_walks_around_creatures_blocking_the_far_side() -> None:
     s = keep_distance_state((8, 5))
-    s.creature_slots = ((8, 5), (6, 4), (6, 5), (6, 6))  # boxed in on the far side
+    s.creature_slots = ((8, 5), (6, 4), (6, 5), (6, 6))  # boxed in on the left
     s.creature_hp_percents = (60.0, 100.0, 100.0, 100.0)
-    assert rows(MonsterRow(name="Wolf", movement="keep distance")).decide(s, 0.0) is None
+    action = rows(MonsterRow(name="Wolf", movement="keep distance")).decide(s, 0.0)
+    assert action is not None and action.step in ((0, -1), (0, 1))  # up or down, never onto one
+
+
+def test_keep_distance_never_steps_into_a_wall() -> None:
+    s = keep_distance_state((8, 5))
+    s.position = Position(100, 100, 7)
+    # Every tile left of the player (world x below 100) is a wall: flee up or down.
+    targeting = TargetingDecision(
+        TargetingConfig(monsters=(MonsterRow(name="Wolf", movement="keep distance"),)),
+        walkable=lambda x, y, z: x >= 100,
+    )
+    action = targeting.decide(s, 0.0)
+    assert action is not None and action.step[0] == 0
+
+
+def test_keep_distance_with_no_safe_tile_runs_furthest_away() -> None:
+    s = keep_distance_state((8, 5))
+    s.creature_slots = tuple((x, y) for x in range(15) for y in range(11) if x >= 8)
+    s.creature_hp_percents = (60.0,) * len(s.creature_slots)
+    action = rows(MonsterRow(name="Wolf", movement="keep distance")).decide(s, 0.0)
+    assert action is not None and action.step[0] == -1  # toward the free left edge
 
 
 def test_follow_row_does_not_step_away() -> None:

@@ -560,16 +560,16 @@ or in the `targeting` section of your profile config:
   `follow` (chase), `none` (stand still) or `keep distance`. Players are
   never targeted.
 - **Attack type:** `distance` (default) presses the key any time; `melee`
-  presses it only while the target stands next to you; `rune` moves the
-  mouse onto the target's tile, then presses the key. Bind a rune key in the
-  client as **Use at mouse cursor** (Settings > Client hotkeys writes it so);
-  runes need the absolute clicker. The target's tile is the screen health bar
-  showing its HP; between two monsters at the same HP it takes the nearer one.
+  presses it only while the target stands next to you. The target's tile is
+  the screen health bar showing its HP; between two monsters at the same HP
+  it takes the nearer one.
 - **Keep distance:** the row's movement `keep distance` sets the client to
-  stand still and steps away (diagonals too, never onto a creature) while the
-  target is closer than **Keep distance: N tiles** (Targeting > Settings,
-  `keep_distance_tiles`, default 3). One step per 0.4 s; walls are not known,
-  so in a corner it keeps pressing into the wall.
+  stand still and walks to the nearest tile at least **Keep distance: N
+  tiles** from every monster (Targeting > Settings, `keep_distance_tiles`,
+  default 3), around walls (from the cavebot's walk map) and creatures. With
+  no such tile it goes to the tile furthest from the closest monster. One
+  step per 0.4 s; it stays put on the best tile. Log: `keep distance from
+  Wolf: closest monster 1 tiles away, going -2,0 to a tile 3 away`.
 - **`default_monster`** is the row for every monster without its own row, so
   everything is attacked unless you ignore it. The tab shows it as "all others".
   Default: priority 1, no mana floor, follow.
@@ -597,12 +597,23 @@ or in the `targeting` section of your profile config:
   Turn on secure mode in the client: a click on a player or NPC then selects nothing,
   and the bot logs `nothing selected at x,y,z, skipping that tile 30 s`. A "never
   attack" monster selected this way gets Esc and its tile is skipped 30 s.
-- **Area rules** press a hotkey when at least `minimum_adjacent_monsters`
-  creatures stand next to you and MP is at least `minimum_mana` mana points.
-  Default: no mana floor. A rule is used only while it is
-  ticked (`enabled`). A ticked rule is grayed in the tab so it isn't edited
-  by accident. All attack keys share `attack_cooldown_ms` (default 2000); a new
-  target starts it fresh, so its first spell goes out at once.
+- **Area rules** press a hotkey when the spell's shape hits at least
+  **Min monsters** creatures (`minimum_monsters`, 1 or more) and MP is at
+  least `minimum_mana` mana points. **Edit area** opens a 13x13 grid: click
+  tiles to mark what the spell hits (`area`, offsets from the middle). The
+  **Kind** (`kind`) says where the shape goes:
+  - `around me`: centred on you (default shape: the 3x3 square).
+  - `wave`: draw it facing up; the bot tries all 4 directions, presses
+    Ctrl+arrow to face the best one, then the key.
+  - `on a tile`: tried on every screen tile that is not a wall; most hits
+    wins, then the tile nearest you. The mouse moves there, then the key
+    (client: **Use at mouse cursor**, Settings > Client hotkeys writes it so;
+    needs the absolute clicker). Default shape: a circle.
+  The first rule that can fire wins, else the row's key. A rule is used only
+  while it is ticked (`enabled`); a ticked rule is grayed in the tab so it
+  isn't edited by accident. All attack keys share `attack_cooldown_ms`
+  (default 2000); a new target starts it fresh, so its first spell goes out
+  at once. An old `minimum_adjacent_monsters` key is read as `minimum_monsters`.
 - **Mana points**: the bot reads your max mana off the `115/295` text on the
   MP bar (Tesseract) every 30 s and logs `max mana: 295`. Until it is read,
   MP counts as 0, so a hotkey with a mana floor waits. An old

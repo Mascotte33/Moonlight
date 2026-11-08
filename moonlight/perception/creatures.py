@@ -19,13 +19,21 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-__all__ = ["BAR_W", "PLAYER_SLOT", "CreatureTracker", "creature_bars", "find_creatures"]
+__all__ = [
+    "BAR_W",
+    "GRID_COLUMNS",
+    "GRID_ROWS",
+    "PLAYER_SLOT",
+    "CreatureTracker",
+    "creature_bars",
+    "find_creatures",
+]
 
 BAR_W = 31
 _BAR_H = 4
 _BLACK = 25
 _FILL = 80
-_COLS, _ROWS = 15, 11
+GRID_COLUMNS, GRID_ROWS = 15, 11
 #: The player's own game-grid slot (col, row).
 PLAYER_SLOT = (7, 5)
 _RUN_KERNEL = np.ones((1, BAR_W), np.uint8)
@@ -116,7 +124,7 @@ def _slots(
 ) -> dict[tuple[int, int], float]:
     """Slot -> HP of each bar top-left ``(x, y, hp)``; a bar that moved since
     *last_tops* goes on the tile ahead of it."""
-    tw, th = grid[2] / _COLS, grid[3] / _ROWS
+    tw, th = grid[2] / GRID_COLUMNS, grid[3] / GRID_ROWS
     bars: dict[tuple[int, int], float] = {}
     for x, y, hp in tops:
         ahead_x = ahead_y = 0
@@ -131,7 +139,7 @@ def _slots(
         # tile the creature walks into; standing, the tile under the bar.
         col = int((x + BAR_W / 2 + ahead_x * (tw / 2 - 1)) // tw)
         row = int((y + th / 2 + ahead_y * (th / 2 - 1)) // th)
-        if 0 <= col < _COLS and 0 <= row < _ROWS:
+        if 0 <= col < GRID_COLUMNS and 0 <= row < GRID_ROWS:
             bars[(col, row)] = hp
     bars.pop(PLAYER_SLOT, None)
     return bars
