@@ -560,11 +560,11 @@ def needs_restart(old: BotConfig, new: BotConfig) -> bool:
 
 
 # doc: docs/prs/attack-types.md#keep-distance
-def _walk_map_walkable() -> Callable[[int, int, int], bool] | None:
+def _walk_map_walkable(map_dir: Path) -> Callable[[int, int, int], bool] | None:
     """Walk-map tiles a fight may step on or aim at; None without a walk map."""
     from moonlight.cavebot.pathing import CostMap
 
-    cost_map = CostMap(MAP_DIR / "cost")
+    cost_map = CostMap(map_dir / "cost")
     if cost_map.empty:
         return None
     return lambda x, y, z: cost_map.walkable(x, y, z) and not cost_map.floor_change(x, y, z)
@@ -617,7 +617,7 @@ def build_modules(
             m.cavebot, m.looting = prev.cavebot, prev.looting
     if config.healing is not None and m.healing is None:
         m.healing = HealingDecision(config.healing, clock=clock)
-    walkable = _walk_map_walkable()
+    walkable = _walk_map_walkable(MAPS_DIR / config.game_map)
     if config.targeting is not None and m.targeting is None:
         m.targeting = TargetingDecision(
             config.targeting,
