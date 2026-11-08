@@ -30,14 +30,20 @@ How the position is obtained
   :meth:`MinimapReader.reset` re-anchors it -- never a silent zero shift.
   An untrusted shift *with* a floor change is the radar redrawing for
   stairs/ropes: x, y are kept (the step is at most a tile).
-* **(x, y) — absolute**: a pluggable :class:`MapMatcher` (the bot uses
-  :class:`moonlight.perception.worldmap.WorldMap`) finds the radar on the
-  map, near the last position first, then on the whole floor, then near the
-  last position on the floors above and below (z+1, z-1, z+2, ...: a misread
-  floor indicator). With no match the position is moved
-  by the terrain shift (kept when the shift is not trusted either) and is
-  :attr:`MinimapReader.estimated`; after ``estimate_for`` seconds without a
-  match the reader is :attr:`lost` until the next match.
+* **(x, y) — with a map** (docs/prs/position-tracking.md#position-source):
+  each step is counted from the radar slide against the last radar, and a
+  pluggable :class:`MapMatcher` (the bot uses
+  :class:`moonlight.perception.worldmap.WorldMap`) looks for the radar near
+  the counted position, then on the whole floor. A match that agrees with
+  the count, or scores at most ``STRONG_MATCH_SCORE``, sets the position
+  (:attr:`MinimapReader.source` "map"); otherwise the count stands
+  ("count"). With neither a slide nor a match (floor change, black radar)
+  the floors above and below are searched near the last x, y (z+1, z-1,
+  z+2, ...: a misread floor indicator); a floor change keeps x, y as a
+  guess, and any match replaces a guess (a wagon or teleport lands far
+  away). After
+  ``estimate_for`` seconds with neither the reader is :attr:`lost` until
+  the next match.
 * **(x, y) — relative tracking** (default, no map matcher): the terrain
   displacement between successive radar frames is estimated with phase
   correlation (:func:`cv2.phaseCorrelate`); player displacement is the
@@ -115,6 +121,11 @@ DEFAULT_MARKER_TOLERANCE = 60
 #: Minimum phase-correlation response for a trusted shift estimate.
 DEFAULT_SHIFT_RESPONSE_MIN = 0.6
 
+#: A map match scoring at most this corrects a counted position that
+#: disagrees with it; good matches score 0.0007-0.005 with the marks masked.
+# doc: docs/prs/position-tracking.md#position-source
+STRONG_MATCH_SCORE = 0.03
+
 
 class MapMatcher(Protocol):
     """Finds an RGB radar crop on the world map of floor *z*.
@@ -191,8 +202,8 @@ class MinimapReader:
             shift_response_min: Minimum phase-correlation response for a
                 trusted terrain shift.
             px_per_sqm: Radar pixels per tile; defaults to the ui_scale.
-            estimate_for: Seconds a *map_matcher* reader keeps estimating
-                from the terrain shift before it is :attr:`lost`.
+            estimate_for: Seconds a *map_matcher* reader goes with neither
+                a readable radar slide nor a map match before it is :attr:`lost`.
             clock: Monotonic clock for *estimate_for*.
 
         Raises:
@@ -215,7 +226,10 @@ class MinimapReader:
         self._px = float(px_per_sqm) if px_per_sqm is not None else self._scale
         self._estimate_for = float(estimate_for)
         self._clock = clock
-        self._estimated_since: float | None = None
+        self._unreadable_since: float | None = None
+        self._source = "count" if map_matcher is None else "map"
+        #: x, y were kept over a floor change and no match has confirmed them yet.
+        self._position_is_a_floor_change_guess = False
         self._floor_reader = floor_reader
         self._floor_region = floor_region
         self._map_matcher = map_matcher
@@ -244,9 +258,9 @@ class MinimapReader:
         return self._lost
 
     @property
-    def estimated(self) -> bool:
-        """True while the position comes from the terrain shift, not a map match."""
-        return self._estimated_since is not None and not self._lost
+    def source(self) -> str:
+        """Where the position comes from: "map" (a match) or "count" (radar slides)."""
+        return self._source
 
     def read_position(
         self,
@@ -275,37 +289,8 @@ class MinimapReader:
         gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
 
         if self._map_matcher is not None:
-            z = self._read_z(frame)
-            if self._radar_unchanged_since_last_match(gray, z):
-                return self._position
-            near = (self._position.x, self._position.y)
-            xy = self._map_matcher.match(crop, z, near) or self._map_matcher.match(crop, z, None)
-            for step in _NEARBY_FLOOR_STEPS:
-                if xy is not None:
-                    break
-                if 0 <= z + step <= 15:
-                    xy = self._map_matcher.match(crop, z + step, near)
-                    if xy is not None:
-                        logger.info("minimap: found on floor %d, not %d", z + step, z)
-                        z += step
-            if xy is not None:
-                self._position = Position(int(xy[0]), int(xy[1]), z)
-                self._px = float(getattr(self._map_matcher, "zoom", self._px))
-                self._lost = False
-                self._estimated_since = None
-                self._prev_gray, self._prev_z = gray, z
-                return self._position
-            if self._lost:
-                return None
-            now = self._clock()
-            if self._estimated_since is None:
-                self._estimated_since = now
-            elif now - self._estimated_since > self._estimate_for:
-                self._lose(f"no map match for {self._estimate_for:.0f} s")
-                return None
-            marker = True  # the map match, not the cross, validates this radar
-        else:
-            marker = self._marker_at_center(crop)
+            return self._read_with_map(frame, crop, gray)
+        marker = self._marker_at_center(crop)
 
         # Relative tracking: player displacement = negated terrain shift.
         shift = None if self._prev_gray is None else self._terrain_shift(self._prev_gray, gray)
@@ -321,12 +306,6 @@ class MinimapReader:
             dx = -int(round(shift[0] / self._px))
             dy = -int(round(shift[1] / self._px))
         elif self._prev_gray is not None and z == self._prev_z:
-            if self._map_matcher is not None:
-                # doc: docs/prs/position-lost.md#keep-estimating
-                # No match and no trusted shift this frame (a map mark, a
-                # tooltip): keep the last position as the estimate; the
-                # match decides, and estimate_for still ends a real loss.
-                return self._position
             # Radar changed with no floor change: teleport or a big jump.
             self._lose("radar changed with no trusted shift")
             return None
@@ -346,21 +325,87 @@ class MinimapReader:
         self._prev_gray = None
         self._prev_z = self._position.z
         self._lost = False
-        self._estimated_since = None
+        self._unreadable_since = None
+        self._source = "count" if self._map_matcher is None else "map"
+        self._position_is_a_floor_change_guess = False
 
     # -- helpers ------------------------------------------------------------
 
+    # doc: docs/prs/position-tracking.md#position-source
+    def _read_with_map(
+        self, frame: np.ndarray, crop: np.ndarray, gray: np.ndarray
+    ) -> Position | None:
+        """Count the step from the radar slide; a map match that agrees or is strong sets it."""
+        assert self._map_matcher is not None
+        z = self._read_z(frame)
+        if self._radar_unchanged(gray, z):
+            return self._position
+        counted = self._counted_position(gray, z)
+        near = (self._position.x, self._position.y) if counted is None else (counted.x, counted.y)
+        xy = self._map_matcher.match(crop, z, near) or self._map_matcher.match(crop, z, None)
+        for step in _NEARBY_FLOOR_STEPS:
+            if xy is not None or counted is not None:
+                break
+            if 0 <= z + step <= 15:
+                xy = self._map_matcher.match(crop, z + step, near)
+                if xy is not None:
+                    logger.info("minimap: found on floor %d, not %d", z + step, z)
+                    z += step
+        strong = float(getattr(self._map_matcher, "score", 0.0)) <= STRONG_MATCH_SCORE
+        guess = self._position_is_a_floor_change_guess
+        if xy is not None and (counted is None or xy == (counted.x, counted.y) or strong or guess):
+            self._px = float(getattr(self._map_matcher, "zoom", self._px))
+            return self._settle(Position(int(xy[0]), int(xy[1]), z), "map", gray)
+        if counted is not None:
+            return self._settle(counted, "count", gray)
+        if self._lost:
+            return None
+        if self._prev_gray is not None and z != self._prev_z:
+            # A rope, hole or stairs: x, y stay; the next match on z corrects them.
+            # doc: docs/prs/position-tracking.md#teleport
+            self._position_is_a_floor_change_guess = True
+            return self._settle(Position(self._position.x, self._position.y, z), "count", gray)
+        now = self._clock()
+        if self._unreadable_since is None:
+            self._unreadable_since = now
+        elif now - self._unreadable_since > self._estimate_for:
+            self._lose(f"no radar slide or map match for {self._estimate_for:.0f} s")
+            return None
+        return self._position  # a tooltip over one frame: keep the last radar
+
+    def _counted_position(self, gray: np.ndarray, z: int) -> Position | None:
+        """The last position moved by the radar slide since the last radar, or None."""
+        if self._lost or self._prev_gray is None or z != self._prev_z:
+            return None
+        shift = self._terrain_shift(self._prev_gray, gray)
+        h, w = gray.shape[:2]
+        if shift is None or abs(shift[0]) > w / 2.0 or abs(shift[1]) > h / 2.0:
+            return None  # beyond half the radar phase correlation aliases
+        dx, dy = -round(shift[0] / self._px), -round(shift[1] / self._px)
+        return Position(self._position.x + dx, self._position.y + dy, z)
+
+    def _settle(self, position: Position, source: str, gray: np.ndarray) -> Position:
+        """Take *position* from *source*; this radar is the next slide's reference."""
+        if source != self._source:
+            x, y, z = position.x, position.y, position.z
+            logger.info("minimap: position %d,%d,%d from the %s", x, y, z, source)
+        self._position, self._source, self._lost = position, source, False
+        if source == "map":
+            self._position_is_a_floor_change_guess = False
+        self._unreadable_since = None
+        self._prev_gray, self._prev_z = gray, position.z
+        return position
+
     # doc: docs/prs/tick-speed.md#skip-unchanged-radar
-    def _radar_unchanged_since_last_match(self, gray: np.ndarray, z: int) -> bool:
-        """True when the radar is pixel-identical to the last map-matched one.
+    def _radar_unchanged(self, gray: np.ndarray, z: int) -> bool:
+        """True when the radar is pixel-identical to the last one read.
 
         The world-map match is most of a tick's screen reading; standing
-        still or between steps the radar does not change, so the matched
-        position still holds.
+        still or between steps the radar does not change, so the position
+        still holds.
         """
         return (
             not self._lost
-            and self._estimated_since is None
             and self._prev_gray is not None
             and z == self._prev_z
             and np.array_equal(gray, self._prev_gray)

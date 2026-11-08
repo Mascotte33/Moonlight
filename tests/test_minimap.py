@@ -400,34 +400,8 @@ class TestMapMatcher:
         pos = reader.read_position(frame, region)
         assert pos == Position(1, 2, 0)
 
-    def test_no_match_estimates_then_goes_lost(self) -> None:
-        answers: list[tuple[int, int] | None] = [(100, 100)]
-        now = [0.0]
-
-        class _Matcher:
-            def match(
-                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
-            ) -> tuple[int, int] | None:
-                return answers.pop() if answers else None
-
-        reader = make_reader(
-            map_matcher=_Matcher(), px_per_sqm=1.0, clock=lambda: now[0]
-        )
-        frame, region = make_frame(1)
-        assert reader.read_position(frame, region) == Position(100, 100, 0)
-        # No match: the terrain shift moves the estimate 3 tiles right.
-        frame2, _ = make_frame(1)
-        frame2[REGION_Y : REGION_Y + RADAR_HEIGHT, REGION_X : REGION_X + RADAR_WIDTH] = (
-            np.roll(make_terrain(1), -3, axis=1)[:, :, None]
-        )
-        assert reader.read_position(frame2, region) == Position(103, 100, 0)
-        assert reader.estimated and not reader.lost
-        now[0] = 11.0
-        assert reader.read_position(frame2, region) is None
-        assert reader.lost
-
-    # doc: docs/prs/position-lost.md#keep-estimating
-    def test_no_match_and_no_trusted_shift_keeps_the_estimate(self) -> None:
+    # doc: docs/prs/position-tracking.md#position-source
+    def test_no_match_counts_the_slide_and_is_never_lost_while_it_reads(self) -> None:
         answers: list[tuple[int, int] | None] = [(100, 100)]
         now = [0.0]
 
@@ -440,12 +414,87 @@ class TestMapMatcher:
         reader = make_reader(map_matcher=_Matcher(), px_per_sqm=1.0, clock=lambda: now[0])
         frame, region = make_frame(1)
         assert reader.read_position(frame, region) == Position(100, 100, 0)
-        other, _ = make_frame(2)  # a radar unlike the last: no trusted shift
+        for step in (1, 2, 3):  # the terrain slides left: the player walks right
+            now[0] = 11.0 * step
+            frame[REGION_Y : REGION_Y + RADAR_HEIGHT, REGION_X : REGION_X + RADAR_WIDTH] = (
+                np.roll(make_terrain(1), -3 * step, axis=1)[:, :, None]
+            )
+            assert reader.read_position(frame, region) == Position(100 + 3 * step, 100, 0)
+        assert reader.source == "count" and not reader.lost
+
+    # doc: docs/prs/position-tracking.md#position-source
+    @pytest.mark.parametrize(("score", "expected_x"), [(0.2, 103), (0.01, 150)])
+    def test_only_a_strong_match_moves_a_counted_position(
+        self, score: float, expected_x: int
+    ) -> None:
+        answers: list[tuple[int, int] | None] = [(150, 100), (100, 100)]
+
+        class _Matcher:
+            def match(
+                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+            ) -> tuple[int, int] | None:
+                return answers.pop()
+
+        matcher = _Matcher()
+        reader = make_reader(map_matcher=matcher, px_per_sqm=1.0)
+        frame, region = make_frame(1)
+        assert reader.read_position(frame, region) == Position(100, 100, 0)
+        matcher.score = score  # type: ignore[attr-defined]
+        frame[REGION_Y : REGION_Y + RADAR_HEIGHT, REGION_X : REGION_X + RADAR_WIDTH] = (
+            np.roll(make_terrain(1), -3, axis=1)[:, :, None]
+        )
+        assert reader.read_position(frame, region) == Position(expected_x, 100, 0)
+
+    # doc: docs/prs/position-tracking.md#teleport
+    def test_a_weak_match_replaces_x_y_kept_over_a_floor_change(self) -> None:
+        floor = [7]
+        answers: list[tuple[int, int] | None] = [(150, 100), None, None, (100, 100)]
+
+        class _Floor:
+            def read_floor(
+                self, frame: np.ndarray, region: tuple[int, int, int, int] | None = None
+            ) -> int | None:
+                return floor[0]
+
+        class _Matcher:
+            score = 0.2  # weak: never moves a counted position by itself
+
+            def match(
+                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+            ) -> tuple[int, int] | None:
+                return answers.pop() if near is None or z == 7 else None
+
+        reader = make_reader(floor_reader=_Floor(), map_matcher=_Matcher(), px_per_sqm=1.0)
+        frame, region = make_frame(1)
+        assert reader.read_position(frame, region) == Position(100, 100, 7)
+        floor[0] = 9  # the wagon: floor 9, far away, the map not found yet
+        landed, _ = make_frame(2)
+        assert reader.read_position(landed, region) == Position(100, 100, 9)
+        landed[REGION_Y : REGION_Y + RADAR_HEIGHT, REGION_X : REGION_X + RADAR_WIDTH] = (
+            np.roll(make_terrain(2), -3, axis=1)[:, :, None]
+        )
+        assert reader.read_position(landed, region) == Position(150, 100, 9)
+
+    # doc: docs/prs/position-tracking.md#position-source
+    def test_no_slide_and_no_match_keeps_the_position_then_goes_lost(self) -> None:
+        answers: list[tuple[int, int] | None] = [(100, 100)]
+        now = [0.0]
+
+        class _Matcher:
+            def match(
+                self, radar_rgb: np.ndarray, z: int, near: tuple[int, int] | None = None
+            ) -> tuple[int, int] | None:
+                return answers.pop() if answers else None
+
+        reader = make_reader(map_matcher=_Matcher(), px_per_sqm=1.0, clock=lambda: now[0])
+        frame, region = make_frame(1)
+        assert reader.read_position(frame, region) == Position(100, 100, 0)
+        other, _ = make_frame(2)  # a radar unlike the last: no slide to read
         assert reader.read_position(other, region) == Position(100, 100, 0)
-        assert reader.estimated and not reader.lost  # not lost on one bad frame
+        assert not reader.lost  # not lost on one bad frame
         now[0] = 11.0
         assert reader.read_position(other, region) is None
-        assert reader.lost  # 10 s without a match still loses it
+        assert reader.lost  # 10 s with neither loses it
 
     def test_unchanged_radar_skips_the_map_match(self) -> None:
         calls: list[tuple[int, int] | None] = []

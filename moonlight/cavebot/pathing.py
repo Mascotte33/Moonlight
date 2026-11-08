@@ -1,10 +1,10 @@
 """Shortest walk over the client's walk-cost map, for arrow-key walking.
 
-``data/map/cost/{x}_{y}_{z}.png`` are renamed copies of the client's
+``data/maps/<map>/cost/{x}_{y}_{z}.png`` are renamed copies of the client's
 ``Minimap_WaypointCost`` tiles: 256x256 px, 1 px = 1 sqm. Yellow pixels
 (BGR 0, 255, 255) are blocked or unexplored; every other pixel is walkable.
 A missing tile counts as blocked. The colour tiles one folder up
-(``data/map/{x}_{y}_{z}.png``) draw holes, stairs, ladders and other floor
+(``data/maps/<map>/{x}_{y}_{z}.png``) draw holes, stairs, ladders and other floor
 changes yellow too: :meth:`CostMap.floor_change`. A tile black on the colour
 map is blocked whatever its cost colour (the cost map gives some of them a
 walk cost; owner 2026-11-05: the bot walked into the black tiles).
