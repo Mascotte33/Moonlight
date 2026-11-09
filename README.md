@@ -119,7 +119,7 @@ The position comes from two sources, shown after it in the Cavebot tab and in
 the stuck warnings: `(count)` counts each step from how far the minimap slid
 since the last frame, `(map)` matches the minimap against the client's map
 tiles of the map picked in Settings > **Map**: `igla` (the Igla server's own
-map, `data/maps/igla/`) or `tibia` (the global Tibia map most OTs use,
+map, `data/maps/igla/`) or `tibia` (the global map most OTs use,
 `data/maps/tibia/`). To fill a map folder, copy the client's minimap folder
 (IglaOTS: `Season_Launcher/IglaOTS/minimap`): each `Minimap_Color_X_Y_Z.png`
 goes into `data/maps/<map>/` as `X_Y_Z.png`, each
