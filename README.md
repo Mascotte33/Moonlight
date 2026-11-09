@@ -64,7 +64,7 @@ hands-on hardware steps. See [Built by AI agents](#built-by-ai-agents).
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TD
     CAP["Capture<br/>mss / dxcam<br/>region crops"] --> PER["Perception<br/>template matching · colour masks<br/>phase correlation · OCR"]
     PER --> WS[("WorldState")]
     WS --> DEC["Decision<br/>prioritised modules"]
