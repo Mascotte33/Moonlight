@@ -5,9 +5,8 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A learning project in real-time computer vision and hardware input: a CPU-only
-automation pipeline for a game client that reads the screen, decides
-what to do, and acts through an Arduino Leonardo emulating a USB keyboard and
-mouse.
+pipeline that reads a desktop application's screen, decides what to do, and
+acts through an Arduino Leonardo emulating a USB keyboard and mouse.
 
 The project has a second purpose: it is an experiment in **managing AI coding
 agents**. Every line of code, test and documentation in this repository was
@@ -17,706 +16,121 @@ hands-on hardware steps. See [Built by AI agents](#built-by-ai-agents).
 ## Technical highlights
 
 - **20 Hz loop on low-spec hardware** — capture → perception → decision → input
-  must fit a 50 ms budget with no GPU. Perception works on small region crops,
+  fits a 50 ms budget with no GPU. Perception works on small region crops,
   never full frames.
-- **Hardware-offloaded input** — custom Arduino Leonardo firmware with a serial
-  protocol, 1 s heartbeat and watchdog: if the host goes silent, the board
-  releases every key.
+- **Fast, DPI-aware capture** — dxcam (Desktop Duplication) on Windows, about
+  12× faster than mss in a live measurement; mss on Linux. Multi-monitor aware.
+- **Classic computer vision, no ML** — OpenCV template matching
+  (`TM_CCOEFF_NORMED`), colour masks, digit shape matching and phase
+  correlation; Tesseract OCR only where text is free-form.
+- **Position tracking from two sources** — dead reckoning from how far a map
+  view slides between frames, fused with template matching against a tiled
+  world map; a poor match never overrides a confident count.
+- **Grid path planning** — Dijkstra over a per-tile cost map with diagonals,
+  dynamic obstacles read from the screen, replanning whenever they move, and
+  temporary blocked-tile memory.
+- **Hardware-offloaded input** — custom Arduino Leonardo firmware with a
+  line-based serial protocol and a watchdog: if the host goes silent for 10 s,
+  the board releases every key.
 - **Closed-loop clicking** — move, read the rendered cursor back from the
   screen, correct to within ±2 px, then click; fail closed if the cursor is not
   found.
-- **Golden-frame testing** — 200 real client frames, labelled, drive replay
-  tests for every perception module.
-- **Safety-first loop** — priority state machine, rate limiting, F12 kill
-  switch, and a dedicated safety-invariant test suite.
-- **Strict tooling** — `mypy --strict`, ruff, and CI on every push.
+- **Auto-calibration** — screen regions are found from anchor images, saved as
+  per-monitor profiles, and rejected when the layout changes.
+- **User scripting** — scripts are Python generators that yield one command at
+  a time, so the main loop keeps its priorities between steps.
+- **Golden-frame testing** — 200 real labelled frames drive replay tests for
+  every perception module.
+- **Safety-first loop** — priority state machine, wire-level rate limiting, an
+  F12 kill switch, fail-fast errors, and a dedicated safety-invariant test suite.
+- **Cross-platform** — Windows and Linux (X11 via python-xlib).
+- **Strict tooling** — `mypy --strict`, ruff, a pre-commit hook, and CI on every
+  push.
+
+## Tech stack
+
+| Area | Technology |
+|---|---|
+| Language | Python 3.12+ (fully typed, `mypy --strict`) |
+| Vision | OpenCV, NumPy |
+| OCR | Tesseract via pytesseract |
+| Capture | dxcam (Windows), mss (Linux) |
+| Input | Arduino Leonardo (C++ firmware, USB HID), pyserial at 115200 baud |
+| GUI | customtkinter |
+| Desktop integration | Win32 APIs, python-xlib (X11) |
+| Tests | pytest, pytest-benchmark, golden-frame replay, hardware-in-the-loop |
+| Quality | ruff, mypy, GitHub Actions |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    CAP["Capture<br/>mss / dxcam<br/>region crops"] --> PER["Perception<br/>vitals · battle · minimap<br/>floor · sprites · cursor · OCR"]
+    CAP["Capture<br/>mss / dxcam<br/>region crops"] --> PER["Perception<br/>template matching · colour masks<br/>phase correlation · OCR"]
     PER --> WS[("WorldState")]
-    WS --> DEC["Decision<br/>healing · targeting<br/>alarms · cavebot · looting · refill"]
+    WS --> DEC["Decision<br/>prioritised modules"]
     DEC -->|prioritised actions| IN["Input<br/>ClickController<br/>ArduinoInput"]
     IN -->|serial 115200| ARD["Arduino Leonardo<br/>USB HID"]
-    ARD -->|keyboard / mouse| GAME["Game client"]
-    GAME -.->|next frame| CAP
+    ARD -->|keyboard / mouse| APP["Target application"]
+    APP -.->|next frame| CAP
     LOOP{{"20 Hz loop · rate limit · F12 kill switch"}} -.-> DEC
 ```
 
 ```
 moonlight/
 ├── core/         the engine: loop, safety, wiring, WorldState, config
-├── healing/      heal and cure logic + its tab
-├── targeting/    target picking, attack hotkeys + its tab
-├── cavebot/      walking, pathing, route recorder + its tab
-├── looting/      looting logic
-├── refill/       refill trigger (free cap, potions)
-├── scripts/      user scripts
-├── extras/       food, haste, buff and ring helpers, player timer
-├── alarms/       danger alarms
-├── calibration/  screen-region finder, profiles + its tab
-├── hardware/     Arduino input backends, closed-loop clicking + its tab
-├── perception/   reading the game: screen capture + HP/MP, battle list, minimap, …
-├── gui/          the window shell and the dashboard, diagnostics, settings, status tabs
-├── profiles/     saved calibration profiles (<name>.json)
+├── perception/   screen capture and the image readers
+├── hardware/     Arduino input backends, closed-loop clicking
+├── calibration/  screen-region finder and profiles
+├── gui/          the window shell, dashboard, diagnostics and settings
+├── <feature>/    one folder per decision module: logic + its GUI tab
 └── x11.py        Linux desktop calls
 ```
-
-A feature is one folder: its logic in `<feature>.py`, its GUI tab in `tab.py`.
 
 | Path | Contents |
 |---|---|
 | `moonlight/core/loop.py` | 20 Hz priority state machine |
 | `moonlight/core/safety.py` | Wire-level rate limit, F12 kill switch, operator alert |
-| `moonlight/core/wiring.py` | Builds the bot loop from config + profile (`build_loop`) |
+| `moonlight/core/wiring.py` | Builds the loop from config + profile (`build_loop`) |
 | `moonlight/core/state.py` | `WorldState`, the snapshot shared between perception and decision |
-| `moonlight/core/config.py` | Bot config (`BotConfig`), kept apart from the logic |
-| `moonlight/perception/` | `capture.py` (mss / dxcam, DPI-aware, focus) and the readers: HP/MP, battle list, minimap, floor, monster sprites, cursor, server-log OCR |
-| `moonlight/gui/` | Desktop GUI shell (customtkinter) |
-| `firmware/` | Arduino Leonardo HID firmware and [wire protocol](firmware/README.md) |
-| `tests/` | Unit tests at the top level; golden, replay, safety, perf and hardware-in-the-loop suites ([details](tests/README.md)) |
-| `tools/` | Benchmarks, Arduino verification, labelling and calibration helpers ([details](tools/README.md)) |
-| `docs/` | Client UI layout, hardware budget, [PR docs](docs/prs/) |
-
-## Feature status
-
-| Feature | Implemented | Tested | Working |
-|---|:-:|:-:|:-:|
-| Screen capture | ✅ | ✅ | 🟡 |
-| Region calibration | ✅ | ✅ | 🟡 |
-| HP / MP reading | ✅ | ✅ | 🟡 |
-| Battle list reading | ✅ | ✅ | 🟡 |
-| Minimap position + floor | ✅ | ✅ | 🟡 |
-| Monster sprite detection | ✅ | ✅ | ❌ |
-| Server-log OCR | ✅ | ✅ | ❌ |
-| Healing + cures | ✅ | ✅ | 🟡 |
-| Targeting | ✅ | ✅ | 🟡 |
-| Alarms (low HP, fast HP drop, staying player, PM; no switch) | ✅ | ✅ | ❌ |
-| Death stop (empty HP bar for 3 s) | ✅ | ✅ | ❌ |
-| Cavebot (waypoint routing, route recorder) | ✅ | ✅ | ❌ |
-| Looting | ✅ | ✅ | ✅ |
-| Refill (check, say, key, drag waypoints) | ✅ | ✅ | ❌ |
-| User scripts (script and wait waypoints, timers) | ✅ | ✅ | ❌ |
-| Extras (food, haste, buff potion, spell buff, ring, amulet, player timer; no switch) | ✅ | ✅ | ❌ |
-| Account rotation (timed accounts, logout at the depot, next login) | ✅ | ✅ | ❌ |
-| Step waypoints (one walk key from a tile: holes, teleports, stairs) | ✅ | ✅ | ❌ |
-| Cavebot fixes (lone unreachable target pause, blocked path retry) | ✅ | ✅ | ❌ |
-| Potion count refill trigger (action bar digits) | ✅ | ✅ | ❌ |
-| Depot, trade, bank waypoints (finddepo, deposit, trade, bank) | ✅ | ✅ | 🟡 |
-| Arduino HID input | ✅ | ✅ | 🟡 |
-| Closed-loop clicking | ✅ | ✅ | 🟡 |
-| Kill switch + safety stops | ✅ | ✅ | ❌ |
-| Desktop GUI | ✅ | ✅ | ❌ |
-
-**Tested** — covered by passing automated tests. **Working** — ✅ verified in a
-full live game session; 🟡 partial: verified on real hardware or real
-screenshots, but not yet in a full session; ❌ not yet verified live. The first
-full live session (2026-10-28) verified looting.
-
-The position comes from two sources, shown after it in the Cavebot tab and in
-the stuck warnings: `(count)` counts each step from how far the minimap slid
-since the last frame, `(map)` matches the minimap against the client's map
-tiles of the map picked in Settings > **Map**: `igla` (the Igla server's own
-map, `data/maps/igla/`) or `tibia` (the global Tibia map most OTs use,
-`data/maps/tibia/`). To fill a map folder, copy the client's minimap folder
-(IglaOTS: `Season_Launcher/IglaOTS/minimap`): each `Minimap_Color_X_Y_Z.png`
-goes into `data/maps/<map>/` as `X_Y_Z.png`, each
-`Minimap_WaypointCost_X_Y_Z.png` into `data/maps/<map>/cost/` as `X_Y_Z.png`.
-A wrong map walks wrong: the global map draws the Venore bridge 2 wide, Igla's
-is 1 wide, so the cavebot stepped into the water. A match that agrees with the count, or fits very well,
-sets the position; a poor match never moves a counted one. The count keeps
-the position through any number of failed matches; only 10 s with neither a
-readable slide nor a match (a black or covered minimap) makes it unknown. A
-rope, hole or stairs keeps x, y on the new floor as a guess, and any map match
-replaces the guess: a wagon or teleport that changes the floor lands far away.
-`bot.log` says `minimap: position x,y,z from the count` (or `map`) when the
-source switches. When the floor shown has neither, the floors above and
-below are tried near the last position (1 up, 1 down, 2 up, 2 down, up to 3),
-and a mostly black minimap is matched with a looser score near the last
-position, or anywhere on the floor when that spot is at least twice as good
-as any other (so a restart on an upper floor still finds the character).
-The minimap zoom (1 or 2 px per tile) is read from the minimap itself, so a
-cave never matches a look-alike spot at the other zoom.
-The grey rock counts as black on both sides: the client paints every explored
-tile grey, the map only real rock.
-Only what the minimap shows is compared: the white player cross, your map
-marks (any colour off the map palette) and black parts away from anything
-drawn are skipped, so a roof the minimap does not
-draw does not spoil the match. After a floor change the route goes on at the next waypoint on that
-floor the map can reach. When the map shows no way to any waypoint on that
-floor (a fight or a step led onto a closed-off platform), it keeps its place on
-the route and walks onto the nearest floor change instead (`leaving by the
-floor change at 32437,31729`), then goes on with the same waypoint; only with no
-floor change left does it try the next waypoint on that floor anyway. When
-there is no way to the waypoint at all, it tries the next waypoint on the same
-floor, wrapping round the route, until one gets it unstuck (`no way to
-waypoint 24, trying waypoint 8` in the log). A floor with no waypoint on the route (a roof a fight chased the
-character onto) is left the same way, by its nearest floor change; stairs that
-led to such a floor are not taken again (`not taken again` in the log). With
-no floor change left to take, the cavebot raises the `lost` alarm and waits;
-it walks on once the floor reads right again.
-
-Walking with keys finds its way on the client's walkability map
-(`data/maps/<map>/cost/`); a tile black on the colour map (`data/maps/<map>/`) is a wall
-whatever the walkability map says. It never walks over a hole, stairs, a ladder or any other
-floor change: the tiles drawn yellow on the colour map, the
-floor changes on the route and the ones it once fell through. It steps onto
-one only when a waypoint (`stairs`, `ladder`, `step`) is that tile. The map
-can be wrong (a corridor row drawn as a wall): only where it shows no way at
-all, the tiles on the straight line between two neighbouring waypoints count
-as walkable (the route was recorded by walking it). A real wall is still
-found by bumping into it.
-
-The route recorder saves the tile the character stood on, never the one it is
-walking to: a position counts after it held for 0.6 s, or once the character
-stepped off it. In Cavebot > Route, "Record [walk / node / stand] every N
-tiles" picks the waypoint kind it adds. Above the waypoint list, ▲ ▼ move the
-clicked waypoint, ✕ (or the Delete key) deletes it, and Clear removes them all
-after asking. Recording stops and saves the route when the cavebot starts. Walking
-over stairs or into a hole records a `stairs` waypoint on that tile, so the
-route plays back across floors; for a ladder (or a sewer grate: Ladder too),
-rope or shovel click its button while standing on the tile you use it from (the rope and shovel hotkeys are on Cavebot > Settings). While recording, every
-waypoint button adds a waypoint on the character's tile.
-
-The arrow pad in Cavebot > Route adds a `step` waypoint on the
-character's tile: the bot walks onto that tile,
-presses that WSAD key exactly once (diagonals: Q, E, Z, C), waits 0.5 s and
-goes on to the next waypoint, wherever the step led. It never presses it
-again, so use it for holes, teleports, stairs and other one-tile moves. The
-middle button adds a `stand` on the tile. A `rope` waypoint walks onto its
-exact tile and stands still there 0.2 s before using the rope. With WSAD-key
-walking, paths go around stairs, shovel holes, step targets and any tile that
-moved the character elsewhere when it walked onto it. Minimap-click walking
-lets the client pick the path and can cross them: turn on WSAD-key walking
-for routes next to holes or teleports.
-
-After a fight or loot the cavebot does not walk back to waypoints the chase
-already passed. Cavebot > Settings > **Skip waypoints passed in a fight** (on by
-default) looks at the next 5 walk/node waypoints, farthest first, and goes on
-from the first one whose walk is no longer than the walk back to the current
-one. It never skips past an action waypoint (stairs, rope, step, stand, say,
-...) or onto another floor, and never goes backwards. To keep a side room in
-the route, put a `stand` waypoint in it. Log: `cavebot: after the fight
-waypoint 13 is no farther than 10, skipping 10-12`.
-
-Echo raid triggers (the red swirl that spawns stronger monsters) are seen on
-the game screen while walking with WSAD keys. Cavebot > Settings > **Echo raid** picks
-what the bot does: **avoid** (default) never walks onto one and skips a
-waypoint on one; **use** walks next to the nearest one once no monster is in
-the battle list and HP is 50 % or above, right-clicks it, waits 1 s, and if it
-is still there left-clicks it (the character steps on), waits 1 s again. Once
-it is gone (clicked or walked into) the cavebot stands still 2 s (targeting
-and healing go on; log `gone next to the player, waiting 2 s`), fights what
-spawns, then goes on from the nearest waypoint.
-After 3 such tries, or with no way to it, the swirl is ignored until it was
-off the screen for 30 s. Swirls are read only while the character stands
-still (mid-step the screen is a tile off), and the step closer to a stuck
-target never lands on one. Log: `echo raid seen at x,y,z, triggering`, then
-`triggered`, or `did not trigger after 3 tries, ignoring it` /
-`no way to the echo raid ..., ignoring it`. A red glow next to a monster's
-health bar (the tainted soul) is the monster, never a swirl. 1 s after each click the bot saves
-a screenshot with the clicked spot circled in yellow to `logs/echo_raids/`
-(`<time>_<x>_<y>_<z>_<right|left>.png`); bot.log names each file.
-
-Looting runs only while the cavebot is on and the bot is not paused (F12 or
-Pause). It looks for the corpse's loot ring every tick: the ring shows the
-moment the monster dies, so there is no wait after a kill. When a ring shows
-on the character's tile or one of the 8 around it, for 0.4 s (a spell flash
-does not) and with no creature with a health bar on its tile (a live
-amazon's outfit sparkles the same blue), the bot presses the loot hotkey
-(Alt+Q by default, set it in Cavebot > Settings), any time, also mid-fight.
-The client's quick loot takes every corpse in that 3x3 at once. The ring's
-light-blue dots must form its own circle (its 16 animation frames are kept in
-`moonlight/perception/loot_ring.png`), so outfits, spell smoke, fire fields,
-grass, campfires, water, skulls, white text and "puff" clouds do not count; a
-corpse with no ring has no loot. After the press the bot stands still for the
-set wait (400 ms by default) and then until no ring shows around it for 0.8 s
-(bot.log `looting: rings around the player gone`); the next attack and the
-walk wait too. Rings still there 1.5 s after a press get one more press
-(`looting: rings still there, pressing again`); after that they are left until
-the character moves (`... left here`, e.g. a full backpack). With no fight
-on, a ring 2 tiles away is walked to one step at a time and then looted
-(`looting: ring at (x, y) 2 tiles away: step d`); after 3 steps that do not
-bring it in reach it is left. Farther rings are ignored. Below the set HP (70 %
-by default) it holds still and heals first, then loots. It also loots while an
-alarm is up. bot.log shows `looting: ring at (x, y), N tiles away: press
-alt+q` for each press, and each press is saved as a screenshot (the ring
-circled in yellow) in `logs/loot_rings/<time>_ring.png`; the newest 40 stay.
-Every key tap and mouse click holds 60 ms, like a real
-press; combo hotkeys (Alt+Q, Shift+F1) hold all their keys down together.
-Reflash the Leonardo after updating.
-
-Every waypoint button in Route adds the waypoint on the character's
-tile; there are no typed X, Y, Z fields. The bot walks onto that tile before
-it does the waypoint: a `label`, `goto`, `say`, `key`, `drag`, `script` or
-`wait` too. Those from older routes have no tile and happen where the bot
-stands. One click on a row in the waypoint list highlights it; the ▲ and ▼
-buttons above the list move it one row up or down, and ✕ (or the Delete key)
-deletes it, with no popup; the row below is highlighted next. Press Save to
-keep the change. The buttons are grayed out while Cavebot is on (except Refill now). The list
-keeps its scroll position when it changes. The cavebot starts from the highlighted
-waypoint, or from waypoint 1 when none is highlighted; picking another route
-clears the highlight.
-
-Refill is part of the waypoint list. A `check` waypoint with label `town`
-is added on the character's tile and the bot walks there. On it, the bot
-jumps to label `town` when the free cap in the side panel's Cap box is under
-the set number (Cavebot > Refill > `cap <`, 0 = off: the number shows gray with `off`; there is no Refill switch, it is on with the cavebot), when the action bar shows fewer
-health or mana potions than set there (0 = off; spirit potions count for
-both), or after **Refill now** is pressed; otherwise it goes on to the next
-waypoint. The potions are found on the action bar by their
-picture (`data/templates/potions/<health|mana|spirit>/`; a few potions look
-different from a full stack, and a faded slot, saved as `*_empty.png`, means 0
-left), the Cap box by
-`data/templates/cap_label.png`; their digits must match known shapes
-(learned from the golden screenshots), or be twice as close to one digit as to any other. A cap or count that does not read never
-sends the bot to town. Each `check` logs one line per number that is on, such
-as `check: MP pots 230 >= 200 | continue`, and the Refill rows show the last
-read number and the picture it was read from.
-The town section needs no typed screen coordinates. Its waypoints find the
-depot, the trade window and the chat button on screen when they run:
-
-- `finddepo`: record it where the depot lockers are in view. Once that tile
-  is in view, the bot finds every locker in the game view and walks to the
-  nearest free tile next to one (no creature or player on it). None free: it
-  waits on the waypoint's tile and looks again every few seconds; alarm after
-  5 min.
-- `deposit`: right-clicks the locker `finddepo` picked, finds the stash in
-  the locker window and drags the loot backpack onto it (every stashable item
-  goes in, the backpack stays). Pick the backpack once with **Pick backpack**
-  on Cavebot > Refill: drag a box around it on a grab of the client
-  (saved as `loot_backpack.png` in the profiles folder; the tab shows it after
-  a restart).
-- `trade`: record it on the tile right next to the NPC (NPCs answer within 3
-  sqm and wander). The bot stands on that tile, says `hi`, `trade`, waits up
-  to 3 s for the trade window (else talks again), clicks Buy and buys the
-  route's buy list in order: search the name, pick the first result, drag the
-  amount slider to the row's percent, Buy. A health or mana potion whose
-  action-bar total did not go up is bought once more, then Esc closes the trade window and the walk goes on. Write the buy list on
-  Cavebot > Refill, one `item, percent` per line (`strong mana potion, 80`);
-  it is saved in the route file.
-- `bank`: also next to the NPC. Says `hi`, `deposit all`, `yes`, waits about
-  1 s and says the three again. The bot never withdraws.
-
-NPC lines are typed only in the NPCs tab: chat off, the NPC channel hotkey
-(Settings, default Shift+F11; opens or selects the NPCs tab; works only with
-the chat off), chat on, the lines with
-a short random pause after each, chat off. Bind that key to the NPCs tab in
-the client. The chat is always off before the bot walks, and a walk key that
-typed a letter instead of moving turns the chat off. Every step retries until
-it works; the alarm goes off after 3 min without success. Pictures (cut from
-the live client, in `data/templates/anchors/`): `depot_locker.png`,
-`depot_stash.png`, `npc_trade.png`, `chat_on.png`, `chat_off.png`,
-`chat_npc.png`.
-
-`say` (presses Enter to open the chat box, types its label, Enter sends it),
-`key` (presses its label as a hotkey) and `drag` (label `x1 y1 x2 y2` in
-client pixels: drags the left button from one spot to the other) still work
-for anything else. Route shows the cursor in client pixels for drag
-labels. End the town section with a `goto` back to the hunt. Drag, deposit
-and trade need the firmware's `H` / `R` mouse commands: reflash the Leonardo.
-
-A `wait` waypoint holds the route for its label in seconds.
-
-**Scripts tab.** Make and edit scripts in the bot: **New**, **Rename**,
-**Delete**, the code box, **Save** and **Test now**. A ticked script runs by
-itself, one at a time, top of the list first; the ms box is its pause after it
-ends (empty = 1000 ms, at least 50). A `script` waypoint picks a script from
-the label dropdown on Route, and the route waits until it ends. A `script`
-waypoint with a tile starts only after the character has stood on that tile
-for half a second. When the next waypoint is on another floor (a wagon or door
-script), the route waits up to 5 s for that floor and runs the script again
-if the floor did not change. Save
-checks the code: a broken script is saved but shown red, can't be ticked or
-tested, and its waypoints are skipped (red on the route, a warning in
-`logs/bot.log`). A script that fails while running is unticked and its error
-shown under the code; the bot goes on. Rename and Delete update (or remove)
-the waypoints that use the script. Test now brings the client window to the
-front and runs the selected script once as soon as the client is in front and
-readable (while the bot runs or is paused); after 5 s without that it says
-"not tested" and does not run later. Pause holds the ticked scripts. The files
-are kept in `scripts/`.
-
-A script is a Python generator `run(bot)` that yields commands one at a time,
-so the bot heals in between:
-
-```python
-def run(bot):
-    if bot.mana > 90:             # also bot.hp, bot.cap (used %)
-        yield bot.say("utevo lux")
-    yield 2                       # wait 2 seconds
-    spot = bot.find("rope.png")   # a picture in scripts/, None when not seen
-    if spot:
-        yield bot.click(*spot)    # client pixels, right=True for a right click
-    if (bot.count("mana") or 0) < 50:  # action-bar potions, None when unknown
-        yield bot.goto("town")    # walk on from route label town
-    yield bot.press("f5")
-    if (bot.stamina() or 99 * 60) < 39 * 60 + 30:  # minutes, None when unread
-        yield bot.goto("relog")
-```
-
-`bot.stamina()` reads the Stamina line of the Skills window, so keep that
-window open. The bot also reads the stamina every 5 minutes, shows it on the
-Dashboard's Stamina card and logs it when it changes
-(`stamina 41:23`, with `(under 39:30)` once it is low).
-
-`bot.only_monsters_within_range(True)` / `(False)` turns Targeting's **Ignore
-monsters more than N tiles away** on or off; `(None)` flips it. The Targeting box
-follows and the change is saved to the config. The ready script
-`scripts/range_toggle.py` flips it: add a `script` waypoint with label
-`range_toggle`. Log: `script: ignore monsters more than 3 tiles away: on` (or `off`).
-
-`bot.targeting(False)` / `(True)` turns targeting off or on until a script
-turns it back or the bot restarts; stuck targeting still runs. Ready scripts:
-`scripts/targeting_off.py` and `scripts/targeting_on.py`, add `script`
-waypoints with labels `targeting_off` / `targeting_on`. Log:
-`script: targeting off` (or `on`). Targeting must be on in Settings.
-
-`bot.use_tile_next_to_player("up")` (or `"down"`, `"left"`, `"right"`)
-right-clicks the tile next to the character on screen; it needs the absolute
-clicker. Ready door scripts: `scripts/door_up.py`, `door_down.py`,
-`door_left.py`, `door_right.py`. Add a `script` waypoint on the tile in front
-of the door with the label for the door's side (`door_up` when the door is
-above the character). It right-clicks the door, waits 0.5 s, and the route
-walks on. Nothing checks that the door opened.
-
-A running script pauses walking and waits during a fight or looting; healing
-always goes first.
-
-Extras (Settings > Extras, no module switch: a ticked extra is on) press a hotkey when a picture shows: food when
-hungry, ring or amulet when its slot is empty, haste while walking without
-haste or a protection zone (in a fight too, last on the tick, never while a
-heal rule is due), the buff potion or a spell buff (own hotkey) when its icon is gone. Still
-hungry after 3 food presses (out of food) unticks food in Settings
-(`food paused` in bot.log); tick it again after restocking. Each extra
-is one row: its hotkey, then its checkbox at the far right (set the hotkey
-first). A hotkey box takes the next key you press and saves it; Escape cancels. Cut each
-picture from a screenshot into `data/templates/icons/` (`hungry`, `haste`, `pz`, `buff`, `spell_buff`, `ring_empty`,
-`amulet_empty`, all `.png`); an extra without its picture never presses. The private
-message alarm needs no picture: it looks for the light blue of a received message,
-or a red (unread) chat tab right of the NPCs tab.
-Not tested in the game yet: the buff potion and the spell buff (their pictures are not cut yet).
-For the player timer, open a second battle list set to players only and name
-it "Players". Calibration finds it by that title (last area, `player_list`;
-picture `data/templates/anchors/player_list_header.png`, cut from the title
-bar like `battle_list_header.png`). While running, the bot follows the title
-when you move the window and reads the calibrated box when the title is not
-on screen. The log says `Players window at ...` or `Players window not found`. A player staying there longer than the set
-minutes (0 = at once) sends the character to refill or sounds the
-alarm (Settings > Alarms); players passing by do not alarm.
-
-Alarms have no module switch: Settings > Alarms has a value and a checkbox
-each for Low HP below (%), Fast HP drop in 1 s (HP %) and Player in sight
-longer than (min), plus checkboxes for "Staying player: go refill" and a private message. An alarm beeps, logs
-`ALARM: ...` once and saves a screenshot in `screenshots/` (the newest 20
-stay); it never pauses walking, attacking or looting.
-
-Death stop: when the HP bar reads empty for 3 s (after it has read above 0
-once), also while the bot is on Stop, the bot lets go of every key, saves a screenshot in `screenshots/`,
-beeps, logs `OPERATOR ALERT: loop stopping: character died (HP bar empty for
-3 s)` and goes to Stop (reading only). Press Start to hunt again after you
-log back in. It has no switch.
-
-Account rotation plays accounts in turn (A, B, C, A...) in one client window.
-It has no switch: it is on when the config lists accounts (at least 2). It
-has not been tested live; the code is `moonlight/scripts/rotation.py` and the
-`rotate` waypoint in `moonlight/scripts/scripts.py`.
-List them in the config file (`configs/<name>.json`, never published) under
-`modules.rotation.accounts`: `login`, `password` (letters and digits only),
-`character` (its place in the character list, 1 = the first) and `minutes`
-(clock time from its login). Put a `script` waypoint with label `rotate` at the
-depot of the town section. When an account's time is up the next `check`
-waypoint goes to town; at `rotate` the bot presses the logout hotkey (Settings
-> Scripts, Ctrl+L by default), types the next account's login and
-password, picks the character and walks on. An account that does not log in
-within 30 s is skipped; when none does, the bot alarms and stops. Passwords
-show as `press (hidden)` in the command log. Every account plays the same
-route and settings. Scripts can type too: `bot.type("abc")`.
+| `moonlight/perception/` | Capture (mss / dxcam, DPI-aware) and the image readers |
+| `firmware/` | Arduino Leonardo HID firmware and its serial protocol |
+| `tests/` | Unit, golden, replay, safety, perf and hardware-in-the-loop suites |
+| `tools/` | Benchmarks, Arduino verification, labelling and calibration helpers |
 
 ## Getting started
 
-Requirements: Windows or Linux (an X11 session; Wayland is not supported), Python 3.12+, an Arduino Leonardo for real input
-(optional — without one the bot runs against a fake input backend), and
-[Tesseract](https://github.com/tesseract-ocr/tesseract) if you want server-log OCR.
+Requirements: Windows or Linux (an X11 session; Wayland is not supported),
+Python 3.12+, an Arduino Leonardo for real input (optional — without one it
+runs against a fake input backend), and
+[Tesseract](https://github.com/tesseract-ocr/tesseract) for OCR.
 
 ```bash
 # 1. Install (from the repo root)
 pip install -e .
 
-# 2. Flash firmware/moonlight/moonlight.ino to the Leonardo (see firmware/README.md),
-#    then check the connection
+# 2. Flash firmware/moonlight/moonlight.ino to the Leonardo, then check the connection
 python tools/arduino_verify.py
 
-# 3. Calibrate the screen regions in the GUI's Calibration tab (step 5 opens the GUI)
-
-# 4. Check the setup (config, Arduino, profile, perception)
+# 3. Check the setup (config, Arduino, profile, perception)
 python tools/check_setup.py
 
-# 5. Launch the desktop GUI (or double-click "Start Moonlight GUI.bat";
-#    on Linux run ./start-moonlight-gui.sh)
+# 4. Launch the desktop GUI (or "Start Moonlight GUI.bat" / ./start-moonlight-gui.sh)
 python -m moonlight
 ```
 
+Calibrate the screen regions in the GUI's Calibration tab before the first run.
+
 On Linux, also:
 
-- `sudo apt install python3-tk tesseract-ocr` (Tk for the GUI, Tesseract for OCR).
-- Add yourself to the `dialout` group so the bot can open the Arduino
-  (`/dev/ttyACM0`): `sudo usermod -aG dialout $USER`, then log out and in.
-- Log in to an "Xorg"/X11 session. `pip install -e .` pulls in python-xlib for
-  finding the client window, focus and keys.
-- The alert sound plays through `paplay` (PulseAudio/PipeWire).
-- The client's options file is read from the official client's folder under
-  `~/.local/share` (Settings shows the path; change it there if yours is elsewhere).
-- Screen capture uses mss on Linux (dxcam, a faster Windows capture, is
-  installed only on Windows).
+- `sudo apt install python3-tk tesseract-ocr`.
+- Add yourself to the `dialout` group to open the Arduino (`/dev/ttyACM0`):
+  `sudo usermod -aG dialout $USER`, then log out and in.
+- Use an Xorg/X11 session; alerts play through `paplay`.
 
-The GUI opens Stopped: press Start to run the bot. `python -m moonlight --start` starts it right away.
-
-- **Start** runs everything. Each tick the bot does one thing, in this order:
-  healing, the fight and loot (haste in between), scripts, extras (food, haste, ring...),
-  walking. Healing spells, potions and attack spells keep their own
-  cooldowns: in a fight a heal spell, a potion and the attack can go out on
-  the same tick (after spell + potion the attack waits for the key limit,
-  about 0.1 s). Haste comes last and only when no heal is needed. Other
-  extras wait until the fight and loot are done.
-- **Pause** stops the cavebot, targeting and scripts; healing, extras and
-  alarms go on.
-- **Stop** presses nothing (no healing either) and raises no alarm, but the
-  bot keeps reading the screen (HP, MP, position on the Dashboard, 5 times a
-  second) and the Arduino stays connected. Start goes on from the nearest
-  waypoint.
-- The Arduino connects on its own (found by its USB id, whatever the COM
-  port). When none answers, the GUI tries again every 30 s, so plug it in
-  and wait.
-- The Cavebot switch can be turned on or off while paused or stopped; the
-  cavebot walks only after Start.
-- A pause of its own (the client covered or not in front) never shuts the bot down:
-  after 30 s it alerts once and resumes when the client is readable again.
-
-"Start Moonlight GUI.bat" (Windows) and `start-moonlight-gui.sh` (Linux) open the GUI without a console window. The bot's
-log (state changes, scripts, warnings, errors) is on the Diagnostics tab; the
-Dashboard shows only its warnings and errors, newest first. `logs/bot.log` has
-everything, keys included.
-The Dashboard's **Machine** line shows this PC's HWID (the network card's
-hardware address, the same on Windows, Linux and macOS until the card is
-changed) and its public IP, asked from
-api.ipify.org at start and every 5 minutes (a VPN change shows within 5
-minutes). No internet: `unknown (no internet?)` and a warning in the log.
-A crash of any part is written there too, and a GUI that cannot start shows
-a message box with the error.
-
-The client can be on any monitor, fully on one. Calibrate on the monitor you
-play on: a profile made on another one stops with "Layout changed, recalibrate".
-Calibration works while the bot is stopped (Stop); it is grayed only while
-the bot runs. Clicks are fastest with the client on the main monitor: Windows
-points the Arduino's jump-to-spot mouse at the main monitor only, so on another
-monitor the mouse moves step by step (bot.log: `client is not on the main
-monitor`). To keep fast clicks on the other monitor, make it the main display
-(Windows Settings > Display > "Make this my main display").
-
-The window and its taskbar button show the Moonlight logo
-(`moonlight/gui/icon.ico`). For a desktop icon, right-click
-"Start Moonlight GUI.bat" > Show more options > Create shortcut, move the
-shortcut to the desktop, then Properties > Change Icon > Browse to
-`moonlight\gui\icon.ico`.
-
-## Client hotkeys
-
-Settings > Client hotkeys puts the bot's keys into the game client, so the
-client does what the bot expects on every key it presses.
-
-1. **Client file**: the client's `conf/clientoptions.json`. Empty means the
-   official client's `conf` folder (Settings shows the path). For another
-   server, press Browse and pick the file in that client's `conf` folder. Each
-   bot config remembers its own file.
-2. One row per key the bot uses (healing, cures, attack and area spells,
-   rope, shovel, ticked extras). Type the spell words (`exura vita`), an item
-   name (`great mana potion`, `sudden death rune`, `rope`...) or an item id
-   number. Logout, loot and toggle chase need nothing: they are client
-   actions. A row left empty is skipped.
-3. Close the game client, then press **Write Moonlight hotkeys**.
-
-It writes a hotkey set named **Moonlight**: a copy of the set in use (or the
-Moonlight set from last time) with the bot's keys changed, so your other keys
-stay. Spells and items go on free buttons of action bar 1; a key that already
-had a button keeps it. The client opens with the Moonlight set and stops
-switching sets per character. The old file is kept as
-`clientoptions.json.bak`. The log lists each key and its button.
-
-## Healing and cures
-
-Healing presses your action-bar hotkeys. It never types spell names. Set it up
-in the GUI's Healing tab, or in the `healing` section of your profile config:
-
-- **Rules** are checked top to bottom. Each has a kind (`spell` or `potion`), a
-  hotkey, an HP trigger (`hp_below_percent`) and an MP trigger
-  (`mp_below_percent`). 0 means unused.
-- Each tick sends the first due spell and the first due potion, so both can
-  land together. Spells and potions have their own cooldowns
-  (`spell_cooldown_ms`, `potion_cooldown_ms`, default 1000).
-- **Cures** read the condition icons next to the HP bar (poison, burn,
-  electrify, bleeding, paralyse). Each has an on/off switch and a hotkey
-  (default `shift+F1` to `shift+F5`, all off). A cure never replaces a needed
-  heal spell.
-- Healing needs the `status_icons` region in the Calibration tab for cures.
-- **Keep other windows off the HP bar.** The bot reads the screen, so a window
-  over the bar would read as low HP. When the green fill does not start at the
-  bar's left edge, the bot pauses (`perception failed: HP bar covered ...` in
-  `logs/bot.log`) and resumes once the bar is clear; after 30 s it alerts
-  once and keeps waiting.
-- Targeting reads the chase mode from the `chase_buttons` region (auto-find in the Calibration tab).
-
-Default rules: F2 spell below 50% HP, F1 spell below 85% HP, F3 potion below
-40% HP, F4 potion below 30% MP. Old configs with `emergency_spell` and similar
-keys are refused at load. Rewrite the section to the new shape.
-
-## Targeting
-
-Targeting clicks a monster's name in the battle list, then presses its
-attack hotkey. Turn it on with the **Targeting** switch in
-Settings > Options > Modules. Set it up in the Targeting tab,
-or in the `targeting` section of your profile config:
-
-- **Monster rows** match a battle-list name (ignoring case). Each has a
-  priority (1-5, higher first), `ignore` ("never attack" in the tab), an
-  attack `hotkey` (empty = melee only, pressed every cooldown), a mana floor
-  in mana points (`minimum_mana`, e.g. 200) and a **Movement** (`movement`):
-  `none` (stand), `follow` (chase) or `keep distance`. Players are never
-  targeted.
-- **Keep distance:** the row's movement `keep distance` sets the client to
-  stand still and walks to the nearest tile at least **Keep distance: N
-  tiles** from every monster (Targeting > Settings, `keep_distance_tiles`,
-  default 3), around walls (from the cavebot's walk map) and creatures. With
-  no such tile it goes to the tile furthest from the closest monster. One
-  step per 0.4 s; it stays put on the best tile. Log: `keep distance from
-  Wolf: closest monster 1 tiles away, going -2,0 to a tile 3 away`.
-- **`default_monster`** is the row for every monster without its own row, so
-  everything is attacked unless you ignore it. The tab shows it as "all others".
-  Default: priority 1, no mana floor, follow.
-- The bot picks the highest priority first. Among the same priority,
-  Targeting > Settings > **Same priority: attack first the** picks:
-  **lowest hp** (default), **highest hp** or **battle list** (the top row;
-  the nearest monster when the client's battle list is sorted by distance).
-  A tie goes to the top row. It finishes the current target even when a higher priority monster
-  comes, and never clicks it twice (a second click untargets). A selected
-  "never attack" monster is left for the next one. When the rows reorder
-  while the mouse is on its way, the click is dropped and aimed again
-  (log: `battle list moved under the click on row N, aiming again`).
-  After a battle-list click the mouse moves just left of the minimap, so it
-  never covers the minimap or brings up the battle list's name tooltip.
-- **Ignore monsters more than N tiles away** (Targeting > Settings, `only_attack_within_range`,
-  `attack_range_tiles`, default off and 3): the bot attacks only creatures in the
-  box of N tiles around you (7x7 at 3). It right-clicks them on the game screen
-  (needs the `game_grid` region), so with this on the priority column is not used:
-  the screen health bar's HP decides by the same-priority order ("battle list" =
-  nearest). Creatures further away act as if they were not there: the cavebot walks
-  on and echo raids are not blocked. A selected target is kept when it walks away.
-  A walking creature is clicked on the tile it walks into (the client puts it there
-  when the step starts). The moment one is in range the cavebot lets go of the walk
-  key, and the click goes out on the first frame you stand still.
-  Turn on secure mode in the client: a click on a player or NPC then selects nothing,
-  and the bot logs `nothing selected at x,y,z, skipping that tile 30 s`. A "never
-  attack" monster selected this way gets Esc and its tile is skipped 30 s.
-- **Area rules** press a hotkey when the spell's shape hits at least
-  **Min monsters** creatures (`minimum_monsters`, 1 or more) and MP is at
-  least `minimum_mana` mana points. **Edit area** opens a 13x13 grid: click
-  tiles to mark what the spell hits (`area`, offsets from the middle). The
-  **Kind** (`kind`) says where the shape goes:
-  - `around me`: centred on you (default shape: the 3x3 square).
-  - `wave`: draw it facing up; the bot tries all 4 directions, presses
-    Ctrl+arrow to face the best one, then the key.
-  - `on a tile`: tried on every screen tile that is not a wall; most hits
-    wins, then the tile nearest you. The mouse moves there, then the key
-    (client: **Use at mouse cursor**, Settings > Client hotkeys writes it so;
-    needs the absolute clicker). Default shape: a circle.
-  The first rule that can fire wins, else the row's key. A rule is used only
-  while it is ticked (`enabled`); a ticked rule is grayed in the tab so it
-  isn't edited by accident. All attack keys share `attack_cooldown_ms`
-  (default 2000); a new target starts it fresh, so its first spell goes out
-  at once. An old `minimum_adjacent_monsters` key is read as `minimum_monsters`.
-- **Mana points**: the bot reads your max mana off the `115/295` text on the
-  MP bar (Tesseract) every 30 s and logs `max mana: 295`. Until it is read,
-  MP counts as 0, so a hotkey with a mana floor waits. An old
-  `minimum_mana_percent` in a config is dropped with a warning: set it again.
-- **Unreachable:** when the target's HP stands still for
-  `unreachable_after_seconds` (default 4), the bot takes one step toward it.
-  After the same time again, it skips that monster for 30 s. With no other
-  monster to attack it pauses targeting for 5 s instead (the settings stay
-  as they are) and the cavebot walks on; the dashboard shows
-  "(targeting paused N s)".
-- **Chase mode:** each monster row is "stand", "chase" or "keep distance" (stands still). The bot reads
-  the active (red) chase button from the `chase_buttons` region (Calibration
-  tab) and, when it differs from the target's row, presses
-  `toggle_chase_hotkey` ("Client key: Toggle Chase Mode" in the tab) before
-  attacking. Bind the same key to Toggle Chase Mode in the client's hotkey
-  options. With an empty key the bot attacks in the current mode and logs
-  one warning ("set the Toggle Chase Mode key"). No `chase_buttons` region
-  leaves the mode as it is.
-- **Cavebot walking keys:** the cavebot holds the step key down while the
-  way goes on in the same direction, so the character walks without a pause
-  between tiles. A turn lets go and holds the new key; a fight, a stop, a
-  floor change or a pause lets go.
-- **Cavebot around monsters:** with walk keys on, the cavebot reads the
-  monsters' health bars in the game view before every step and walks around
-  them when that costs at most 8 more steps, instead of bumping into them.
-  A monster standing on the waypoint's exact tile (a `stand` sqm) is
-  right-clicked and killed once the bot bumps into it, even one targeting
-  ignores (`attacking the creature in the way`).
-- **What the bot sees:** Diagnostics > "Show what the bot sees" shows the
-  game view with a red box on each monster found, the cavebot's planned walk
-  as a blue line (walk keys only) and the keep-distance walk as a yellow line
-  with a ring on the tile it heads for. It only shows, never sends input.
-- **Cavebot when blocked:** a step key that does not move the player in
-  0.7 s is pressed once more (a lag looks the same); a second miss marks
-  that tile blocked for 12 s (freed early once the monster on it
-  walks off). Whenever the creatures on screen move, the way is planned
-  again at once (`cavebot: creatures moved, walking another way`), so a
-  monster stepping in front is walked around without bumping it first.
-  The cavebot takes the cheapest way to the waypoint around
-  blocked tiles and monsters, diagonals included (Q/E/Z/C, the
-  client's WASD-mode diagonals; a diagonal costs 3 straight steps). **Stuck** means no way around,
-  or a way more than 8 steps longer, after a bump: with monsters in the battle list
-  the cavebot right-clicks the first creature on its way
-  (`cavebot: attacking the creature in the way` in the log). If that selects
-  nothing within 1.5 s, targeting takes over with the top battle-list row (the
-  nearest) and every monster attacking, never-attack rows included (players
-  never), even with targeting off. Attack spells and area rules work as
-  usual. After each kill the cavebot forgets the tiles it bumped, looks for a
-  way again and walks on once there is one, back to your own targeting. With nothing to fight it tries
-  every tile it has not bumped into yet; with none left it skips the
-  waypoint (`cavebot: waypoint N unreachable, skipping` in the log) and the
-  next ones until one on its floor has a way. When none has (a player in
-  the only path), it stands still and tries the blocked tiles again every
-  2 s, walking on as soon as one is free; after 60 s it raises the stuck
-  alarm and keeps trying. A route that goes 60 s without moving for any
-  other reason also raises the stuck alarm and keeps trying; it never stops by itself
-  for being stuck (`cavebot: moving again` clears the alarm). Diagonals need the client's chat off (WASD walking).
-- **Monster names** match ignoring capital letters ("cave rat" = "Cave Rat").
-- **Seen monsters:** each new battle-list entry is saved with its picture
-  (icon and name, in `<profile>.seen_monsters/`) and a tesseract name guess.
-  These files are not profiles and never show in the profile lists.
-  The Targeting tab's **Seen Monsters** page lists the ones with no monster row yet: the picture,
-  then the guessed name (filled in once tesseract reads it). Correct the
-  name, then click **Add to monsters** and the line leaves the list. The ✕
-  forgets a line and its picture (it is learned again on its next sighting). You name
-  each monster kind once. Without tesseract the guesses stay empty and you
-  type the names. Only gray name text counts, and new names are learned only
-  while the client is the foreground window, so other windows covering it
-  don't create fake monsters.
-- **Timing log:** every 10 s `logs/bot.log` gets a `tick timing:` line
-  (average, screen-reading share, max), and each restart logs its reason
-  (`bot restarts: ...`). The log rotates at 5 MB and keeps 3 old files, so a
-  restart doesn't wipe the last run.
-
-Client setup: the battle list must show monsters (players may be filtered
-out) and be sorted by distance. Actions are logged to `logs/bot.log`.
+Logs go to `logs/bot.log` (rotating, 5 MB × 3) and the GUI's Diagnostics tab,
+including per-tick timing reports every 10 s.
 
 ## Development
-
-The suite is verified green on Python 3.13 (a plain system install; the repo has
-no `.venv`).
 
 ```bash
 pip install -e ".[dev]"
@@ -738,64 +152,52 @@ verifying output and keeping agents inside clear boundaries.
 
 ```mermaid
 flowchart TD
-    H(["Human<br/>scope · approvals"]) --> O["Orchestrator agent<br/>task queue · briefs"]
-    O -->|written brief| C["Coder agents"]
-    O -->|written brief| Q["QA agents"]
-    O -->|written brief| R["Research / senior-review agents"]
-    C --> G{"Verify gate<br/>pytest · ruff · mypy --strict<br/>re-run by orchestrator"}
-    Q --> G
-    R -->|findings list| O
-    G -->|pass| M["Commit"]
-    G -->|fail| O
-    M --> O
-    O -.->|human gates| HG["Flash firmware · provide screenshots<br/>live test session"]
-    HG -.-> H
+    H(["Human<br/>scope · approvals · testing"]) --> S["Session per PR<br/>ruleset · PR doc"]
+    S -->|brief| C["Coder agents"]
+    S -->|brief| R["Research / review agents"]
+    C --> G{"Verify gate<br/>pytest · ruff · mypy --strict · CI"}
+    R -->|findings| S
+    G -->|pass| M["Commit · PR"]
+    G -->|fail| S
+    M --> T["Human test checklist"]
+    T -->|ok| MG["Merge"]
+    T -->|failing step| S
     classDef human fill:#fde68a,stroke:#b45309,color:#111;
-    class H,HG human;
+    class H,T human;
 ```
 
 **How it works**
 
-- **Orchestrator** — one agent owns the task queue (~50 tasks with
-  dependencies), writes a self-contained brief for each task and is the only
-  writer of the project tracker.
-- **Role-based agents** — coder, QA, hardware and software research, and a
-  senior reviewer. Each starts fresh from [RULESET.md](RULESET.md), its task file
-  and the folder README, so no agent depends on another's memory.
-- **Verify gate** — an agent's own "done" is never trusted: the orchestrator
-  re-runs the full test suite, ruff and `mypy --strict` and reviews the diff
-  before committing.
-- **Independent review** — a senior-review agent audited the finished pipeline
-  and produced 27 findings (3 critical), which were then fixed in batches
-  grouped by how tightly the code was coupled.
-- **Human gates** — the steps only a person can do: flashing the Arduino,
-  providing real screenshots, and the live test session.
-- **Models** — [Claude Code](https://claude.com/claude-code) with Claude models
-  selected according to the complexity of each task, plus local Qwen models via
-  llama.cpp when the Claude quota was exhausted.
+- **One session per PR** — each PR has its own doc with goal, design and task
+  checklist; a fresh session reads the ruleset and that doc, nothing else.
+- **A written ruleset** — numbered rules (one feature per commit, keep checks
+  green, fail fast, YAGNI, delete unused code) that every agent follows.
+- **Verify gate** — an agent's own "done" is never trusted: tests, ruff and
+  `mypy --strict` run before every commit, and CI runs the full suite.
+- **Human test checklist** — every PR ends with numbered steps the owner runs
+  live; fixes come as new commits.
+- **Models** — [Claude Code](https://claude.com/claude-code), with a smaller
+  model by default and a larger one for hard design calls, plus local Qwen
+  models via llama.cpp when the quota ran out.
 
 **Guardrails.** Some requested or proposed features were declined outright and
-recorded as such: anti-cheat evasion, input "humanizing" to disguise
-automation, hiding the bot process or window, hardware-ID spoofing, and support
-for official servers. Setting those boundaries early kept every agent's scope
-unambiguous.
+recorded as such: anti-detection measures, input "humanizing" to disguise
+automation, hiding the process or window, and hardware-ID spoofing. Setting
+those boundaries early kept every agent's scope unambiguous.
 
 **What I learned managing agents**
 
-- **One writer per shared state.** Two orchestrator sessions once edited the
-  repo in parallel and produced diverging layouts; reconciling took a dedicated
-  takeover. Since then, one orchestrator is the sole writer.
+- **One writer per shared state.** Two sessions once edited the repo in
+  parallel and produced diverging layouts; since then one session owns a PR.
 - **Verify, don't trust.** Agents report success optimistically. Status is
-  established by test runs and diffs, not by what the tracker or the agent says.
-- **Plan for interruptions.** Account session limits cut agents off
-  mid-refactor. Committing work-in-progress and writing resume briefs turned
-  those stops into short pauses instead of lost work.
-- **Split work by coupling, not by count.** Splitting a batch into one agent per
-  task was about 3× slower and saved no quota; grouping tightly coupled fixes
-  together worked better.
-- **Local models need sequential work.** The local llama.cpp backend stalled
-  when several agents ran at once; running them one at a time fixed it.
-- **A separate reviewer catches what builders miss.** The review pass found
+  established by test runs and diffs, not by what an agent says.
+- **Plan for interruptions.** Session limits cut agents off mid-refactor.
+  Small commits and written briefs turned those stops into short pauses.
+- **Split work by coupling, not by count.** One agent per task was about 3×
+  slower and saved no quota; grouping tightly coupled changes worked better.
+- **Cheaper process, same quality.** Short reports, one session per PR and a
+  human test checklist cut token use without losing coverage.
+- **A separate reviewer catches what builders miss.** A review pass found
   critical wiring and safety issues that every coder agent's tests had passed.
 
 ## License
