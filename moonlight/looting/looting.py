@@ -30,6 +30,7 @@ import cv2
 import numpy as np
 
 from moonlight.cavebot.cavebot import WALK_KEYS
+from moonlight.core.random_delay import random_delay
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.input import InputBackend
 from moonlight.perception.corpses import Ring, RingWatch, slot_ring
@@ -101,10 +102,12 @@ class Looting:
         self._ring_sightings: list[tuple[tuple[int, int], float]] = []
         #: When the hotkey was last pressed, and how often for these rings.
         self._pressed_at: float | None = None
+        #: ``wait_ms`` with a random spread, picked at each press.
+        self._wait_seconds = 0.0
         self._presses = 0
         #: Rings around this position were pressed for and stayed: left alone here.
         self._given_up_at: Position | None = None
-        self._last_step_at = float("-inf")
+        self._next_step_at = float("-inf")
         #: Steps toward a ring 2 tiles away since the last press.
         self._steps = 0
 
@@ -167,7 +170,7 @@ class Looting:
         """True while a press's loot lands and its rings go; ends the hold when they do or stay."""
         if self._pressed_at is None:
             return False
-        if now < self._pressed_at + self._config.wait_ms / 1000:
+        if now < self._pressed_at + self._wait_seconds:
             return True
         if self._rings_around_gone(now):
             log.info("looting: rings around the player gone")
@@ -196,6 +199,8 @@ class Looting:
         self._save_shot(self._ring.point)
         self._input.press_combo(self._config.loot_hotkey)
         self._pressed_at, self._presses, self._steps = self._clock(), self._presses + 1, 0
+        # doc: docs/prs/random-delays.md#spread
+        self._wait_seconds = random_delay(self._config.wait_ms / 1000)
         self._ring = None
 
     def _save_shot(self, point: tuple[int, int]) -> None:
@@ -236,7 +241,7 @@ class Looting:
                 log.warning("looting: ring at %s not reached, left here", self._far_ring.point)
                 self._given_up_at, self._far_ring, self._steps = snap.position, None, 0
                 return False
-            if now - self._last_step_at >= RING_STEP_SECONDS:
+            if now >= self._next_step_at:
                 assert self._game_region is not None
                 (rx, ry), (px, py) = self._far_ring.point, slot_ring(
                     self._game_region, PLAYER_SLOT
@@ -244,6 +249,7 @@ class Looting:
                 key = WALK_KEYS[((rx > px) - (rx < px), (ry > py) - (ry < py))]
                 log.info("looting: ring at %s 2 tiles away: step %s", self._far_ring.point, key)
                 self._input.press_combo(key)
-                self._last_step_at, self._steps = now, self._steps + 1
+                self._next_step_at = now + random_delay(RING_STEP_SECONDS)
+                self._steps += 1
             return True
         return self.should_loot(snap)  # stand still: the loot lands, or HP comes back

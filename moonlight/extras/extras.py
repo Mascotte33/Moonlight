@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
+from moonlight.core.random_delay import random_delay
 from moonlight.core.state import WorldState
 from moonlight.healing.healing import check_hotkey
 
@@ -191,7 +192,8 @@ class Extras:
         #: Picture name -> where it was first found; later scans look only there.
         self._spots: dict[str, tuple[int, int]] = {}
         self._search_turn = 0
-        self._pressed: dict[str, float] = {}
+        #: Key -> when it may be pressed again (``PRESS_GAP`` with a random spread).
+        self._next_press_at: dict[str, float] = {}
         #: Food presses since the hungry icon last went away.
         self._food_presses = 0
         #: Player name hash -> (first seen, last seen).
@@ -287,7 +289,7 @@ class Extras:
         for on, key, need in wanted:
             if only_haste and key != c.haste_hotkey:
                 continue  # doc: docs/prs/near-targeting.md#haste-in-fight
-            if on and need and now - self._pressed.get(key, float("-inf")) >= PRESS_GAP:
+            if on and need and now >= self._next_press_at.get(key, float("-inf")):
                 if key == c.food_hotkey and self._food_presses >= FOOD_TRIES:
                     # doc: docs/prs/near-targeting.md#food-pause
                     logger.warning(
@@ -300,7 +302,8 @@ class Extras:
         return None
 
     def pressed(self, key: str) -> None:
-        self._pressed[key] = self._clock()
+        # doc: docs/prs/random-delays.md#spread
+        self._next_press_at[key] = self._clock() + random_delay(PRESS_GAP)
         if self.config.food and key == self.config.food_hotkey:
             self._food_presses += 1
 

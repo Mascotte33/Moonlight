@@ -20,3 +20,9 @@ def _empty_profiles_dir(
     monkeypatch.setattr(
         "moonlight.looting.looting.LOOT_SHOTS_DIR", tmp_path_factory.mktemp("loot_rings")
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_random_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exact waits: timing tests step the clock by the base values."""
+    monkeypatch.setattr("moonlight.core.random_delay.RANDOM_DELAY_SPREAD", 0.0)

@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from moonlight.core.random_delay import random_delay
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import ClickSide, InputBackend
 
@@ -383,7 +384,8 @@ class ScriptRunner:
             log.info("script %s ended", self.running)
             pause = dict(self.timers).get(self.running)
             if pause is not None:
-                self._next_run[self.running] = self._clock() + pause
+                # doc: docs/prs/random-delays.md#spread
+                self._next_run[self.running] = self._clock() + random_delay(pause)
         self.running = self._script = None
         self._pending = None
         self._testing = False

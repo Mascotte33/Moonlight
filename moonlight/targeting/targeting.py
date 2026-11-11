@@ -36,6 +36,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from moonlight.cavebot.pathing import WALK_STEPS
+from moonlight.core.random_delay import random_delay
 from moonlight.core.state import Monster, WorldState
 from moonlight.healing.healing import check_hotkey
 from moonlight.perception.battle import NAME_START_X, NAME_WIDTH, SLOT_HEIGHT, TOP_PADDING
@@ -365,7 +366,7 @@ class TargetingDecision:
         self._game_grid_region = game_grid_region
         #: World tiles whose on-screen click selected nothing or an ignored monster.
         self._skipped_tiles: dict[tuple[int, int, int], float] = {}
-        self._stepped_away_at = float("-inf")
+        self._next_step_away_at = float("-inf")
         #: Screen slots of the last keep-distance walk (goal last), for the
         #: "What the bot sees" view; empty when not keeping distance.
         self.keep_distance_path: list[tuple[int, int]] = []
@@ -454,7 +455,7 @@ class TargetingDecision:
         if self.row_for(selected).movement != "keep distance" or not state.creature_slots:
             self.keep_distance_path = []
             return None
-        if state.game_view_sliding or now - self._stepped_away_at < _STEP_AWAY_EVERY_SECONDS:
+        if state.game_view_sliding or now < self._next_step_away_at:
             return None
         creatures = state.creature_slots
         blocked = set(creatures) | set(state.echo_raid_slots) | wall_slots(state, self._walkable)
@@ -464,7 +465,8 @@ class TargetingDecision:
             return None
         goal = path[-1]
         step = (path[0][0] - PLAYER_SLOT[0], path[0][1] - PLAYER_SLOT[1])
-        self._stepped_away_at = now
+        # doc: docs/prs/random-delays.md#spread
+        self._next_step_away_at = now + random_delay(_STEP_AWAY_EVERY_SECONDS)
         here = min(_distance(PLAYER_SLOT, c) for c in creatures)
         there = min(_distance(goal, c) for c in creatures)
         reason = (

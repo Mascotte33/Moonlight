@@ -1747,14 +1747,14 @@ def test_bank_talks_in_the_npcs_tab_with_the_chat_on_then_turns_it_off(
     sim = Sim([Waypoint(100, 100, 7, "bank"), walk(110, 100)], Position(100, 100, 7),
               frames=lambda: frame, clicker=clicker)  # fmt: skip
     sim.bot.start()
-    run_until(sim, 10)  # 34 keys, the pauses (about 5 s) and 3 clicks
+    run_until(sim, 10)  # 17 keys, the pauses (about 2 s) and 3 clicks
     assert sim.bot.alarm is None
     assert sim.route.current == 1
     chat_clicks = [c for c in clicker.clicks if c[0] == (500, 600)]
     assert len(chat_clicks) == 3  # off before Shift+F11, on, off at the end
     keys = [line[2:] for line in sim.fake.sent_lines if line.startswith("K ")]
     line = ["h", "i", "enter", *"deposit", "space", *"all", "enter", "y", "e", "s", "enter"]
-    assert keys == ["shift+F11", *line, *line]
+    assert keys == ["shift+F11", *line]  # doc: docs/prs/random-delays.md#one-bank-round
 
 
 def test_trade_buys_each_row_and_buys_a_potion_again_when_its_total_did_not_go_up(
