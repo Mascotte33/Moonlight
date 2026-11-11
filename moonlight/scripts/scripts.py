@@ -50,7 +50,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from moonlight.core.random_delay import random_delay
+from moonlight.core.random_delay import random_delay, typing_gap
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import ClickSide, InputBackend
 
@@ -183,7 +183,7 @@ class Bot:
 
         if bad := label_error("say", text):
             raise ValueError(bad)
-        return [functools.partial(self._runner.input.press_combo, k) for k in say_keys(text)]
+        return [functools.partial(_press, self._runner, k) for k in say_keys(text)]
 
     def click(self, x: int, y: int, right: bool = False) -> list[Command]:
         """Click client-window pixel *x*, *y* (what the Route cursor readout shows)."""
@@ -267,8 +267,11 @@ class Bot:
         return (x + w // 2, y + h // 2)
 
 
+# doc: docs/prs/human-timing.md#typing
 def _press(runner: ScriptRunner, key: str) -> None:
+    """Press a typed key, then wait a typing gap."""
     runner.input.press_combo(key)
+    runner.wait_typing_gap()
 
 
 def _secret_press(runner: ScriptRunner, key: str) -> None:
@@ -286,6 +289,7 @@ def _secret_press(runner: ScriptRunner, key: str) -> None:
     finally:
         for b in logged:
             b.quiet = False
+    runner.wait_typing_gap()
 
 
 class ScriptRunner:
@@ -368,6 +372,9 @@ class ScriptRunner:
         self._commands, self._pending, self._wait_until = iter(()), None, 0.0
         self.run_again_in_seconds = None
         return True
+
+    def wait_typing_gap(self) -> None:
+        self._wait_until = self._clock() + typing_gap()
 
     def set_only_monsters_within_range(self, on: bool | None) -> None:
         """Set (None: flip) ``only_attack_within_range`` on the running targeting."""
@@ -481,6 +488,8 @@ class ScriptRunner:
         if self._script is None:
             return False
         self.snap, self.input = snap, input
+        if self._clock() < self._wait_until:
+            return False  # a yielded wait, or the gap after a typed key
         try:
             if self._pending is None:
                 self._pending = next(self._commands, None)
@@ -491,8 +500,6 @@ class ScriptRunner:
                     return False  # the wire limiter dropped it: send it again
                 self._pending = None
                 return True
-            if self._clock() < self._wait_until:
-                return False
             got = next(self._script)
             if isinstance(got, int | float):
                 self._wait_until = self._clock() + got

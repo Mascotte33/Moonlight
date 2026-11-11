@@ -26,3 +26,5 @@ def _empty_profiles_dir(
 def _no_random_delay(monkeypatch: pytest.MonkeyPatch) -> None:
     """Exact waits: timing tests step the clock by the base values."""
     monkeypatch.setattr("moonlight.core.random_delay.RANDOM_DELAY_SPREAD", 0.0)
+    monkeypatch.setattr("moonlight.core.random_delay.REACTION_SPREAD", 0.0)
+    monkeypatch.setattr("moonlight.core.random_delay.TYPING_GAP_SECONDS", (0.0, 0.0))

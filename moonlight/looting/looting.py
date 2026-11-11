@@ -30,7 +30,7 @@ import cv2
 import numpy as np
 
 from moonlight.cavebot.cavebot import WALK_KEYS
-from moonlight.core.random_delay import random_delay
+from moonlight.core.random_delay import random_delay, random_reaction
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.input import InputBackend
 from moonlight.perception.corpses import Ring, RingWatch, slot_ring
@@ -104,6 +104,9 @@ class Looting:
         self._pressed_at: float | None = None
         #: ``wait_ms`` with a random spread, picked at each press.
         self._wait_seconds = 0.0
+        # doc: docs/prs/human-timing.md#reaction
+        #: ``RING_CONFIRM_SECONDS`` up to half longer, picked again at each press.
+        self._ring_confirm_seconds = random_reaction(RING_CONFIRM_SECONDS)
         self._presses = 0
         #: Rings around this position were pressed for and stayed: left alone here.
         self._given_up_at: Position | None = None
@@ -155,7 +158,7 @@ class Looting:
     def _confirmed(self, ring: Ring, now: float) -> bool:
         """Seen enough looks for long enough, up to a tile off."""
         times = [t for point, t in self._ring_sightings if self._near(point, ring.point)]
-        return len(times) >= RING_CONFIRM_LOOKS and now - times[0] >= RING_CONFIRM_SECONDS
+        return len(times) >= RING_CONFIRM_LOOKS and now - times[0] >= self._ring_confirm_seconds
 
     def _rings_around_gone(self, now: float) -> bool:
         """No ring seen on the player's tile or the 8 around it for ``RING_GONE_SECONDS``."""
@@ -201,6 +204,7 @@ class Looting:
         self._pressed_at, self._presses, self._steps = self._clock(), self._presses + 1, 0
         # doc: docs/prs/random-delays.md#spread
         self._wait_seconds = random_delay(self._config.wait_ms / 1000)
+        self._ring_confirm_seconds = random_reaction(RING_CONFIRM_SECONDS)
         self._ring = None
 
     def _save_shot(self, point: tuple[int, int]) -> None:

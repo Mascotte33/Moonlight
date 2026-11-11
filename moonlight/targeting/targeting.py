@@ -14,7 +14,7 @@ never used. Players are never candidates; the alarms keep their own
 
 A selected target whose HP stands still for ``unreachable_after_seconds`` gets
 one ``step_closer`` action (a unit step toward the nearest creature slot that
-is not adjacent); after the same time again it is ignored for 30 s. With
+is not adjacent); after the same time again it is ignored for 10 s. With
 nothing else to attack it gets a ``pause`` action instead: the loop turns
 targeting off for ``PAUSE_SECONDS`` so the cavebot walks on.
 
@@ -86,7 +86,7 @@ TARGET_ORDERS = ("lowest hp", "highest hp", "battle list")
 Rect = tuple[int, int, int, int]
 
 #: Seconds an unreachable target (or a skipped on-screen tile) is left alone.
-_IGNORE_SECONDS = 30.0
+_IGNORE_SECONDS = 10.0
 
 #: Seconds between two keep-distance steps (one walk step takes about this long).
 _STEP_AWAY_EVERY_SECONDS = 0.4
@@ -376,7 +376,7 @@ class TargetingDecision:
         return self._rows.get(monster.name.lower(), self.config.default_monster)
 
     def is_unreachable(self, monster: Monster) -> bool:
-        """True while *monster* is on the 30 s ignore list."""
+        """True while *monster* is on the 10 s ignore list."""
         return self._key(monster) in self._ignored_until
 
     @staticmethod
@@ -498,8 +498,8 @@ class TargetingDecision:
         return state.selected_target is not None or bool(self._near_creatures(state, now))
 
     def skip_tile(self, tile: tuple[int, int, int], now: float, why: str) -> None:
-        """Leave the creature on world *tile* alone for 30 s (an on-screen click went wrong)."""
-        logger.info("targeting: %s at %s,%s,%s, skipping that tile 30 s", why, *tile)
+        """Leave the creature on world *tile* alone for 10 s (an on-screen click went wrong)."""
+        logger.info("targeting: %s at %s,%s,%s, skipping that tile 10 s", why, *tile)
         self._skipped_tiles[tile] = now + _IGNORE_SECONDS
 
     def _pick_on_screen(self, state: WorldState, now: float) -> TargetingAction | None:
