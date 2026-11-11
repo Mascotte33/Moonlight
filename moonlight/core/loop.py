@@ -106,6 +106,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from moonlight.cavebot.cavebot import WALK_KEYS
+from moonlight.core.random_delay import random_delay, random_reaction
 from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import Monster, WorldState
 from moonlight.hardware.input import ClickSide, InputBackend
@@ -312,7 +313,8 @@ class GameLoop:
         self._last_target: Monster | None = None
         self._last_names: Counter[str] = Counter()
         self._had_selection = False
-        # The select click: (battle-list row, when sent; None while in flight).
+        # The select click: (battle-list row, when to click again if no outline
+        # shows; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
         # The world tile an on-screen select click right-clicked (row -1 above).
         self._screen_click_tile: tuple[int, int, int] | None = None
@@ -938,12 +940,12 @@ class GameLoop:
             self._send(snap, lambda: self._step_click(clicker, now))
             return
         if self._select_click is not None:
-            row, sent_at = self._select_click
+            row, retry_at = self._select_click
             selected = snap.selected_target
             outline_shows = selected is not None and (row == -1 or selected.battle_list_row == row)
-            if sent_at is None:  # cancelled before it went out: nothing to judge
+            if retry_at is None:  # cancelled before it went out: nothing to judge
                 self._screen_click_tile = None
-            elif not outline_shows and now - sent_at < _SELECT_OUTLINE_WAIT:
+            elif not outline_shows and now < retry_at:
                 return
             self._select_click = None
         if self._check_screen_click(snap, targeting, now):
@@ -1015,7 +1017,10 @@ class GameLoop:
                 if now >= self._chase_toggle_settles_at and self._send(
                     snap, lambda: self.input.press_combo(toggle)
                 ):
-                    self._chase_toggle_settles_at = now + CHASE_TOGGLE_SETTLE_SECONDS
+                    # doc: docs/prs/human-timing.md#reaction
+                    self._chase_toggle_settles_at = now + random_reaction(
+                        CHASE_TOGGLE_SETTLE_SECONDS
+                    )
                 return
             if not self._warned_no_chase_toggle_key:
                 logger.warning(
@@ -1062,8 +1067,8 @@ class GameLoop:
         """
         if self._select_click is None or self._select_click[0] == -1:
             return False
-        row, sent_at = self._select_click
-        if sent_at is not None:
+        row, retry_at = self._select_click
+        if retry_at is not None:
             return False  # already clicked: the clicker only parks the cursor now
         target = self._target
         if target is not None and target.kind == "select" and target.battle_list_row == row:
@@ -1075,7 +1080,9 @@ class GameLoop:
         """One clicker step; on the click, record what it did."""
         result = clicker.step()
         if result is True and self._select_click is not None:
-            self._select_click = (self._select_click[0], now)
+            # doc: docs/prs/human-timing.md#select-retry
+            retry_at = now + random_delay(_SELECT_OUTLINE_WAIT)
+            self._select_click = (self._select_click[0], retry_at)
         return result
 
     def _act_loot(self, snap: WorldState) -> None:

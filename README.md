@@ -32,6 +32,9 @@ hands-on hardware steps. See [Built by AI agents](#built-by-ai-agents).
 - **Hardware-offloaded input** — custom Arduino Leonardo firmware with a
   line-based serial protocol and a watchdog: if the host goes silent for 10 s,
   the board releases every key.
+- **Human-like timing** — action waits spread ±10%, reactions only ever
+  slower, heals 0–0.1 s after they are due (at once at critical HP), typed text 0.1–0.3 s per key, and the firmware holds each key or
+  click a random 45–95 ms.
 - **Closed-loop clicking** — move, read the rendered cursor back from the
   screen, correct to within ±2 px, then click; fail closed if the cursor is not
   found.

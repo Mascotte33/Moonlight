@@ -238,15 +238,15 @@ def test_an_hp_change_resets_the_watch() -> None:
     assert action is not None and action.kind == "step_closer"
 
 
-def test_ignored_target_can_be_chosen_again_after_30_seconds() -> None:
+def test_ignored_target_can_be_chosen_again_after_10_seconds() -> None:
     targeting = rows()
     s = stuck_state()
     s.selected_target = None  # the outline is gone: only the rat is chosen meanwhile
     targeting.decide(stuck_state(), 0.0)
     targeting.decide(stuck_state(), 4.0)
-    targeting.decide(stuck_state(), 8.0)  # ignored until 38.0
-    assert picked_at(targeting, s, 37.9) == 1
-    assert picked_at(targeting, s, 38.0) == 0
+    targeting.decide(stuck_state(), 8.0)  # ignored until 18.0
+    assert picked_at(targeting, s, 17.9) == 1
+    assert picked_at(targeting, s, 18.0) == 0
 
 
 def test_lone_stuck_target_asks_for_a_pause() -> None:
@@ -323,14 +323,14 @@ def test_selected_target_is_kept_when_it_leaves_range() -> None:
     assert targeting.fight_in_range(s, 0.0)
 
 
-def test_skipped_tile_is_left_alone_for_30_seconds() -> None:
+def test_skipped_tile_is_left_alone_for_10_seconds() -> None:
     targeting, s = near(((8, 5),), (50.0,))
     action = targeting.decide(s, 0.0)
     assert action is not None
     targeting.skip_tile(action.creature_tile, 0.0, "nothing selected")
-    assert targeting.decide(s, 29.0) is None
-    assert not targeting.fight_in_range(s, 29.0)
-    assert targeting.decide(s, 30.5) is not None
+    assert targeting.decide(s, 9.0) is None
+    assert not targeting.fight_in_range(s, 9.0)
+    assert targeting.decide(s, 10.5) is not None
 
 
 def test_fight_without_the_option_is_any_battle_list_monster() -> None:

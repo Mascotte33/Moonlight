@@ -157,7 +157,7 @@ import numpy as np
 
 from moonlight.cavebot.pathing import CostMap, next_step
 from moonlight.cavebot.town import STASH, TRADE, find_chat, find_lockers, find_picture, pick_locker
-from moonlight.core.random_delay import random_delay
+from moonlight.core.random_delay import random_delay, typing_gap
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, InputBackend
@@ -297,8 +297,8 @@ _CHAT_CLICK_WAIT = 0.5
 # doc: docs/prs/depot.md#retry-alarm
 #: Seconds an NPC talk keeps failing before its alarm.
 _TALK_ALARM = 180.0
-#: Seconds a trade waits for its window before talking again.
-_TRADE_WAIT = 3.0
+#: Seconds a trade waits for its window before talking again, lowest and highest.
+_TRADE_WAIT = (1.0, 3.0)
 # doc: docs/prs/depot.md#finddepo-waypoint
 #: Seconds between looks for a free locker, and before the alarm when all are taken.
 _DEPOT_RELOOK = 3.0
@@ -679,7 +679,7 @@ class Cavebot:
         self._talk_wait = float("-inf")
         #: ``trade``: the window's anchor, since when it is awaited, the potions before a row.
         self._trade_at: tuple[int, int] | None = None
-        self._trade_wait_since: float | None = None
+        self._trade_wait_until: float | None = None
         self._potions_before: dict[str, int | None] = {}
         #: ``trade``: buy rows already bought again (each gets one more try).
         self._rebought_rows: set[int] = set()
@@ -1267,12 +1267,16 @@ class Cavebot:
         if self._hand_done_at is None:
             sends = self._hand_sends(wp)
             if self._sends_done < len(sends):
+                if now < self._talk_wait:
+                    return  # the gap after a typed key
                 if self._sends_done == 0 and wp.action == "script":
                     logger.info("cavebot: script %r from %s", wp.label, self._where())
                 dropped = getattr(self._input, "dropped", 0)
                 sends[self._sends_done]()
                 if getattr(self._input, "dropped", 0) == dropped:
                     self._sends_done += 1
+                    if wp.action == "say":  # doc: docs/prs/human-timing.md#typing
+                        self._talk_wait = now + typing_gap()
                 return
             self._hand_done_at = now
         hold = float(wp.label) if wp.action == "wait" else _HAND_HOLD[wp.action]
@@ -1334,6 +1338,7 @@ class Cavebot:
             self._input.press_combo(step)
             if getattr(self._input, "dropped", 0) == dropped:
                 self._sends_done += 1
+                self._talk_wait = now + typing_gap()  # doc: docs/prs/human-timing.md#typing
 
     # doc: docs/prs/depot.md#trade-waypoint
     def _trade_op(self, op: str, a: int, b: int, now: float) -> None:
@@ -1342,13 +1347,14 @@ class Cavebot:
             frame = self._frames() if self._frames is not None else None
             self._trade_at = None if frame is None else find_picture(frame, TRADE)
             if self._trade_at is not None:
-                self._trade_wait_since = None
+                self._trade_wait_until = None
                 self._sends_done += 1
-            elif self._trade_wait_since is None:
-                self._trade_wait_since = now
-            elif now - self._trade_wait_since >= _TRADE_WAIT:
+            elif self._trade_wait_until is None:
+                # doc: docs/prs/human-timing.md#trade-wait
+                self._trade_wait_until = now + random.uniform(*_TRADE_WAIT)
+            elif now >= self._trade_wait_until:
                 logger.info("cavebot: trade: no trade window, talking again")
-                self._trade_wait_since, self._sends_done = None, 0
+                self._trade_wait_until, self._sends_done = None, 0
             return
         if op in ("count", "health", "mana"):
             counts = self._potion_counts() if self._potion_counts is not None else {}
@@ -1492,7 +1498,7 @@ class Cavebot:
         self._depot_stand, self._depot_wait_since = None, None
         self._deposit_drag, self._locker_clicked = None, float("-inf")
         self._talk, self._sends_done = None, 0
-        self._trade_at = self._trade_wait_since = None
+        self._trade_at = self._trade_wait_until = None
         self._rebought_rows = set()
         self._expected_z = None
         self._last_cmd = float("-inf")
