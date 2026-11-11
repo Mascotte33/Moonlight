@@ -12,9 +12,11 @@ from __future__ import annotations
 import random
 
 __all__ = [
+    "HEAL_REACTION_SECONDS",
     "RANDOM_DELAY_SPREAD",
     "REACTION_SPREAD",
     "TYPING_GAP_SECONDS",
+    "heal_reaction",
     "random_delay",
     "random_reaction",
     "typing_gap",
@@ -26,6 +28,8 @@ RANDOM_DELAY_SPREAD = 0.10
 REACTION_SPREAD = 0.5
 #: Seconds between two typed keys, lowest and highest (the wire cap is 0.1 s).
 TYPING_GAP_SECONDS = (0.10, 0.30)
+#: Seconds from a heal becoming due to its key press, lowest and highest.
+HEAL_REACTION_SECONDS = (0.0, 0.10)
 
 
 def random_delay(base: float, *, only_longer: bool = False) -> float:
@@ -47,3 +51,9 @@ def random_reaction(base: float) -> float:
 def typing_gap() -> float:
     """Seconds to wait after a typed key before the next one."""
     return random.uniform(*TYPING_GAP_SECONDS)
+
+
+# doc: docs/prs/human-timing.md#heal-reaction
+def heal_reaction() -> float:
+    """Seconds to wait before pressing a heal that just became due."""
+    return random.uniform(*HEAL_REACTION_SECONDS)

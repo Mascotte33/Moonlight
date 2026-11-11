@@ -28,3 +28,4 @@ def _no_random_delay(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("moonlight.core.random_delay.RANDOM_DELAY_SPREAD", 0.0)
     monkeypatch.setattr("moonlight.core.random_delay.REACTION_SPREAD", 0.0)
     monkeypatch.setattr("moonlight.core.random_delay.TYPING_GAP_SECONDS", (0.0, 0.0))
+    monkeypatch.setattr("moonlight.core.random_delay.HEAL_REACTION_SECONDS", (0.0, 0.0))
