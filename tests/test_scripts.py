@@ -104,6 +104,22 @@ def test_a_ticked_script_runs_at_once_then_its_pause_after_it_ended(tmp_path: Pa
     assert r.poll() == "eat"
 
 
+# doc: docs/prs/break-scripts.md#run-again-in
+def test_run_again_in_replaces_the_pause_of_that_run(tmp_path: Path) -> None:
+    clock = Clock()
+    src = "def run(bot):\n    bot.run_again_in(100)\n    yield 1\n"
+    r, inp = runner(tmp_path, clock, rest=src), FakeInput()
+    r.timers = ScriptsConfig(("rest",), {"rest": 60000}).timers()
+    assert r.poll() == "rest"
+    ticks(r, inp, 1)
+    clock.now = 1.0
+    ticks(r, inp, 1)  # ends at 1 s
+    clock.now = 100.9
+    assert r.poll() is None
+    clock.now = 101.0
+    assert r.poll() == "rest"
+
+
 def test_ticked_scripts_take_turns_top_first(tmp_path: Path) -> None:
     src = "def run(bot):\n    yield bot.press('f5')\n"
     r, inp = runner(tmp_path, a=src, b=src), FakeInput()
