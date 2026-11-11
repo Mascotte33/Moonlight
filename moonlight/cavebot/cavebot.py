@@ -108,7 +108,7 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   onto the stash. The locker window stays open.
 * **bank**: on its tile, talks to the banker (chat off, Shift+F11 for the
   NPCs tab, chat on): ``hi``, ``deposit all``, ``yes`` with a short random
-  pause after each, about 1 s, the three again, then the chat off. A chat
+  pause after each, then the chat off. A chat
   button that will not switch is clicked again; alarm ``"bank"`` after 3 min.
 * **trade**: on its tile, talks ``hi``, ``trade`` like ``bank`` and waits up
   to 3 s for the trade window (else talks again), clicks Buy, then buys each
@@ -157,6 +157,7 @@ import numpy as np
 
 from moonlight.cavebot.pathing import CostMap, next_step
 from moonlight.cavebot.town import STASH, TRADE, find_chat, find_lockers, find_picture, pick_locker
+from moonlight.core.random_delay import random_delay
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, InputBackend
@@ -291,8 +292,6 @@ _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight throu
 # doc: docs/prs/depot.md#npc-pacing
 #: Seconds paused after each NPC line (owner's ranges: the NPC needs time to react).
 _NPC_PAUSE = {"hi": (0.4, 0.7), "deposit all": (0.7, 1.0), "trade": (0.7, 1.0), "yes": (0.4, 0.6)}
-#: Seconds between the two rounds of bank lines.
-_BANK_ROUNDS_PAUSE = 1.0
 #: Seconds a chat button click gets to show before it is clicked again.
 _CHAT_CLICK_WAIT = 0.5
 # doc: docs/prs/depot.md#retry-alarm
@@ -476,18 +475,15 @@ _SLIDER_MIN, _SLIDER_SPAN = (-20, 283), 93
 
 
 # doc: docs/prs/depot.md#npc-pacing
-def talk_steps(npc_tab_hotkey: str, *rounds: tuple[str, ...]) -> list[TalkStep]:
+def talk_steps(npc_tab_hotkey: str, lines: tuple[str, ...]) -> list[TalkStep]:
     """An NPC talk: True / False turns the chat on / off, a float pauses
     that many seconds, a string is a key. Chat off, *npc_tab_hotkey* (opens
     or selects the NPCs tab; only with the chat off), chat on, each line
     typed with Enter and a random pause, chat off."""
     steps: list[TalkStep] = [False, npc_tab_hotkey, True]
-    for i, lines in enumerate(rounds):
-        if i:
-            steps.append(_BANK_ROUNDS_PAUSE)
-        for line in lines:
-            steps += say_keys(line)[1:]  # the chat is on: no Enter to open it
-            steps.append(random.uniform(*_NPC_PAUSE[line]))
+    for line in lines:
+        steps += say_keys(line)[1:]  # the chat is on: no Enter to open it
+        steps.append(random.uniform(*_NPC_PAUSE[line]))
     return [*steps, False]
 
 
@@ -650,6 +646,8 @@ class Cavebot:
         #: Last click on the goal (right, then left) and when, None before the first.
         self._echo_raid_click: ClickSide | None = None
         self._echo_raid_clicked_at = float("-inf")
+        #: ``ECHO_RAID_CLICK_WAIT`` with a random spread, picked at each click.
+        self._echo_raid_click_wait = ECHO_RAID_CLICK_WAIT
         self._echo_raid_clicked_pixel = (0, 0)
         self._echo_raid_tries = 0
         #: Triggers given up on (no way, or tries used up) -> when last seen.
@@ -701,7 +699,11 @@ class Cavebot:
         self._last_move = 0.0
         #: Last position change (resume() also restarts _last_move, a fight is not "stuck").
         self._moved_at = float("-inf")
+        #: ``_ROPE_SETTLE`` with a random spread, picked at each move.
+        self._rope_settle = _ROPE_SETTLE
         self._last_cmd = 0.0
+        #: ``_KEY_RETRY`` with a random spread, picked at each walk key.
+        self._key_retry = _KEY_RETRY
         self._expected_z: int | None = None
         #: (script waypoint, its floor, give-up time) while a script waits for the next floor.
         self._script_floor_wait: tuple[int, int, float] | None = None
@@ -852,6 +854,7 @@ class Cavebot:
             self._sidesteps = 0
             self._previous_pos, self._last_pos = self._last_pos, pos
             self._last_move = self._moved_at = now
+            self._rope_settle = random_delay(_ROPE_SETTLE)  # doc: docs/prs/random-delays.md#spread
             self._learn_jump(pos)
             if self._blocked_wait:
                 logger.info("cavebot: the way is free again")
@@ -941,7 +944,7 @@ class Cavebot:
                 self._advance()
             else:
                 self.release_walk_key()
-                if wp.action == "rope" and now - self._moved_at < _ROPE_SETTLE:
+                if wp.action == "rope" and now - self._moved_at < self._rope_settle:
                     return  # stop on the rope spot first
                 self._expected_z = wp.z + _FLOOR_DELTA[wp.action]
                 self._retry_if_idle(now, lambda: self._tile_action(wp, pos))
@@ -975,7 +978,7 @@ class Cavebot:
                 logger.info("cavebot: creatures moved, walking another way")
                 self._retried_target = None
                 self._last_cmd = now
-        elif self._last_move > self._last_cmd or now - self._last_cmd >= _KEY_RETRY:
+        elif self._last_move > self._last_cmd or now - self._last_cmd >= self._key_retry:
             target = self._target if self._last_move <= self._last_cmd else None
             step = None if target is None else (target[0] - pos.x, target[1] - pos.y)
             if step is not None and target != self._retried_target and step in WALK_KEYS:
@@ -994,6 +997,7 @@ class Cavebot:
                 self._retried_target = None
                 self._step_toward(wp, pos, now)
             self._last_cmd = now
+            self._key_retry = random_delay(_KEY_RETRY)  # doc: docs/prs/random-delays.md#spread
 
     # doc: docs/prs/echo-raid.md#use
     def _echo_raid_waypoint(self, wp: Waypoint, pos: Position, now: float) -> Waypoint | None:
@@ -1045,7 +1049,8 @@ class Cavebot:
             return  # mid-scroll a click or a look lands a tile off
         last_click = self._echo_raid_click
         if last_click is not None:
-            if now - self._echo_raid_clicked_at < ECHO_RAID_CLICK_WAIT or not self._scan(pos, now):
+            waiting = now - self._echo_raid_clicked_at < self._echo_raid_click_wait
+            if waiting or not self._scan(pos, now):
                 return
             self._save_echo_raid_shot(goal, last_click)
             if goal[:2] not in self.echo_raids:
@@ -1069,6 +1074,8 @@ class Cavebot:
         self._echo_raid_clicked_pixel = self._tile_pixel(goal[:2], pos)
         self._clicker.request(self._echo_raid_clicked_pixel, side=side)
         self._echo_raid_click, self._echo_raid_clicked_at = side, now
+        # doc: docs/prs/random-delays.md#spread
+        self._echo_raid_click_wait = random_delay(ECHO_RAID_CLICK_WAIT)
 
     def _save_echo_raid_shot(self, goal: tuple[int, int, int], side: ClickSide) -> None:
         """Save the screen 1 s after a click on *goal*, the clicked pixel circled in yellow."""
@@ -1288,9 +1295,8 @@ class Cavebot:
             self._talk = (
                 trade_steps(self.route.buy, self._npc_tab_hotkey)
                 if wp.action == "trade"
-                else talk_steps(
-                    self._npc_tab_hotkey, ("hi", "deposit all", "yes"), ("hi", "deposit all", "yes")
-                )
+                # doc: docs/prs/random-delays.md#one-bank-round
+                else talk_steps(self._npc_tab_hotkey, ("hi", "deposit all", "yes"))
             )
             self._talk_since, self._talk_wait = now, float("-inf")
         if now - self._talk_since >= _TALK_ALARM and self.alarm != wp.action:
@@ -1316,7 +1322,7 @@ class Cavebot:
                 self._sends_done += 1
             else:
                 self._clicker.request(chat[1])
-                self._talk_wait = now + _CHAT_CLICK_WAIT
+                self._talk_wait = now + random_delay(_CHAT_CLICK_WAIT)
         elif isinstance(step, float):
             self._talk_wait = now + step
             self._sends_done += 1
@@ -1468,7 +1474,7 @@ class Cavebot:
             )
             self._blocked_wait = True
         # The blocked tiles expire soon: the next try walks into them again.
-        retry = self._clock() + _BLOCKED_RETRY
+        retry = self._clock() + random_delay(_BLOCKED_RETRY)
         self._blocked = {t: min(end, retry) for t, end in self._blocked.items()}
 
     def _advance(self) -> None:
@@ -1821,7 +1827,9 @@ class Cavebot:
             "cavebot: [stuck: creatures] attacking the creature in the way at %s,%s", *creature
         )
         self._clicker.request(self._tile_pixel(creature, pos), side=ClickSide.RIGHT)
-        self.creature_in_the_way_clicked_until = now + _CREATURE_IN_THE_WAY_CLICK_WAIT
+        self.creature_in_the_way_clicked_until = now + random_delay(
+            _CREATURE_IN_THE_WAY_CLICK_WAIT
+        )
 
     def _tile_pixel(self, tile: tuple[int, int], pos: Position) -> tuple[int, int]:
         """Frame pixel at the middle of world *tile* on the game grid."""
@@ -1889,7 +1897,7 @@ class Cavebot:
                 "cavebot: echo raid at %s,%s,%s gone next to the player, waiting %g s",
                 *gone_next_to_player[0], pos.z, ECHO_RAID_AFTER_WAIT,
             )  # fmt: skip
-            self._echo_raid_wait_until = now + ECHO_RAID_AFTER_WAIT
+            self._echo_raid_wait_until = now + random_delay(ECHO_RAID_AFTER_WAIT)
         self.echo_raids = echo_raids
         for tile in echo_raids & self._ignored_echo_raids.keys():
             self._ignored_echo_raids[tile] = now
