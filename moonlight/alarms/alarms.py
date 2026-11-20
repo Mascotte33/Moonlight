@@ -32,7 +32,7 @@ from dataclasses import dataclass
 
 from moonlight.core.state import WorldState
 
-__all__ = ["AlarmConfig", "AlarmDecision"]
+__all__ = ["AlarmConfig", "AlarmDecision", "FastHpDrop"]
 
 
 @dataclass(frozen=True)
@@ -91,7 +91,7 @@ class AlarmDecision:
         """
         self.config = (config if config is not None else AlarmConfig()).validate()
         self._clock = clock if clock is not None else time.monotonic
-        self._hp_history: deque[tuple[float, float]] = deque()
+        self._fast_hp_drop = FastHpDrop(self.config)
 
     def decide(self, state: WorldState) -> str | None:
         """The alarm message for this state, or None when HP is fine or unknown.
@@ -102,21 +102,36 @@ class AlarmDecision:
         if hp <= 0.0:
             return None
         cfg = self.config
-        reference = self._reference_hp()
-        self._hp_history.append((self._clock(), hp))
-        while len(self._hp_history) > cfg.hp_history_size:
-            self._hp_history.popleft()
-        if cfg.fast_hp_drop_alarm and reference is not None:
-            if reference - hp >= cfg.fast_hp_drop_threshold:
-                return (
-                    f"HP dropped {cfg.fast_hp_drop_threshold:g}+ points "
-                    f"in {cfg.fast_hp_drop_window:g} s"
-                )
+        dropped = self._fast_hp_drop.dropped(self._clock(), hp)
+        if cfg.fast_hp_drop_alarm and dropped:
+            points, seconds = cfg.fast_hp_drop_threshold, cfg.fast_hp_drop_window
+            return f"HP dropped {points:g}+ points in {seconds:g} s"
         if cfg.low_hp_alarm and hp < cfg.low_hp_threshold:
             return f"HP below {cfg.low_hp_threshold:g}%"
         return None
 
-    def _reference_hp(self) -> float | None:
+
+# doc: docs/prs/kiting.md#fast-hp-drop
+class FastHpDrop:
+    """HP fell ``fast_hp_drop_threshold`` points within ``fast_hp_drop_window`` s.
+
+    Shared by the alarm and kiting. It keeps the last ``hp_history_size``
+    readings.
+    """
+
+    def __init__(self, config: AlarmConfig) -> None:
+        self.config = config
+        self._hp_history: deque[tuple[float, float]] = deque()
+
+    def dropped(self, now: float, hp: float) -> bool:
+        """Add the reading *hp* (known, > 0) at *now*; True when it is a fast drop."""
+        reference = self._reference_hp(now)
+        self._hp_history.append((now, hp))
+        while len(self._hp_history) > self.config.hp_history_size:
+            self._hp_history.popleft()
+        return reference is not None and reference - hp >= self.config.fast_hp_drop_threshold
+
+    def _reference_hp(self, now: float) -> float | None:
         """The HP the current reading is compared against.
 
         The newest reading at or before ``now - fast_hp_drop_window``. While
@@ -126,7 +141,7 @@ class AlarmDecision:
         """
         if not self._hp_history:
             return None
-        cutoff = self._clock() - self.config.fast_hp_drop_window
+        cutoff = now - self.config.fast_hp_drop_window
         for t, hp in reversed(self._hp_history):
             if t <= cutoff:
                 return hp

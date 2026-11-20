@@ -66,6 +66,21 @@ def test_target_order_is_saved() -> None:
     assert BotConfig.from_dict(cfg.to_dict()).targeting == cfg.targeting
 
 
+# doc: docs/prs/kiting.md#kiting
+def test_kite_switch_and_limits_are_saved() -> None:
+    settings = SETTINGS._replace(
+        kite_when_in_danger=True,
+        kite_when_monsters_within_one_tile="4",
+        kite_when_hp_below_percent="30",
+    )
+    cfg = apply_targeting(BotConfig.default(), [DEFAULT_ROW], [], settings)
+    assert cfg.targeting is not None
+    assert cfg.targeting.kite_when_in_danger
+    assert cfg.targeting.kite_when_monsters_within_one_tile == 4
+    assert cfg.targeting.kite_when_hp_below_percent == 30
+    assert BotConfig.from_dict(cfg.to_dict()).targeting == cfg.targeting
+
+
 def test_a_turned_off_targeting_module_stays_off() -> None:
     cfg = write_option(BotConfig.default(), Option("on", "targeting.enabled", "switch"), False)
     cfg = apply_targeting(

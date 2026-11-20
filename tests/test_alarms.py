@@ -148,4 +148,4 @@ class TestDecide:
         for _ in range(10):
             clk.advance(0.1)
             alarms.decide(make_state())
-        assert len(alarms._hp_history) == 3
+        assert len(alarms._fast_hp_drop._hp_history) == 3

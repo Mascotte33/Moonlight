@@ -35,6 +35,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from moonlight.alarms.alarms import AlarmConfig, FastHpDrop
 from moonlight.cavebot.pathing import WALK_STEPS
 from moonlight.core.state import Monster, WorldState
 from moonlight.healing.healing import check_hotkey
@@ -89,6 +90,9 @@ _IGNORE_SECONDS = 30.0
 
 #: Seconds between two keep-distance steps (one walk step takes about this long).
 _STEP_AWAY_EVERY_SECONDS = 0.4
+
+#: Seconds without a fast HP drop (and HP back up) before kiting stops.
+_KITE_CALM_SECONDS = 3.0
 
 #: Seconds targeting stays off after a lone target's HP stood still.
 PAUSE_SECONDS = 5.0
@@ -173,6 +177,13 @@ class TargetingConfig:
     # doc: docs/prs/attack-types.md#keep-distance
     #: Tiles a "keep distance" row stays away from its target.
     keep_distance_tiles: int = 3
+    # doc: docs/prs/kiting.md#kiting
+    #: Keep distance from every monster while in danger (owner 2026-11-20).
+    kite_when_in_danger: bool = False
+    #: Monsters within 1 tile that count as danger (with low HP or a fast drop).
+    kite_when_monsters_within_one_tile: int = 3
+    #: HP percent below which, with those monsters, kiting starts.
+    kite_when_hp_below_percent: int = 20
 
     def validate(self) -> None:
         """Raise ValueError on a bad row or rule, a duplicate name or a bad delay."""
@@ -203,6 +214,12 @@ class TargetingConfig:
             raise ValueError("targeting.attack_range_tiles must be 1 or more")
         if isinstance(self.keep_distance_tiles, bool) or self.keep_distance_tiles < 1:
             raise ValueError("targeting.keep_distance_tiles must be 1 or more")
+        monsters = self.kite_when_monsters_within_one_tile
+        if isinstance(monsters, bool) or not 1 <= monsters <= 8:
+            raise ValueError("targeting.kite_when_monsters_within_one_tile must be 1-8")
+        hp = self.kite_when_hp_below_percent
+        if isinstance(hp, bool) or not 1 <= hp <= 99:
+            raise ValueError("targeting.kite_when_hp_below_percent must be 1-99")
 
 
 @dataclass(frozen=True)
@@ -345,8 +362,15 @@ class TargetingDecision:
         attack_top_row_first: bool = False,
         game_grid_region: Rect | None = None,
         walkable: Walkable | None = None,
+        alarms: AlarmConfig | None = None,
     ) -> None:
         self.config = config if config is not None else TargetingConfig()
+        # doc: docs/prs/kiting.md#kiting
+        #: Same fast-drop rule as the alarm (its threshold and window).
+        self._fast_hp_drop = FastHpDrop(alarms if alarms is not None else AlarmConfig())
+        self._last_fast_hp_drop_at = float("-inf")
+        #: True while in danger: every target is fought at keep distance.
+        self.kiting = False
         #: The walk map, for keep distance; None: no walls known.
         self._walkable = walkable
         # Stuck in a corridor: the top row is the nearest creature (the battle
@@ -423,12 +447,15 @@ class TargetingDecision:
         self._ignored_until = {k: end for k, end in self._ignored_until.items() if end > now}
         if state.selected_target is None:
             self.keep_distance_path = []
+        self._update_kiting(state, now)
         candidates = [
             m
             for m in state.monsters
             if not m.is_player and not self.row_for(m).ignore and not self.is_unreachable(m)
         ]
-        watched = self._watch_hp(state, now, candidates)
+        # Kiting walks away from a melee target on purpose: its HP standing
+        # still must not get it ignored or targeting paused (never stop attacking).
+        watched = None if self.kiting else self._watch_hp(state, now, candidates)
         if watched is not None:
             return watched
         candidates = [m for m in candidates if not self.is_unreachable(m)]  # just ignored
@@ -447,11 +474,45 @@ class TargetingDecision:
         reason = f"{best.name or '?'} priority {priority}, hp {best.hp_percent:.0f}"
         return TargetingAction("select", best.battle_list_row, reason=reason)
 
+    # doc: docs/prs/kiting.md#kiting
+    def _update_kiting(self, state: WorldState, now: float) -> None:
+        """Start kiting on danger, stop once HP is back up and has not dropped fast for 3 s.
+
+        Danger: ``kite_when_monsters_within_one_tile`` creatures within 1 tile,
+        with HP below ``kite_when_hp_below_percent`` or a fast HP drop.
+        """
+        cfg = self.config
+        hp = state.hp_percent
+        if hp <= 0.0:  # unknown: change nothing
+            return
+        if self._fast_hp_drop.dropped(now, hp):
+            self._last_fast_hp_drop_at = now
+        if not cfg.kite_when_in_danger:
+            self.kiting = False
+            return
+        low = hp < cfg.kite_when_hp_below_percent
+        if self.kiting:
+            if not low and now - self._last_fast_hp_drop_at >= _KITE_CALM_SECONDS:
+                self.kiting = False
+                logger.info("targeting: kiting over (hp %.0f%%)", hp)
+            return
+        near = sum(_distance(PLAYER_SLOT, slot) <= 1 for slot in state.creature_slots)
+        fast = self._last_fast_hp_drop_at == now
+        if near >= cfg.kite_when_monsters_within_one_tile and (low or fast):
+            self.kiting = True
+            why = "hp dropping fast" if fast else f"hp {hp:.0f}%"
+            logger.info("targeting: kiting (%d monsters within 1 tile, %s)", near, why)
+
     def _keep_distance(
         self, state: WorldState, now: float, selected: Monster
     ) -> TargetingAction | None:
-        """A ``step_away`` toward the safest spot while fighting a "keep distance" target."""
-        if self.row_for(selected).movement != "keep distance" or not state.creature_slots:
+        """A ``step_away`` toward the safest spot while fighting a "keep distance" target.
+
+        While kiting every target is fought this way. With no way to a safer
+        spot it stays and keeps attacking.
+        """
+        keep_away = self.kiting or self.row_for(selected).movement == "keep distance"
+        if not keep_away or not state.creature_slots:
             self.keep_distance_path = []
             return None
         if state.game_view_sliding or now - self._stepped_away_at < _STEP_AWAY_EVERY_SECONDS:
@@ -467,8 +528,9 @@ class TargetingDecision:
         self._stepped_away_at = now
         here = min(_distance(PLAYER_SLOT, c) for c in creatures)
         there = min(_distance(goal, c) for c in creatures)
+        why = "kiting" if self.kiting else "keep distance"
         reason = (
-            f"keep distance from {selected.name or '?'}: closest monster {here} tiles away,"
+            f"{why} from {selected.name or '?'}: closest monster {here} tiles away,"
             f" going {goal[0] - PLAYER_SLOT[0]},{goal[1] - PLAYER_SLOT[1]} to a tile {there} away"
         )
         return TargetingAction("step_away", selected.battle_list_row, step, reason)
