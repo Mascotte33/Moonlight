@@ -116,6 +116,9 @@ python tools/check_setup.py
 
 # 4. Launch the desktop GUI (or "Start Moonlight GUI.bat" / ./start-moonlight-gui.sh)
 python -m moonlight
+
+# Later: which route waypoints the bot gets stuck on most (reads logs/bot.log*)
+python tools/stuck_spots.py
 ```
 
 Calibrate the screen regions in the GUI's Calibration tab before the first run.
