@@ -34,6 +34,7 @@ functions (never at module level), so this module -- and the whole test
 suite -- imports cleanly without pyserial or without an Arduino attached.
 """
 
+import errno
 import logging
 import threading
 from abc import ABC, abstractmethod
@@ -606,6 +607,8 @@ class ArduinoInput(InputBackend):
         self._device_lost = False
         self._consecutive_missed = 0
         self._closed = False
+        #: A found port that was refused for lack of permission.
+        self._open_error: str | None = None
         self._stop_event = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
 
@@ -614,6 +617,11 @@ class ArduinoInput(InputBackend):
         if not self._open_and_verify():
             where = f"on port {port!r} or " if port is not None else ""
             where += f"with VID 0x{vid:04x}"
+            if self._open_error is not None:
+                raise NoArduinoFoundError(
+                    f"Arduino found but could not be opened: {self._open_error} "
+                    "(on Linux: sudo usermod -aG dialout $USER, then log out and in)"
+                )
             raise NoArduinoFoundError(
                 f"no Arduino found {where} "
                 "(is it plugged in and flashed? see firmware/README.md)"
@@ -890,6 +898,8 @@ class ArduinoInput(InputBackend):
                 raise  # pyserial missing: fail loudly, don't retry forever
             except Exception as exc:
                 logger.debug("cannot open %s: %s", candidate, exc)
+                if getattr(exc, "errno", None) == errno.EACCES:
+                    self._open_error = f"{candidate}: {exc}"
                 continue
             if self._verify_serial(ser):
                 with self._lock:

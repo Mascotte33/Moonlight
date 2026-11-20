@@ -15,6 +15,7 @@ Covers:
 * module importability with serial blocked entirely
 """
 
+import errno
 import os
 import subprocess
 import sys
@@ -304,6 +305,18 @@ class TestConstruction:
     ) -> None:
         with pytest.raises(NoArduinoFoundError, match="'COM99' or with VID"):
             ArduinoInput(port="COM99")
+
+    def test_port_that_cannot_be_opened_says_why(
+        self, fake_serial: types.SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake_serial.add_port(COM)
+
+        def denied(*_args: Any, **_kwargs: Any) -> None:
+            raise OSError(errno.EACCES, "Permission denied")
+
+        monkeypatch.setattr(sys.modules["serial"], "Serial", denied)
+        with pytest.raises(NoArduinoFoundError, match="could not be opened.*Permission denied"):
+            ArduinoInput()
 
     def test_vid_mismatch_not_detected(self, fake_serial: types.SimpleNamespace) -> None:
         fake_serial.add_port(COM, vid=0x1234)
