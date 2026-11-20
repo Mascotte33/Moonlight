@@ -13,6 +13,7 @@ tick back to the loop::
         yield bot.say("hi")
         yield bot.goto("town")      # jump the route to label town
         yield bot.only_monsters_within_range(None)  # flip Targeting's range box
+        bot.run_again_in(1800)      # ticked: next start 30 min after this run ends
 
 ``bot.press`` / ``say`` / ``click`` / ``goto`` return the wire commands to
 send; the runner sends one per tick, so the rate limit never drops them. A
@@ -222,6 +223,13 @@ class Bot:
         """Turn targeting on or off until a script turns it back (or the bot restarts)."""
         return [functools.partial(self._runner.set_targeting, on)]
 
+    # doc: docs/prs/break-scripts.md#run-again-in
+    def run_again_in(self, seconds: float) -> None:
+        """A ticked script: start again *seconds* after this run ends, not after its pause."""
+        if seconds <= 0:
+            raise ValueError("run_again_in takes seconds > 0")
+        self._runner.run_again_in_seconds = seconds
+
     def count(self, potion: str) -> int | None:
         """The action-bar total of ``"health"`` or ``"mana"`` potions; None when unknown."""
         if potion not in ("health", "mana"):
@@ -325,6 +333,8 @@ class ScriptRunner:
         self._commands: Iterator[Command] = iter(())
         self._pending: Command | None = None
         self._wait_until = 0.0
+        #: Set by ``bot.run_again_in``: the running ticked script's next pause.
+        self.run_again_in_seconds: float | None = None
         self.snap = WorldState()
         self.input: InputBackend
         self.cavebot: Cavebot | None = None
@@ -356,6 +366,7 @@ class ScriptRunner:
         log.info("script %s started", name)
         self.running = name
         self._commands, self._pending, self._wait_until = iter(()), None, 0.0
+        self.run_again_in_seconds = None
         return True
 
     def set_only_monsters_within_range(self, on: bool | None) -> None:
@@ -383,7 +394,9 @@ class ScriptRunner:
         if self.running is not None:
             log.info("script %s ended", self.running)
             pause = dict(self.timers).get(self.running)
-            if pause is not None:
+            if pause is not None and self.run_again_in_seconds is not None:
+                self._next_run[self.running] = self._clock() + self.run_again_in_seconds
+            elif pause is not None:
                 # doc: docs/prs/random-delays.md#spread
                 self._next_run[self.running] = self._clock() + random_delay(pause)
         self.running = self._script = None
