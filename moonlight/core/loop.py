@@ -458,7 +458,8 @@ class GameLoop:
                     self._on_tick_error()
                 if self._stop_event.is_set():
                     break
-                next_tick += period
+                # doc: docs/prs/human-timing.md#tick-spread
+                next_tick += random_delay(period)
                 delay = next_tick - self._clock()
                 if delay > 0:
                     self._sleep_fn(delay)
