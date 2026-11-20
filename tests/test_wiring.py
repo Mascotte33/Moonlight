@@ -480,3 +480,20 @@ def test_perceive_writes_the_creature_slots() -> None:
     wiring.make_perceive(state, make_profile(), lambda: frame, creature_grid=(0, 0, 150, 110))()
     assert state.screen_ok
     assert state.creature_slots == ()  # no health bar in a black frame
+
+
+def test_sync_client_map_copies_new_tiles_once(tmp_path: Path) -> None:
+    client, maps = tmp_path / "minimap", tmp_path / "tibia"
+    client.mkdir()
+    (client / "Minimap_Color_31744_30976_7.png").write_bytes(b"color")
+    (client / "Minimap_WaypointCost_31744_30976_7.png").write_bytes(b"cost")
+    (client / "minimapmarkers.bin").write_bytes(b"x")
+
+    assert wiring.sync_client_map(client, maps) == 2
+    assert (maps / "31744_30976_7.png").read_bytes() == b"color"
+    assert (maps / "cost" / "31744_30976_7.png").read_bytes() == b"cost"
+    assert wiring.sync_client_map(client, maps) == 0
+
+
+def test_sync_client_map_without_a_client_copies_nothing(tmp_path: Path) -> None:
+    assert wiring.sync_client_map(tmp_path / "missing", tmp_path / "tibia") == 0

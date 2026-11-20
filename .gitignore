@@ -27,8 +27,6 @@ tools/arduino-cli/
 *.hex
 
 
-# Reference images for the calibration finders (cropped locally, C2.F1.K1)
-data/templates/anchors/
 data/templates/icons/
 screenshots/
 data/maps/

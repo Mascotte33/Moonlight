@@ -312,13 +312,10 @@ def test_window_title_roundtrip() -> None:
     assert BotConfig.from_dict(cfg.to_dict()).window_title == "Tibia - Gunzodus"
 
 
-def test_game_map_loads_and_rejects_others() -> None:
-    # doc: docs/prs/position-tracking.md#map-choice
-    assert BotConfig.default().game_map == "igla"
-    cfg = replace(BotConfig.default(), game_map="tibia")
-    assert BotConfig.from_dict(cfg.to_dict()).game_map == "tibia"
-    with pytest.raises(ConfigError, match="game_map"):
-        replace(cfg, game_map="gunzodus").validate()
+def test_old_game_map_key_is_ignored() -> None:
+    data = BotConfig.default().to_dict()
+    assert "game_map" not in data
+    assert BotConfig.from_dict({**data, "game_map": "igla"}) == BotConfig.default()
 
 
 def test_extras_have_no_switch() -> None:

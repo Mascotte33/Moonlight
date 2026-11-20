@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import shutil
 import time
 from collections.abc import Callable
 from dataclasses import fields, replace
@@ -20,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from moonlight.calibration.calibrate import OPTIONAL_REGIONS, CalibrationProfile
+from moonlight.core.client_hotkeys import OFFICIAL_CLIENT_FILE
 from moonlight.core.config import MODULES, BotConfig
 from moonlight.core.loop import DecisionModules, GameLoop
 from moonlight.core.safety import RateLimitedInput, beep_alert
@@ -207,8 +209,26 @@ def check_module_regions(
 # -- integration seam ---------------------------------------------------------
 
 
-#: One folder per map (``MAP_CHOICES``) of the client's minimap tiles, ``{x}_{y}_{z}.png``.
-MAPS_DIR = Path("data/maps")
+#: The real Tibia map: the client's minimap tiles, ``{x}_{y}_{z}.png``, and ``cost/``.
+MAP_DIR = Path("data/maps/tibia")
+#: Where the official client saves the map as you explore.
+CLIENT_MINIMAP_DIR = OFFICIAL_CLIENT_FILE.parents[1] / "minimap"
+_CLIENT_TILES = (("Minimap_Color_", ""), ("Minimap_WaypointCost_", "cost"))
+
+
+def sync_client_map(src: Path = CLIENT_MINIMAP_DIR, dst: Path = MAP_DIR) -> int:
+    """Copy the client's new or changed map tiles into *dst*; return how many."""
+    copied = 0
+    for prefix, sub in _CLIENT_TILES:
+        out = dst / sub
+        for tile in src.glob(f"{prefix}*.png"):
+            target = out / tile.name.removeprefix(prefix)
+            if target.exists() and target.stat().st_mtime >= tile.stat().st_mtime:
+                continue
+            out.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(tile, target)
+            copied += 1
+    return copied
 
 
 @functools.lru_cache(maxsize=2)
@@ -228,7 +248,7 @@ def make_perceive(
     frame_provider: FrameProvider,
     focus_check: Callable[[], bool] | None = None,
     start: Position | None = None,
-    map_dir: Path = MAPS_DIR / "igla",
+    map_dir: Path = MAP_DIR,
     conditions_dir: Path = CONDITION_TEMPLATES_DIR,
     seen_monsters: SeenMonsters | None = None,
     creature_grid: Rect | None = None,
@@ -503,7 +523,7 @@ def build_loop(
             focus_check,
             # Search near where the last loop or the stopped-bot reader was.
             start=state.position,
-            map_dir=MAPS_DIR / config.game_map,
+            map_dir=MAP_DIR,
             seen_monsters=seen_monsters,
             creature_grid=(
                 profile.get_region("game_grid").to_tuple
@@ -618,7 +638,7 @@ def build_modules(
             m.cavebot, m.looting = prev.cavebot, prev.looting
     if config.healing is not None and m.healing is None:
         m.healing = HealingDecision(config.healing, clock=clock)
-    walkable = _walk_map_walkable(MAPS_DIR / config.game_map)
+    walkable = _walk_map_walkable(MAP_DIR)
     if config.targeting is not None and m.targeting is None:
         m.targeting = TargetingDecision(
             config.targeting,
@@ -738,7 +758,7 @@ def build_modules(
                 skip_waypoints_passed_in_fight=cb.skip_waypoints_passed_in_fight,
                 trigger_echo_raids=cb.echo_raid == "use",
                 walk_keys=config.walk_keys,
-                cost_map=CostMap(MAPS_DIR / config.game_map / "cost") if config.walk_keys else None,
+                cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
                 frames=frames,
                 clock=clock,
                 scripts=m.scripts,

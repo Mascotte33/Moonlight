@@ -107,6 +107,18 @@ Python 3.12+, an Arduino Leonardo for real input (optional — without one it
 runs against a fake input backend), and
 [Tesseract](https://github.com/tesseract-ocr/tesseract) for OCR.
 
+On Ubuntu/Debian, one command sets everything up (system packages, Arduino
+access, the Python environment and the map from your Tibia client):
+
+```bash
+sudo apt-get install -y git && git clone https://github.com/Mascotte33/Moonlight.git && Moonlight/install.sh
+```
+
+Then log out and back in (for Arduino access), start Tibia, run
+`Moonlight/start-moonlight-gui.sh` and confirm the areas once in the
+Calibration tab. The bot copies newly explored map from the client on every
+start. Manual steps, and Windows:
+
 ```bash
 # 1. Install (from the repo root)
 pip install -e .

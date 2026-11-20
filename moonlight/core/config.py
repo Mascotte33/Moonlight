@@ -17,7 +17,6 @@ JSON format (``moonlight_config.json``)::
       "simulation": false,                 # true = FakeInput, no Arduino (F-13)
       "log_commands": false,               # true = every input command goes to the GUI log
       "window_title": "Tibia",             # game window to capture (exact or prefix)
-      "game_map": "igla",                  # map in data/maps/: igla or tibia (the global map)
       "profiles_dir": null,                # null = moonlight/profiles
       "templates_dir": "data/templates",   # cursor/*.png, loot/*.png
       "routes_dir": "data/waypoints",
@@ -82,7 +81,6 @@ __all__ = [
     "ALWAYS_ON",
     "DEFAULT_CONFIG_FILE",
     "ECHO_RAID_CHOICES",
-    "MAP_CHOICES",
     "MODULES",
     "BotConfig",
     "CavebotConfig",
@@ -116,7 +114,6 @@ _TOP_KEYS = {
     "log_commands",
     "walk_keys",
     "window_title",
-    "game_map",
     "profiles_dir",
     "templates_dir",
     "routes_dir",
@@ -132,9 +129,6 @@ _TOP_KEYS = {
 
 #: What the cavebot does with an echo raid trigger (docs/prs/echo-raid.md#setting).
 ECHO_RAID_CHOICES = ("avoid", "use")
-#: Map folders in ``data/maps/``: the Igla server's own map or the global Tibia map most OTs use.
-# doc: docs/prs/position-tracking.md#map-choice
-MAP_CHOICES = ("igla", "tibia")
 
 
 class ConfigError(ValueError):
@@ -173,8 +167,6 @@ class BotConfig:
     walk_keys: bool = False
     #: Same as ``perception.capture.TIBIA_WINDOW_TITLE``; not imported, that pulls in mss.
     window_title: str = "Tibia"
-    #: Which ``data/maps/`` folder the position match and the walking use (``MAP_CHOICES``).
-    game_map: str = "igla"
     profiles_dir: Path | None = None
     templates_dir: Path = Path("data/templates")
     routes_dir: Path = Path("data/waypoints")
@@ -241,6 +233,7 @@ class BotConfig:
         """
         data = dict(_require_dict(raw, "config"))
         data.pop("minimap_start", None)  # old files: the map gives the position now
+        data.pop("game_map", None)  # old files: only the real Tibia map is used now
         _reject_unknown(data, _TOP_KEYS, "config")
         hints = get_type_hints(cls)
         kwargs: dict[str, Any] = {}
@@ -254,7 +247,6 @@ class BotConfig:
             "log_commands",
             "walk_keys",
             "window_title",
-            "game_map",
             "profiles_dir",
             "templates_dir",
             "routes_dir",
@@ -369,8 +361,6 @@ class BotConfig:
         Raises:
             ConfigError: If a value or module combination is invalid.
         """
-        if self.game_map not in MAP_CHOICES:
-            raise ConfigError(f"game_map must be one of {MAP_CHOICES}")
         for name in self.off:
             if name not in MODULES or getattr(self, name) is not None:
                 raise ConfigError(f"off: {name!r} is not a module that is off")

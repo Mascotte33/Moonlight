@@ -3,4 +3,4 @@
 # the terminal; the log is on the Dashboard and Diagnostics tabs and in
 # logs/bot.log.
 cd "$(dirname "$0")" || exit 1
-nohup python3 -m moonlight "$@" >/dev/null 2>&1 &
+nohup .venv/bin/python -m moonlight "$@" >/dev/null 2>&1 &

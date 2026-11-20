@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import time
 
-from moonlight.core.wiring import MAPS_DIR, _world_map
+from moonlight.core.wiring import MAP_DIR, _world_map
 from moonlight.gui.loop_factory import load_profile, load_real_config
 from moonlight.perception.capture import ScreenCapture
 from moonlight.perception.floor import FloorReader
@@ -28,7 +28,7 @@ def main() -> None:
     config = load_real_config()
     profile = load_profile(config.profile, config.profiles_dir)
     px_per_sqm = max(1, round(profile.ui_scale))
-    world_map = _world_map(MAPS_DIR / config.game_map, (px_per_sqm, 2 * px_per_sqm))
+    world_map = _world_map(MAP_DIR,(px_per_sqm, 2 * px_per_sqm))
     minimap = MinimapReader(
         profile, floor_reader=FloorReader(profile), map_matcher=world_map, px_per_sqm=px_per_sqm
     )

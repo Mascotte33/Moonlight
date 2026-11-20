@@ -29,6 +29,7 @@ from moonlight import x11
 from moonlight.calibration.tab import CalibrationTab
 from moonlight.cavebot.tab import CavebotTab
 from moonlight.core.state import WorldState
+from moonlight.core.wiring import sync_client_map
 from moonlight.gui import theme
 from moonlight.gui.dashboard_tab import DashboardTab
 from moonlight.gui.diagnostics_tab import DiagnosticsTab
@@ -588,6 +589,8 @@ def main(argv: list[str] | None = None) -> int:
     # interval a busy GUI (a row redraw) made a numpy/cv2 tick 6.6x slower;
     # at 0.5 ms 1.2x (measured).
     sys.setswitchinterval(0.0005)
+    copied = sync_client_map()
+    logging.getLogger("moonlight.gui.app").info(f"map: {copied} new tiles from the client")
     try:
         app = GuiApp(start_bot=args.start, log=feed)
     except Exception as exc:
