@@ -92,6 +92,9 @@ class TargetingSettings(NamedTuple):
     only_attack_within_range: bool = False
     attack_range_tiles: str = "3"
     keep_distance_tiles: str = "3"
+    kite_when_in_danger: bool = False
+    kite_when_monsters_within_one_tile: str = "3"
+    kite_when_hp_below_percent: str = "20"
 
 
 def _number(text: str, cast: Callable[[str], float], where: str) -> float:
@@ -164,6 +167,11 @@ def apply_targeting(
         only_attack_within_range=settings.only_attack_within_range,
         attack_range_tiles=_number(settings.attack_range_tiles, int, "attack range tiles"),
         keep_distance_tiles=_number(settings.keep_distance_tiles, int, "keep distance tiles"),
+        kite_when_in_danger=settings.kite_when_in_danger,
+        kite_when_monsters_within_one_tile=_number(
+            settings.kite_when_monsters_within_one_tile, int, "kite monsters"
+        ),
+        kite_when_hp_below_percent=_number(settings.kite_when_hp_below_percent, int, "kite HP %"),
     )
     return BotConfig.from_dict(data)
 
@@ -402,6 +410,19 @@ class TargetingTab(Tab):
         Label(distance_line, text="tiles from every monster", text_color=theme.TEXT_DIM).pack(
             side="left", padx=(theme.UNIT, 0)
         )
+        # doc: docs/prs/kiting.md#kiting
+        kite_line = Row(settings_box)
+        kite_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
+        self._kite_when_in_danger = ctk.CTkCheckBox(kite_line, text="Kite when", command=self._save)
+        self._kite_when_in_danger.pack(side="left")
+        self._kite_monsters_entry = row_entry(kite_line, "", 32, self._save)
+        Label(
+            kite_line, text="monsters are next to me and HP is below", text_color=theme.TEXT_DIM
+        ).pack(side="left", padx=(theme.UNIT, 0))
+        self._kite_hp_entry = row_entry(kite_line, "", 32, self._save)
+        Label(kite_line, text="% or drops fast", text_color=theme.TEXT_DIM).pack(
+            side="left", padx=(theme.UNIT, 0)
+        )
 
         monsters_box, self._monsters_frame = _card(targeting_page, "Targeting")
         _header(
@@ -485,6 +506,8 @@ class TargetingTab(Tab):
             (self._unreachable_entry, f"{targeting.unreachable_after_seconds:g}"),
             (self._attack_range_tiles_entry, str(targeting.attack_range_tiles)),
             (self._keep_distance_tiles_entry, str(targeting.keep_distance_tiles)),
+            (self._kite_monsters_entry, str(targeting.kite_when_monsters_within_one_tile)),
+            (self._kite_hp_entry, str(targeting.kite_when_hp_below_percent)),
         ):
             entry.delete(0, "end")
             entry.insert(0, value)
@@ -494,6 +517,10 @@ class TargetingTab(Tab):
             self._only_attack_within_range.select()
         else:
             self._only_attack_within_range.deselect()
+        if targeting.kite_when_in_danger:
+            self._kite_when_in_danger.select()
+        else:
+            self._kite_when_in_danger.deselect()
 
     def _next_grid_row(self) -> int:
         self._last_grid_row += 1
@@ -630,6 +657,9 @@ class TargetingTab(Tab):
             bool(self._only_attack_within_range.get()),
             self._attack_range_tiles_entry.get(),
             self._keep_distance_tiles_entry.get(),
+            bool(self._kite_when_in_danger.get()),
+            self._kite_monsters_entry.get(),
+            self._kite_hp_entry.get(),
         )
 
     def _save(self) -> None:

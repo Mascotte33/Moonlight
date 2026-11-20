@@ -607,8 +607,8 @@ def build_modules(
     if prev is not None:
         for name, keys in (
             ("healing", ("healing",)),
-            ("targeting", ("targeting",)),
-            ("stuck_targeting", ("targeting", "off", "walk_keys", "cavebot")),
+            ("targeting", ("targeting", "alarms")),
+            ("stuck_targeting", ("targeting", "off", "walk_keys", "cavebot", "alarms")),
             ("attack_hotkeys", ("targeting", "off")),
             ("alarms", ("alarms",)),
         ):
@@ -626,6 +626,7 @@ def build_modules(
             profile.ui_scale,
             game_grid_region=profile.get_region("game_grid").to_tuple,
             walkable=walkable,
+            alarms=config.alarms,
         )
     # doc: docs/prs/targeting.md#stuck-targeting
     # The owner's rows (kept while targeting is off) with every row attacking.
@@ -642,6 +643,7 @@ def build_modules(
             attack_top_row_first=True,
             game_grid_region=profile.get_region("game_grid").to_tuple,
             walkable=walkable,
+            alarms=config.alarms,
         )
     if (config.targeting is not None or m.stuck_targeting) and m.attack_hotkeys is None:
         m.attack_hotkeys = AttackHotkeys(rows, walkable)
