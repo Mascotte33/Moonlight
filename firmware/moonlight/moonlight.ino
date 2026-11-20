@@ -83,9 +83,10 @@
 #define HID_F1        0xC2   // HID_F1 .. HID_F12 (0xC2..0xCD)
 #define HID_F13       0xF0   // HID_F13 .. HID_F24 (0xF0..0xFB)
 
-// Taps and clicks hold as long as a real finger press (~60 ms), fixed.
-#define KEY_TAP_HOLD_MS       60UL     // K tap hold
-#define MOUSE_CLICK_HOLD_MS   60UL     // C click hold
+// Taps and clicks hold as long as a real finger press: a new random length
+// in this range (ms) for each one, so no two presses hold the same.
+#define PRESS_HOLD_MIN_MS     45L
+#define PRESS_HOLD_MAX_MS     95L
 
 #define CMD_BLINK_DURATION_MS 120UL    // LED pulse per valid command
 #define ERR_BLINK_DURATION_MS 600UL    // LED fast-blink window on ERR
@@ -291,7 +292,7 @@ static void applyCombo(char* const tokens[], int start, int end, bool press) {
 }
 
 // Tap combo: press every key (alt+q, shift+f1: all down together), hold
-// KEY_TAP_HOLD_MS, release in reverse. Keys that were already held (via D)
+// a random PRESS_HOLD_*_MS, release in reverse. Keys that were already held (via D)
 // are NOT released by the tap - only keys pressed by this command are.
 static void tapCombo(char* const tokens[], int start, int end) {
   uint8_t pressed[MAX_HELD_KEYS];
@@ -316,7 +317,7 @@ static void tapCombo(char* const tokens[], int start, int end) {
       }
     }
   }
-  delay(KEY_TAP_HOLD_MS);
+  delay(random(PRESS_HOLD_MIN_MS, PRESS_HOLD_MAX_MS + 1));
   while (count > 0) {
     uint8_t k = pressed[--count];
     Keyboard.release(k);
@@ -327,7 +328,7 @@ static void tapCombo(char* const tokens[], int start, int end) {
 static void mouseClick(char side) {
   uint8_t button = (side == 'L') ? MOUSE_LEFT : MOUSE_RIGHT;
   Mouse.press(button);
-  delay(MOUSE_CLICK_HOLD_MS);
+  delay(random(PRESS_HOLD_MIN_MS, PRESS_HOLD_MAX_MS + 1));
   Mouse.release(button);
 }
 
@@ -558,6 +559,9 @@ void setup() {
   lastCommandMs = millis();
 
   delay(300); // give the USB stack time to enumerate
+  // A different hold sequence each boot: an unconnected pin reads noise,
+  // and the boot-time micros() varies with USB enumeration.
+  randomSeed(analogRead(A5) ^ micros());
 }
 
 void loop() {

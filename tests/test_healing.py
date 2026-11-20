@@ -91,6 +91,17 @@ def test_spell_and_potion_in_one_tick() -> None:
     assert backend.sent_lines == ["K F2", "K F3"]
 
 
+# doc: docs/prs/human-timing.md#heal-reaction
+def test_heal_waits_a_reaction_unless_hp_is_critical(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("moonlight.core.random_delay.HEAL_REACTION_SECONDS", (0.1, 0.1))
+    clock = FakeClock()
+    healer = HealingDecision(clock=clock)
+    assert keys(healer, state(hp=80)) == []  # F1 just became due
+    clock.now = 0.1
+    assert keys(healer, state(hp=80)) == ["F1"]
+    assert keys(HealingDecision(clock=clock), state(hp=40)) == ["F2", "F3"]  # 40%: at once
+
+
 def test_each_slot_has_its_own_cooldown() -> None:
     clock = FakeClock()
     healer = HealingDecision(HealingConfig(potion_cooldown_ms=500), clock=clock)

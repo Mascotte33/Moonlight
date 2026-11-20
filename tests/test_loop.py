@@ -670,7 +670,7 @@ class TestScreenClick:
         with caplog.at_level(logging.INFO):
             ticks(gl, clock, 3 + 18 + 4 + 40)  # no outline after the click (a player)
         assert inp.sent_lines == ["A 85 55", "C R"]
-        assert "nothing selected at 1,0,0, skipping that tile 30 s" in caplog.text
+        assert "nothing selected at 1,0,0, skipping that tile 10 s" in caplog.text
 
     def test_a_selected_ignored_monster_is_dropped_with_esc(self) -> None:
         ws = self.near_state()

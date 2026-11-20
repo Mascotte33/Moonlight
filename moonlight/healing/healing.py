@@ -20,7 +20,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from moonlight.core.random_delay import random_delay
+from moonlight.core.random_delay import heal_reaction, random_delay
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
 
@@ -165,25 +165,38 @@ class HealingDecision:
         self._clock = clock if clock is not None else time.monotonic
         #: Slot -> when its cooldown (randomly longer, picked at each press) ends.
         self._ready_at: dict[str, float] = {}
+        # doc: docs/prs/human-timing.md#heal-reaction
+        #: Slot -> when its due heal may be pressed (a short random reaction).
+        self._react_at: dict[str, float] = {}
+        hp_triggers = [r.hp_below_percent for r in self.config.rules if r.hp_below_percent > 0]
+        #: At or below this HP (the lowest HP rule) a heal is pressed with no reaction wait.
+        self._critical_hp = min(hp_triggers, default=0.0)
 
     def decide(self, state: WorldState) -> list[HealingAction]:
         """The keys to press now: 0 to 2 actions, the spell slot first.
 
         The first due spell rule, or else the first due cure, takes the spell
         slot; the first due potion rule takes the potion slot. A slot on
-        cooldown sends nothing, and no later rule takes its place.
+        cooldown sends nothing, and no later rule takes its place. A due heal
+        waits a random ``HEAL_REACTION_SECONDS`` first, unless HP is critical.
         """
         hp, mp = state.hp_percent, state.mp_percent
         due = {slot: self._first_due_rule(slot, hp, mp) for slot in _SLOTS}
         if due["spell"] is None:
             due["spell"] = self._first_due_cure(state)
+        critical = 0.0 < hp <= self._critical_hp
+        now = self._clock()
         actions = []
         for slot in _SLOTS:
             action = due[slot]
             if action is None:
+                self._react_at.pop(slot, None)
                 continue
             if self.on_cooldown(slot):
                 logger.debug("%s slot on cooldown: %s skipped", slot, action.hotkey)
+                continue
+            react_at = self._react_at.setdefault(slot, now + heal_reaction())
+            if not critical and now < react_at:
                 continue
             actions.append(action)
         return actions
@@ -220,6 +233,7 @@ class HealingDecision:
     def send(self, action: HealingAction, backend: InputBackend) -> None:
         """Press *action*'s hotkey and start its slot's cooldown."""
         backend.press_combo(action.hotkey)
+        self._react_at.pop(action.slot, None)
         cooldown_ms = (
             self.config.spell_cooldown_ms
             if action.slot == "spell"
