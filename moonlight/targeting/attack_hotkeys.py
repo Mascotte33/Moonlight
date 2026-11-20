@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from moonlight.core.random_delay import random_delay
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
 from moonlight.perception.creatures import PLAYER_SLOT
@@ -85,7 +86,8 @@ class AttackHotkeys:
         self.config = config
         #: The walk map: "on a tile" attacks never aim at a wall. None: no walls known.
         self._walkable = walkable
-        self._last_pressed_at: float | None = None
+        #: When the shared cooldown (randomly longer, picked at each press) ends.
+        self._ready_at = float("-inf")
 
     def _area_press(self, rule: AreaRule, state: WorldState) -> AttackPress | None:
         """*rule*'s press when its best placement hits enough creatures, else None."""
@@ -117,10 +119,7 @@ class AttackHotkeys:
 
     def decide(self, state: WorldState, row: MonsterRow, now: float) -> AttackPress | None:
         """The attack to press now for target *row*, or ``None``."""
-        if (
-            self._last_pressed_at is not None
-            and (now - self._last_pressed_at) * 1000 < self.config.attack_cooldown_ms
-        ):
+        if now < self._ready_at:
             return None
         mana = state.mp_points
         for rule in self.config.area_rules:
@@ -139,10 +138,12 @@ class AttackHotkeys:
         The cooldown carried over from a quick kill made the next monster wait
         up to 2 s for its first spell (bot.log 2026-10-31: 1.1 s twice in 5 s).
         """
-        self._last_pressed_at = None
+        self._ready_at = float("-inf")
 
     def send(self, hotkey: str, backend: InputBackend, now: float) -> None:
         """Press *hotkey* and start the shared cooldown."""
         backend.press_combo(hotkey)
-        self._last_pressed_at = now
+        # doc: docs/prs/random-delays.md#spread
+        cooldown_ms = random_delay(self.config.attack_cooldown_ms, only_longer=True)
+        self._ready_at = now + cooldown_ms / 1000
         logger.info("attack hotkey: %s", hotkey)

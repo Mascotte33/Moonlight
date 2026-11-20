@@ -20,6 +20,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from moonlight.core.random_delay import random_delay
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import InputBackend
 
@@ -162,7 +163,8 @@ class HealingDecision:
         """
         self.config = (config if config is not None else HealingConfig()).validate()
         self._clock = clock if clock is not None else time.monotonic
-        self._last_sent: dict[str, float] = {}
+        #: Slot -> when its cooldown (randomly longer, picked at each press) ends.
+        self._ready_at: dict[str, float] = {}
 
     def decide(self, state: WorldState) -> list[HealingAction]:
         """The keys to press now: 0 to 2 actions, the spell slot first.
@@ -213,16 +215,18 @@ class HealingDecision:
 
     def on_cooldown(self, slot: str) -> bool:
         """True while *slot* was sent less than its cooldown ago."""
-        last = self._last_sent.get(slot)
-        if last is None:
-            return False
-        cooldown_ms = (
-            self.config.spell_cooldown_ms if slot == "spell" else self.config.potion_cooldown_ms
-        )
-        return (self._clock() - last) * 1000.0 < cooldown_ms
+        return self._clock() < self._ready_at.get(slot, float("-inf"))
 
     def send(self, action: HealingAction, backend: InputBackend) -> None:
         """Press *action*'s hotkey and start its slot's cooldown."""
         backend.press_combo(action.hotkey)
-        self._last_sent[action.slot] = self._clock()
+        cooldown_ms = (
+            self.config.spell_cooldown_ms
+            if action.slot == "spell"
+            else self.config.potion_cooldown_ms
+        )
+        # doc: docs/prs/random-delays.md#spread
+        self._ready_at[action.slot] = (
+            self._clock() + random_delay(cooldown_ms, only_longer=True) / 1000.0
+        )
         logger.info("heal sent: %s %s -- %s", action.slot, action.hotkey, action.reason)
