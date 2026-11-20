@@ -27,7 +27,6 @@ tools/arduino-cli/
 *.hex
 
 
-data/templates/icons/
 screenshots/
 data/maps/
 
