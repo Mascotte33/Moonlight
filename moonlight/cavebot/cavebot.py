@@ -601,6 +601,8 @@ class Cavebot:
         if walk_keys and input_backend is None:
             raise ValueError("walk_keys needs an input_backend for the WSAD keys")
         self.route = route
+        # doc: docs/prs/stuck-spots.md#stuck-spots
+        logger.info("cavebot: route '%s', %d waypoints", route.name, len(route.waypoints))
         self._clicker = clicker
         self._state = state
         self._game_region = game_region
