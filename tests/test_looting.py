@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 import moonlight.looting.looting as looting_module
 from moonlight.core.state import Position, WorldState
@@ -252,3 +253,25 @@ def test_a_press_the_rate_limit_drops_is_tried_again() -> None:
     looting.press_ring()
     clock.t += 0.125  # the next tick
     assert looting.ring_due(NEAR, WS)  # still due: pressed again, not "looted"
+
+
+@pytest.mark.parametrize(("slot", "pressed"), [((8, 5), True), ((10, 5), False)])
+def test_a_kill_next_to_the_player_presses_loot_at_once(
+    slot: tuple[int, int], pressed: bool
+) -> None:
+    from moonlight.core.state import Monster
+
+    clock, inp = Clock(), FakeInput()
+    looting = make_ring(clock, inp=inp)
+    hide_ring(looting)  # no ring shows yet
+    fighting = WorldState(
+        client_focused=True, screen_ok=True, hp_percent=100.0, creature_slots=(slot,),
+        selected_target=Monster(name="swamp troll", hp_percent=10.0),
+    )
+    looting.loot_first(fighting)
+    looting.loot_first(WS)  # killed
+    due = looting.ring_due(NEAR, WS)
+    assert due is pressed
+    if due:
+        looting.press_ring()
+        assert inp.sent_lines == ["K alt+q"]

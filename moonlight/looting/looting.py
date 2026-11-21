@@ -109,6 +109,10 @@ class Looting:
         self._checking = False
         #: The selected target's last HP, and until when a kill waits for its ring.
         self._target_hp: float | None = None
+        #: A creature stood next to the player while the target was selected; a kill
+        #: then presses the loot hotkey at once, no ring needed (owner 2026-11-21).
+        self._target_near = False
+        self._kill_press = False
         self._kill_wait_until = float("-inf")
         #: A ring 2 tiles away seen this tick: walked to when no fight is on.
         self._far_ring: Ring | None = None
@@ -140,6 +144,12 @@ class Looting:
         self._ring = self._far_ring = None
         self._checking = False
         now = self._clock()
+        if self._kill_press and self._pressed_at is None:
+            # A kill next to the player: Quick Loot takes every corpse around, no ring needed.
+            if self._frames is not None and snap.client_focused and snap.screen_ok:
+                assert self._game_region is not None
+                self._ring = Ring(slot_ring(self._game_region, PLAYER_SLOT).point, 0)
+                return not self._hp_too_low(snap)
         if self._frames is None or self._rings is None:
             return False
         if not (snap.client_focused and snap.screen_ok):
@@ -227,6 +237,7 @@ class Looting:
             # stays due and the press goes again next tick, not "looted".
             log.info("looting: the press was held back by the rate limit, again next tick")
             return
+        self._kill_press = False
         self._save_shot(self._ring.point)
         self._pressed_at, self._presses, self._steps = self._clock(), self._presses + 1, 0
         # doc: docs/prs/random-delays.md#spread
@@ -262,12 +273,18 @@ class Looting:
         now = self._clock()
         if snap.selected_target is not None:
             self._target_hp = snap.selected_target.hp_percent
+            pc, pr = PLAYER_SLOT
+            self._target_near = any(
+                max(abs(c - pc), abs(r - pr)) <= 1 for c, r in snap.creature_slots
+            )
         elif self._target_hp is not None:
             if self._target_hp <= KILL_HP:
                 self._kill_wait_until = now + random_delay(KILL_RING_WAIT)
-            self._target_hp = None
+                self._kill_press = self._target_near
+            self._target_hp, self._target_near = None, False
         busy = (
             self._ring is not None
+            or self._kill_press
             or self._checking
             or now < self._kill_wait_until
             or self._holding(now, snap.position)
