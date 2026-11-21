@@ -10,6 +10,7 @@ and reach the route file only on Save.
 
 from __future__ import annotations
 
+import time
 import tkinter as tk
 from collections.abc import Callable
 from dataclasses import replace
@@ -788,14 +789,21 @@ class CavebotTab(Tab):
         """A box the owner drags around *what* in a client screenshot (frame RGB), or None."""
         import cv2
 
-        from moonlight.perception.capture import ScreenCapture
+        from moonlight.gui.loop_factory import RAISE_WAIT
+        from moonlight.perception.capture import ScreenCapture, focus_window
 
+        title_cfg = load_real_config().window_title
         if self._capture is None:
-            self._capture = ScreenCapture(window_title=load_real_config().window_title)
+            self._capture = ScreenCapture(window_title=title_cfg)
+        # The capture reads the screen: bring the client over this window first.
+        if focus_window(title_cfg):
+            self._root.update()
+            time.sleep(RAISE_WAIT)
         frame = self._capture.get_frame()
         title = f"Drag a box around {what}, then Enter (Esc cancels)"
         cv2.namedWindow(title, cv2.WINDOW_NORMAL)
-        # Tibia has the focus after the countdown: on Linux the box opened behind it.
+        # Fullscreen and on top: the client has the focus, the box opened behind it.
+        cv2.setWindowProperty(title, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.setWindowProperty(title, cv2.WND_PROP_TOPMOST, 1)
         x, y, w, h = cv2.selectROI(title, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
         cv2.destroyWindow(title)
@@ -900,9 +908,8 @@ class CavebotTab(Tab):
         self.lbl_msg.configure(text=f"Deleted {name}")
 
     def _add_drop_item(self) -> None:
-        """In 3 s, grab the client; the owner boxes the item, then names it."""
-        self.lbl_msg.configure(text="Show the client with the item in a backpack (3 s)")
-        self._root.after(3000, self._cut_drop_item)
+        """Grab the client at once; the owner boxes the item, then names it."""
+        self._cut_drop_item()
 
     def _cut_drop_item(self) -> None:
         import cv2

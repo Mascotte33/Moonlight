@@ -275,3 +275,30 @@ def test_a_kill_next_to_the_player_presses_loot_at_once(
     if due:
         looting.press_ring()
         assert inp.sent_lines == ["K alt+q"]
+
+
+def test_a_kill_next_to_the_player_is_looted_twice() -> None:
+    # The target can leave the battle list before its corpse lies there: the first
+    # press found nothing; a second one a moment later loots it.
+    from moonlight.core.state import Monster
+    from moonlight.looting.looting import SECOND_PRESS_SECONDS
+
+    clock, inp = Clock(), FakeInput()
+    looting = make_ring(clock, inp=inp)
+    hide_ring(looting)
+    fighting = WorldState(
+        client_focused=True, screen_ok=True, hp_percent=100.0, creature_slots=((8, 5),),
+        selected_target=Monster(name="witch", hp_percent=60.0),
+    )
+    looting.loot_first(fighting)
+    looting.loot_first(WS)
+    assert looting.ring_due(NEAR, WS)
+    looting.press_ring()
+    clock.t += SECOND_PRESS_SECONDS * 0.5
+    assert looting.loot_first(WS) and not looting.ring_due(NEAR, WS)  # waits, no attack
+    clock.t += SECOND_PRESS_SECONDS
+    assert looting.ring_due(NEAR, WS)
+    looting.press_ring()
+    assert inp.sent_lines == ["K alt+q", "K alt+q"]
+    clock.t += 3.0
+    assert not looting.ring_due(NEAR, WS)  # no third press
