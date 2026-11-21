@@ -145,6 +145,26 @@ Settings, "Drop these items", "+", show the client within 3 s, box the item
 open backpacks onto a free sqm within 2 of the character (`drop: <name> -> (x, y)`
 in the log). The pictures live in the profiles folder, `drop_items/`.
 
+The Map tab shows the whole game map with the Cavebot tab's route on it:
+drag to pan, wheel to zoom, ▲/▼ for the floor; the top row shows the sqm
+under the mouse. Dots are waypoints (coloured by kind, numbered as in the
+Cavebot tab), lines join them in order, a red line is a leg the walk map
+finds no path for, a blue triangle points to the next floor, the green X is
+the character ("Follow me" keeps it centred). Hover a dot for its details.
+With Cavebot off: click a sqm to add a walk waypoint after the selected one,
+click a dot to select it, drag a dot to move it, right-click for a dot's kind
+or Delete, or "Add <kind> here" (a kind that needs a label takes the Cavebot
+tab's Label box). Both tabs edit one route; Save in the Cavebot tab writes it.
+
+For building routes by hand (or by Claude) from the command line:
+
+```bash
+python tools/map.py show MyHunt            # logs/map_MyHunt.png: the area with the route
+python tools/map.py area 32369,32220,7     # any area, no route
+python tools/map.py check MyHunt           # legs the walk map finds no path for
+python tools/route.py new MyHunt < wps.txt # new route, lines "x y z [action [label]]" or "action label"
+```
+
 On Linux, also:
 
 - `sudo apt install python3-tk tesseract-ocr`.

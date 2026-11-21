@@ -27,6 +27,7 @@ from PIL import Image
 
 from moonlight import x11
 from moonlight.calibration.tab import CalibrationTab
+from moonlight.cavebot.map_tab import MapTab
 from moonlight.cavebot.tab import CavebotTab
 from moonlight.core.state import WorldState
 from moonlight.core.wiring import sync_client_map
@@ -132,6 +133,7 @@ STATE_COLORS = {
 TAB_ORDER = (
     DashboardTab,
     CavebotTab,
+    MapTab,
     HealingTab,
     TargetingTab,
     ScriptsTab,
@@ -236,6 +238,9 @@ class GuiApp:
                 **nav_colors(active=False),
             )
             self._nav[title].pack(fill="x", padx=theme.UNIT * 2, pady=1)
+        map_tab, cavebot_tab = self.tabs["Map"], self.tabs["Cavebot"]
+        assert isinstance(map_tab, MapTab) and isinstance(cavebot_tab, CavebotTab)
+        map_tab.editor = cavebot_tab  # one route, edited from both tabs
         self.select_tab(next(iter(self.tabs)))
         self._size = (0, 0)
         self.root.bind("<Configure>", self._resized, add="+")
