@@ -23,6 +23,7 @@ import numpy as np
 from moonlight.core.random_delay import random_delay
 from moonlight.core.state import WorldState
 from moonlight.healing.healing import check_hotkey
+from moonlight.perception.pictures import for_this_os
 
 __all__ = [
     "ICONS", "ICONS_DIR", "Extras", "ExtrasConfig", "locate", "pm_shown", "save_screenshot"
@@ -101,7 +102,7 @@ def load_icons(directory: Path = ICONS_DIR) -> dict[str, np.ndarray]:
 
     out = {}
     for name in ICONS:
-        image = cv2.imread(str(directory / f"{name}.png"), cv2.IMREAD_COLOR)
+        image = cv2.imread(str(for_this_os(directory / f"{name}.png")), cv2.IMREAD_COLOR)
         if image is not None:
             out[name] = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     return out
@@ -175,7 +176,7 @@ class Extras:
         if grab and config.pm_alarm:
             import cv2
 
-            self._npcs_tab = cv2.imread(str(NPCS_TAB), cv2.IMREAD_GRAYSCALE)
+            self._npcs_tab = cv2.imread(str(for_this_os(NPCS_TAB)), cv2.IMREAD_GRAYSCALE)
         for name in ("food", "haste", "buff", "spell_buff", "ring", "amulet"):
             picture = {
                 "food": "hungry",

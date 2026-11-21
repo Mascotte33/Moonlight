@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 
 from moonlight.calibration.autofind import ANCHORS_DIR, MATCH_MIN
+from moonlight.perception.pictures import for_this_os
 
 __all__ = ["BACKPACK_FILE", "STASH", "find_chat", "find_lockers", "find_picture", "pick_locker"]
 
@@ -35,7 +36,7 @@ _NEIGHBOURS = ((0, 1), (-1, 0), (1, 0), (0, -1), (-1, 1), (1, 1), (-1, -1), (1, 
 
 @cache
 def _picture(path: Path, scale: float = 1.0) -> np.ndarray:
-    grey = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+    grey = cv2.imread(str(for_this_os(path)), cv2.IMREAD_GRAYSCALE)
     if grey is None:
         raise FileNotFoundError(f"missing picture: {path}")
     if scale != 1.0:
@@ -109,7 +110,7 @@ def find_chat(
 def find_picture(frame: np.ndarray, path: Path) -> tuple[int, int] | None:
     """Centre of the best match of the picture at *path*, or None (no file, or
     under ``MATCH_MIN``). Read each call: the owner may pick a new one."""
-    pic = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+    pic = cv2.imread(str(for_this_os(path)), cv2.IMREAD_GRAYSCALE)
     if pic is None:
         return None
     scores = _match_scores(_grey(frame), pic)
@@ -142,3 +143,44 @@ def pick_locker(
                 best = (d, (lx, ly), tile)
     return None if best is None else (best[1], best[2])
 
+
+
+#: Item sprites (TibiaWiki, RGBA), ``<name with _>.png``.
+ITEMS_DIR = Path("data/templates/items")
+#: The trade list's box from the centre of ``npc_trade.png``: x0, y0, x1, y1.
+_TRADE_LIST = (-40, 25, 140, 245)
+#: Largest masked squared colour difference per pixel and channel that is the
+#: item: listed potions scored 32..61, other potions 1600 and more.
+ITEM_MATCH_MAX = 300.0
+
+
+def item_picture(item: str, items: Path = ITEMS_DIR) -> Path:
+    """Where *item*'s sprite is kept."""
+    return items / f"{item.lower().replace(' ', '_')}.png"
+
+
+# doc: docs/prs/depot.md#trade-waypoint
+def find_item_row(
+    frame: np.ndarray, trade_at: tuple[int, int], item: str, *, items: Path = ITEMS_DIR
+) -> tuple[int, int] | None:
+    """Centre of *item*'s icon in the trade list (RGB *frame*), or None.
+
+    The search box also lists "strong" and "great" potions for "mana potion",
+    so the row is told by its icon, not its place in the list.
+    """
+    rgba = cv2.imread(str(item_picture(item, items)), cv2.IMREAD_UNCHANGED)
+    if rgba is None or rgba.ndim != 3 or rgba.shape[2] != 4:
+        raise FileNotFoundError(f"missing item picture for {item!r} in {items}")
+    cx, cy = trade_at
+    x0, y0, x1, y1 = _TRADE_LIST
+    left, top = max(0, cx + x0), max(0, cy + y0)
+    area = np.ascontiguousarray(frame[top : cy + y1, left : cx + x1, ::-1])
+    sprite = np.ascontiguousarray(rgba[:, :, :3])
+    if area.shape[0] < sprite.shape[0] or area.shape[1] < sprite.shape[1]:
+        return None
+    mask = cv2.merge([(rgba[:, :, 3] > 0).astype(np.uint8) * 255] * 3)
+    scores = cv2.matchTemplate(area, sprite, cv2.TM_SQDIFF, mask=mask)
+    _, _, (x, y), _ = cv2.minMaxLoc(scores)
+    if scores[y, x] / max(1.0, float(mask.sum()) / 255) > ITEM_MATCH_MAX:
+        return None
+    return left + x + sprite.shape[1] // 2, top + y + sprite.shape[0] // 2

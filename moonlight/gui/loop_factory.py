@@ -266,6 +266,11 @@ def make_backend(config: BotConfig, hardware: HardwareController) -> InputBacken
         backend = hardware.connect(
             port=config.serial_port or None, baudrate=config.serial_baudrate
         )
+        if sys.platform == "linux":
+            from moonlight.core.wiring import _absolute_screen
+            from moonlight.hardware.cursor_chase import CursorChaseInput
+
+            backend = CursorChaseInput(backend, x11.cursor, _absolute_screen())
     if config.log_commands and hardware.log is not None:
         backend = LoggedInput(backend, hardware.log.info)
     return backend
@@ -309,6 +314,7 @@ def check_layout(
 
 
 LAYOUT_EVERY = 5.0  # s between layout checks while the bot runs
+RAISE_WAIT = 0.5  # s for the window manager to draw the client on top
 
 
 # doc: docs/prs/gui-calibration.md#layout-check
@@ -371,8 +377,12 @@ def build_gui_loop(
     state: WorldState,
     config_path: str | Path | None = None,
     profiles_dir: str | Path | None = None,
+    raise_client: bool = False,
 ) -> GameLoop:
     """Build the real bot loop for the GUI Start button (F-13).
+
+    *raise_client* brings the game window to the front first; only a Start
+    the owner clicked does that, never the background retries.
 
     Wires a real screen capture (frame provider + focus check) and every
     enabled decision module through :func:`moonlight.core.wiring.build_loop`. Never
@@ -397,11 +407,15 @@ def build_gui_loop(
     profile = load_profile(real_config.profile, profiles_dir or real_config.profiles_dir)
     # Real screen capture: frame provider + focus check (F-13). Imported at
     # call time so importing this module never pulls in mss.
-    from moonlight.perception.capture import ScreenCapture, default_backend
+    from moonlight.perception.capture import ScreenCapture, default_backend, focus_window
 
     # dxcam's camera is one per screen and shared, so only the bot uses it.
     capture = ScreenCapture(backend=default_backend(), window_title=real_config.window_title)
     log = hardware.log.info if hardware.log is not None else logger.info
+    # The capture reads the screen, so the bot's own window (where Start was
+    # clicked) would cover the client and fail the layout check.
+    if raise_client and focus_window(real_config.window_title):
+        time.sleep(RAISE_WAIT)
     check_layout(profile, capture.get_frame, log)  # before the Arduino opens
     backend = make_backend(real_config, hardware)
     providers = capture_providers(capture, profile, real_config)

@@ -760,6 +760,7 @@ def build_modules(
                 walk_keys=config.walk_keys,
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
                 frames=frames,
+                screen=screen_grab,
                 clock=clock,
                 scripts=m.scripts,
                 supplies_low=supplies_low(config.refill, screen_grab),

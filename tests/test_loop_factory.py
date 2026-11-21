@@ -17,6 +17,7 @@ customtkinter imports, so this whole module is headless-safe.
 """
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
@@ -31,6 +32,7 @@ from moonlight.core.config import BotConfig
 from moonlight.core.state import WorldState
 from moonlight.gui.loop_factory import build_gui_loop, make_backend
 from moonlight.gui.state_bridge import HardwareController, LogFeed
+from moonlight.hardware.cursor_chase import CursorChaseInput
 from moonlight.hardware.input import FakeInput, NoArduinoFoundError
 
 
@@ -87,6 +89,8 @@ def _no_owner_anchors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterat
 def _no_display(monkeypatch: pytest.MonkeyPatch) -> None:
     """The clicker's screen size comes from mss, which needs a display CI lacks."""
     monkeypatch.setattr("moonlight.core.wiring._absolute_screen", lambda: (0, 0, 1920, 1080))
+    # Start must never raise the owner's real game window during tests.
+    monkeypatch.setattr("moonlight.perception.capture.focus_window", lambda _title: False)
 
 
 @pytest.fixture()
@@ -105,6 +109,21 @@ def test_make_backend_simulation_returns_fake() -> None:
     assert hw.backend is None  # connect() was never called
 
 
+def _unwrapped(backend: Any) -> Any:
+    """The Arduino backend inside Linux's CursorChaseInput."""
+    return backend.inner if isinstance(backend, CursorChaseInput) else backend
+
+
+def test_make_backend_wraps_the_arduino_for_absolute_moves_on_linux(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hw = HardwareController(input_factory=lambda port, baudrate: _SpyBackend())
+    for platform, wrapped in (("linux", True), ("win32", False)):
+        monkeypatch.setattr(sys, "platform", platform)
+        backend = make_backend(_config(simulation=False), hw)
+        assert isinstance(backend, CursorChaseInput) is wrapped
+
+
 def test_make_backend_real_when_simulation_off() -> None:
     """simulation OFF -> a real backend is opened via the controller."""
     calls: list[_SpyBackend] = []
@@ -115,7 +134,7 @@ def test_make_backend_real_when_simulation_off() -> None:
         return b
 
     hw = HardwareController(input_factory=factory)
-    backend = make_backend(_config(simulation=False, serial_port="COM9"), hw)
+    backend = _unwrapped(make_backend(_config(simulation=False, serial_port="COM9"), hw))
     assert backend is calls[0]
     assert backend is hw.backend
     assert calls[0] is not None
@@ -132,8 +151,8 @@ def test_make_backend_reopens_fresh_on_restart() -> None:
 
     hw = HardwareController(input_factory=factory)
     cfg = _config(simulation=False)
-    first = make_backend(cfg, hw)
-    second = make_backend(cfg, hw)
+    first = _unwrapped(make_backend(cfg, hw))
+    second = _unwrapped(make_backend(cfg, hw))
     assert isinstance(first, _SpyBackend)
     assert isinstance(second, _SpyBackend)
     assert first is not second
@@ -230,7 +249,12 @@ def anchors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _start_with_window(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, frame: np.ndarray, **profile: Any
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    frame: np.ndarray,
+    *,
+    raise_client: bool = False,
+    **profile: Any,
 ) -> LogFeed:
     """Start against a fake client window showing *frame*; return the log."""
     import moonlight.perception.capture as capture
@@ -252,8 +276,36 @@ def _start_with_window(
         state=WorldState(),
         config_path=_config_file(tmp_path, simulation=True),
         profiles_dir=d,
+        raise_client=raise_client,
     )
     return log
+
+
+@pytest.mark.parametrize("clicked", [True, False])
+def test_only_a_clicked_start_raises_the_client_before_the_layout_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, anchors: Path, clicked: bool
+) -> None:
+    import moonlight.gui.loop_factory as loop_factory
+    import moonlight.perception.capture as capture
+
+    events: list[str] = []
+
+    def spy_focus(title: str) -> bool:
+        events.append(title)
+        return True
+
+    monkeypatch.setattr(capture, "focus_window", spy_focus)
+    monkeypatch.setattr(loop_factory, "RAISE_WAIT", 0)
+    real_check = loop_factory.check_layout
+
+    def spy_check(*args: Any) -> None:
+        events.append("check")
+        real_check(*args)
+
+    monkeypatch.setattr(loop_factory, "check_layout", spy_check)
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    _start_with_window(tmp_path, monkeypatch, frame, raise_client=clicked)
+    assert events == ([capture.TIBIA_WINDOW_TITLE] if clicked else []) + ["check"]
 
 
 def test_layout_size_changed_refuses_to_start(
