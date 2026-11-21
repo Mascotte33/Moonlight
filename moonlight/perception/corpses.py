@@ -58,7 +58,8 @@ def _bright(block: np.ndarray) -> np.ndarray:
     """Loot-ring dots in an RGB *block*: pale blue specks, big blobs dropped."""
     r, g, b = block[..., 0], block[..., 1], block[..., 2]
     blue_over_red = b - r
-    color = (r >= 110) & (g >= r) & (b >= g) & (blue_over_red >= 20) & (blue_over_red <= 60)
+    # Linux draws the dots a little darker and bluer (r 89..108, b - r 61..62, 2026-11-21).
+    color = (r >= 85) & (g >= r) & (b >= g) & (blue_over_red >= 20) & (blue_over_red <= 70)
     color &= g - r <= 35
     count, labels, stats, _ = cv2.connectedComponentsWithStats(color.astype(np.uint8))
     is_dot = stats[:, cv2.CC_STAT_AREA] <= DOT_PIXELS
