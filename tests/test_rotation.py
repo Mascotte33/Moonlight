@@ -144,7 +144,7 @@ def test_refill_is_asked_once_per_account_when_the_last_read_is_low(tmp_path: Pa
 def test_rotate_does_nothing_when_stamina_is_not_low(tmp_path: Path, stamina: int | None) -> None:
     r, _, clock, client = setup(tmp_path, stamina)
     inp = FakeInput()
-    r.start("rotate")
+    r.start("account_rotate")
     play(r, inp, clock, True, 1, client)
     assert inp.sent_lines == [] and r.running is None and not client.started
 
@@ -152,7 +152,7 @@ def test_rotate_does_nothing_when_stamina_is_not_low(tmp_path: Path, stamina: in
 def test_low_stamina_restarts_tibia_and_logs_the_next_account_in(tmp_path: Path) -> None:
     r, rot, clock, client = setup(tmp_path, 100)
     inp = FakeInput()
-    r.start("rotate")
+    r.start("account_rotate")
     play(r, inp, clock, True, 0.5, client)
     assert inp.sent_lines == ["K ctrl+l"]
     play(r, inp, clock, False, 15, client)  # alt+f4, the window goes, started, the login typed
@@ -165,7 +165,7 @@ def test_low_stamina_restarts_tibia_and_logs_the_next_account_in(tmp_path: Path)
 def test_a_failed_login_is_skipped_and_all_failing_stops(tmp_path: Path) -> None:
     r, rot, clock, client = setup(tmp_path, 100)
     inp = FakeInput()
-    r.start("rotate")
+    r.start("account_rotate")
     play(r, inp, clock, True, 0.2, client)
     play(r, inp, clock, False, 90, client)  # B, then A, never log in
     assert inp.sent_lines.count("K esc") == 2 and inp.sent_lines.count("K ctrl+l") == 1
@@ -177,7 +177,7 @@ def test_the_client_that_never_shows_stops_the_bot(tmp_path: Path) -> None:
     client.start = lambda exe: None  # type: ignore[method-assign]
     rot._start_client = lambda exe: None
     inp = FakeInput()
-    r.start("rotate")
+    r.start("account_rotate")
     play(r, inp, clock, True, 0.2, client)
     play(r, inp, clock, False, 120, client)
     assert rot.failed and not rot.client_closed and r.running is None
@@ -186,7 +186,7 @@ def test_the_client_that_never_shows_stops_the_bot(tmp_path: Path) -> None:
 def test_still_in_game_after_logout_keeps_the_account(tmp_path: Path) -> None:
     r, rot, clock, client = setup(tmp_path, 100)
     play(r, FakeInput(), clock, True, 0.1)
-    r.start("rotate")
+    r.start("account_rotate")
     play(r, FakeInput(), clock, True, 12)
     assert r.running is None and rot.index == 0 and not client.started
 
@@ -194,7 +194,7 @@ def test_still_in_game_after_logout_keeps_the_account(tmp_path: Path) -> None:
 def test_the_password_never_reaches_the_command_log(tmp_path: Path) -> None:
     r, _, clock, client = setup(tmp_path, 100)
     lines: list[str] = []
-    r.start("rotate")
+    r.start("account_rotate")
     play(r, LoggedInput(FakeInput(), lines.append), clock, True, 0.2)
     play(r, LoggedInput(FakeInput(), lines.append), clock, False, 25, client)
     assert "input: press d" in lines  # the login is logged

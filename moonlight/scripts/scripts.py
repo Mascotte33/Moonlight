@@ -346,14 +346,14 @@ class ScriptRunner:
         self.targetings: tuple[TargetingDecision | None, ...] = ()
         #: ``bot.targeting(False)`` ran: the loop picks no target until ``(True)``.
         self.targeting_turned_off = False
-        #: Account rotation: the ``rotate`` script is its switch (docs/prs/rotation.md).
+        #: Account rotation: the ``account_rotate`` script is its switch (docs/prs/rotation.md).
         self.rotation: Rotation | None = None
 
     def start(self, name: str) -> bool:
         """Start script *name* (read fresh from disk); False when it cannot run."""
         path = self.scripts_dir / f"{name}.py"
         try:
-            if name == "rotate" and self.rotation is not None:
+            if name == "account_rotate" and self.rotation is not None:
                 self._script = self.rotation.run(Bot(self))  # built in, no file
             else:
                 spec = importlib.util.spec_from_file_location(

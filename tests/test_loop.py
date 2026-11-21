@@ -1320,7 +1320,7 @@ class TestRotation:
         ws = make_state()
         inp = FakeInput()
         gl, _ = make_loop(ws, inp, clock=clock, modules=DecisionModules(scripts=scripts))
-        assert scripts.start("rotate")
+        assert scripts.start("account_rotate")
         for _ in range(3):
             gl.tick()
             clock.advance(0.2)

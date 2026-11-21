@@ -5,9 +5,9 @@ The accounts are lines ``login password`` of a text file the owner picks
 the account playing when it starts. When the last stamina read is under
 :data:`~moonlight.perception.stamina.LOW_STAMINA_MINUTES` the cavebot's
 refill flag is set once, so the next ``check`` waypoint goes to town; the
-``script`` waypoint ``rotate`` at the depot reads the stamina again and, when
+``script`` waypoint ``account_rotate`` at the depot reads the stamina again and, when
 it is low, logs out, closes the Tibia client, starts it again and logs the
-next account's first character in. Stamina not low (or unread), ``rotate``
+next account's first character in. Stamina not low (or unread), ``account_rotate``
 does nothing.
 
 The login is typed (letters and digits only: the Arduino has no symbol
@@ -146,7 +146,7 @@ class Rotation:
         return True
 
     def run(self, bot: Bot) -> Generator[object, None, None]:
-        """The ``rotate`` script: with low stamina log out, restart Tibia, log the next in."""
+        """The ``account_rotate`` script: log out, restart Tibia, log the next in."""
         if not stamina_is_low(bot.stamina()):
             return
         yield bot.press(self.config.logout_hotkey)

@@ -60,7 +60,7 @@ Safety invariants (re-checked on every tick, never just at startup):
   ``max_consecutive_errors`` consecutive tick exceptions (operator alert).
 * **Stopped** -- ``stopped`` (the GUI's Stop): the loop keeps reading the
   screen, presses nothing and raises no alarm; keys are released once.
-  The account switch (``rotate``) is no pause: it alone runs on the
+  The account switch (``account_rotate``) is no pause: it alone runs on the
   login screen, needing only ``client_focused``.
 * **Death stop** -- an empty HP bar on a readable screen for
   ``DEATH_SECONDS`` stops the loop for good: keys released, alert (beep),
@@ -537,7 +537,7 @@ class GameLoop:
     def _switching_account(self, snap: WorldState) -> bool:
         """The account switch, alone: True while it runs (the login screen is not a pause)."""
         scripts = self.modules.scripts
-        if scripts is None or scripts.rotation is None or scripts.running != "rotate":
+        if scripts is None or scripts.rotation is None or scripts.running != "account_rotate":
             return False
         self._task = "Switching account"
         if scripts.rotation.client_closed:

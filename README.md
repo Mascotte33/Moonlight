@@ -152,7 +152,7 @@ the account playing when the bot starts). In Settings, Scripts box, pick it
 with "Accounts file" Browse (config key `modules.rotation.accounts_file`) and
 check "Tibia program" (`modules.rotation.client_exe`, default
 `%LOCALAPPDATA%\Tibia\packages\Tibia\bin\client_launcher.exe`). Put a
-`script rotate` waypoint after `deposit`. When the stamina is under 39:30 the
+`script account_rotate` waypoint after `deposit`. When the stamina is under 39:30 the
 bot goes to the depot, logs out, closes Tibia (Alt+F4), starts it again and
 logs the next line's account in with its first character, then walks on.
 
