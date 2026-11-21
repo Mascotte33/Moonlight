@@ -96,6 +96,8 @@ class Looting:
         self._rings = RingWatch(game_region) if game_region is not None else None
         #: The ring around the player seen this tick, not looted yet.
         self._ring: Ring | None = None
+        #: A ring by the player was seen lately and is not confirmed yet.
+        self._checking = False
         #: A ring 2 tiles away seen this tick: walked to when no fight is on.
         self._far_ring: Ring | None = None
         #: Where and when rings were seen lately.
@@ -124,6 +126,7 @@ class Looting:
         one tile farther is kept for :meth:`step` to walk to.
         """
         self._ring = self._far_ring = None
+        self._checking = False
         now = self._clock()
         if self._frames is None or self._rings is None:
             return False
@@ -143,6 +146,12 @@ class Looting:
         ]
         if self._holding(now, snap.position) or self._given_up_at is not None:
             return False
+        # A ring by the player still being confirmed: no new target walks off from it.
+        player = slot_ring(self._game_region, PLAYER_SLOT).point
+        self._checking = any(
+            self._near(point, player) and point not in creatures
+            for point, _ in self._ring_sightings
+        )
         self._far_ring = next((r for r in rings if r.tiles_away == reach.stop), None)
         if self._far_ring is None:
             self._steps = 0
@@ -232,7 +241,11 @@ class Looting:
         (bot.log 2026-11-04: the fight walked off right after the loot, and
         nothing was looted.)
         """
-        busy = self._ring is not None or self._holding(self._clock(), snap.position)
+        busy = (
+            self._ring is not None
+            or self._checking
+            or self._holding(self._clock(), snap.position)
+        )
         return busy and not self._hp_too_low(snap)
 
     def step(self, snap: WorldState) -> bool:

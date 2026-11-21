@@ -200,3 +200,15 @@ def test_far_ring_is_not_looted() -> None:
     for _ in range(8):
         assert not looting.ring_due(NEAR, WS) and not looting.should_loot(WS)
         clock.t += 0.125
+
+
+def test_a_ring_by_the_player_holds_the_next_attack_while_it_is_confirmed() -> None:
+    # 2026-11-21: the bot attacked the next monster before the ring confirmed and
+    # walked off the corpse, so nothing was looted.
+    clock = Clock()
+    looting = make_ring(clock)
+    assert not looting.ring_due(NEAR, WS)  # seen once: not confirmed yet ...
+    assert looting.loot_first(WS)  # ... but no new target walks off from it
+    hide_ring(looting)  # a one-look flash: it goes
+    clock.t += 1.1
+    assert not looting.ring_due(NEAR, WS) and not looting.loot_first(WS)
