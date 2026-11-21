@@ -189,8 +189,8 @@ to the route's depot and ends with `goto Depot`, so the route needs a
 `label Depot` before its `finddepo`. Walks use the door scripts and boat
 talks saved routes already make; a city no saved route reaches (an island
 before any route sails there) is left out and named. Free-account cities
-always walk (no boats), islands may sail, so one route works for free and
-premium. Start the route at
+use only the free boats (Thais, Carlin, Ab'Dendriel, Venore); islands may
+take any boat, so one route works for free and premium. Start the route at
 waypoint 0. Scripts can read `bot.position` (x, y, z).
 
 `video_route.py` reads the minimap in a hunting video (a recording of a

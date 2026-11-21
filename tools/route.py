@@ -32,8 +32,8 @@ each city in ``CITY_DEPOTS`` the walk from its depot to D and ``goto Depot``.
 D's own city just goes to ``Depot``. A city with no path (an island no saved
 route sails to yet) is left out and named on stderr. A path uses the door
 scripts and boat talks the saved routes already make (``route_links``);
-free cities (``FREE_CITIES``) walk, with doors but no boats, so one route
-serves free and premium accounts.
+free cities (``FREE_CITIES``) use only doors and the free boats (Thais,
+Carlin, Ab'Dendriel, Venore), so one route serves free and premium accounts.
 
 Numbers are the GUI's (0-based) and ranges include both ends. An edit keeps
 the old file as ``<route>.json.bak``, checks the new route with the bot's own
@@ -66,6 +66,14 @@ from moonlight.gui.loop_factory import load_real_config
 
 #: Cities a free account can be in; the rest are premium islands.
 FREE_CITIES = ("Venore", "Thais", "Carlin", "AbDendriel", "Kazordoon")
+#: What a free account may say on a link: boats run only between these four.
+FREE_TALK = ("hi", "yes", "thais", "carlin", "ab'dendriel", "venore")
+
+
+def _free_action(action: str) -> bool:
+    """True for a link action a free account can do: a door, a wait, a free boat talk."""
+    kind, _, word = action.partition(" ")
+    return kind in ("script", "wait") or (kind == "say" and word.lower() in FREE_TALK)
 
 
 def _range(text: str) -> tuple[int, int]:
@@ -140,12 +148,11 @@ def _travel_block(args: argparse.Namespace) -> None:
     if home is None:
         sys.exit(f"{args.depot} is in no city of CITY_DEPOTS")
     floors = load_floor_map(MAP_DIR, load_real_config().routes_dir)
-    # A free account can't sail, so free cities walk: only door scripts, no NPC talks.
-    walk_links = {
-        at: [link for link in links if all(a.startswith("script") for a in link.actions)]
+    free_links = {
+        at: [link for link in links if all(map(_free_action, link.actions))]
         for at, links in floors.links.items()
     }
-    walking = FloorMap(floors.cost, floors.known, walk_links)
+    free_floors = FloorMap(floors.cost, floors.known, free_links)
     print("script go_to_city")
     print(f"label From{home}")
     print("goto Depot")
@@ -153,7 +160,7 @@ def _travel_block(args: argparse.Namespace) -> None:
         if city == home:
             continue
         # A town exit (Kazordoon's doors) can be 100+ sqm off the line between depots.
-        steps = find_path(depot, goal, walking if city in FREE_CITIES else floors, margin=150)
+        steps = find_path(depot, goal, free_floors if city in FREE_CITIES else floors, margin=150)
         if steps is None:
             print(f"no path from {city}: left out", file=sys.stderr)
             continue
