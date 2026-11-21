@@ -60,7 +60,7 @@ def _new(name: str) -> None:
         sys.exit(f"route {name!r} already exists; pick another name")
     waypoints = []
     for line in sys.stdin.read().splitlines():
-        words = line.partition("#")[0].split(maxsplit=4)
+        words = line.partition("#")[0].strip().split(maxsplit=4)
         if not words:
             continue
         if words[0].lstrip("-").isdigit():
