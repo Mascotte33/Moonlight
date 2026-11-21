@@ -35,9 +35,7 @@ JSON format (``moonlight_config.json``)::
         "refill":    {"enabled": false},  # follows cavebot; 0 = off
         "scripts":   {"ticked": ["eat"], "pause_ms": {"eat": 60000}},  # no switch
         "extras":    {"food": true, "food_hotkey": "F10"},  # no switch: a ticked extra is on
-        "rotation":  {"logout_hotkey": "ctrl+l", "accounts": [
-          {"login": "abc", "password": "xyz", "character": 1, "minutes": 60}
-        ]}
+        "rotation":  {"logout_hotkey": "ctrl+l", "accounts_file": "C:/tibia/accounts.txt"}
       }
     }
 
@@ -278,8 +276,10 @@ class BotConfig:
                 section.update(_old_script_timers(section.pop("timers"), enabled is True))
             if name in ALWAYS_ON:  # old files: the switch is gone
                 enabled = True
-            elif name == "rotation":  # no switch: on when it has accounts
-                enabled = bool(section.get("accounts"))
+            elif name == "rotation":  # no switch: on when it has an accounts file
+                if section.get("accounts") == []:  # old files: the empty accounts list
+                    del section["accounts"]
+                enabled = bool(section.get("accounts_file"))
             elif not isinstance(enabled, bool):
                 raise ConfigError(f"modules.{name}.enabled must be true or false")
             if name == "refill":  # no switch: on with the cavebot, its 0s turn it off
@@ -337,7 +337,7 @@ class BotConfig:
             kept = self.off.get(name)
             if name in ALWAYS_ON:
                 modules[name] = _section(cfg)
-            elif name == "rotation":  # no switch: the accounts turn it on
+            elif name == "rotation":  # no switch: the accounts file turns it on
                 held = cfg if cfg is not None else kept
                 modules[name] = _section(held) if held is not None else {}
             elif cfg is not None:
@@ -387,9 +387,6 @@ class BotConfig:
                 )
         if self.refill is not None and self.cavebot is None:
             raise ConfigError("refill needs the cavebot module enabled")
-        if self.rotation is not None and len(self.rotation.accounts) < 2:
-            # checked only when on, so the Settings tab can save the logout hotkey
-            raise ConfigError("rotation needs at least 2 accounts")
         return self
 
 

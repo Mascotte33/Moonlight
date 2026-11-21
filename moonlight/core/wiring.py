@@ -727,7 +727,9 @@ def build_modules(
     elif m.scripts.rotation is None or not same("rotation"):
         from moonlight.scripts.rotation import Rotation
 
-        m.scripts.rotation = Rotation(config.rotation, clock=clock or time.monotonic)
+        m.scripts.rotation = Rotation(
+            config.rotation, clock=clock or time.monotonic, window_title=config.window_title
+        )
     from moonlight.extras.extras import Extras
 
     if prev is not None and prev.extras is not None and same("extras"):

@@ -533,17 +533,20 @@ class GameLoop:
         self._consecutive_errors = 0
         self._record_tick_time(t0)
 
-    # doc: docs/prs/rotation.md#rotation
+    # doc: docs/prs/stamina-switch.md#stamina-switch
     def _switching_account(self, snap: WorldState) -> bool:
         """The account switch, alone: True while it runs (the login screen is not a pause)."""
         scripts = self.modules.scripts
         if scripts is None or scripts.rotation is None or scripts.running != "rotate":
             return False
         self._task = "Switching account"
-        self._send(snap, lambda: scripts.step(snap, self.input), login_screen=True)
+        if scripts.rotation.client_closed:
+            scripts.step(snap, self.input)  # no window to focus: only waits, nothing is typed
+        else:
+            self._send(snap, lambda: scripts.step(snap, self.input), login_screen=True)
         if scripts.rotation.failed:
             scripts.rotation.failed = False
-            self._fail_stop("no rotation account logged in")
+            self._fail_stop("the account switch failed")
         elif scripts.running is None and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # the switch is not "stuck"
         self._paused_since = None
@@ -701,9 +704,10 @@ class GameLoop:
             m.extras.observe(snap)
             if m.extras.refill_due and m.cavebot is not None:
                 m.cavebot.refill_now = True  # a player stays: the next check goes to refill
-        rotation = m.scripts.rotation if m.scripts is not None else None
-        if rotation is not None and m.cavebot is not None and rotation.refill_due():
-            m.cavebot.refill_now = True  # the account's time is up: to the depot's rotate
+        scripts = m.scripts
+        if scripts is not None and scripts.rotation is not None and m.cavebot is not None:
+            if scripts.rotation.refill_due(scripts.last_stamina_minutes):
+                m.cavebot.refill_now = True  # the stamina is low: to the depot's rotate
 
     def _targeting_paused(self, now: float) -> bool:
         return now < self._targeting_paused_until
