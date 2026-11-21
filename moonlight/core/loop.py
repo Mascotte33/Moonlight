@@ -914,7 +914,9 @@ class GameLoop:
         """Extras: press the due hotkey (food, ring, amulet, haste, buff); True when sent."""
         extras = self.modules.extras
         assert extras is not None
-        key = extras.due(walking=self._state is not BotState.IDLE, only_haste=only_haste)
+        key = extras.due(
+            walking=self._state is not BotState.IDLE, only_haste=only_haste, mana=snap.mp_points
+        )
         if key is None or not self._send(snap, lambda: self.input.press_combo(key)):
             return False
         extras.pressed(key)

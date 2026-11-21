@@ -249,3 +249,11 @@ def test_a_switched_on_extras_picture_is_searched_every_scan() -> None:
     e.observe(WorldState())
     assert "haste" in e.icons  # the first scan finds it
     assert e.due(walking=True) is None  # hasted: no cast
+
+
+def test_haste_waits_for_its_mana() -> None:
+    clock = Clock()
+    config = ExtrasConfig(haste=True, haste_hotkey="F7", haste_min_mana=60)
+    e = extras(config, clock)
+    assert e.due(walking=True, mana=30) is None  # not enough mana: no press
+    assert e.due(walking=True, mana=60) == "F7"

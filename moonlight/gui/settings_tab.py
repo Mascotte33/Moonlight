@@ -75,6 +75,10 @@ EXTRAS_OPTIONS = [
         Option("", f"extras.{name}", "checkbox"),
     )
 ]
+EXTRAS_OPTIONS.insert(
+    EXTRAS_OPTIONS.index(Option("", "extras.haste", "checkbox")) + 1,
+    Option("Haste min mana (points)", "extras.haste_min_mana", "entry"),
+)
 #: HP, player and PM alarms: alert and screenshot, the bot goes on (docs/prs/extras.md#alarms).
 ALARMS_OPTIONS = [
     Option("Low HP below (%)", "alarms.low_hp_threshold", "entry"),
