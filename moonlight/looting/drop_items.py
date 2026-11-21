@@ -20,9 +20,9 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+import cv2
 import numpy as np
 
-from moonlight.cavebot.town import find_picture
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import ClickSide, InputBackend
 from moonlight.perception.corpses import slot_ring
@@ -91,6 +91,35 @@ def drop_picture_path(folder: Path, name: str) -> Path:
     if not name or any(c in name for c in '\\/:*?"<>|') or name.startswith("."):
         raise ValueError(f"not an item name: {name!r}")
     return folder / f"{name}.png"
+
+
+#: Largest squared colour difference per pixel and channel of the item's body that is
+#: still the item. Live 2026-11-21: the clipped items 0..6, the closest other item
+#: 282. The old grey 0.8 match threw away an item that was not on the list.
+DROP_MATCH_MAX = 50.0
+#: The stack count's corner, left out of the match: rows from this share down ...
+_COUNT_TOP = 0.6
+#: ... and columns from this share right.
+_COUNT_LEFT = 0.35
+
+
+def find_item(frame: np.ndarray, path: Path) -> Point | None:
+    """Centre of the item pictured at *path* in *frame* (RGB), or None.
+
+    Strict on purpose: a wrong match throws an item away. Compared in colour,
+    the stack count's corner left out (it changes as the stack does).
+    """
+    pic = cv2.imread(str(path))  # the file holds the frame's RGB as is
+    if pic is None or pic.shape[0] > frame.shape[0] or pic.shape[1] > frame.shape[1]:
+        return None
+    h, w = pic.shape[:2]
+    mask = np.full((h, w, 3), 255, np.uint8)
+    mask[int(h * _COUNT_TOP) :, int(w * _COUNT_LEFT) :] = 0
+    scores = cv2.matchTemplate(np.ascontiguousarray(frame), pic, cv2.TM_SQDIFF, mask=mask)
+    _, _, (x, y), _ = cv2.minMaxLoc(scores)
+    if scores[y, x] / float((mask > 0).sum()) > DROP_MATCH_MAX:
+        return None
+    return x + w // 2, y + h // 2
 
 
 def free_drop_slots(
@@ -222,7 +251,7 @@ class DropItems:
         right = self._game_region[0] + self._game_region[2]
         side = np.ascontiguousarray(frame[:, right:])
         for path in drop_pictures(self.pictures_dir):
-            at = find_picture(side, path)
+            at = find_item(side, path)
             if at is None:
                 continue
             found = (path, (at[0] + right, at[1]))

@@ -178,3 +178,21 @@ def test_the_drop_list_is_apart_from_the_saved_pictures(tmp_path: Path) -> None:
     set_dropping(tmp_path, ["boots"])  # "-": off the list, the picture stays
     assert [p.stem for p in saved_pictures(tmp_path)] == ["boots", "fish", "leather armor"]
     assert [p.stem for p in drop_pictures(tmp_path)] == ["boots"]
+
+
+def test_only_the_clipped_item_itself_is_found(tmp_path: Path) -> None:
+    # 2026-11-21: the grey 0.8 match threw away an item that was not on the list.
+    from moonlight.looting.drop_items import find_item
+
+    rng = np.random.default_rng(3)
+    item = rng.integers(0, 255, (32, 32, 3), np.uint8)
+    cv2.imwrite(str(tmp_path / "torch.png"), item)
+    frame = np.full((200, 200, 3), 60, np.uint8)
+    lookalike = item.copy()
+    lookalike[:, :, 0] = 255 - lookalike[:, :, 0]  # same shape, other colours
+    frame[20:52, 20:52] = lookalike
+    assert find_item(frame, tmp_path / "torch.png") is None
+    counted = item.copy()
+    counted[24:, 20:] = 255  # another stack count in the corner
+    frame[100:132, 100:132] = counted
+    assert find_item(frame, tmp_path / "torch.png") == (116, 116)
