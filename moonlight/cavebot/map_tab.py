@@ -146,7 +146,7 @@ class MapTab(Tab):
         self._shown_spawns: dict[Spot, list[str]] = {}
         #: The left press: where, and the waypoint under it (dragged) or None (pan).
         self._press: tuple[int, int] | None = None
-        self._last_drag = (0, 0)
+        self._view_at_press = (0, 0)
         self._dragging: int | None = None
         self._before_drag: list[Waypoint] = []
         self._moved = False
@@ -315,7 +315,8 @@ class MapTab(Tab):
 
     def _pressed(self, event: tk.Event) -> None:
         self.canvas.focus_set()  # for Ctrl+Z
-        self._press = self._last_drag = (event.x, event.y)
+        self._press = (event.x, event.y)
+        self._view_at_press = (self.view.x, self.view.y)
         self._moved = False
         self._dragging = waypoint_at(self._waypoints, *self._sqm(event))
         self._before_drag = list(self._waypoints)
@@ -328,16 +329,17 @@ class MapTab(Tab):
             return
         self._moved = True
         i = self._dragging
-        if i is None:  # pan
-            lx, ly = self._last_drag
-            self.view.pan(event.x - lx, event.y - ly)
+        if i is None or self.editor.edit_locked:
+            # Pan by the whole drag since the press: per-event moves of a
+            # pixel or two round to 0 sqm and a slow drag went nowhere.
+            self.view.x, self.view.y = self._view_at_press
+            self.view.pan(event.x - px, event.y - py)
             self.chk_follow.deselect()
-        elif self._editable():
+        else:
             x, y, _ = self._sqm(event)
             wp = self._waypoints[i]
             if (wp.x, wp.y) != (x, y):
                 self._waypoints[i] = Waypoint(x, y, wp.z, wp.action, wp.label)
-        self._last_drag = (event.x, event.y)
         self._draw()
 
     def _released(self, _event: tk.Event) -> None:
