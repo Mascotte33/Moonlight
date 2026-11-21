@@ -18,7 +18,8 @@ tick back to the loop::
 ``bot.press`` / ``say`` / ``click`` / ``goto`` return the wire commands to
 send; the runner sends one per tick, so the rate limit never drops them. A
 yielded number waits that many seconds. ``bot.hp``, ``bot.mana`` and
-``bot.cap`` (used capacity %, 0 when unknown) read the current tick;
+``bot.cap`` (used capacity %, 0 when unknown) and ``bot.position`` (x, y, z)
+read the current tick;
 ``bot.count("mana")`` the action-bar potion total.
 
 The loop runs a script only in MOVE and IDLE, after healing: it pauses
@@ -161,6 +162,12 @@ class Bot:
     def cap(self) -> float:
         cap = self._snap.capacity
         return cap.percent if cap.max_weight > 0 else 0.0
+
+    @property
+    def position(self) -> tuple[int, int, int]:
+        """(x, y, z) of the character; (0, 0, 0) while it is not known."""
+        pos = self._snap.position
+        return pos.x, pos.y, pos.z
 
     @property
     def in_game(self) -> bool:

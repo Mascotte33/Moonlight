@@ -177,8 +177,19 @@ python tools/map.py find depot --near 32369,32220,7        # your map markers + 
 python tools/map.py monsters Troll         # where a monster spawns (data/spawns.json)
 python tools/map.py refresh                # download data/spawns.json + data/monsters/ from tibiaroute.com
 python tools/route.py block refill 32941,32215,8 --depot 32922,32073,7 --bank 33019,32053,6 --shop 32970,32085,6
+python tools/route.py block travel --depot 32922,32073,7 > travel.txt   # point 0: any city depot -> this depot
+python tools/route.py insert MyHunt 0 < travel.txt   # put lines before waypoint 0 of a saved route
 python tools/video_route.py hunt.mp4 > hunt.txt   # route lines from someone's hunting video
 ```
+
+`block travel` prints point 0, the start of a route: `script go_to_city`
+reads where you stand and jumps to `From<City>` of that city's depot
+(Venore, Thais, Carlin, Ab'Dendriel, Kazordoon, ...); each `From` block walks
+to the route's depot and ends with `goto Depot`, so the route needs a
+`label Depot` before its `finddepo`. Walks use the door scripts and boat
+talks saved routes already make; a city no saved route reaches (an island
+before any route sails there) is left out and named. Start the route at
+waypoint 0. Scripts can read `bot.position` (x, y, z).
 
 `video_route.py` reads the minimap in a hunting video (a recording of a
 full-screen client; `--zoom 1` if its minimap shows 1 px per sqm,

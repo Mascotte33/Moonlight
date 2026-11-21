@@ -11,11 +11,15 @@ import numpy as np
 from moonlight.cavebot.cavebot import Route, Waypoint
 from moonlight.cavebot.pathing import CostMap
 from moonlight.cavebot.route_plan import (
+    CITY_DEPOTS,
     FloorChange,
     FloorMap,
+    Link,
     find_path,
+    nearest_city,
     picture_files,
     read_markers,
+    route_links,
     route_warnings,
     spawn_points,
 )
@@ -54,6 +58,40 @@ def test_known_rope_only_goes_up(tmp_path: Path) -> None:
 
 def test_no_path_without_a_floor_change(tmp_path: Path) -> None:
     assert find_path((5, 5, 7), (15, 15, 8), FloorMap(_map(tmp_path, {}), {}), margin=5) is None
+
+
+def test_route_links_are_door_scripts_and_boat_talks() -> None:
+    route = [
+        Waypoint(10, 10, 7, "stand"),
+        Waypoint(10, 10, 7, "script", "door_down"),
+        Waypoint(70, 10, 9, "label", "Inside"),  # a label's sqm is not walked
+        Waypoint(70, 11, 9),
+        Waypoint(0, 0, 0, "say", "hi"),
+        Waypoint(75, 11, 9),  # a talk then a short walk: not a trip
+        Waypoint(0, 0, 0, "say", "hi"),
+        Waypoint(0, 0, 0, "say", "venore"),
+        Waypoint(0, 0, 0, "goto", "Inside"),  # a jump: not a trip
+        Waypoint(200, 11, 9),
+        Waypoint(0, 0, 0, "say", "yes"),
+        Waypoint(200, 200, 9),
+    ]
+    assert route_links(route) == [
+        Link((10, 10, 7), (70, 11, 9), ("script door_down",)),
+        Link((200, 11, 9), (200, 200, 9), ("say yes",)),
+    ]
+
+
+def test_path_takes_a_link(tmp_path: Path) -> None:
+    link = Link((5, 5, 7), (100, 100, 8), ("script door_down",))
+    floors = FloorMap(_map(tmp_path, {}), {}, {link.at: [link]})
+    assert find_path((5, 5, 7), (101, 100, 8), floors, margin=5) == [link, (101, 100, 8)]
+
+
+def test_nearest_city_within_its_depot() -> None:
+    x, y, z = CITY_DEPOTS["Venore"]
+    assert nearest_city(x + 10, y - 10, z - 1) == "Venore"
+    assert nearest_city(x + 10, y, z - 3) is None  # too many floors away
+    assert nearest_city(x + 100, y, z) is None
 
 
 def _varint(value: int) -> bytes:
