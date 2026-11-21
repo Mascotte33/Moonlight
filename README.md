@@ -148,13 +148,19 @@ in the log). The pictures live in the profiles folder, `drop_items/`.
 The Map tab shows the whole game map with the Cavebot tab's route on it:
 drag to pan, wheel to zoom, ▲/▼ for the floor; the top row shows the sqm
 under the mouse. Dots are waypoints (coloured by kind, numbered as in the
-Cavebot tab), lines join them in order, a red line is a leg the walk map
-finds no path for, a blue triangle points to the next floor, the green X is
-the character ("Follow me" keeps it centred). Hover a dot for its details.
-With Cavebot off: click a sqm to add a walk waypoint after the selected one,
-click a dot to select it, drag a dot to move it, right-click for a dot's kind
-or Delete, or "Add <kind> here" (a kind that needs a label takes the Cavebot
-tab's Label box). Both tabs edit one route; Save in the Cavebot tab writes it.
+Cavebot tab), lines follow the path the bot walks between them, a straight
+red line is a leg the walk map finds no path for, a blue triangle points to
+the next floor, the green X is the character ("Follow me" keeps it centred).
+Hover a dot for its details. The list on the right holds every waypoint:
+click one to select it and jump the map there. Tick Monsters to show spawn
+sqm as orange dots (hover for the name); type in the box next to it to show
+only monsters whose name holds that text. It needs `data/spawns.json`
+(`python tools/map.py refresh`). With Cavebot off: click a dot to select
+it, drag a dot to move it, right-click an empty sqm for "Add <kind> here"
+(after the selected waypoint; a kind that needs a label takes the Cavebot
+tab's Label box) or a dot for its kind or Delete. Undo (or Ctrl+Z on the
+map) takes back the last map edit. Both tabs edit one route; Save in the
+Cavebot tab writes it.
 
 For building routes by hand (or by Claude) from the command line:
 

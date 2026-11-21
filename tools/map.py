@@ -23,15 +23,22 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Callable
 from pathlib import Path
 
 import cv2
 
 from moonlight.cavebot.cavebot import Route, RouteFileLoader, Waypoint, has_tile
 from moonlight.cavebot.pathing import CostMap
-from moonlight.cavebot.route_map import MapTiles, Spot, bad_legs, draw_route, leg_checker
+from moonlight.cavebot.route_map import (
+    LegPath,
+    MapTiles,
+    Spot,
+    bad_legs,
+    draw_route,
+    leg_path,
+)
 from moonlight.cavebot.route_plan import (
+    SPAWNS_FILE,
     download_spawns,
     load_floor_map,
     loop_sqm,
@@ -45,24 +52,23 @@ from moonlight.core.wiring import CLIENT_MINIMAP_DIR, MAP_DIR, walk_map_walkable
 from moonlight.gui.loop_factory import load_real_config
 
 _MARGIN = 10
-SPAWNS = Path("data/spawns.json")
-
 
 def _route(name: str) -> Route:
     return RouteFileLoader.load(load_real_config().routes_dir / f"{name}.json")
 
 
-def _leg_ok() -> Callable[[Spot, Spot], bool]:
+def _leg_path() -> LegPath:
     walkable = walk_map_walkable(MAP_DIR)
     if walkable is None:
         sys.exit(f"no walk map in {MAP_DIR / 'cost'}")
-    return leg_checker(walkable)
+    return leg_path(walkable)
 
 
 def _save(name: str, x0: int, y0: int, z: int, w: int, h: int, args: argparse.Namespace,
-          waypoints: list[Waypoint], bad: list[tuple[int, int]]) -> None:  # fmt: skip
+          waypoints: list[Waypoint], bad: list[tuple[int, int]],
+          path: LegPath | None = None) -> None:  # fmt: skip
     area = MapTiles(MAP_DIR).area(x0, y0, z, w, h)
-    image = draw_route(area, (x0, y0), z, args.scale, waypoints, bad)
+    image = draw_route(area, (x0, y0), z, args.scale, waypoints, bad, path=path)
     out = Path(args.out or f"logs/map_{name}.png")
     out.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
@@ -105,9 +111,9 @@ def _find(text: str, near: Spot | None) -> None:
 
 # doc: docs/prs/route-tools.md#monsters
 def _monsters(name: str) -> None:
-    if not SPAWNS.exists():
-        sys.exit(f"no {SPAWNS}: run python tools/map.py refresh")
-    spots = monster_spots(SPAWNS, name)
+    if not SPAWNS_FILE.exists():
+        sys.exit(f"no {SPAWNS_FILE}: run python tools/map.py refresh")
+    spots = monster_spots(SPAWNS_FILE, name)
     for spot in spots:
         x, y, z = spot.centre
         print(
@@ -133,7 +139,7 @@ def main() -> None:
     parser.add_argument("--out", help="the PNG path")
     args = parser.parse_args()
     if args.command == "refresh":
-        print(f"{SPAWNS}: {download_spawns(SPAWNS)} monsters")
+        print(f"{SPAWNS_FILE}: {download_spawns(SPAWNS_FILE)} monsters")
         return
     if args.target is None:
         parser.error(f"{args.command} needs a target")
@@ -154,8 +160,8 @@ def main() -> None:
         return
     route = _route(args.target)
     waypoints = route.waypoints
-    leg_ok = _leg_ok()
-    bad = bad_legs(waypoints, leg_ok)
+    path = _leg_path()
+    bad = bad_legs(waypoints, path)
     if args.command == "check":
         for i, j in bad:
             a, b = waypoints[i], waypoints[j]
@@ -172,7 +178,7 @@ def main() -> None:
     y0 = min(wp.y for wp in on_floor) - _MARGIN
     w = max(wp.x for wp in on_floor) + _MARGIN - x0 + 1
     h = max(wp.y for wp in on_floor) + _MARGIN - y0 + 1
-    _save(args.target, x0, y0, z, w, h, args, waypoints, bad)
+    _save(args.target, x0, y0, z, w, h, args, waypoints, bad, path)
 
 
 if __name__ == "__main__":

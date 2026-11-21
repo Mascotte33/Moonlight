@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import cv2
@@ -15,6 +16,7 @@ from moonlight.cavebot.route_plan import (
     find_path,
     read_markers,
     route_warnings,
+    spawn_points,
 )
 
 YELLOW = (0, 255, 255)
@@ -69,6 +71,16 @@ def test_read_markers(tmp_path: Path) -> None:
     path = tmp_path / "minimapmarkers.bin"
     path.write_bytes(b"\x0a" + _varint(len(marker)) + marker)
     assert read_markers(path) == [((32369, 32220, 7), "Depot")]
+
+
+def test_spawn_points(tmp_path: Path) -> None:
+    def entry(name: str, spawns: list[dict[str, int]]) -> dict[str, object]:
+        return {"monster": {"name": name}, "spots": [{"spawns": spawns}]}
+
+    path = tmp_path / "spawns.json"
+    sqm = {"x": 1, "y": 2, "z": 7}
+    path.write_text(json.dumps([entry("Troll", [sqm, sqm]), entry("Rat", [sqm])]))
+    assert spawn_points(path) == {(1, 2, 7): ["Troll", "Rat"]}
 
 
 def test_route_warnings(tmp_path: Path) -> None:
