@@ -235,7 +235,7 @@ def test_a_kill_waits_a_moment_for_its_ring_before_the_next_attack() -> None:
         selected_target=Monster(name="swamp troll", hp_percent=100.0),
     )
     looting.loot_first(walked)
-    assert not looting.loot_first(WS)  # a healthy target that left was no kill
+    assert looting.loot_first(WS)  # gone at any HP: one hit can kill from 40 %
 
 
 def test_a_press_the_rate_limit_drops_is_tried_again() -> None:

@@ -111,6 +111,8 @@ class MonsterRow:
     #: Mana points (not percent) needed to press the hotkey; 0 = none.
     minimum_mana: int = 0
     movement: str = "follow"
+    #: The hotkey's own cooldown (ms): the spell is not pressed again sooner; 0 = none.
+    cooldown_ms: int = 0
 
     def validate(self) -> None:
         """Raise ValueError on a bad priority, movement or hotkey."""
@@ -123,6 +125,8 @@ class MonsterRow:
             check_hotkey(self.hotkey, where)
         if isinstance(self.minimum_mana, bool) or self.minimum_mana < 0:
             raise ValueError(f"{where}: minimum_mana must be 0 or more mana points")
+        if isinstance(self.cooldown_ms, bool) or self.cooldown_ms < 0:
+            raise ValueError(f"{where}: cooldown_ms must be 0 or more")
 
 
 # doc: docs/prs/targeting.md#area-rules
@@ -137,6 +141,8 @@ class AreaRule:
     #: Mana points (not percent) needed to press the hotkey; 0 = none.
     minimum_mana: int = 0
     enabled: bool = True
+    #: The spell's own cooldown (ms): not pressed again sooner; 0 = none.
+    cooldown_ms: int = 0
     #: Hit tiles as (dx, dy) from the middle: the player ("around me", "wave",
     #: drawn facing up) or the landing tile ("on a tile").
     area: tuple[tuple[int, int], ...] = SQUARE_AREA
@@ -151,6 +157,8 @@ class AreaRule:
             raise ValueError(f"{where}: minimum_monsters must be >= 1")
         if isinstance(self.minimum_mana, bool) or self.minimum_mana < 0:
             raise ValueError(f"{where}: minimum_mana must be 0 or more mana points")
+        if isinstance(self.cooldown_ms, bool) or self.cooldown_ms < 0:
+            raise ValueError(f"{where}: cooldown_ms must be 0 or more")
         if not self.area:
             raise ValueError(f"{where}: the area hits no tile")
         if any(max(abs(dx), abs(dy)) > AREA_GRID_RADIUS for dx, dy in self.area):

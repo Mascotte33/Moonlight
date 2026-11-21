@@ -15,7 +15,9 @@ slots and MP is at least ``minimum_mana``:
 Else the target row's ``hotkey`` fires, with its own mana minimum.
 
 Every key shares one ``attack_cooldown_ms``; a new target starts it fresh, so
-its first spell goes out at once (``new_target``). Mana is in points
+its first spell goes out at once (``new_target``). A rule or row may also set
+its own ``cooldown_ms`` (spells differ): that key waits it out, new target or not,
+and the next rule that can fire goes instead. Mana is in points
 (``mp_points``); unknown MP (0) is below any mana minimum.
 
 The loop calls this only while the selection matches targeting's choice and
@@ -88,6 +90,8 @@ class AttackHotkeys:
         self._walkable = walkable
         #: When the shared cooldown (randomly longer, picked at each press) ends.
         self._ready_at = float("-inf")
+        #: When each hotkey's own cooldown ends (``cooldown_ms``).
+        self._key_ready: dict[str, float] = {}
 
     def _area_press(self, rule: AreaRule, state: WorldState) -> AttackPress | None:
         """*rule*'s press when its best placement hits enough creatures, else None."""
@@ -123,13 +127,23 @@ class AttackHotkeys:
             return None
         mana = state.mp_points
         for rule in self.config.area_rules:
-            if rule.enabled and mana >= rule.minimum_mana:
+            if rule.enabled and mana >= rule.minimum_mana and self._key_free(rule.hotkey, now):
                 press = self._area_press(rule, state)
                 if press is not None:
                     return press
-        if not row.hotkey or mana < row.minimum_mana:
+        if not row.hotkey or mana < row.minimum_mana or not self._key_free(row.hotkey, now):
             return None
         return AttackPress(row.hotkey)
+
+    def _key_free(self, hotkey: str, now: float) -> bool:
+        return now >= self._key_ready.get(hotkey.lower(), float("-inf"))
+
+    def _own_cooldown_ms(self, hotkey: str) -> int:
+        """The longest ``cooldown_ms`` set for *hotkey* on a rule or a row."""
+        c, key = self.config, hotkey.lower()
+        rules = [r.cooldown_ms for r in c.area_rules if r.hotkey.lower() == key]
+        rows = [r.cooldown_ms for r in (c.default_monster, *c.monsters) if r.hotkey.lower() == key]
+        return max([*rules, *rows], default=0)
 
     # doc: docs/prs/first-spell.md#fresh-cooldown
     def new_target(self) -> None:
@@ -146,4 +160,7 @@ class AttackHotkeys:
         # doc: docs/prs/random-delays.md#spread
         cooldown_ms = random_delay(self.config.attack_cooldown_ms, only_longer=True)
         self._ready_at = now + cooldown_ms / 1000
+        own = self._own_cooldown_ms(hotkey)
+        if own:
+            self._key_ready[hotkey.lower()] = now + random_delay(own, only_longer=True) / 1000
         logger.info("attack hotkey: %s", hotkey)

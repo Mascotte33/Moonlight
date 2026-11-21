@@ -59,8 +59,10 @@ RING_PRESSES = 2
 RING_STEP_SECONDS = 0.5
 #: Steps toward it before a ring 2 tiles away is left (a wall or a player in the way).
 RING_STEPS = 3
-#: A target last seen at or under this HP that leaves the battle list was killed ...
-KILL_HP = 25.0
+#: A selected target that leaves the battle list was killed (or walked off: then the
+#: wait below only costs a moment). Any HP: one hit from 40 % killed trolls the 25 %
+#: floor missed, and the cavebot walked off the corpse (2026-11-21) ...
+KILL_HP = 100.0
 #: ... and its corpse's ring shows a moment later: no new attack before this many
 #: seconds (random) pass or a ring by the player is seen (owner 2026-11-21: the bot
 #: attacked the next monster before the ring showed and walked off the corpse).
