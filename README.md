@@ -148,22 +148,43 @@ in the log). The pictures live in the profiles folder, `drop_items/`.
 The Map tab shows the whole game map with the Cavebot tab's route on it:
 drag to pan, wheel to zoom, ▲/▼ for the floor; the top row shows the sqm
 under the mouse. Dots are waypoints (coloured by kind, numbered as in the
-Cavebot tab), lines join them in order, a red line is a leg the walk map
-finds no path for, a blue triangle points to the next floor, the green X is
-the character ("Follow me" keeps it centred). Hover a dot for its details.
-With Cavebot off: click a sqm to add a walk waypoint after the selected one,
-click a dot to select it, drag a dot to move it, right-click for a dot's kind
-or Delete, or "Add <kind> here" (a kind that needs a label takes the Cavebot
-tab's Label box). Both tabs edit one route; Save in the Cavebot tab writes it.
+Cavebot tab), lines follow the path the bot walks between them, a straight
+red line is a leg the walk map finds no path for, a blue triangle points to
+the next floor, the green X is the character ("Follow me" keeps it centred).
+Hover a dot for its details. The list on the right holds every waypoint:
+click one to select it and jump the map there. Tick Monsters to show spawn
+sqm as orange dots (hover for the name); type in the box next to it to show
+only monsters whose name holds that text. Zoomed in (4 px per sqm or more), the
+dots turn into the monster's picture. It needs `data/spawns.json` and
+`data/monsters/`
+(`python tools/map.py refresh`). With Cavebot off: click a dot to select
+it, drag a dot to move it, right-click an empty sqm for "Add <kind> here"
+(after the selected waypoint; a kind that needs a label takes the Cavebot
+tab's Label box) or a dot for its kind or Delete. Undo (or Ctrl+Z on the
+map) takes back the last map edit. Both tabs edit one route; Save in the
+Cavebot tab writes it.
 
 For building routes by hand (or by Claude) from the command line:
 
 ```bash
 python tools/map.py show MyHunt            # logs/map_MyHunt.png: the area with the route
 python tools/map.py area 32369,32220,7     # any area, no route
-python tools/map.py check MyHunt           # legs the walk map finds no path for
+python tools/map.py check MyHunt           # bad legs, misplaced floor changes, refill gaps, loop length
 python tools/route.py new MyHunt < wps.txt # new route, lines "x y z [action [label]]" or "action label"
+python tools/map.py stairs 32369,32220,7   # floor changes nearby and where they lead
+python tools/route.py path 32374,32028,12 32374,32054,11   # waypoints from A to B, across floors
+python tools/map.py find depot --near 32369,32220,7        # your map markers + routes' depot/bank/shop spots
+python tools/map.py monsters Troll         # where a monster spawns (data/spawns.json)
+python tools/map.py refresh                # download data/spawns.json + data/monsters/ from tibiaroute.com
+python tools/route.py block refill 32941,32215,8 --depot 32922,32073,7 --bank 33019,32053,6 --shop 32970,32085,6
 ```
+
+`path` and `block refill` print lines for `route.py new`. A floor change's
+kind (stairs, ladder, rope) comes from a saved route that uses that sqm;
+otherwise it is a guess (down = stairs, up = ladder), marked `# guess`, so
+check those by hand. `block refill` prints `check GoToRefill`,
+`goto StartHunt`, the walk to the depot, bank and shop, and back; the hunt
+starts with `label StartHunt` and the route needs a buy list for `trade`.
 
 On Linux, also:
 

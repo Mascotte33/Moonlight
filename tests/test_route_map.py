@@ -8,13 +8,13 @@ import cv2
 import numpy as np
 
 from moonlight.cavebot.cavebot import Waypoint
-from moonlight.cavebot.map_tab import tooltip
+from moonlight.cavebot.map_tab import UndoStack, matching_spawns, tooltip
 from moonlight.cavebot.route_map import (
     MapTiles,
     MapView,
     bad_legs,
     draw_route,
-    leg_checker,
+    leg_path,
     legs,
     waypoint_at,
 )
@@ -41,8 +41,10 @@ def test_bad_legs_only_same_floor_without_path() -> None:
     def walkable(x: int, y: int, z: int) -> bool:
         return x != wall_x
 
-    bad = bad_legs(_route(), leg_checker(walkable))
+    path = leg_path(walkable)
+    bad = bad_legs(_route(), path)
     assert bad == [(2, 3)]  # 105 -> 110 crosses the wall; floor changes are not checked
+    assert path((100, 100, 7), (103, 100, 7)) == [(101, 100), (102, 100), (103, 100)]
 
 
 def test_waypoint_at_finds_last_positional() -> None:
@@ -82,3 +84,38 @@ def test_render_size_and_tooltip() -> None:
     assert image.any()  # the route was drawn on the black map
     assert draw_route(np.zeros((5, 5, 3), np.uint8), (0, 0), 7, 2, [], []).shape == (10, 10, 3)
     assert tooltip(3, _route()[3]) == "4  rope  (110, 100, 7)"
+    monsters = {(104, 99, 7): ["Troll"], (104, 99, 8): ["Rat"]}
+    with_monsters = view.render(MapTiles(Path("nowhere")), [], [], monsters=monsters)
+    assert with_monsters.any()  # the floor-7 spawn was drawn
+
+
+def test_spawns_are_pictures_when_zoomed_in_dots_farther_out() -> None:
+    picture = np.zeros((4, 4, 4), np.uint8)
+    picture[:, :2] = (255, 0, 0, 255)  # left half solid red, right half see-through
+    monsters = {(100, 100, 7): ["Troll"], (100, 100, 8): ["Troll"]}
+    tiles = MapTiles(Path("nowhere"))
+    view = MapView(102, 102, 7, scale=4, width=20, height=20)  # origin (100, 100)
+    image = view.render(tiles, [], [], monsters=monsters, pictures={"Troll": picture})
+    assert tuple(image[2, 0]) == (255, 0, 0)  # centred on sqm (100, 100): px (2, 2), cut at 0
+    assert not image[2, 2:].any()  # see-through half, no dot under it
+    view.zoom(-1, 0, 0)  # scale 3: too far out, a dot
+    image = view.render(tiles, [], [], monsters=monsters, pictures={"Troll": picture})
+    assert image.any() and not (image == (255, 0, 0)).all(axis=2).any()
+
+
+def test_undo_restores_the_route_before_a_map_edit() -> None:
+    route = _route()
+    undo = UndoStack()
+    before = list(route)
+    del route[0]
+    undo.push(before, route)
+    assert undo.undo(route) and route == before
+    assert not undo.undo(route)  # nothing left
+    undo.push(list(route), route[:1])  # the after list no longer matches: an outside edit
+    assert not undo.undo(route) and route == before
+
+
+def test_matching_spawns_by_part_of_the_name() -> None:
+    spawns = {(1, 1, 7): ["Troll", "Swamp Troll"], (2, 2, 7): ["Rat"]}
+    assert matching_spawns(spawns, " troll") == {(1, 1, 7): ["Troll", "Swamp Troll"]}
+    assert matching_spawns(spawns, "") is spawns

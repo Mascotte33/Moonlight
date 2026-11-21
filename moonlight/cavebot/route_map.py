@@ -3,8 +3,9 @@
 The client's colour minimap tiles (``data/maps/tibia/{x}_{y}_{z}.png``,
 256x256 px, 1 px = 1 sqm) are cut into the shown area and scaled up. Each
 positional waypoint is a numbered dot coloured by its kind; waypoints in a
-row on one floor are joined by a line, red when the walk map finds no path
-between them (a failing leg). A waypoint whose next one is on another floor
+row on one floor are joined by the path the bot walks between them (the walk
+map's cheapest path, ``next_step``), or a straight red line when it finds none
+(a failing leg). A waypoint whose next one is on another floor
 gets a triangle pointing up or down.
 
 # doc: docs/prs/map.md#map-view
@@ -13,7 +14,7 @@ gets a triangle pointing up or down.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -25,7 +26,8 @@ from moonlight.cavebot.cavebot import Waypoint, has_tile
 from moonlight.cavebot.pathing import next_step
 
 __all__ = [
-    "SCALES", "MapTiles", "MapView", "bad_legs", "draw_route", "leg_checker", "legs",
+    "PICTURE_MIN_SCALE", "SCALES", "MapTiles", "MapView", "bad_legs", "draw_route", "leg_path",
+    "legs",
     "waypoint_at",
 ]  # fmt: skip
 
@@ -49,6 +51,9 @@ _LINE = (231, 237, 242)
 _BAD = (229, 93, 81)
 _ME = (115, 201, 165)
 _SELECTED = (255, 255, 0)
+_MONSTER = (240, 120, 40)
+#: Monster pictures show from this zoom (px per sqm); farther out they cover the map.
+PICTURE_MIN_SCALE = 4
 
 Spot = tuple[int, int, int]
 
@@ -93,24 +98,30 @@ def legs(waypoints: list[Waypoint]) -> list[tuple[int, int]]:
     return pairs
 
 
-def leg_checker(walkable: Callable[[int, int, int], bool]) -> Callable[[Spot, Spot], bool]:
-    """``ok(a, b)``: the walk map has a path from sqm *a* to *b* (one floor); cached."""
+#: ``path(a, b)``: the (x, y) sqm the bot walks from *a* (not included) to *b*
+#: on one floor, or None when the walk map has no path.
+LegPath = Callable[[Spot, Spot], list[tuple[int, int]] | None]
+
+
+def leg_path(walkable: Callable[[int, int, int], bool]) -> LegPath:
+    """The bot's walking path between two sqm (``next_step``'s tiles); cached."""
 
     @cache
-    def ok(a: Spot, b: Spot) -> bool:
-        return a[:2] == b[:2] or next_step(a, b, walkable) is not None
+    def path(a: Spot, b: Spot) -> list[tuple[int, int]] | None:
+        if a[:2] == b[:2]:
+            return []
+        found = next_step(a, b, walkable)
+        return None if found is None else found[2]
 
-    return ok
+    return path
 
 
-def bad_legs(
-    waypoints: list[Waypoint], leg_ok: Callable[[Spot, Spot], bool]
-) -> list[tuple[int, int]]:
+def bad_legs(waypoints: list[Waypoint], path: LegPath) -> list[tuple[int, int]]:
     """The legs on one floor the walk map finds no path for."""
     bad = []
     for i, j in legs(waypoints):
         a, b = waypoints[i], waypoints[j]
-        if a.z == b.z and not leg_ok((a.x, a.y, a.z), (b.x, b.y, b.z)):
+        if a.z == b.z and path((a.x, a.y, a.z), (b.x, b.y, b.z)) is None:
             bad.append((i, j))
     return bad
 
@@ -134,8 +145,15 @@ def draw_route(
     *,
     selected: int | None = None,
     me: Spot | None = None,
+    path: LegPath | None = None,
+    monsters: Sequence[tuple[int, int, np.ndarray | None]] = (),
 ) -> np.ndarray:
-    """*area* (``MapTiles.area`` at *origin*) scaled *scale* times with the route on floor *z*."""
+    """*area* (``MapTiles.area`` at *origin*) scaled *scale* times with the route on floor *z*.
+
+    With *path*, a leg that has one is drawn along it; else legs are straight.
+    *monsters* are spawn sqm (x, y, RGBA picture or None for a dot) on floor *z*,
+    drawn under the route.
+    """
     image = cv2.resize(area, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
     x0, y0 = origin
     half = scale // 2
@@ -143,11 +161,23 @@ def draw_route(
     def px(x: int, y: int) -> tuple[int, int]:
         return (x - x0) * scale + half, (y - y0) * scale + half
 
+    for x, y, rgba in monsters:
+        if rgba is None:
+            cv2.circle(image, px(x, y), max(1, half // 2 + 1), _MONSTER, -1)
+        else:
+            _paste(image, rgba, *px(x, y))
+
     for i, j in legs(waypoints):
         a, b = waypoints[i], waypoints[j]
-        if a.z == z == b.z:
-            colour = _BAD if (i, j) in bad else _LINE
-            cv2.line(image, px(a.x, a.y), px(b.x, b.y), colour, 3 if colour == _BAD else 1)
+        if a.z != z or b.z != z:
+            continue
+        if (i, j) in bad:
+            cv2.line(image, px(a.x, a.y), px(b.x, b.y), _BAD, 3)
+            continue
+        tiles = path((a.x, a.y, a.z), (b.x, b.y, b.z)) if path is not None else None
+        points = [(a.x, a.y), *(tiles if tiles is not None else [(b.x, b.y)])]
+        line = np.array([px(*p) for p in points], np.int32)
+        cv2.polylines(image, [line], False, _LINE, 1)
     radius = max(3, half)
     for i, j in legs(waypoints):
         a, b = waypoints[i], waypoints[j]
@@ -225,11 +255,52 @@ class MapView:
         *,
         selected: int | None = None,
         me: Spot | None = None,
+        path: LegPath | None = None,
+        monsters: dict[Spot, list[str]] | None = None,
+        pictures: dict[str, np.ndarray] | None = None,
     ) -> np.ndarray:
-        """The view as an RGB image ``height`` x ``width``."""
+        """The view as an RGB image ``height`` x ``width``; *monsters*: spawn sqm to show,
+        as the monster's RGBA picture from *pictures* from ``PICTURE_MIN_SCALE`` up."""
         x0, y0 = self.origin
         w, h = self.size
         area = tiles.area(x0, y0, self.z, w, h)
+        size = min(32, 2 * self.scale)  # a monster covers 2 sqm across at 16 px per sqm
+        resized: dict[str, np.ndarray | None] = {}
+
+        def picture(names: list[str]) -> np.ndarray | None:
+            if self.scale < PICTURE_MIN_SCALE or not pictures:
+                return None
+            name = names[0]
+            if name not in resized:
+                rgba = pictures.get(name)
+                resized[name] = None if rgba is None else _fit(rgba, size)
+            return resized[name]
+
+        shown = [(x, y, picture(names)) for (x, y, z), names in (monsters or {}).items()
+                 if z == self.z and x0 <= x < x0 + w and y0 <= y < y0 + h]  # fmt: skip
         image = draw_route(area, (x0, y0), self.z, self.scale, waypoints, bad,
-                           selected=selected, me=me)  # fmt: skip
+                           selected=selected, me=me, path=path, monsters=shown)  # fmt: skip
         return image[: self.height, : self.width]
+
+
+def _fit(rgba: np.ndarray, size: int) -> np.ndarray:
+    """*rgba* shrunk so its longer side is *size* px."""
+    scale = size / max(rgba.shape[:2])
+    if scale >= 1:
+        return rgba
+    return cv2.resize(rgba, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+
+
+# doc: docs/prs/route-tools.md#monster-pictures
+def _paste(image: np.ndarray, rgba: np.ndarray, cx: int, cy: int) -> None:
+    """Blend *rgba* onto *image* centred on pixel (cx, cy), cut at the edges."""
+    ph, pw = rgba.shape[:2]
+    left, top = cx - pw // 2, cy - ph // 2
+    ix0, iy0 = max(left, 0), max(top, 0)
+    ix1, iy1 = min(left + pw, image.shape[1]), min(top + ph, image.shape[0])
+    if ix0 >= ix1 or iy0 >= iy1:
+        return
+    part = rgba[iy0 - top : iy1 - top, ix0 - left : ix1 - left].astype(np.float32)
+    alpha = part[:, :, 3:] / 255
+    under = image[iy0:iy1, ix0:ix1].astype(np.float32)
+    image[iy0:iy1, ix0:ix1] = (part[:, :, :3] * alpha + under * (1 - alpha)).astype(np.uint8)
