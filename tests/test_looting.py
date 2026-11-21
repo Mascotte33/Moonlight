@@ -126,13 +126,14 @@ def test_rings_that_stay_get_one_more_press_then_are_left_until_the_character_mo
     see_ring(looting, clock)
     looting.press_ring()
     wait(looting, clock, RING_GONE_TIMEOUT)
-    see_ring(looting, clock)  # still there: pressed again
-    looting.press_ring()
-    wait(looting, clock, RING_GONE_TIMEOUT)
+    for _ in range(2):  # still there: pressed again, up to RING_PRESSES
+        see_ring(looting, clock)
+        looting.press_ring()
+        wait(looting, clock, RING_GONE_TIMEOUT)
     for _ in range(8):  # a full backpack: left alone here
         assert not looting.ring_due(NEAR, WS) and not looting.should_loot(WS)
         clock.t += 0.125
-    assert inp.sent_lines == ["K alt+q", "K alt+q"]
+    assert inp.sent_lines == ["K alt+q"] * 3
     moved = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0,
                        position=Position(1, 0, 7))
     assert looting.ring_due(NEAR, moved)  # walked on: rings here are new
@@ -277,7 +278,7 @@ def test_a_kill_next_to_the_player_presses_loot_at_once(
         assert inp.sent_lines == ["K alt+q"]
 
 
-def test_a_kill_next_to_the_player_is_looted_twice() -> None:
+def test_a_kill_next_to_the_player_is_looted_three_times() -> None:
     # The target can leave the battle list before its corpse lies there: the first
     # press found nothing; a second one a moment later loots it.
     from moonlight.core.state import Monster
@@ -299,8 +300,11 @@ def test_a_kill_next_to_the_player_is_looted_twice() -> None:
     clock.t += SECOND_PRESS_SECONDS
     assert looting.ring_due(NEAR, WS)
     looting.press_ring()
-    assert inp.sent_lines == ["K alt+q", "K alt+q"]
-    for _ in range(40):  # 5 s of ticks: no third press, and the fight may go on
+    clock.t += SECOND_PRESS_SECONDS * 1.5
+    assert looting.ring_due(NEAR, WS)
+    looting.press_ring()
+    assert inp.sent_lines == ["K alt+q"] * 3
+    for _ in range(40):  # 5 s of ticks: no fourth press, and the fight may go on
         clock.t += 0.125
         assert not looting.ring_due(NEAR, WS)
-    assert inp.sent_lines == ["K alt+q", "K alt+q"] and not looting.loot_first(WS)
+    assert inp.sent_lines == ["K alt+q"] * 3 and not looting.loot_first(WS)

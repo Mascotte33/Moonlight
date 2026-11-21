@@ -54,7 +54,7 @@ RING_GONE_SECONDS = 0.8
 #: ... and the hotkey is pressed again when one still shows this long after a press.
 RING_GONE_TIMEOUT = 1.5
 #: Presses for the same rings before they are left until the character moves.
-RING_PRESSES = 2
+RING_PRESSES = 3
 #: Seconds between two steps toward a ring 2 tiles away (one step takes about 0.3 s).
 RING_STEP_SECONDS = 0.5
 #: Steps toward it before a ring 2 tiles away is left (a wall or a player in the way).
@@ -66,10 +66,13 @@ KILL_HP = 100.0
 #: ... and its corpse's ring shows a moment later: no new attack before this many
 #: seconds (random) pass or a ring by the player is seen (owner 2026-11-21: the bot
 #: attacked the next monster before the ring showed and walked off the corpse).
-KILL_RING_WAIT = 1.0
+KILL_RING_WAIT = 1.5
 #: Seconds (random) after a kill's first loot press to press again: the target can
 #: leave the battle list a moment before its corpse lies there to loot.
 SECOND_PRESS_SECONDS = 0.6
+#: Presses for a kill next to the player (the first, then one every
+#: ``SECOND_PRESS_SECONDS``): a corpse that lands late is still looted.
+KILL_PRESSES = 3
 #: A screenshot of each loot press, the ring circled.
 # ponytail: a diagnosis aid (owner 2026-11-04: "it didnt loot"); delete it
 # once ring looting is trusted.
@@ -120,7 +123,7 @@ class Looting:
         self._kill_press = False
         #: When a kill's second loot press goes: the first can come before the corpse.
         self._second_press_at: float | None = None
-        self._second_press = False
+        self._kill_presses = 0
         self._kill_wait_until = float("-inf")
         #: A ring 2 tiles away seen this tick: walked to when no fight is on.
         self._far_ring: Ring | None = None
@@ -154,7 +157,7 @@ class Looting:
         now = self._clock()
         if self._second_press_at is not None and now >= self._second_press_at:
             self._second_press_at = None
-            self._kill_press = self._second_press = True  # pressed below like the first
+            self._kill_press = True  # pressed below like the first
             self._pressed_at = None
         if self._kill_press and self._pressed_at is None:
             # A kill next to the player: Quick Loot takes every corpse around, no ring needed.
@@ -249,11 +252,15 @@ class Looting:
             # stays due and the press goes again next tick, not "looted".
             log.info("looting: the press was held back by the rate limit, again next tick")
             return
-        if self._kill_press and not self._second_press:
-            self._second_press_at = self._clock() + random_delay(SECOND_PRESS_SECONDS)
+        if self._kill_press:
+            self._kill_presses += 1
+            if self._kill_presses < KILL_PRESSES:
+                self._second_press_at = self._clock() + random_delay(SECOND_PRESS_SECONDS)
+            else:
+                self._kill_presses = 0
         # Once: the second press scheduled another one each time (Alt+Q every 0.6 s
         # for 1.5 min, no attack, 2026-11-21).
-        self._kill_press = self._second_press = False
+        self._kill_press = False
         self._save_shot(self._ring.point)
         self._pressed_at, self._presses, self._steps = self._clock(), self._presses + 1, 0
         # doc: docs/prs/random-delays.md#spread
@@ -297,6 +304,7 @@ class Looting:
             if self._target_hp <= KILL_HP:
                 self._kill_wait_until = now + random_delay(KILL_RING_WAIT)
                 self._kill_press = self._target_near
+                self._kill_presses = 0
             self._target_hp, self._target_near = None, False
         busy = (
             self._ring is not None
