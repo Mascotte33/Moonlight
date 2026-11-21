@@ -118,7 +118,8 @@ def test_waits_1_to_3_minutes_and_for_a_clear_battle_list(tmp_path: Path) -> Non
 def test_drags_the_item_to_a_free_sqm_and_ends_when_it_is_gone(tmp_path: Path) -> None:
     picture = boots(tmp_path)
     clock, inp = Clock(), Input()
-    frames = [frame_with(picture), frame_with(None)]
+    # the look, the check before the drag, then gone
+    frames = [frame_with(picture), frame_with(picture), frame_with(None)]
     drop = dropper(tmp_path, frames, clock, inp)
     clock.now = 180.0
     run_round(drop, clock, snap())
@@ -158,7 +159,7 @@ def test_a_monster_mid_round_stops_it_until_the_screen_is_clear(tmp_path: Path) 
     drop = dropper(tmp_path, [frame_with(picture)], clock, inp)
     clock.now = 180.0
     drop.step(snap())  # the first look starts a drag
-    for _ in range(4):
+    for _ in range(5):  # move, check the item is still there, down, move, up
         drop.step(snap(monsters=1))  # the drag is finished, never cut
     clock.now += 1.0
     drop.step(snap(monsters=1))
@@ -196,3 +197,19 @@ def test_only_the_clipped_item_itself_is_found(tmp_path: Path) -> None:
     counted[24:, 20:] = 255  # another stack count in the corner
     frame[100:132, 100:132] = counted
     assert find_item(frame, tmp_path / "torch.png") == (116, 116)
+
+
+def test_an_item_that_moved_before_the_drag_is_not_dragged(tmp_path: Path) -> None:
+    # 2026-11-21: a loot press or a used item shifted the backpack between the look
+    # and the drag, and an item not on the list was thrown away.
+    picture = boots(tmp_path)
+    clock, inp = Clock(), Input()
+    frames = [frame_with(picture), frame_with(None)]  # the look sees it; then it moved
+    drop = dropper(tmp_path, frames, clock, inp)
+    clock.now = 180.0
+    drop.step(snap())  # the look starts a drag
+    drop.step(snap())  # the mouse goes to it
+    drop.step(snap())  # the check: gone from there
+    for _ in range(3):
+        drop.step(snap())
+    assert [c for c in inp.sent if c[0] != "to"] == []  # never pressed, never dropped

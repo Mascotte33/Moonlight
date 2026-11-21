@@ -189,6 +189,14 @@ class DropItems:
         now = self._clock()
         if not self.in_round:
             self.in_round, self._left, self._dragged, self._tried = True, [], None, []
+        if self._sends and self._sends[0] == self._check:
+            self._sends.pop(0)
+            if not self._still_there():
+                path, item = self._dragged if self._dragged else (Path("?"), (0, 0))
+                log.warning("drop: %s moved before the drag, not dragged; looking again", path.stem)
+                self._sends, self._dragged, self._tried = [], None, []
+                self._look_again_at = now + LOOK_AGAIN_SECONDS
+            return
         if self._sends:
             dropped = getattr(self._input, "dropped", 0)
             self._sends[0]()
@@ -226,12 +234,32 @@ class DropItems:
         send = self._input
         self._sends = [
             lambda: send.mouse_to(*a),
+            self._check,  # the backpack may have changed since the look: same item still there?
             lambda: send.mouse_down(ClickSide.LEFT),
             lambda: send.mouse_to(*b),
             lambda: send.mouse_up(ClickSide.LEFT),
         ]
         dx, dy = slot[0] - PLAYER_SLOT[0], slot[1] - PLAYER_SLOT[1]
         log.info("drop: %s -> (%d, %d)", path.stem, snap.position.x + dx, snap.position.y + dy)
+
+    def _check(self) -> None:
+        """A marker in the drag: :meth:`step` checks the item before the button goes down."""
+
+    def _still_there(self) -> bool:
+        """The dragged item is still at its spot in a fresh grab (a loot press or a used
+        item moves the backpack's items; the wrong one would be thrown away)."""
+        if self._dragged is None:
+            return False
+        path, (x, y) = self._dragged
+        frame = self._grab()
+        pic = cv2.imread(str(path))
+        if pic is None:
+            return False
+        h, w = pic.shape[:2]
+        pad = SAME_SPOT_PIXELS
+        top, left = max(0, y - h // 2 - pad), max(0, x - w // 2 - pad)
+        spot = find_item(np.ascontiguousarray(frame[top : y + h, left : x + w]), path)
+        return spot is not None and abs(left + spot[0] - x) <= pad and abs(top + spot[1] - y) <= pad
 
     def start_now(self) -> None:
         """Start a round as soon as no monster is in the battle list (``bot.drop_items``)."""
