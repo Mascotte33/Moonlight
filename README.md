@@ -138,6 +138,13 @@ python tools/stuck_spots.py
 
 Calibrate the screen regions in the GUI's Calibration tab before the first run.
 
+To throw away unwanted loot (a free account has no loot sorting): Cavebot tab,
+Settings, "Drop these items", "+", show the client within 3 s, box the item
+(without its count), Enter, type a name. Tick "Drop the items below every
+1-3 min". When no monster is in view the bot drags each listed item from the
+open backpacks onto a free sqm within 2 of the character (`drop: <name> -> (x, y)`
+in the log). The pictures live in the profiles folder, `drop_items/`.
+
 On Linux, also:
 
 - `sudo apt install python3-tk tesseract-ocr`.
