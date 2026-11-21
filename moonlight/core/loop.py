@@ -1123,6 +1123,12 @@ class GameLoop:
         drop, m = self.modules.drop_items, self.modules
         if drop is None or not drop.due(snap):
             return False
+        if not drop.in_round and m.looting is not None and (
+            m.looting.should_loot(snap) or m.looting.loot_first(snap)
+        ):
+            # A ring still to loot: items dropped next to the player covered the
+            # corpse's ring and it was never looted (2026-11-21).
+            return False
         if not drop.in_round and (
             (m.clicker is not None and m.clicker.busy)
             or (m.cavebot is not None and m.cavebot.hand_busy)
