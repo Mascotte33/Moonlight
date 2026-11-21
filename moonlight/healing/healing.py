@@ -54,6 +54,9 @@ class HealingRule:
     hotkey: str
     hp_below_percent: float = 0.0
     mp_below_percent: float = 0.0
+    #: Mana points the rule needs (a spell's cost); 0 = none. Below it the rule is
+    #: skipped and the next one can heal (no pressing a spell with no mana).
+    minimum_mana: int = 0
 
 
 @dataclass(frozen=True)
@@ -102,6 +105,8 @@ class HealingConfig:
             if rule.kind not in _SLOTS:
                 raise ValueError(f"{where}: kind must be 'spell' or 'potion', got {rule.kind!r}")
             check_hotkey(rule.hotkey, where)
+            if isinstance(rule.minimum_mana, bool) or rule.minimum_mana < 0:
+                raise ValueError(f"{where}: minimum_mana must be 0 or more mana points")
             for name in ("hp_below_percent", "mp_below_percent"):
                 percent = getattr(rule, name)
                 if not 0.0 <= percent <= 100.0:
@@ -181,7 +186,7 @@ class HealingDecision:
         waits a random ``HEAL_REACTION_SECONDS`` first, unless HP is critical.
         """
         hp, mp = state.hp_percent, state.mp_percent
-        due = {slot: self._first_due_rule(slot, hp, mp) for slot in _SLOTS}
+        due = {slot: self._first_due_rule(slot, hp, mp, state.mp_points) for slot in _SLOTS}
         if due["spell"] is None:
             due["spell"] = self._first_due_cure(state)
         critical = 0.0 < hp <= self._critical_hp
@@ -209,9 +214,11 @@ class HealingDecision:
             self._first_due_cure(state)
         )
 
-    def _first_due_rule(self, slot: str, hp: float, mp: float) -> HealingAction | None:
+    def _first_due_rule(
+        self, slot: str, hp: float, mp: float, mana: int = 0
+    ) -> HealingAction | None:
         for rule in self.config.rules:
-            if rule.kind != slot:
+            if rule.kind != slot or mana < rule.minimum_mana:
                 continue
             reason = _rule_reason(rule, hp, mp)
             if reason is not None:
