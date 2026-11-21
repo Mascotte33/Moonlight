@@ -820,6 +820,17 @@ class Cavebot:
         """True while the route is running."""
         return self._active
 
+    # doc: docs/prs/drop-items.md#drop-items
+    @property
+    def hand_busy(self) -> bool:
+        """True mid hand action (a drag, typing, an NPC talk, a deposit): the mouse is taken."""
+        return (
+            self._sends_done > 0
+            or self._hand_done_at is not None
+            or self._talk is not None
+            or self._deposit_drag is not None
+        )
+
     def luring(self) -> bool:
         """True while walking to a ``lure`` waypoint: the loop holds attacks."""
         wps = self.route.waypoints

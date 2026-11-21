@@ -74,6 +74,9 @@ class LootingConfig:
     loot_hotkey: str = "alt+q"
     wait_ms: int = 400
     min_hp_to_loot: float = 70.0
+    # doc: docs/prs/drop-items.md#drop-items
+    #: Every 1-3 min, drop the picked items (``DROP_ITEMS_DIR``) out of the backpacks.
+    drop_items: bool = False
 
 
 class Looting:
