@@ -156,7 +156,13 @@ class AttackHotkeys:
 
     def send(self, hotkey: str, backend: InputBackend, now: float) -> None:
         """Press *hotkey* and start the shared cooldown."""
+        dropped = getattr(backend, "dropped", 0)
         backend.press_combo(hotkey)
+        if getattr(backend, "dropped", 0) != dropped:
+            # The wire rate limit held it back: no cooldown for a spell never cast,
+            # it goes again next tick (a 6 s spell sat idle after a dropped press).
+            logger.info("attack hotkey: %s held back by the rate limit, again next tick", hotkey)
+            return
         # doc: docs/prs/random-delays.md#spread
         cooldown_ms = random_delay(self.config.attack_cooldown_ms, only_longer=True)
         self._ready_at = now + cooldown_ms / 1000

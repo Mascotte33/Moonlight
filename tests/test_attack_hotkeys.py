@@ -159,3 +159,20 @@ def test_a_spell_waits_out_its_own_cooldown_and_the_next_one_goes() -> None:
     assert after is not None and after.hotkey == "F6"
     again = keys.decide(state, row, 4.5)  # F5 ready again (random spread only longer: < 4.4 s)
     assert again is not None and again.hotkey == "F5"
+
+
+def test_a_press_the_rate_limit_drops_starts_no_cooldown() -> None:
+    from moonlight.targeting.targeting import AreaRule, MonsterRow, TargetingConfig
+
+    class Busy(FakeInput):
+        dropped = 0
+
+        def press_combo(self, combo: str) -> None:
+            self.dropped += 1  # the limiter kept it
+
+    rule = AreaRule("F6", minimum_monsters=1, cooldown_ms=6000)
+    keys = AttackHotkeys(TargetingConfig(area_rules=(rule,), attack_cooldown_ms=2000))
+    state = WorldState(creature_slots=((8, 5),), mp_points=100)
+    keys.send("F6", Busy(), 0.0)
+    press = keys.decide(state, MonsterRow(name="witch"), 0.1)
+    assert press is not None and press.hotkey == "F6"  # tried again at once
