@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
 from typing import Any
 
 import customtkinter as ctk
@@ -871,9 +871,13 @@ class CavebotTab(Tab):
         if pic is None:
             self.lbl_msg.configure(text="Add item: cancelled")
             return
-        name = ctk.CTkInputDialog(text="Item name (e.g. leather boots):", title="Add item")
+        # Tk's own prompt: customtkinter's dialog could not be closed on Linux.
+        self._root.lift()
+        name = simpledialog.askstring(
+            "Add item", "Item name (e.g. leather boots):", parent=self._root
+        )
         try:
-            path = drop_picture_path(_drop_items_dir(), name.get_input() or "")
+            path = drop_picture_path(_drop_items_dir(), name or "")
         except ValueError as error:
             self.lbl_msg.configure(text=str(error))
             return
@@ -992,7 +996,7 @@ class CavebotTab(Tab):
         """Ask for a name and start that route; unnamed editor waypoints go into it."""
         if not self._discard_ok():
             return
-        name = (ctk.CTkInputDialog(text="Route name", title="New route").get_input() or "").strip()
+        name = (simpledialog.askstring("New route", "Route name", parent=self._root) or "").strip()
         if not name:
             return
         try:
