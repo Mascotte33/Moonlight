@@ -300,5 +300,7 @@ def test_a_kill_next_to_the_player_is_looted_twice() -> None:
     assert looting.ring_due(NEAR, WS)
     looting.press_ring()
     assert inp.sent_lines == ["K alt+q", "K alt+q"]
-    clock.t += 3.0
-    assert not looting.ring_due(NEAR, WS)  # no third press
+    for _ in range(40):  # 5 s of ticks: no third press, and the fight may go on
+        clock.t += 0.125
+        assert not looting.ring_due(NEAR, WS)
+    assert inp.sent_lines == ["K alt+q", "K alt+q"] and not looting.loot_first(WS)

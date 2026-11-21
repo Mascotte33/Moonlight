@@ -120,6 +120,7 @@ class Looting:
         self._kill_press = False
         #: When a kill's second loot press goes: the first can come before the corpse.
         self._second_press_at: float | None = None
+        self._second_press = False
         self._kill_wait_until = float("-inf")
         #: A ring 2 tiles away seen this tick: walked to when no fight is on.
         self._far_ring: Ring | None = None
@@ -153,7 +154,7 @@ class Looting:
         now = self._clock()
         if self._second_press_at is not None and now >= self._second_press_at:
             self._second_press_at = None
-            self._kill_press = True  # pressed below like the first
+            self._kill_press = self._second_press = True  # pressed below like the first
             self._pressed_at = None
         if self._kill_press and self._pressed_at is None:
             # A kill next to the player: Quick Loot takes every corpse around, no ring needed.
@@ -248,9 +249,11 @@ class Looting:
             # stays due and the press goes again next tick, not "looted".
             log.info("looting: the press was held back by the rate limit, again next tick")
             return
-        if self._kill_press and self._ring.tiles_away == 0 and self._presses == 0:
+        if self._kill_press and not self._second_press:
             self._second_press_at = self._clock() + random_delay(SECOND_PRESS_SECONDS)
-        self._kill_press = False
+        # Once: the second press scheduled another one each time (Alt+Q every 0.6 s
+        # for 1.5 min, no attack, 2026-11-21).
+        self._kill_press = self._second_press = False
         self._save_shot(self._ring.point)
         self._pressed_at, self._presses, self._steps = self._clock(), self._presses + 1, 0
         # doc: docs/prs/random-delays.md#spread
