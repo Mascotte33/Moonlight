@@ -1106,6 +1106,7 @@ class GameLoop:
             return False
         self._task = f"Script {scripts.running}"
         scripts.cavebot = self.modules.cavebot  # for bot.goto
+        scripts.drop_items = self.modules.drop_items  # for bot.drop_items
         scripts.targetings = (self.all_modules.targeting, self.modules.stuck_targeting)
         self._send(snap, lambda: scripts.step(snap, self.input))
         if scripts.running is None and self.modules.cavebot is not None:

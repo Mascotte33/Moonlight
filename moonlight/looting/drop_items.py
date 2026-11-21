@@ -204,6 +204,10 @@ class DropItems:
         dx, dy = slot[0] - PLAYER_SLOT[0], slot[1] - PLAYER_SLOT[1]
         log.info("drop: %s -> (%d, %d)", path.stem, snap.position.x + dx, snap.position.y + dy)
 
+    def start_now(self) -> None:
+        """Start a round as soon as no monster is in the battle list (``bot.drop_items``)."""
+        self._next_round_at = self._clock()
+
     def _end_round(self, now: float, wait: bool = True) -> None:
         self.in_round = False
         self._next_round_at = now + (self._rng.uniform(*ROUND_EVERY_SECONDS) if wait else 0.0)

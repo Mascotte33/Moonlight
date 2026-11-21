@@ -19,7 +19,9 @@ tick back to the loop::
 send; the runner sends one per tick, so the rate limit never drops them. A
 yielded number waits that many seconds. ``bot.hp``, ``bot.mana`` and
 ``bot.cap`` (used capacity %, 0 when unknown) read the current tick;
-``bot.count("mana")`` the action-bar potion total.
+``bot.count("mana")`` the action-bar potion total, ``bot.free_cap`` the
+"Cap:" number in oz (None when unread); ``bot.drop_items()`` starts a drop
+round of the Cavebot tab's drop items.
 
 The loop runs a script only in MOVE and IDLE, after healing: it pauses
 walking (the route holds) and pauses itself during a fight or looting.
@@ -57,6 +59,7 @@ from moonlight.hardware.input import ClickSide, InputBackend
 if TYPE_CHECKING:
     from moonlight.cavebot.cavebot import Cavebot
     from moonlight.hardware.clicker import ClickController
+    from moonlight.looting.drop_items import DropItems
     from moonlight.scripts.rotation import Rotation
     from moonlight.targeting.targeting import TargetingDecision
 
@@ -161,6 +164,16 @@ class Bot:
     def cap(self) -> float:
         cap = self._snap.capacity
         return cap.percent if cap.max_weight > 0 else 0.0
+
+    @property
+    def free_cap(self) -> int | None:
+        """Free capacity in oz (the "Cap:" number), None when it does not read."""
+        read = self._runner.free_cap
+        return None if read is None else read()
+
+    def drop_items(self) -> list[Command]:
+        """Start throwing away the Cavebot tab's drop items now (once no monster is listed)."""
+        return [self._runner.start_drop_round]
 
     @property
     def in_game(self) -> bool:
@@ -342,6 +355,10 @@ class ScriptRunner:
         self.snap = WorldState()
         self.input: InputBackend
         self.cavebot: Cavebot | None = None
+        #: The "Cap:" number (free oz) and the drop items module, for ``bot.free_cap``
+        #: and ``bot.drop_items``.
+        self.free_cap: Callable[[], int | None] | None = None
+        self.drop_items: DropItems | None = None
         #: The loop's targeting and stuck targeting, for ``bot.only_monsters_within_range``.
         self.targetings: tuple[TargetingDecision | None, ...] = ()
         #: ``bot.targeting(False)`` ran: the loop picks no target until ``(True)``.
@@ -463,6 +480,13 @@ class ScriptRunner:
         self.failed[name] = f"{where}{type(exc).__name__}: {exc}"
         log.warning("script %s %s: %s", name, what, self.failed[name])
         self.timers = [(n, p) for n, p in self.timers if n != name]
+
+    def start_drop_round(self) -> None:
+        if self.drop_items is None:
+            log.warning("script: bot.drop_items needs Drop the items ticked (Cavebot tab)")
+            return
+        log.info("script: drop items now")
+        self.drop_items.start_now()
 
     def goto(self, label: str) -> None:
         if self.cavebot is None:

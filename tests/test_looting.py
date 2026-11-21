@@ -212,3 +212,26 @@ def test_a_ring_by_the_player_holds_the_next_attack_while_it_is_confirmed() -> N
     hide_ring(looting)  # a one-look flash: it goes
     clock.t += 1.1
     assert not looting.ring_due(NEAR, WS) and not looting.loot_first(WS)
+
+
+def test_a_kill_waits_a_moment_for_its_ring_before_the_next_attack() -> None:
+    from moonlight.core.state import Monster
+    from moonlight.looting.looting import KILL_RING_WAIT
+
+    clock = Clock()
+    looting = make_ring(clock)
+    hide_ring(looting)
+    dying = WorldState(
+        client_focused=True, screen_ok=True, hp_percent=100.0,
+        selected_target=Monster(name="swamp troll", hp_percent=10.0),
+    )
+    assert not looting.loot_first(dying)  # the fight goes on
+    assert looting.loot_first(WS)  # killed: its ring shows a moment later
+    clock.t += KILL_RING_WAIT * 1.2
+    assert not looting.loot_first(WS)  # no ring came: the next attack goes
+    walked = WorldState(
+        client_focused=True, screen_ok=True, hp_percent=100.0,
+        selected_target=Monster(name="swamp troll", hp_percent=100.0),
+    )
+    looting.loot_first(walked)
+    assert not looting.loot_first(WS)  # a healthy target that left was no kill

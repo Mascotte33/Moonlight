@@ -59,6 +59,12 @@ RING_PRESSES = 2
 RING_STEP_SECONDS = 0.5
 #: Steps toward it before a ring 2 tiles away is left (a wall or a player in the way).
 RING_STEPS = 3
+#: A target last seen at or under this HP that leaves the battle list was killed ...
+KILL_HP = 25.0
+#: ... and its corpse's ring shows a moment later: no new attack before this many
+#: seconds (random) pass or a ring by the player is seen (owner 2026-11-21: the bot
+#: attacked the next monster before the ring showed and walked off the corpse).
+KILL_RING_WAIT = 1.0
 #: A screenshot of each loot press, the ring circled.
 # ponytail: a diagnosis aid (owner 2026-11-04: "it didnt loot"); delete it
 # once ring looting is trusted.
@@ -101,6 +107,9 @@ class Looting:
         self._ring: Ring | None = None
         #: A ring by the player was seen lately and is not confirmed yet.
         self._checking = False
+        #: The selected target's last HP, and until when a kill waits for its ring.
+        self._target_hp: float | None = None
+        self._kill_wait_until = float("-inf")
         #: A ring 2 tiles away seen this tick: walked to when no fight is on.
         self._far_ring: Ring | None = None
         #: Where and when rings were seen lately.
@@ -244,10 +253,18 @@ class Looting:
         (bot.log 2026-11-04: the fight walked off right after the loot, and
         nothing was looted.)
         """
+        now = self._clock()
+        if snap.selected_target is not None:
+            self._target_hp = snap.selected_target.hp_percent
+        elif self._target_hp is not None:
+            if self._target_hp <= KILL_HP:
+                self._kill_wait_until = now + random_delay(KILL_RING_WAIT)
+            self._target_hp = None
         busy = (
             self._ring is not None
             or self._checking
-            or self._holding(self._clock(), snap.position)
+            or now < self._kill_wait_until
+            or self._holding(now, snap.position)
         )
         return busy and not self._hp_too_low(snap)
 

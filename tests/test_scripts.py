@@ -310,3 +310,32 @@ def test_the_door_scripts_right_click_the_tile_next_to_the_player(
     clock.now = 0.6
     ticks(r, inp, 2)
     assert r.running is None and not r.failed
+
+
+def test_drop_when_cap_low_drops_only_under_the_cap() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    from moonlight.scripts.scripts import Bot, ScriptRunner
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "drop_when_cap_low.py"
+    spec = importlib.util.spec_from_file_location("drop_when_cap_low", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    started: list[bool] = []
+
+    class Drops:
+        def start_now(self) -> None:
+            started.append(True)
+
+    for cap, dropped in ((module.CAP_BELOW - 1, True), (module.CAP_BELOW, False), (None, False)):
+        runner = ScriptRunner()
+        runner.free_cap = lambda cap=cap: cap
+        runner.drop_items = Drops()  # type: ignore[assignment]
+        started.clear()
+        for step in module.run(Bot(runner)):
+            for command in step if isinstance(step, list) else []:
+                command()
+        assert bool(started) is dropped
+        assert runner.run_again_in_seconds == module.CHECK_EVERY
