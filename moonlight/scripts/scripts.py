@@ -175,6 +175,10 @@ class Bot:
         """Start throwing away the Cavebot tab's drop items now (once no monster is listed)."""
         return [self._runner.start_drop_round]
 
+    def ring(self, on: bool) -> list[Command]:
+        """Turn Extras' ring on or off; off also presses the ring hotkey (takes the ring off)."""
+        return [functools.partial(self._runner.set_ring, on)]
+
     @property
     def in_game(self) -> bool:
         """The game screen reads (False on the login screen)."""
@@ -359,6 +363,8 @@ class ScriptRunner:
         #: and ``bot.drop_items``.
         self.free_cap: Callable[[], int | None] | None = None
         self.drop_items: DropItems | None = None
+        #: Extras, for ``bot.ring``.
+        self.extras: Any = None
         #: The loop's targeting and stuck targeting, for ``bot.only_monsters_within_range``.
         self.targetings: tuple[TargetingDecision | None, ...] = ()
         #: ``bot.targeting(False)`` ran: the loop picks no target until ``(True)``.
@@ -407,6 +413,15 @@ class ScriptRunner:
             live[0].config.attack_range_tiles,
             "on" if on else "off",
         )
+
+    def set_ring(self, on: bool) -> None:
+        extras = self.extras
+        if extras is None or not extras.config.ring_hotkey:
+            raise RuntimeError("bot.ring needs Extras on and a ring hotkey set")
+        extras.config = replace(extras.config, ring=on)
+        if not on:
+            _press(self, extras.config.ring_hotkey)
+        log.info("script: ring %s", "on" if on else "off (taken off)")
 
     def set_targeting(self, on: bool) -> None:
         if not self.targetings or self.targetings[0] is None:

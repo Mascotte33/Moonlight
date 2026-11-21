@@ -339,3 +339,20 @@ def test_drop_when_cap_low_drops_only_under_the_cap() -> None:
                 command()
         assert bool(started) is dropped
         assert runner.run_again_in_seconds == module.CHECK_EVERY
+
+
+def test_ring_scripts_toggle_extras_ring(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from moonlight.extras.extras import ExtrasConfig
+
+    folder = Path(__file__).resolve().parents[1] / "scripts"
+    on, off = ((folder / f"ring_{n}.py").read_text() for n in ("on", "off"))
+    r, inp = runner(tmp_path, ring_on=on, ring_off=off), FakeInput()
+    r.extras = SimpleNamespace(config=ExtrasConfig(ring=False, ring_hotkey="f9"))
+    for name, want in (("ring_on", True), ("ring_off", False)):
+        assert r.start(name)
+        for _ in range(5):
+            r.step(WorldState(), inp)
+        assert r.extras.config.ring is want
+    assert "f9" in str(inp.__dict__)
