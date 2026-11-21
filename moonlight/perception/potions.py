@@ -44,6 +44,8 @@ COUNT_ROWS = slice(24, 30)
 #: Action bar count digits: pixels with an RGB sum of 400 or more, row by row.
 #: The game's count text is white with coloured edges, the potions are darker.
 DIGITS = {
+    ".###./#.##./#####/..##./..##./.....": "4",  # Linux client 2026-11-21
+    "..##/..##/..#./##../####/....": "2",  # Linux client 2026-11-21
     ".##./###./.##./.##./.##./####": "1",
     "###./#..#/#..#/#..#/#..#/####": "0",
     "####/#.../###./..##/...#/###.": "5",

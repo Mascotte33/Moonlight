@@ -511,6 +511,7 @@ def trade_steps(buy: list[tuple[str, int]], npc_tab_hotkey: str) -> list[TalkSte
     for item, percent in buy:
         row = len(steps)
         steps += [("count", 0, 0), ("click", *_SEARCH_CLEAR), 0.3, ("click", *_SEARCH), 0.3]
+        steps += ["ctrl+a", "backspace"]  # the X alone left the last name in (Linux client)
         steps += say_keys(item)[1:-1]  # the search box has the keys: no Enter
         steps += [0.8, ("row", len(steps), 0), 0.3]
         if percent:
