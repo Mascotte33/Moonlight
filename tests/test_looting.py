@@ -235,3 +235,20 @@ def test_a_kill_waits_a_moment_for_its_ring_before_the_next_attack() -> None:
     )
     looting.loot_first(walked)
     assert not looting.loot_first(WS)  # a healthy target that left was no kill
+
+
+def test_a_press_the_rate_limit_drops_is_tried_again() -> None:
+    clock = Clock()
+
+    class Busy(FakeInput):
+        dropped = 0
+
+        def press_combo(self, combo: str) -> None:
+            self.dropped += 1  # the limiter kept it
+
+    inp = Busy()
+    looting = make_ring(clock, inp=inp)
+    see_ring(looting, clock)
+    looting.press_ring()
+    clock.t += 0.125  # the next tick
+    assert looting.ring_due(NEAR, WS)  # still due: pressed again, not "looted"

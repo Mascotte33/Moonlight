@@ -220,8 +220,14 @@ class Looting:
             raise RuntimeError("press_ring needs a seen ring")
         log.info("looting: ring at %s, %d tiles away: press %s", *self._ring,
                  self._config.loot_hotkey)
-        self._save_shot(self._ring.point)
+        dropped = getattr(self._input, "dropped", 0)
         self._input.press_combo(self._config.loot_hotkey)
+        if getattr(self._input, "dropped", 0) != dropped:
+            # The wire rate limit kept it (right after attack or heal keys): the ring
+            # stays due and the press goes again next tick, not "looted".
+            log.info("looting: the press was held back by the rate limit, again next tick")
+            return
+        self._save_shot(self._ring.point)
         self._pressed_at, self._presses, self._steps = self._clock(), self._presses + 1, 0
         # doc: docs/prs/random-delays.md#spread
         self._wait_seconds = random_delay(self._config.wait_ms / 1000)
