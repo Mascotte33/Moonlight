@@ -399,3 +399,26 @@ def test_keep_distance_with_no_safe_tile_runs_furthest_away() -> None:
 
 def test_follow_row_does_not_step_away() -> None:
     assert rows(MonsterRow(name="Wolf")).decide(keep_distance_state((8, 5)), 0.0) is None
+
+
+def test_a_stuck_target_is_left_for_a_monster_next_to_the_player() -> None:
+    # 2026-11-21: an amazon at 8 % behind two others in a corridor; the bot stepped
+    # into the wall and kept it 16 s while the two next to it hit.
+    from moonlight.core.state import Monster
+    from moonlight.targeting.targeting import (
+        ADJACENT_STUCK_SECONDS,
+        TargetingConfig,
+        TargetingDecision,
+    )
+
+    far = Monster(name="amazon", hp_percent=8.0, battle_list_row=0, name_hash="a")
+    near = Monster(name="amazon", hp_percent=100.0, battle_list_row=1, name_hash="a")
+    state = WorldState(
+        monsters=[far, near], selected_target=far, creature_slots=((7, 6), (8, 6), (7, 8)),
+    )
+    decision = TargetingDecision(TargetingConfig())
+    decision.decide(state, 0.0)
+    decision.decide(state, ADJACENT_STUCK_SECONDS + 0.1)
+    assert decision.is_unreachable(far)
+    action = decision.decide(state, ADJACENT_STUCK_SECONDS + 0.2)
+    assert action is not None and action.battle_list_row == 1  # the one in reach

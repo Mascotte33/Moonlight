@@ -12,7 +12,9 @@ The loop clicks the row's name through the ``ClickController``
 never used. Players are never candidates; the alarms keep their own
 ``players_on_screen`` path.
 
-A selected target whose HP stands still for ``unreachable_after_seconds`` gets
+A selected target whose HP stands still for ``ADJACENT_STUCK_SECONDS`` while
+two monsters stand next to the player is ignored for 10 s at once (it is
+out of reach behind others). Else, standing still for ``unreachable_after_seconds`` gets
 one ``step_closer`` action (a unit step toward the nearest creature slot that
 is not adjacent); after the same time again it is ignored for 10 s. With
 nothing else to attack it gets a ``pause`` action instead: the loop turns
@@ -88,6 +90,8 @@ Rect = tuple[int, int, int, int]
 
 #: Seconds an unreachable target (or a skipped on-screen tile) is left alone.
 _IGNORE_SECONDS = 10.0
+#: Seconds of a still HP before a target is left for a monster next to the player.
+ADJACENT_STUCK_SECONDS = 4.0
 
 #: Seconds between two keep-distance steps (one walk step takes about this long).
 _STEP_AWAY_EVERY_SECONDS = 0.4
@@ -432,7 +436,24 @@ class TargetingDecision:
         if key != self._watched:
             self._watched, self._watched_since, self._stepped = key, now, False
             return None
-        if now - self._watched_since < self.config.unreachable_after_seconds:
+        pc, pr = PLAYER_SLOT
+        # Two next to the player: at least one is not the stuck target (one may be it).
+        next_to_me = sum(max(abs(c - pc), abs(r - pr)) <= 1 for c, r in state.creature_slots) >= 2
+        stuck_for = now - self._watched_since
+        if next_to_me and stuck_for >= min(
+            ADJACENT_STUCK_SECONDS, self.config.unreachable_after_seconds
+        ) and any(m.battle_list_row != selected.battle_list_row for m in candidates):
+            # A target behind others in a corridor while one hits from next to the
+            # player: no step closer (the way is blocked), fight the one in reach
+            # (2026-11-21: 16 s on an amazon at 8 % behind two others).
+            self._ignored_until[key] = now + _IGNORE_SECONDS
+            self._watched = None
+            logger.info(
+                "targeting: %s hp stuck at %.0f, a monster is next to me: switching",
+                selected.name or "?", selected.hp_percent,
+            )
+            return None
+        if stuck_for < self.config.unreachable_after_seconds:
             return None
         self._watched_since = now
         name = selected.name or "?"
