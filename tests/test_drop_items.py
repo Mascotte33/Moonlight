@@ -12,7 +12,12 @@ import numpy as np
 import pytest
 
 from moonlight.core.state import Monster, Position, WorldState
-from moonlight.looting.drop_items import DropItems, drop_picture_path, free_drop_slots
+from moonlight.looting.drop_items import (
+    DropItems,
+    drop_picture_path,
+    drop_pictures,
+    free_drop_slots,
+)
 
 GRID = (0, 0, 150, 110)  # 10 px sqm; the backpacks are right of x 150
 BOOTS_AT = (200, 40)  # top-left of the boots in the frame
@@ -159,3 +164,17 @@ def test_a_monster_mid_round_stops_it_until_the_screen_is_clear(tmp_path: Path) 
     drop.step(snap(monsters=1))
     assert not drop.in_round and len(inp.sent) == 4
     assert drop.due(snap())  # again at once once clear
+
+
+def test_the_drop_list_is_apart_from_the_saved_pictures(tmp_path: Path) -> None:
+    from moonlight.looting.drop_items import dropping, saved_pictures, set_dropping
+
+    for name in ("boots", "leather armor", "fish"):
+        (tmp_path / f"{name}.png").write_bytes(b"x")
+    assert dropping(tmp_path) == ["boots", "fish", "leather armor"]  # no list yet: all
+    set_dropping(tmp_path, ["fish", "boots", "fish"])
+    assert dropping(tmp_path) == ["fish", "boots"]
+    assert [p.stem for p in drop_pictures(tmp_path)] == ["boots", "fish"]
+    set_dropping(tmp_path, ["boots"])  # "-": off the list, the picture stays
+    assert [p.stem for p in saved_pictures(tmp_path)] == ["boots", "fish", "leather armor"]
+    assert [p.stem for p in drop_pictures(tmp_path)] == ["boots"]

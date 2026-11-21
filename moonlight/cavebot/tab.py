@@ -816,7 +816,13 @@ class CavebotTab(Tab):
 
     # doc: docs/prs/drop-items.md#drop-list
     def _build_drop_items(self, parent: ctk.CTkFrame) -> None:
-        """The "Drop these items" list: a picture and a name per item, "+" and "-"."""
+        """The drop list (picture and name per item) and the saved pictures to pick from.
+
+        "+" clips a new item into the saved pictures and the list; the dropdown
+        and "Add" put a saved item back on the list; "-" takes the selected row
+        off the list (its picture stays); "Delete" removes the dropdown's item
+        from the saved pictures.
+        """
         _kind_heading(parent, "Drop these items")
         buttons = Row(parent)
         buttons.pack(fill="x", padx=theme.PAD)
@@ -824,17 +830,27 @@ class CavebotTab(Tab):
             button = _button(buttons, text, command)
             button.configure(width=32)
             button.pack(side="left", padx=(0, theme.UNIT))
+        saved = Row(parent)
+        saved.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self.menu_saved_items = ctk.CTkOptionMenu(saved, values=[""], width=150)
+        self.menu_saved_items.pack(side="left", padx=(0, theme.UNIT))
+        _button(saved, "Add", self._add_saved_item).pack(side="left", padx=(0, theme.UNIT))
+        _button(saved, "Delete", self._delete_saved_item).pack(side="left")
         self.frm_drop = Row(parent)
         self.frm_drop.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
         self._drop_selected: Path | None = None
         self._show_drop_items()
 
     def _show_drop_items(self) -> None:
-        """Redraw the list from the pictures on disk; a click selects a row."""
+        """Redraw the list and the saved-item dropdown from disk; a click selects a row."""
         import cv2
 
-        from moonlight.looting.drop_items import drop_pictures
+        from moonlight.looting.drop_items import drop_pictures, saved_pictures
 
+        names = [p.stem for p in saved_pictures(_drop_items_dir())]
+        self.menu_saved_items.configure(values=names or [""])
+        if self.menu_saved_items.get() not in names:
+            self.menu_saved_items.set(names[0] if names else "")
         for row in self.frm_drop.winfo_children():
             row.destroy()
         for path in drop_pictures(_drop_items_dir()):
@@ -857,6 +873,32 @@ class CavebotTab(Tab):
         self._drop_selected = path
         self._show_drop_items()
 
+    def _add_saved_item(self) -> None:
+        """Put the dropdown's saved item on the drop list."""
+        from moonlight.looting.drop_items import dropping, set_dropping
+
+        name = self.menu_saved_items.get()
+        if not name:
+            self.lbl_msg.configure(text="No saved items yet: clip one with +")
+            return
+        set_dropping(_drop_items_dir(), [*dropping(_drop_items_dir()), name])
+        self._show_drop_items()
+        self.lbl_msg.configure(text=f"Will drop {name}")
+
+    def _delete_saved_item(self) -> None:
+        """Delete the dropdown's item: its picture and its place on the list."""
+        from moonlight.looting.drop_items import dropping, set_dropping
+
+        name = self.menu_saved_items.get()
+        if not name or not messagebox.askyesno("Delete", f"Delete the saved picture of {name}?"):
+            return
+        folder = _drop_items_dir()
+        (folder / f"{name}.png").unlink(missing_ok=True)
+        set_dropping(folder, [n for n in dropping(folder) if n != name])
+        self._drop_selected = None
+        self._show_drop_items()
+        self.lbl_msg.configure(text=f"Deleted {name}")
+
     def _add_drop_item(self) -> None:
         """In 3 s, grab the client; the owner boxes the item, then names it."""
         self.lbl_msg.configure(text="Show the client with the item in a backpack (3 s)")
@@ -865,7 +907,7 @@ class CavebotTab(Tab):
     def _cut_drop_item(self) -> None:
         import cv2
 
-        from moonlight.looting.drop_items import drop_picture_path
+        from moonlight.looting.drop_items import drop_picture_path, dropping, set_dropping
 
         pic = self._cut_from_client("the item (leave out its count)")
         if pic is None:
@@ -883,6 +925,7 @@ class CavebotTab(Tab):
             return
         path.parent.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(path), pic)
+        set_dropping(path.parent, [*dropping(path.parent), path.stem])
         self._drop_selected = path
         self._show_drop_items()
         self.lbl_msg.configure(text=f"Will drop {path.stem}")
@@ -891,8 +934,11 @@ class CavebotTab(Tab):
         if self._drop_selected is None:
             self.lbl_msg.configure(text="Click an item first")
             return
-        self._drop_selected.unlink(missing_ok=True)
-        self.lbl_msg.configure(text=f"Will not drop {self._drop_selected.stem}")
+        from moonlight.looting.drop_items import dropping, set_dropping
+
+        folder, name = self._drop_selected.parent, self._drop_selected.stem
+        set_dropping(folder, [n for n in dropping(folder) if n != name])  # the picture stays
+        self.lbl_msg.configure(text=f"Will not drop {name} (still in the saved items)")
         self._drop_selected = None
         self._show_drop_items()
 

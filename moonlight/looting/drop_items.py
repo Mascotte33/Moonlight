@@ -29,7 +29,8 @@ from moonlight.perception.corpses import slot_ring
 from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
-    "DROP_ITEMS_DIR", "DropItems", "drop_picture_path", "drop_pictures", "free_drop_slots",
+    "DROPPING_FILE", "DROP_ITEMS_DIR", "DropItems", "drop_picture_path", "drop_pictures",
+    "dropping", "free_drop_slots", "saved_pictures", "set_dropping",
 ]
 
 #: The picked item pictures, ``<name>.png``, in the profiles folder.
@@ -50,9 +51,34 @@ log = logging.getLogger(__name__)
 Point = tuple[int, int]
 
 
-def drop_pictures(folder: Path) -> list[Path]:
-    """The picked item pictures in *folder*, by name."""
+#: The names on the drop list, one per line, next to the saved pictures.
+DROPPING_FILE = "dropping.txt"
+
+
+def saved_pictures(folder: Path) -> list[Path]:
+    """Every item picture clipped into *folder*, by name (dropped or not)."""
     return sorted(folder.glob("*.png"))
+
+
+def dropping(folder: Path) -> list[str]:
+    """The names on the drop list; with no list yet, every saved picture."""
+    path = folder / DROPPING_FILE
+    if not path.exists():
+        return [p.stem for p in saved_pictures(folder)]
+    return [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def set_dropping(folder: Path, names: list[str]) -> None:
+    """Save the drop list (unique names, in order)."""
+    folder.mkdir(parents=True, exist_ok=True)
+    unique = list(dict.fromkeys(names))
+    (folder / DROPPING_FILE).write_text("".join(f"{n}\n" for n in unique), encoding="utf-8")
+
+
+def drop_pictures(folder: Path) -> list[Path]:
+    """The pictures of the items on the drop list, by name."""
+    names = set(dropping(folder))
+    return [p for p in saved_pictures(folder) if p.stem in names]
 
 
 def drop_picture_path(folder: Path, name: str) -> Path:
