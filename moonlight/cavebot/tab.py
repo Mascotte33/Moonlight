@@ -784,6 +784,8 @@ class CavebotTab(Tab):
         frame = self._capture.get_frame()
         title = "Drag a box around the loot backpack, then Enter (Esc cancels)"
         cv2.namedWindow(title, cv2.WINDOW_NORMAL)
+        # Tibia has the focus after the countdown: on Linux the box opened behind it.
+        cv2.setWindowProperty(title, cv2.WND_PROP_TOPMOST, 1)
         x, y, w, h = cv2.selectROI(title, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
         cv2.destroyWindow(title)
         if w == 0 or h == 0:
