@@ -511,6 +511,19 @@ def trade_steps(buy: list[tuple[str, int]], npc_tab_hotkey: str) -> list[TalkSte
     return [*steps, False, "esc"]
 
 
+def _check_route_can_run(
+    route: Route, input_backend: InputBackend | None, clicker: ClickController
+) -> None:
+    """Raise ValueError when *route* needs an input backend or clicker the cavebot lacks."""
+    keyed = ("rope", "shovel", "say", "key", "drag", "step", "deposit", "bank", "trade")
+    needs_keys = any(wp.action in keyed for wp in route.waypoints)
+    if needs_keys and input_backend is None:
+        raise ValueError("rope/shovel/say/key/drag/step waypoints need an input_backend")
+    hand_drags = ("drag", "deposit", "trade")
+    if any(wp.action in hand_drags for wp in route.waypoints) and not clicker.absolute:
+        raise ValueError("drag, deposit and trade waypoints need the absolute clicker")
+
+
 class Cavebot:
     """Waypoint runner driven once per tick by ``loop.py``'s MOVE state."""
 
@@ -587,13 +600,7 @@ class Cavebot:
         self._minimap_region: Rect = minimap_region
         if stuck_timeout <= 0 or reclick_interval <= 0:
             raise ValueError("stuck_timeout and reclick_interval must be > 0")
-        keyed = ("rope", "shovel", "say", "key", "drag", "step", "deposit", "bank", "trade")
-        needs_keys = any(wp.action in keyed for wp in route.waypoints)
-        if needs_keys and input_backend is None:
-            raise ValueError("rope/shovel/say/key/drag/step waypoints need an input_backend")
-        hand_drags = ("drag", "deposit", "trade")
-        if any(wp.action in hand_drags for wp in route.waypoints) and not clicker.absolute:
-            raise ValueError("drag, deposit and trade waypoints need the absolute clicker")
+        _check_route_can_run(route, input_backend, clicker)
         if walk_keys and input_backend is None:
             raise ValueError("walk_keys needs an input_backend for the WSAD keys")
         self.route = route
@@ -727,6 +734,29 @@ class Cavebot:
         self.alarm = None
         self._active = True
         self._reset_tracking()
+
+    # doc: docs/prs/cavebot-rotate.md#cavebot-rotate
+    def switch_route(self, route: Route) -> None:
+        """Run *route* from waypoint 0 instead of the current one (``cavebot rotate``).
+
+        Raises:
+            ValueError: When the route needs keys or the absolute clicker this cavebot lacks.
+        """
+        _check_route_can_run(route, self._input, self._clicker)
+        self.route = route
+        self._clicker.cancel()  # the pending click targeted the old route
+        self._depot_stand, self._depot_wait_since = None, None
+        self._deposit_drag, self._locker_clicked = None, float("-inf")
+        self._trade_at = self._trade_wait_until = None
+        self._rebought_rows = set()
+        self._walked, self._floor_exit, self._left_by = (0, set()), None, None
+        self._dead_exits = set()
+        self.start()
+        logger.info("cavebot: route '%s', %d waypoints", route.name, len(route.waypoints))
+
+    def stop_with_alarm(self, alarm: str) -> None:
+        """Stop the route and raise *alarm* (the loop alerts once)."""
+        self._halt(alarm)
 
     def go_to(self, index: int) -> None:
         """Walk to waypoint *index* next (picked in the GUI's waypoint list)."""

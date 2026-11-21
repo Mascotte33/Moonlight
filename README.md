@@ -156,6 +156,17 @@ check "Tibia program" (`modules.rotation.client_exe`, default
 bot goes to the depot, logs out, closes Tibia (Alt+F4), starts it again and
 logs the next line's account in with its first character, then walks on.
 
+To spread the characters over routes by level (cavebot rotate): end a route
+file's name with the levels it is for, `VenoreSwampTrolls 20-40.json` (levels
+20 to 40, both included; a route without that range is never picked). At the
+depot put `deposit`, `script account_rotate`, `script cavebot_rotate`, then
+`label Depo_Break`. When the account did not switch, `cavebot_rotate` reads
+the Level from the Skills window (keep it open), picks a random route that
+fits (it may be the current one) and starts it at waypoint 0 (log: `cavebot
+rotate: level N -> <route>`). The route starts with `script go_to_city`; it
+skips its first `cavebot_rotate` so it does not switch again at once. An
+unread level or no route for the level stops the cavebot with an alarm.
+
 The Map tab shows the whole game map with the Cavebot tab's route on it:
 drag to pan, wheel to zoom, ▲/▼ for the floor; the top row shows the sqm
 under the mouse. Dots are waypoints (coloured by kind, numbered as in the

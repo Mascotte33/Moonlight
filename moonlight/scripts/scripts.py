@@ -247,6 +247,19 @@ class Bot:
             raise RuntimeError("bot.stamina needs a screen capture")
         return reader()
 
+    # doc: docs/prs/cavebot-rotate.md#level-read
+    def level(self) -> int | None:
+        """The character level from the open Skills window; None when unread."""
+        reader = self._runner.level
+        if reader is None:
+            raise RuntimeError("bot.level needs a screen capture")
+        return reader()
+
+    # doc: docs/prs/cavebot-rotate.md#cavebot-rotate
+    def skip_next_cavebot_rotate(self) -> None:
+        """The account switched: the next ``cavebot_rotate`` keeps the route."""
+        self._runner.skip_cavebot_rotate = True
+
     # doc: docs/prs/scripts.md#find-picture
     def find(self, image: str) -> tuple[int, int] | None:
         """Centre of picture *image* (a file in ``scripts/``) on screen, or None."""
@@ -313,6 +326,12 @@ class ScriptRunner:
         self.potion_counts: Callable[[], dict[str, int | None]] | None = None
         #: Stamina minutes from the Skills window for ``bot.stamina`` and the log.
         self.stamina: Callable[[], int | None] | None = None
+        #: The character level from the Skills window for ``bot.level``.
+        self.level: Callable[[], int | None] | None = None
+        #: Where ``cavebot_rotate`` looks for routes (docs/prs/cavebot-rotate.md#cavebot-rotate).
+        self.routes_dir: Path | None = None
+        #: Skip the next ``cavebot_rotate``: an account or route switch just happened.
+        self.skip_cavebot_rotate = False
         self._stamina_logged_at: float | None = None
         #: The last stamina read (minutes) for the dashboard; None when unread.
         self.last_stamina_minutes: int | None = None
@@ -355,6 +374,10 @@ class ScriptRunner:
         try:
             if name == "account_rotate" and self.rotation is not None:
                 self._script = self.rotation.run(Bot(self))  # built in, no file
+            elif name == "cavebot_rotate":
+                from moonlight.scripts import cavebot_rotate
+
+                self._script = cavebot_rotate.run(self)  # built in, no file
             else:
                 spec = importlib.util.spec_from_file_location(
                     f"moonlight_user_script_{name}", path
