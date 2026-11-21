@@ -26,7 +26,8 @@ from moonlight.cavebot.cavebot import Waypoint, has_tile
 from moonlight.cavebot.pathing import next_step
 
 __all__ = [
-    "SCALES", "MapTiles", "MapView", "bad_legs", "draw_route", "leg_path", "legs",
+    "PICTURE_MIN_SCALE", "SCALES", "MapTiles", "MapView", "bad_legs", "draw_route", "leg_path",
+    "legs",
     "waypoint_at",
 ]  # fmt: skip
 
@@ -51,6 +52,8 @@ _BAD = (229, 93, 81)
 _ME = (115, 201, 165)
 _SELECTED = (255, 255, 0)
 _MONSTER = (240, 120, 40)
+#: Monster pictures show from this zoom (px per sqm); farther out they cover the map.
+PICTURE_MIN_SCALE = 4
 
 Spot = tuple[int, int, int]
 
@@ -250,8 +253,10 @@ class MapView:
         me: Spot | None = None,
         path: LegPath | None = None,
         monsters: dict[Spot, list[str]] | None = None,
+        pictures: Sequence[tuple[Spot, np.ndarray]] = (),
     ) -> np.ndarray:
-        """The view as an RGB image ``height`` x ``width``; *monsters*: spawn sqm to show."""
+        """The view as an RGB image ``height`` x ``width``; *monsters*: spawn sqm to show;
+        *pictures*: (hunting spot centre, RGBA picture), drawn from ``PICTURE_MIN_SCALE``."""
         x0, y0 = self.origin
         w, h = self.size
         area = tiles.area(x0, y0, self.z, w, h)
@@ -259,4 +264,24 @@ class MapView:
                  if z == self.z and x0 <= x < x0 + w and y0 <= y < y0 + h]  # fmt: skip
         image = draw_route(area, (x0, y0), self.z, self.scale, waypoints, bad,
                            selected=selected, me=me, path=path, monsters=shown)  # fmt: skip
+        if self.scale >= PICTURE_MIN_SCALE:
+            half = self.scale // 2
+            for (x, y, z), rgba in pictures:
+                if z == self.z:
+                    _paste(image, rgba, (x - x0) * self.scale + half, (y - y0) * self.scale + half)
         return image[: self.height, : self.width]
+
+
+# doc: docs/prs/route-tools.md#monster-pictures
+def _paste(image: np.ndarray, rgba: np.ndarray, cx: int, cy: int) -> None:
+    """Blend *rgba* onto *image* centred on pixel (cx, cy), cut at the edges."""
+    ph, pw = rgba.shape[:2]
+    left, top = cx - pw // 2, cy - ph // 2
+    ix0, iy0 = max(left, 0), max(top, 0)
+    ix1, iy1 = min(left + pw, image.shape[1]), min(top + ph, image.shape[0])
+    if ix0 >= ix1 or iy0 >= iy1:
+        return
+    part = rgba[iy0 - top : iy1 - top, ix0 - left : ix1 - left].astype(np.float32)
+    alpha = part[:, :, 3:] / 255
+    under = image[iy0:iy1, ix0:ix1].astype(np.float32)
+    image[iy0:iy1, ix0:ix1] = (part[:, :, :3] * alpha + under * (1 - alpha)).astype(np.uint8)

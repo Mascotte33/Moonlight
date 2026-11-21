@@ -16,16 +16,19 @@ from __future__ import annotations
 import heapq
 import json
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
+from typing import Any
 
 from moonlight.cavebot.cavebot import Route, RouteError, RouteFileLoader, has_tile
 from moonlight.cavebot.pathing import WALK_STEPS, CostMap
 
 __all__ = [
-    "FLOOR_KINDS", "SPAWNS_FILE", "SPAWNS_URL", "FloorChange", "FloorMap", "MonsterSpot",
-    "download_spawns", "find_path", "known_floor_kinds", "spawn_points",
+    "FLOOR_KINDS", "PICTURES_DIR", "SPAWNS_FILE", "SPAWNS_URL", "FloorChange", "FloorMap",
+    "MonsterSpot", "download_pictures", "download_spawns", "find_path", "known_floor_kinds",
+    "picture_spots", "spawn_points",
     "load_floor_map", "loop_sqm", "monster_spots", "parse_spot", "read_markers", "route_places",
     "route_warnings",
 ]  # fmt: skip
@@ -132,6 +135,10 @@ def route_places(routes_dir: Path) -> list[tuple[Spot, str]]:
 SPAWNS_URL = "https://tibiaroute.com/api/delivery-task-spots"
 #: Where ``tools/map.py refresh`` saves it (not in git).
 SPAWNS_FILE = Path("data/spawns.json")
+#: The monster pictures: ``image`` in the spawns file is ``{{URL}}/monsters/Name.gif``.
+PICTURES_URL = "https://cdn.tibiaroute.com"
+#: Where ``tools/map.py refresh`` saves them (not in git).
+PICTURES_DIR = Path("data/monsters")
 
 
 @dataclass(frozen=True)
@@ -161,15 +168,52 @@ def monster_spots(spawns_path: Path, name: str) -> list[MonsterSpot]:
         if entry["monster"]["name"].lower() != name.lower():
             continue
         for spot in entry["spots"]:
-            floors: dict[str, int] = spot["floorBreakdown"]
-            z = int(max(floors, key=lambda floor: floors[floor]))
-            centre = (spot["centerX"], spot["centerY"], z)
             out.append(
                 MonsterSpot(
-                    spot["locationName"], centre, spot["totalSpawns"], spot["premiumAccount"]
+                    spot["locationName"], _centre(spot), spot["totalSpawns"], spot["premiumAccount"]
                 )
             )
     return sorted(out, key=lambda s: -s.spawns)
+
+
+def _centre(spot: dict[str, Any]) -> Spot:
+    """A hunting spot's centre, on the floor with the most spawns."""
+    floors: dict[str, int] = spot["floorBreakdown"]
+    return spot["centerX"], spot["centerY"], int(max(floors, key=lambda floor: floors[floor]))
+
+
+def _picture_file(entry: dict[str, Any], directory: Path) -> Path:
+    return directory / str(entry["monster"]["image"]).rsplit("/", 1)[-1]
+
+
+# doc: docs/prs/route-tools.md#monster-pictures
+def picture_spots(spawns_path: Path, directory: Path) -> list[tuple[Spot, str, Path]]:
+    """(centre, monster name, picture file) of every hunting spot."""
+    return [
+        (_centre(spot), entry["monster"]["name"], _picture_file(entry, directory))
+        for entry in json.loads(spawns_path.read_text(encoding="utf-8"))
+        for spot in entry["spots"]
+    ]
+
+
+def download_pictures(spawns_path: Path, directory: Path) -> int:
+    """Save each monster's picture into *directory* (skips saved ones); returns how many."""
+    directory.mkdir(parents=True, exist_ok=True)
+    todo = []
+    for entry in json.loads(spawns_path.read_text(encoding="utf-8")):
+        file = _picture_file(entry, directory)
+        if not file.exists():
+            todo.append((entry["monster"]["image"].replace("{{URL}}", PICTURES_URL), file))
+
+    def save(url_and_file: tuple[str, Path]) -> None:
+        url, file = url_and_file
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            file.write_bytes(response.read())
+
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(save, todo))  # list() re-raises a failed download
+    return len(todo)
 
 
 def spawn_points(spawns_path: Path) -> dict[Spot, list[str]]:
