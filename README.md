@@ -177,7 +177,15 @@ python tools/map.py find depot --near 32369,32220,7        # your map markers + 
 python tools/map.py monsters Troll         # where a monster spawns (data/spawns.json)
 python tools/map.py refresh                # download data/spawns.json + data/monsters/ from tibiaroute.com
 python tools/route.py block refill 32941,32215,8 --depot 32922,32073,7 --bank 33019,32053,6 --shop 32970,32085,6
+python tools/video_route.py hunt.mp4 > hunt.txt   # route lines from someone's hunting video
 ```
+
+`video_route.py` reads the minimap in a hunting video (a recording of a
+full-screen client; `--zoom 1` if its minimap shows 1 px per sqm,
+`--minimap x,y,w,h` if it is not found) and prints a walk every 8 sqm, the
+floor changes and `#` notes with the video time for stops (and the depot,
+bank or shop next to them), jumps (boat, teleport) and floor changes it
+could not place. Read the notes, add the actions, then `route.py new`.
 
 `path` and `block refill` print lines for `route.py new`. A floor change's
 kind (stairs, ladder, rope) comes from a saved route that uses that sqm;
