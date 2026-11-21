@@ -635,7 +635,7 @@ def build_modules(
             if same(*keys):
                 setattr(m, name, getattr(prev, name))
         if same("cavebot", "looting", "refill", "clicker", "templates_dir", "routes_dir"):
-            m.cavebot, m.looting = prev.cavebot, prev.looting
+            m.cavebot, m.looting, m.drop_items = prev.cavebot, prev.looting, prev.drop_items
     if config.healing is not None and m.healing is None:
         m.healing = HealingDecision(config.healing, clock=clock)
     walkable = _walk_map_walkable(MAP_DIR)
@@ -782,6 +782,22 @@ def build_modules(
                 frames=frames,
                 game_region=profile.get_region("game_grid").to_tuple,
             )
+            # doc: docs/prs/drop-items.md#drop-items
+            if config.looting.drop_items and screen_grab is not None:
+                from moonlight.calibration.calibrate import default_profiles_dir
+                from moonlight.looting.drop_items import DROP_ITEMS_DIR, DropItems
+
+                if not clicker.absolute:
+                    raise ValueError("drop items needs the absolute clicker (it drags)")
+                m.drop_items = DropItems(
+                    backend,
+                    clicker.to_wire,
+                    screen_grab,
+                    profile.get_region("game_grid").to_tuple,
+                    (config.profiles_dir or default_profiles_dir()) / DROP_ITEMS_DIR,
+                    walkable,
+                    clock=clock or time.monotonic,
+                )
     return m
 
 

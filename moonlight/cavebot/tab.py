@@ -124,6 +124,8 @@ LOOT_OPTIONS = [
     Option("Loot hotkey", "looting.loot_hotkey", "hotkey"),
     Option("Wait after looting (ms)", "looting.wait_ms", "entry"),
     Option("Loot only at HP % or above", "looting.min_hp_to_loot", "entry", min=0, max=100),
+    # doc: docs/prs/drop-items.md#drop-items
+    Option("Drop the items below every 1-3 min", "looting.drop_items", "checkbox"),
 ]
 REFILL_OPTIONS = [
     Option("cap <", "refill.cap_below", "entry", min=0, off_at_zero=True),
@@ -301,6 +303,14 @@ def _backpack_path() -> Path:
     return (load_real_config().profiles_dir or default_profiles_dir()) / BACKPACK_FILE
 
 
+def _drop_items_dir() -> Path:
+    """The item pictures "+" saves and drop items looks for (profiles folder)."""
+    from moonlight.calibration.calibrate import default_profiles_dir
+    from moonlight.looting.drop_items import DROP_ITEMS_DIR
+
+    return (load_real_config().profiles_dir or default_profiles_dir()) / DROP_ITEMS_DIR
+
+
 def _button(parent: ctk.CTkFrame, text: str, command: Callable[[], None]) -> ctk.CTkButton:
     return ctk.CTkButton(
         parent, text=text, width=90, command=command, fg_color=theme.RAISED, hover_color=theme.HOVER
@@ -459,6 +469,7 @@ class CavebotTab(Tab):
         self.build_options(pages["Settings"], CAVEBOT_PAGE_OPTIONS)
         _kind_heading(pages["Settings"], "Loot")
         self.build_options(pages["Settings"], LOOT_OPTIONS)
+        self._build_drop_items(pages["Settings"])
         show("Route")
 
         edit = pages["Route"]
@@ -773,28 +784,113 @@ class CavebotTab(Tab):
         self.lbl_msg.configure(text="Show the client with the loot backpack (3 s)")
         self._root.after(3000, self._cut_backpack)
 
-    def _cut_backpack(self) -> None:
+    def _cut_from_client(self, what: str) -> np.ndarray | None:
+        """A box the owner drags around *what* in a client screenshot (frame RGB), or None."""
         import cv2
 
         from moonlight.perception.capture import ScreenCapture
 
-        cfg = load_real_config()
         if self._capture is None:
-            self._capture = ScreenCapture(window_title=cfg.window_title)
+            self._capture = ScreenCapture(window_title=load_real_config().window_title)
         frame = self._capture.get_frame()
-        title = "Drag a box around the loot backpack, then Enter (Esc cancels)"
+        title = f"Drag a box around {what}, then Enter (Esc cancels)"
         cv2.namedWindow(title, cv2.WINDOW_NORMAL)
         # Tibia has the focus after the countdown: on Linux the box opened behind it.
         cv2.setWindowProperty(title, cv2.WND_PROP_TOPMOST, 1)
         x, y, w, h = cv2.selectROI(title, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
         cv2.destroyWindow(title)
         if w == 0 or h == 0:
+            return None
+        return np.ascontiguousarray(frame[y : y + h, x : x + w])
+
+    def _cut_backpack(self) -> None:
+        import cv2
+
+        pic = self._cut_from_client("the loot backpack")
+        if pic is None:
             self.lbl_msg.configure(text="Pick backpack: cancelled")
             return
-        pic = np.ascontiguousarray(frame[y : y + h, x : x + w])
         cv2.imwrite(str(_backpack_path()), pic)
         self._show_backpack(pic)
         self.lbl_msg.configure(text="Saved the loot backpack")
+
+    # doc: docs/prs/drop-items.md#drop-list
+    def _build_drop_items(self, parent: ctk.CTkFrame) -> None:
+        """The "Drop these items" list: a picture and a name per item, "+" and "-"."""
+        _kind_heading(parent, "Drop these items")
+        buttons = Row(parent)
+        buttons.pack(fill="x", padx=theme.PAD)
+        for text, command in (("+", self._add_drop_item), ("-", self._remove_drop_item)):
+            button = _button(buttons, text, command)
+            button.configure(width=32)
+            button.pack(side="left", padx=(0, theme.UNIT))
+        self.frm_drop = Row(parent)
+        self.frm_drop.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        self._drop_selected: Path | None = None
+        self._show_drop_items()
+
+    def _show_drop_items(self) -> None:
+        """Redraw the list from the pictures on disk; a click selects a row."""
+        import cv2
+
+        from moonlight.looting.drop_items import drop_pictures
+
+        for row in self.frm_drop.winfo_children():
+            row.destroy()
+        for path in drop_pictures(_drop_items_dir()):
+            pic = cv2.imread(str(path))  # the file holds the frame's RGB as is
+            if pic is None:
+                continue
+            image = Image.fromarray(pic)
+            row = ctk.CTkButton(
+                self.frm_drop,
+                text=path.stem,
+                image=ctk.CTkImage(image, size=image.size),
+                anchor="w",
+                fg_color=theme.HOVER if path == self._drop_selected else "transparent",
+                hover_color=theme.HOVER,
+                command=partial(self._select_drop_item, path),
+            )
+            row.pack(fill="x")
+
+    def _select_drop_item(self, path: Path) -> None:
+        self._drop_selected = path
+        self._show_drop_items()
+
+    def _add_drop_item(self) -> None:
+        """In 3 s, grab the client; the owner boxes the item, then names it."""
+        self.lbl_msg.configure(text="Show the client with the item in a backpack (3 s)")
+        self._root.after(3000, self._cut_drop_item)
+
+    def _cut_drop_item(self) -> None:
+        import cv2
+
+        from moonlight.looting.drop_items import drop_picture_path
+
+        pic = self._cut_from_client("the item (leave out its count)")
+        if pic is None:
+            self.lbl_msg.configure(text="Add item: cancelled")
+            return
+        name = ctk.CTkInputDialog(text="Item name (e.g. leather boots):", title="Add item")
+        try:
+            path = drop_picture_path(_drop_items_dir(), name.get_input() or "")
+        except ValueError as error:
+            self.lbl_msg.configure(text=str(error))
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(path), pic)
+        self._drop_selected = path
+        self._show_drop_items()
+        self.lbl_msg.configure(text=f"Will drop {path.stem}")
+
+    def _remove_drop_item(self) -> None:
+        if self._drop_selected is None:
+            self.lbl_msg.configure(text="Click an item first")
+            return
+        self._drop_selected.unlink(missing_ok=True)
+        self.lbl_msg.configure(text=f"Will not drop {self._drop_selected.stem}")
+        self._drop_selected = None
+        self._show_drop_items()
 
     def _show_saved_backpack(self) -> None:
         """Show the backpack picked earlier (saved in the profiles folder)."""

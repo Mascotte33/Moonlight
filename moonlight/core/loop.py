@@ -118,6 +118,7 @@ if TYPE_CHECKING:
     from moonlight.extras.extras import Extras
     from moonlight.hardware.clicker import ClickController
     from moonlight.healing.healing import HealingDecision
+    from moonlight.looting.drop_items import DropItems
     from moonlight.looting.looting import Looting
     from moonlight.scripts.scripts import ScriptRunner
     from moonlight.targeting.attack_hotkeys import AttackHotkeys
@@ -221,6 +222,7 @@ class DecisionModules:
     alarms: AlarmDecision | None = None
     cavebot: Cavebot | None = None
     looting: Looting | None = None
+    drop_items: DropItems | None = None
     #: The one mouse: targeting, cavebot and looting share it.
     clicker: ClickController | None = None
     scripts: ScriptRunner | None = None
@@ -370,7 +372,7 @@ class GameLoop:
         if not self.paused:
             modules = self.all_modules
             if modules.cavebot is None and modules.looting is not None:
-                modules = replace(modules, looting=None)
+                modules = replace(modules, looting=None, drop_items=None)
             if scripts is not None and scripts.targeting_turned_off:
                 # doc: docs/prs/near-targeting.md#targeting-script
                 modules = replace(modules, targeting=None)  # stuck targeting stays
@@ -381,6 +383,7 @@ class GameLoop:
             targeting=None,
             attack_hotkeys=None,
             looting=None,
+            drop_items=None,
             # doc: docs/prs/scripts-page.md#test-now
             scripts=scripts if scripts is not None and scripts.testing else None,
         )
@@ -842,6 +845,8 @@ class GameLoop:
             case BotState.MOVE | BotState.IDLE:
                 if self._act_script(snap):
                     return
+                if self._act_drop(snap):
+                    return
                 if self.modules.extras is not None and self._extra(snap):
                     return
                 if self._state is BotState.MOVE:
@@ -1105,6 +1110,29 @@ class GameLoop:
         self._send(snap, lambda: scripts.step(snap, self.input))
         if scripts.running is None and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # script time is not "stuck"
+        return True
+
+    # doc: docs/prs/drop-items.md#drop-items
+    def _act_drop(self, snap: WorldState) -> bool:
+        """A drop-items round's step instead of walking; True while one runs.
+
+        A round starts only while the mouse is free: no click in flight and
+        no cavebot drag, typing or NPC talk.
+        """
+        drop, m = self.modules.drop_items, self.modules
+        if drop is None or not drop.due(snap):
+            return False
+        if not drop.in_round and (
+            (m.clicker is not None and m.clicker.busy)
+            or (m.cavebot is not None and m.cavebot.hand_busy)
+        ):
+            return False
+        self._task = "Dropping items"
+        if m.cavebot is not None:
+            m.cavebot.release_walk_key()
+        self._send(snap, lambda: drop.step(snap))
+        if not drop.in_round and m.cavebot is not None:
+            m.cavebot.resume()  # drop time is not "stuck"
         return True
 
     def _act_move(self, snap: WorldState) -> None:
