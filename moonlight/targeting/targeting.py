@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from moonlight.alarms.alarms import AlarmConfig, FastHpDrop
 from moonlight.cavebot.pathing import WALK_STEPS
 from moonlight.core.random_delay import random_delay
-from moonlight.core.state import Monster, WorldState
+from moonlight.core.state import Monster, Position, WorldState
 from moonlight.healing.healing import check_hotkey
 from moonlight.perception.battle import NAME_START_X, NAME_WIDTH, SLOT_HEIGHT, TOP_PADDING
 from moonlight.perception.corpses import slot_ring
@@ -396,6 +396,7 @@ class TargetingDecision:
         # HP watch on the selected target: its key, since when, and whether
         # the step closer was already taken.
         self._watched: tuple[str, float] | None = None
+        self._watched_at: Position | None = None
         self._watched_since = 0.0
         self._stepped = False
         self._ignored_until: dict[tuple[str, float], float] = {}
@@ -435,6 +436,12 @@ class TargetingDecision:
         key = self._key(selected)
         if key != self._watched:
             self._watched, self._watched_since, self._stepped = key, now, False
+            self._watched_at = state.position
+            return None
+        if state.position != self._watched_at:
+            # Still walking to it (chasing): not stuck yet (2026-11-21: paused
+            # after 2 s on an amazon the bot was walking to).
+            self._watched_at, self._watched_since = state.position, now
             return None
         pc, pr = PLAYER_SLOT
         # Two next to the player: at least one is not the stuck target (one may be it).
