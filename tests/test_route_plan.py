@@ -14,6 +14,7 @@ from moonlight.cavebot.route_plan import (
     FloorChange,
     FloorMap,
     find_path,
+    picture_spots,
     read_markers,
     route_warnings,
     spawn_points,
@@ -81,6 +82,14 @@ def test_spawn_points(tmp_path: Path) -> None:
     sqm = {"x": 1, "y": 2, "z": 7}
     path.write_text(json.dumps([entry("Troll", [sqm, sqm]), entry("Rat", [sqm])]))
     assert spawn_points(path) == {(1, 2, 7): ["Troll", "Rat"]}
+
+
+def test_picture_spots_centre_on_the_busiest_floor(tmp_path: Path) -> None:
+    spot = {"centerX": 5, "centerY": 6, "floorBreakdown": {"7": 2, "8": 9}, "spawns": []}
+    monster = {"name": "Troll", "image": "{{URL}}/monsters/Troll.gif"}
+    path = tmp_path / "spawns.json"
+    path.write_text(json.dumps([{"monster": monster, "spots": [spot]}]))
+    assert picture_spots(path, tmp_path) == [((5, 6, 8), "Troll", tmp_path / "Troll.gif")]
 
 
 def test_route_warnings(tmp_path: Path) -> None:

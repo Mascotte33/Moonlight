@@ -154,7 +154,9 @@ the next floor, the green X is the character ("Follow me" keeps it centred).
 Hover a dot for its details. The list on the right holds every waypoint:
 click one to select it and jump the map there. Tick Monsters to show spawn
 sqm as orange dots (hover for the name); type in the box next to it to show
-only monsters whose name holds that text. It needs `data/spawns.json`
+only monsters whose name holds that text. Zoomed in (4 px per sqm or more), each
+hunting spot also shows its monster's picture. It needs `data/spawns.json` and
+`data/monsters/`
 (`python tools/map.py refresh`). With Cavebot off: click a dot to select
 it, drag a dot to move it, right-click an empty sqm for "Add <kind> here"
 (after the selected waypoint; a kind that needs a label takes the Cavebot
@@ -173,7 +175,7 @@ python tools/map.py stairs 32369,32220,7   # floor changes nearby and where they
 python tools/route.py path 32374,32028,12 32374,32054,11   # waypoints from A to B, across floors
 python tools/map.py find depot --near 32369,32220,7        # your map markers + routes' depot/bank/shop spots
 python tools/map.py monsters Troll         # where a monster spawns (data/spawns.json)
-python tools/map.py refresh                # download data/spawns.json from tibiaroute.com
+python tools/map.py refresh                # download data/spawns.json + data/monsters/ from tibiaroute.com
 python tools/route.py block refill 32941,32215,8 --depot 32922,32073,7 --bank 33019,32053,6 --shop 32970,32085,6
 ```
 

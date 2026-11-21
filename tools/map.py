@@ -9,7 +9,7 @@ Usage:
     python tools/map.py stairs 32369,32241,7 --size 20      # floor changes near a sqm
     python tools/map.py find depot --near 32369,32241,7     # client markers + route town spots
     python tools/map.py monsters Troll                      # where a monster spawns
-    python tools/map.py refresh                             # download data/spawns.json again
+    python tools/map.py refresh                             # download data/spawns.json + data/monsters/ again
 
 The PNG goes to ``logs/map_<name>.png`` (``--out`` to change), 1 sqm =
 ``--scale`` px. Dots are waypoints (numbers as in the GUI, 1-based), lines
@@ -39,6 +39,8 @@ from moonlight.cavebot.route_map import (
 )
 from moonlight.cavebot.route_plan import (
     SPAWNS_FILE,
+    PICTURES_DIR,
+    download_pictures,
     download_spawns,
     load_floor_map,
     loop_sqm,
@@ -140,6 +142,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "refresh":
         print(f"{SPAWNS_FILE}: {download_spawns(SPAWNS_FILE)} monsters")
+        print(f"{PICTURES_DIR}: {download_pictures(SPAWNS_FILE, PICTURES_DIR)} new pictures")
         return
     if args.target is None:
         parser.error(f"{args.command} needs a target")
