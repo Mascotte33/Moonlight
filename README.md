@@ -154,8 +154,8 @@ the next floor, the green X is the character ("Follow me" keeps it centred).
 Hover a dot for its details. The list on the right holds every waypoint:
 click one to select it and jump the map there. Tick Monsters to show spawn
 sqm as orange dots (hover for the name); type in the box next to it to show
-only monsters whose name holds that text. Zoomed in (4 px per sqm or more), each
-hunting spot also shows its monster's picture. It needs `data/spawns.json` and
+only monsters whose name holds that text. Zoomed in (4 px per sqm or more), the
+dots turn into the monster's picture. It needs `data/spawns.json` and
 `data/monsters/`
 (`python tools/map.py refresh`). With Cavebot off: click a dot to select
 it, drag a dot to move it, right-click an empty sqm for "Add <kind> here"

@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import tkinter as tk
 from functools import partial
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import customtkinter as ctk
@@ -29,7 +28,7 @@ from PIL import Image, ImageTk
 from moonlight.cavebot.cavebot import ACTIONS, RouteError, Waypoint, has_tile
 from moonlight.cavebot.recorder import make_waypoint
 from moonlight.cavebot.route_map import MapTiles, MapView, Spot, bad_legs, leg_path, waypoint_at
-from moonlight.cavebot.route_plan import PICTURES_DIR, SPAWNS_FILE, picture_spots, spawn_points
+from moonlight.cavebot.route_plan import PICTURES_DIR, SPAWNS_FILE, picture_files, spawn_points
 from moonlight.core.state import Position
 from moonlight.core.wiring import MAP_DIR, walk_map_walkable
 from moonlight.gui import theme
@@ -56,17 +55,14 @@ def tooltip(index: int, wp: Waypoint) -> str:
 
 
 # doc: docs/prs/route-tools.md#monster-pictures
-def _load_pictures() -> list[tuple[Spot, str, np.ndarray]]:
-    """Each hunting spot with its monster's first gif frame as RGBA, at most 32 px."""
-    frames: dict[Path, np.ndarray] = {}
-    pictures = []
-    for spot, name, file in picture_spots(SPAWNS_FILE, PICTURES_DIR):
-        if file not in frames:
-            with Image.open(file) as gif:
-                frame = gif.convert("RGBA")
-            frame.thumbnail((32, 32))
-            frames[file] = np.asarray(frame)
-        pictures.append((spot, name, frames[file]))
+def _load_pictures() -> dict[str, np.ndarray]:
+    """Each monster's first gif frame as RGBA, at most 32 px."""
+    pictures = {}
+    for name, file in picture_files(SPAWNS_FILE, PICTURES_DIR).items():
+        with Image.open(file) as gif:
+            frame = gif.convert("RGBA")
+        frame.thumbnail((32, 32))
+        pictures[name] = np.asarray(frame)
     return pictures
 
 
@@ -161,9 +157,8 @@ class MapTab(Tab):
         #: All spawn sqm (loaded on the first Monsters tick) and those shown.
         self._spawns: dict[Spot, list[str]] | None = None
         self._shown_spawns: dict[Spot, list[str]] = {}
-        #: Every hunting spot's (centre, monster, RGBA picture) and those shown.
-        self._pictures: list[tuple[Spot, str, np.ndarray]] = []
-        self._shown_pictures: list[tuple[Spot, np.ndarray]] = []
+        #: Each monster's RGBA picture (loaded with the spawns).
+        self._pictures: dict[str, np.ndarray] = {}
         #: The left press: where, and the waypoint under it (dragged) or None (pan).
         self._press: tuple[int, int] | None = None
         self._view_at_press = (0, 0)
@@ -212,14 +207,14 @@ class MapTab(Tab):
         waypoints = tuple(self._waypoints)
         self._fill_list(waypoints, selected)
         key = (v.x, v.y, v.z, v.scale, v.width, v.height, waypoints, selected, self._me,
-               id(self._shown_spawns), id(self._shown_pictures))  # fmt: skip
+               id(self._shown_spawns))  # fmt: skip
         if key == self._drawn:
             return
         self._drawn = key
         bad = bad_legs(self._waypoints, self._path) if self._path is not None else []
         image = v.render(self.tiles, self._waypoints, bad, selected=selected, me=self._me,
                          path=self._path, monsters=self._shown_spawns,
-                         pictures=self._shown_pictures)  # fmt: skip
+                         pictures=self._pictures)  # fmt: skip
         self._photo = ImageTk.PhotoImage(Image.fromarray(image))
         self.canvas.itemconfigure(self._image_id, image=self._photo)
 
@@ -256,7 +251,6 @@ class MapTab(Tab):
     def _monsters_changed(self) -> None:
         if not self.chk_monsters.get():
             self._shown_spawns = {}
-            self._shown_pictures = []
         else:
             if self._spawns is None:
                 if not SPAWNS_FILE.exists():
@@ -265,14 +259,12 @@ class MapTab(Tab):
                     self.chk_monsters.deselect()
                     return
                 self._spawns = spawn_points(SPAWNS_FILE)
-                self._pictures = _load_pictures() if PICTURES_DIR.exists() else []
-                if not self._pictures:
+                if PICTURES_DIR.exists():
+                    self._pictures = _load_pictures()
+                else:
                     refresh = "run python tools/map.py refresh"
                     self.lbl_msg.configure(text=f"No {PICTURES_DIR}: {refresh}")
-            typed = str(self.ent_monster.get()).strip().lower()
-            self._shown_spawns = matching_spawns(self._spawns, typed)
-            self._shown_pictures = [(spot, rgba) for spot, name, rgba in self._pictures
-                                    if typed in name.lower()]  # fmt: skip
+            self._shown_spawns = matching_spawns(self._spawns, str(self.ent_monster.get()))
         self._draw()
 
     def _resized(self, event: tk.Event) -> None:

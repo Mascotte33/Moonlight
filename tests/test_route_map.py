@@ -89,16 +89,18 @@ def test_render_size_and_tooltip() -> None:
     assert with_monsters.any()  # the floor-7 spawn was drawn
 
 
-def test_pictures_only_when_zoomed_in_and_cut_at_the_edge() -> None:
+def test_spawns_are_pictures_when_zoomed_in_dots_farther_out() -> None:
     picture = np.zeros((4, 4, 4), np.uint8)
     picture[:, :2] = (255, 0, 0, 255)  # left half solid red, right half see-through
-    pictures = [((100, 100, 7), picture), ((100, 100, 8), picture)]
+    monsters = {(100, 100, 7): ["Troll"], (100, 100, 8): ["Troll"]}
+    tiles = MapTiles(Path("nowhere"))
     view = MapView(102, 102, 7, scale=4, width=20, height=20)  # origin (100, 100)
-    image = view.render(MapTiles(Path("nowhere")), [], [], pictures=pictures)
-    assert tuple(image[2, 0]) == (255, 0, 0)  # centred on sqm (100, 100): px (2, 2)
-    assert not image[2, 2:].any()  # see-through half
-    view.zoom(-1, 0, 0)  # scale 3: too far out
-    assert not view.render(MapTiles(Path("nowhere")), [], [], pictures=pictures).any()
+    image = view.render(tiles, [], [], monsters=monsters, pictures={"Troll": picture})
+    assert tuple(image[2, 0]) == (255, 0, 0)  # centred on sqm (100, 100): px (2, 2), cut at 0
+    assert not image[2, 2:].any()  # see-through half, no dot under it
+    view.zoom(-1, 0, 0)  # scale 3: too far out, a dot
+    image = view.render(tiles, [], [], monsters=monsters, pictures={"Troll": picture})
+    assert image.any() and not (image == (255, 0, 0)).all(axis=2).any()
 
 
 def test_undo_restores_the_route_before_a_map_edit() -> None:
