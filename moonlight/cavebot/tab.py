@@ -33,10 +33,8 @@ from moonlight.cavebot.cavebot import (
 )
 from moonlight.cavebot.recorder import (
     StandTracker,
-    buy_text,
     cursor_line,
     make_waypoint,
-    parse_buy,
     position_line,
     route_path,
     save_route,
@@ -44,6 +42,7 @@ from moonlight.cavebot.recorder import (
     should_stop_recording,
     stairs_waypoint,
 )
+from moonlight.cavebot.town import item_names, item_picture
 from moonlight.core.config import ECHO_RAID_CHOICES, BotConfig, ConfigError
 from moonlight.core.state import Position, WorldState
 from moonlight.gui import loop_factory, theme
@@ -383,10 +382,7 @@ class CavebotTab(Tab):
 
         side = section(root, "Route / Refill / Settings")
         side.grid(row=0, column=1, sticky="nsew")
-        pages = {
-            name: Row(side)
-            for name in ("Route", "Refill", "Settings")
-        }
+        pages = {name: Row(side) for name in ("Route", "Refill", "Settings")}
 
         def show(name: str) -> None:
             for key, page in pages.items():
@@ -436,18 +432,30 @@ class CavebotTab(Tab):
         # doc: docs/prs/depot.md#trade-waypoint
         Label(
             refill,
-            text="Buy at a 'trade' waypoint, one per line: item, percent of the amount slider."
-            " Saved with the route (Save in Route).",
+            text="Buy at a 'trade' waypoint: the bot types each item's name and clicks the row"
+            " with its picture. % moves the amount slider. Saved with the route (Save in Route).",
             anchor="w",
             justify="left",
             wraplength=260,
             text_color=theme.TEXT_DIM,
         ).pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        self.txt_buy = ctk.CTkTextbox(refill, height=90, wrap="none")
-        self.txt_buy.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
-        self.txt_buy.bind("<KeyRelease>", lambda _event: self._buy_edited())
-        self.lbl_buy = Label(refill, text="", anchor="w", text_color=theme.TEXT_DIM)
-        self.lbl_buy.pack(fill="x", padx=theme.PAD)
+        self.buy_rows = ctk.CTkFrame(refill, fg_color="transparent")
+        self.buy_rows.pack(fill="x", padx=theme.PAD, pady=(theme.UNIT, 0))
+        ctk.CTkButton(refill, text="+", width=32, command=self._toggle_buy_picker).pack(
+            anchor="w", padx=theme.PAD, pady=(theme.UNIT, 0)
+        )
+        # doc: docs/prs/depot.md#trade-waypoint
+        self.buy_picker = ctk.CTkFrame(refill, fg_color="transparent")
+        for n, name in enumerate(item_names()):
+            ctk.CTkButton(
+                self.buy_picker,
+                text="",
+                image=_item_image(name),
+                width=40,
+                height=40,
+                fg_color="transparent",
+                command=partial(self._add_buy, name),
+            ).grid(row=n // 6, column=n % 6, padx=1, pady=1)
         self.build_options(pages["Settings"], CAVEBOT_PAGE_OPTIONS)
         _kind_heading(pages["Settings"], "Loot")
         self.build_options(pages["Settings"], LOOT_OPTIONS)
@@ -470,9 +478,7 @@ class CavebotTab(Tab):
         self.ent_label.pack(side="left", padx=(theme.UNIT, 0))
         self.ctx.script_listeners.append(self._script_changed)
         # doc: docs/prs/refill.md#drag-waypoint
-        self.lbl_cursor = Label(
-            edit, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
-        )
+        self.lbl_cursor = Label(edit, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO))
         self.lbl_cursor.pack(fill="x", padx=theme.PAD)
         self._capture: Any = None  # ScreenCapture, made on the first draw
         # T3.F9.K2: one button per waypoint type, at the bot's position.
@@ -596,21 +602,52 @@ class CavebotTab(Tab):
                 self._waypoints, self._buy = list(route.waypoints), route.buy
             except RouteError as exc:
                 self._error = str(exc)
-        self.txt_buy.delete("1.0", "end")
-        self.txt_buy.insert("1.0", buy_text(self._buy))
-        self.lbl_buy.configure(text="")
+        self._show_buy()
         self._set_dirty(False)
 
-    def _buy_edited(self) -> None:
-        """Take the typed buy list once every line reads; until then keep the last good one."""
-        try:
-            buy = parse_buy(self.txt_buy.get("1.0", "end"))
-        except RouteError as exc:
-            self.lbl_buy.configure(text=str(exc))
-            return
-        self.lbl_buy.configure(text="")
-        if buy != self._buy:
-            self._buy = buy
+    # -- buy list: one row per item, picked by its picture ---------------------
+
+    def _show_buy(self) -> None:
+        for child in self.buy_rows.winfo_children():
+            child.destroy()
+        for n, (item, percent) in enumerate(self._buy):
+            row = ctk.CTkFrame(self.buy_rows, fg_color="transparent")
+            row.pack(fill="x")
+            ctk.CTkLabel(row, text="", image=_item_image(item), width=34).pack(side="left")
+            Label(row, text=item, anchor="w").pack(side="left", fill="x", expand=True)
+            ctk.CTkButton(row, text="−", width=28, command=partial(self._remove_buy, n)).pack(
+                side="right"
+            )
+            entry = ctk.CTkEntry(row, width=44)
+            entry.insert(0, str(percent))
+            entry.bind("<KeyRelease>", partial(self._buy_percent, n, entry))
+            entry.pack(side="right")
+            Label(row, text="%", text_color=theme.TEXT_DIM).pack(side="right", padx=(0, 2))
+
+    def _toggle_buy_picker(self) -> None:
+        if self.buy_picker.winfo_ismapped():
+            self.buy_picker.pack_forget()
+        else:
+            self.buy_picker.pack(anchor="w", padx=theme.PAD, after=self.buy_rows)
+
+    def _add_buy(self, item: str) -> None:
+        self._buy = [*self._buy, (item, 80)]
+        self.buy_picker.pack_forget()
+        self._show_buy()
+        self._set_dirty(True)
+
+    def _remove_buy(self, n: int) -> None:
+        self._buy = [row for i, row in enumerate(self._buy) if i != n]
+        self._show_buy()
+        self._set_dirty(True)
+
+    def _buy_percent(self, n: int, entry: ctk.CTkEntry, _event: object = None) -> None:
+        """Take a typed 0..100; anything else keeps the last good value."""
+        text = entry.get().strip()
+        if text.isdigit() and int(text) <= 100 and int(text) != self._buy[n][1]:
+            self._buy = [
+                (item, int(text)) if i == n else (item, p) for i, (item, p) in enumerate(self._buy)
+            ]
             self._set_dirty(True)
 
     def _set_dirty(self, dirty: bool) -> None:
@@ -675,9 +712,9 @@ class CavebotTab(Tab):
 
     def _runs_badly(self, script: str) -> bool:
         """Script *script* is broken, failed or has no file."""
-        return script in self.ctx.broken_scripts or not (
-            DEFAULT_SCRIPTS_DIR / f"{script}.py"
-        ).exists()
+        return (
+            script in self.ctx.broken_scripts or not (DEFAULT_SCRIPTS_DIR / f"{script}.py").exists()
+        )
 
     # doc: docs/prs/scripts-page.md#scripts-tab
     def _script_changed(self, old: str | None, new: str | None) -> None:
@@ -970,3 +1007,12 @@ class CavebotTab(Tab):
         cfg = apply_cavebot(load_real_config(path), values)
         cfg.save(path)
         return cfg
+
+
+def _item_image(item: str) -> ctk.CTkImage | None:
+    """*item*'s sprite for a button or label; None when it has none."""
+    path = item_picture(item)
+    if not path.exists():
+        return None
+    image = Image.open(path)
+    return ctk.CTkImage(image, size=image.size)

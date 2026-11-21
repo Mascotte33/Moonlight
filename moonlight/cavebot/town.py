@@ -154,6 +154,11 @@ _TRADE_LIST = (-40, 25, 140, 245)
 ITEM_MATCH_MAX = 300.0
 
 
+def item_names(items: Path = ITEMS_DIR) -> list[str]:
+    """The items with a sprite, as the trade's search box takes them."""
+    return sorted(p.stem.replace("_", " ") for p in items.glob("*.png"))
+
+
 def item_picture(item: str, items: Path = ITEMS_DIR) -> Path:
     """Where *item*'s sprite is kept."""
     return items / f"{item.lower().replace(' ', '_')}.png"
