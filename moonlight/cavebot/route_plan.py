@@ -28,7 +28,7 @@ from moonlight.cavebot.pathing import WALK_STEPS, CostMap
 __all__ = [
     "FLOOR_KINDS", "PICTURES_DIR", "SPAWNS_FILE", "SPAWNS_URL", "FloorChange", "FloorMap",
     "MonsterSpot", "download_pictures", "download_spawns", "find_path", "known_floor_kinds",
-    "picture_spots", "spawn_points",
+    "picture_files", "spawn_points",
     "load_floor_map", "loop_sqm", "monster_spots", "parse_spot", "read_markers", "route_places",
     "route_warnings",
 ]  # fmt: skip
@@ -187,13 +187,12 @@ def _picture_file(entry: dict[str, Any], directory: Path) -> Path:
 
 
 # doc: docs/prs/route-tools.md#monster-pictures
-def picture_spots(spawns_path: Path, directory: Path) -> list[tuple[Spot, str, Path]]:
-    """(centre, monster name, picture file) of every hunting spot."""
-    return [
-        (_centre(spot), entry["monster"]["name"], _picture_file(entry, directory))
+def picture_files(spawns_path: Path, directory: Path) -> dict[str, Path]:
+    """Each monster's name and its picture file in *directory*."""
+    return {
+        entry["monster"]["name"]: _picture_file(entry, directory)
         for entry in json.loads(spawns_path.read_text(encoding="utf-8"))
-        for spot in entry["spots"]
-    ]
+    }
 
 
 def download_pictures(spawns_path: Path, directory: Path) -> int:
