@@ -894,6 +894,37 @@ class CavebotTab(Tab):
             self.lbl_msg.configure(text="The bot runs another route; stop it to start this one")
         return "break"
 
+    # doc: docs/prs/map.md#map-sync
+    @property
+    def route_waypoints(self) -> list[Waypoint]:
+        """The editor's waypoints; the Map tab edits this list in place."""
+        return self._waypoints
+
+    @property
+    def selected_waypoint(self) -> int | None:
+        return self._selected
+
+    @property
+    def edit_locked(self) -> bool:
+        """True while Cavebot is on (the editor is grayed out)."""
+        return self._locked
+
+    def typed_label(self) -> str:
+        """The Label box, for a kind the Map tab adds that needs one."""
+        return str(self.ent_label.get())
+
+    def map_selected(self, index: int | None) -> None:
+        """The Map tab picked waypoint *index*: highlight it here too."""
+        self._selected = index
+        self._mark_selected()
+        if index is not None:
+            self.wp_list.see(f"{index + 2}.0")
+
+    def map_edited(self, selected: int | None) -> None:
+        """The Map tab changed the waypoints: unsaved, redraw, select *selected*."""
+        self._changed()
+        self.map_selected(selected)
+
     def _changed(self) -> None:
         """Mark the editor unsaved and redraw; Save writes the route file."""
         self._error = ""
