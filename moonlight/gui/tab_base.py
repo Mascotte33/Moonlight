@@ -515,7 +515,8 @@ def combo_from_key(keysym: str, keycode: int, state: int) -> str | None:
 class HotkeyBox(ctk.CTkFrame):  # type: ignore[misc]  # customtkinter is untyped
     """Click it, press a key: that key is the hotkey, saved at once.
 
-    Escape cancels. The key press runs *on_submit* (the tab's save).
+    Escape cancels; Backspace or Delete clears the hotkey (no key). The key
+    press runs *on_submit* (the tab's save).
     """
 
     _listening: ClassVar[HotkeyBox | None] = None
@@ -551,7 +552,7 @@ class HotkeyBox(ctk.CTkFrame):  # type: ignore[misc]  # customtkinter is untyped
         if HotkeyBox._listening is not None:
             HotkeyBox._listening.set(HotkeyBox._listening.get())
         HotkeyBox._listening = self
-        self.btn.configure(text="press a key", border_color=theme.MANA)
+        self.btn.configure(text="key / Bksp clears", border_color=theme.MANA)
         self.focus_set()  # so no text box also gets the key
         self._bind_id = self.winfo_toplevel().bind("<KeyPress>", self._on_key, add="+")
 
@@ -559,7 +560,13 @@ class HotkeyBox(ctk.CTkFrame):  # type: ignore[misc]  # customtkinter is untyped
         if event.keysym == "Escape":
             self.set(self._combo)
             return "break"
-        combo = combo_from_key(event.keysym, event.keycode, event.state)
+        combo: str | None
+        if event.keysym in ("BackSpace", "Delete"):
+            # Clears: pressing Backspace to empty the box set "backspace" as the key
+            # and the bot pressed it on every attack (2026-11-21).
+            combo = ""
+        else:
+            combo = combo_from_key(event.keysym, event.keycode, event.state)
         if combo is not None:
             self.set(combo)
             if self._on_submit is not None:

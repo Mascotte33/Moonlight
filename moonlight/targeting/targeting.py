@@ -91,7 +91,7 @@ Rect = tuple[int, int, int, int]
 #: Seconds an unreachable target (or a skipped on-screen tile) is left alone.
 _IGNORE_SECONDS = 10.0
 #: Seconds of a still HP before a target is left for a monster next to the player.
-ADJACENT_STUCK_SECONDS = 4.0
+ADJACENT_STUCK_SECONDS = 3.0
 
 #: Seconds between two keep-distance steps (one walk step takes about this long).
 _STEP_AWAY_EVERY_SECONDS = 0.4
