@@ -238,10 +238,18 @@ class Extras:
                 if locate(window, picture) is not None:
                     found.add(name)
         not_found_yet = [name for name in self._pictures if name not in self._spots]
-        if not_found_yet:
-            name = not_found_yet[self._search_turn % len(not_found_yet)]
+        # The pictures of switched-on extras are searched every scan: taking turns with
+        # the 7 pictures, a just-hasted character was "not hasted" for up to 7 s and the
+        # haste was cast 4 times (2026-11-21). The others still take turns.
+        wanted = [name for name in not_found_yet if name in self._wanted_pictures()]
+        others = [name for name in not_found_yet if name not in wanted]
+        search = list(wanted)
+        if others:
+            search.append(others[self._search_turn % len(others)])
             self._search_turn += 1
+        if search:
             gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        for name in search:
             spot = locate(gray, cv2.cvtColor(self._pictures[name], cv2.COLOR_RGB2GRAY))
             if spot is not None:
                 self._spots[name] = spot
@@ -249,6 +257,23 @@ class Extras:
         if self.config.pm_alarm and pm_shown(frame, self._npcs_tab):
             found.add("pm")
         return frozenset(found)
+
+    def _wanted_pictures(self) -> set[str]:
+        """The pictures the switched-on extras decide by."""
+        c = self.config
+        return {
+            picture
+            for on, pictures in (
+                (c.food, ("hungry",)),
+                (c.haste, ("haste", "pz")),
+                (c.buff, ("buff",)),
+                (c.spell_buff, ("spell_buff",)),
+                (c.ring, ("ring_empty",)),
+                (c.amulet, ("amulet_empty",)),
+            )
+            if on
+            for picture in pictures
+        }
 
     @property
     def staying(self) -> bool:
