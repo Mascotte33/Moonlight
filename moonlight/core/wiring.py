@@ -90,6 +90,10 @@ _PERCEIVE_REGIONS = (
 )
 
 
+#: Grabs tried per tick while the bars read as hidden (a mid-redraw grab).
+REDRAW_GRABS = 3
+
+
 def capture_regions(profile: CalibrationProfile, config: BotConfig) -> list[Rect] | None:
     """The window regions a tick reads, for ``ScreenCapture.get_frame`` (P2).
 
@@ -275,7 +279,7 @@ def make_perceive(
     from moonlight.perception.floor import FloorReader
     from moonlight.perception.minimap import MinimapReader
     from moonlight.perception.status_icons import StatusIconReader
-    from moonlight.perception.vitals import VitalsReader
+    from moonlight.perception.vitals import BarHiddenError, VitalsReader
 
     vitals = VitalsReader(profile)
     creatures = CreatureTracker()
@@ -324,10 +328,19 @@ def make_perceive(
         try:
             if not focused:
                 raise RuntimeError("client not focused")
-            frame = frame_provider()
+            # doc: docs/prs/covered-hp-bar.md#covered-bar
+            # A grab mid-redraw misses the client's top strip (bars included);
+            # grab again rather than pause, which drops the target being picked.
+            for attempt in range(REDRAW_GRABS):
+                frame = frame_provider()
+                try:
+                    hp, mp = vitals.read_vitals(frame)
+                    break
+                except BarHiddenError:
+                    if attempt == REDRAW_GRABS - 1:
+                        raise
             if seen_monsters is not None and client_is_foreground is not None:
                 seen_monsters.learns_new_names = client_is_foreground()
-            hp, mp = vitals.read_vitals(frame)
             # doc: docs/prs/client-hotkeys.md#mana-points
             if time.monotonic() - max_mp_read_at >= (MAX_MP_READ_SECONDS if max_mp else 1.0):
                 max_mp_read_at = time.monotonic()
