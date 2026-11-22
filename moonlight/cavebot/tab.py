@@ -493,6 +493,7 @@ class CavebotTab(Tab):
         self.lbl_cursor = Label(edit, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO))
         self.lbl_cursor.pack(fill="x", padx=theme.PAD)
         self._capture: Any = None  # ScreenCapture, made on the first draw
+        self._capture_title = ""
         # T3.F9.K2: one button per waypoint type, at the bot's position.
         for heading, button_rows in KIND_SECTIONS:
             _kind_heading(edit, heading)
@@ -793,8 +794,10 @@ class CavebotTab(Tab):
         from moonlight.perception.capture import ScreenCapture, focus_window
 
         title_cfg = load_real_config().window_title
-        if self._capture is None:
+        if self._capture is None or self._capture_title != title_cfg:
+            # Rebuilt when Settings' game window changed (another character).
             self._capture = ScreenCapture(window_title=title_cfg)
+            self._capture_title = title_cfg
         # The capture reads the screen: bring the client over this window first.
         if focus_window(title_cfg):
             self._root.update()
@@ -965,8 +968,9 @@ class CavebotTab(Tab):
         from moonlight.perception.capture import ScreenCapture
         from moonlight.perception.cursor import screen_cursor
 
-        if self._capture is None:
-            self._capture = ScreenCapture(window_title=load_real_config().window_title)
+        title = load_real_config().window_title
+        if self._capture is None or self._capture_title != title:
+            self._capture, self._capture_title = ScreenCapture(window_title=title), title
         return cursor_line(screen_cursor(), self._capture.get_window_rect())
 
     def _pick_waypoint(self, event: tk.Event) -> str:
