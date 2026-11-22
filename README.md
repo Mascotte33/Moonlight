@@ -146,7 +146,8 @@ open backpacks onto a free sqm within 2 of the character (`drop: <name> -> (x, y
 in the log). The pictures live in the profiles folder, `drop_items/`.
 
 To play several accounts in turn (stamina switch): write a text file with
-one account per line, `login password`, letters and digits only (blank lines
+one account per line, `login password` (an email login is fine: letters,
+digits and `@ . - _`, US keyboard layout in Windows; blank lines
 and lines starting with `#` are ignored; at least 2 lines; the first line is
 the account playing when the bot starts). In Settings, Scripts box, pick it
 with "Accounts file" Browse (config key `modules.rotation.accounts_file`) and
@@ -155,6 +156,8 @@ check "Tibia program" (`modules.rotation.client_exe`, default
 `script account_rotate` waypoint after `deposit`. When the stamina is under 39:30 the
 bot goes to the depot, logs out, closes Tibia (Alt+F4), starts it again and
 logs the next line's account in with its first character, then walks on.
+The file is yours alone: keep it outside the project folder, and the bot never
+logs the login or the password.
 
 To spread the characters over routes by level (cavebot rotate): end a route
 file's name with the levels it is for, `VenoreSwampTrolls 20-40.json` (levels

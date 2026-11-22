@@ -168,10 +168,12 @@ class Bot:
         return self._snap.screen_ok and self._snap.hp_percent > 0
 
     def type(self, text: str, *, secret: bool = False) -> list[Command]:
-        """Type *text* (letters and digits, no Enter); *secret* keeps it out of the command log."""
-        if not re.fullmatch(r"[A-Za-z0-9]*", text):
-            raise ValueError("type text is letters and digits")
-        keys = [f"shift+{ch.lower()}" if ch.isupper() else ch for ch in text]
+        """Type *text* (an email or a name, no Enter); *secret* keeps it out of the command log."""
+        if not re.fullmatch(TYPEABLE, text):
+            raise ValueError("type text is letters, digits and @ . - _")
+        keys = [
+            _SYMBOL_KEYS.get(ch) or (f"shift+{ch.lower()}" if ch.isupper() else ch) for ch in text
+        ]
         press = _secret_press if secret else _press
         return [functools.partial(press, self._runner, k) for k in keys]
 
@@ -285,6 +287,11 @@ def _press(runner: ScriptRunner, key: str) -> None:
     """Press a typed key, then wait a typing gap."""
     runner.input.press_combo(key)
     runner.wait_typing_gap()
+
+
+TYPEABLE = r"[A-Za-z0-9@.\-_]*"
+"""What :meth:`Bot.type` can type: the Arduino's keys on a US layout."""
+_SYMBOL_KEYS = {"@": "shift+2", ".": "period", "-": "minus", "_": "shift+minus"}
 
 
 def _secret_press(runner: ScriptRunner, key: str) -> None:

@@ -23,7 +23,8 @@ from moonlight.scripts.rotation import (
 from moonlight.scripts.scripts import ScriptRunner
 
 EXE = Path("tibia/client_launcher.exe")
-LOGIN_B = ["K ctrl+a", "K d", "K e", "K f", "K tab"]
+LOGIN_B = ["K ctrl+a", "K d", "K shift+minus", "K e", "K minus", "K f", "K shift+2"]
+LOGIN_B += ["K x", "K period", "K i", "K o", "K tab"]  # the email login d_e-f@x.io
 LOGIN_B += ["K ctrl+a", "K shift+x", "K shift+y", "K enter"]  # the password XY
 PICK_1 = ["K up"] * LIST_TOP + ["K enter"]
 
@@ -53,7 +54,7 @@ class Client:
         return True
 
 
-def accounts_file(tmp_path: Path, text: str = "Abc1 Pw9\n\n# note\ndef XY\n") -> Path:
+def accounts_file(tmp_path: Path, text: str = "Abc1 Pw9\n\n# note\nd_e-f@x.io XY\n") -> Path:
     path = tmp_path / "accounts.txt"
     path.write_text(text, encoding="utf-8")
     return path
@@ -97,7 +98,8 @@ def play(
 
 
 def test_load_accounts(tmp_path: Path) -> None:
-    assert load_accounts(accounts_file(tmp_path)) == (Account("Abc1", "Pw9"), Account("def", "XY"))
+    expected = (Account("Abc1", "Pw9"), Account("d_e-f@x.io", "XY"))
+    assert load_accounts(accounts_file(tmp_path)) == expected
 
 
 @pytest.mark.parametrize(
@@ -105,8 +107,8 @@ def test_load_accounts(tmp_path: Path) -> None:
     [
         ("a1 p1\nb2\n", "line 2"),  # a bad line
         ("a1 p1 extra\nb2 p2\n", "line 1"),
-        ("a1 p1\nb2 p.2\n", "password must be letters and digits"),  # a symbol
-        ("a.1 p1\nb2 p2\n", "login must be letters and digits"),
+        ("a1 p1\nb2 p!2\n", "password must be letters, digits and @"),  # a symbol
+        ("a!1 p1\nb2 p2\n", "login must be letters, digits and @"),
         ("a1 p1\n# only one\n", "at least 2 accounts"),
     ],
 )
@@ -115,7 +117,7 @@ def test_a_bad_accounts_file_is_refused_without_the_password(
 ) -> None:
     with pytest.raises(ValueError, match=message) as error:
         load_accounts(accounts_file(tmp_path, text))
-    assert "p.2" not in str(error.value)
+    assert "p!2" not in str(error.value)
 
 
 def test_a_missing_accounts_file_is_refused(tmp_path: Path) -> None:
@@ -192,11 +194,11 @@ def test_still_in_game_after_logout_keeps_the_account(tmp_path: Path) -> None:
     assert r.running is None and rot.index == 0 and not client.started
 
 
-def test_the_password_never_reaches_the_command_log(tmp_path: Path) -> None:
+def test_the_login_and_password_never_reach_the_command_log(tmp_path: Path) -> None:
     r, _, clock, client = setup(tmp_path, 100)
     lines: list[str] = []
     r.start("account_rotate")
     play(r, LoggedInput(FakeInput(), lines.append), clock, True, 0.2)
     play(r, LoggedInput(FakeInput(), lines.append), clock, False, 25, client)
-    assert "input: press d" in lines  # the login is logged
-    assert "input: press shift+x" not in lines and lines.count("input: press (hidden)") == 2
+    assert "input: press d" not in lines and "input: press shift+x" not in lines
+    assert lines.count("input: press (hidden)") == 12  # 10 login keys, 2 password keys
