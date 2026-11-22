@@ -238,6 +238,9 @@ def walked_tiles(waypoints: list[Waypoint], loop: bool) -> set[tuple[int, int, i
     return tiles
 
 
+#: After a detour the route goes on to the waypoint it was walking to when
+#: that one is at most this many tiles away (else from the nearest one).
+RESUME_TILES = 50
 #: Seconds the route holds after a hand action (a wait: its label).
 _HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0, "step": 0.5, "deposit": 1.0}
 
@@ -1156,7 +1159,7 @@ class Cavebot:
         how = "triggered" if self._echo_raid_click is not None else "gone"
         logger.info("cavebot: echo raid at %s,%s,%s %s, back to the nearest waypoint", *goal, how)
         self._drop_echo_raid_goal()
-        self.route.current = self._nearest_waypoint()
+        self.route.current = self._after_detour()
         self._plan_again()
 
     def _drop_echo_raid_goal(self) -> None:
@@ -1237,6 +1240,25 @@ class Cavebot:
             if has_tile(wp) and wp.z == pos.z
         ]
         return min(candidates)[1] if candidates else 0
+
+    def _after_detour(self) -> int:
+        """The waypoint to go on with after a detour: the one we were walking to
+        when it is on our floor and within ``RESUME_TILES``, else the nearest.
+
+        Not just the nearest: a way to town and the way back share streets
+        (2026-11-22: an echo raid on the way to the depot resumed on the way
+        back, whose check jumped to town again, a loop).
+        """
+        pos = self._read_position()
+        wp = self.route.waypoints[self.route.current]
+        if (
+            pos is not None
+            and has_tile(wp)
+            and wp.z == pos.z
+            and max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= RESUME_TILES
+        ):
+            return self.route.current
+        return self._nearest_waypoint()
 
     def _resolve_jumps(self) -> bool:
         """Skip labels / follow gotos; False when the route ended or looped."""

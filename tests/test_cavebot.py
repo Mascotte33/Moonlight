@@ -1962,7 +1962,7 @@ def test_use_goes_back_to_the_route_once_the_echo_raid_is_gone(
     with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
         sim.step(1.1)
     assert "echo raid at 102,100,7 triggered" in caplog.text
-    assert sim.bot._echo_raid_goal is None and sim.route.current == 1  # the nearest waypoint
+    assert sim.bot._echo_raid_goal is None and sim.route.current == 0  # the one it walked to
 
 
 # doc: docs/prs/near-targeting.md#echo-wait
