@@ -38,6 +38,12 @@ from moonlight.targeting.targeting import AreaRule, MonsterRow, TargetingConfig,
 PERIOD = 1.0 / 20.0  # 50 ms
 
 
+@pytest.fixture(autouse=True)
+def _select_clicks_hit_the_row_centre(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Select clicks land on a random spot; these tests check the exact centre."""
+    monkeypatch.setattr("moonlight.targeting.targeting.random.randint", lambda a, b: 0)
+
+
 class FakeClock:
     """Deterministic monotonic clock with a manual sleep."""
 

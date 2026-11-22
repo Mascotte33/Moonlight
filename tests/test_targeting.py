@@ -85,7 +85,6 @@ def test_stuck_targeting_attacks_the_top_row_first() -> None:
     assert picked(stuck, state(monsters)) == 0  # the nearest, in the way
 
 
-
 def test_stays_on_a_valid_target() -> None:
     weak = Monster("Rat", 10.0, battle_list_row=0)
     selected = Monster("Rat", 90.0, battle_list_row=1)
@@ -414,7 +413,9 @@ def test_a_stuck_target_is_left_for_a_monster_next_to_the_player() -> None:
     far = Monster(name="amazon", hp_percent=8.0, battle_list_row=0, name_hash="a")
     near = Monster(name="amazon", hp_percent=100.0, battle_list_row=1, name_hash="a")
     state = WorldState(
-        monsters=[far, near], selected_target=far, creature_slots=((7, 6), (8, 6), (7, 8)),
+        monsters=[far, near],
+        selected_target=far,
+        creature_slots=((7, 6), (8, 6), (7, 8)),
     )
     decision = TargetingDecision(TargetingConfig())
     decision.decide(state, 0.0)
@@ -422,3 +423,14 @@ def test_a_stuck_target_is_left_for_a_monster_next_to_the_player() -> None:
     assert decision.is_unreachable(far)
     action = decision.decide(state, ADJACENT_STUCK_SECONDS + 0.2)
     assert action is not None and action.battle_list_row == 1  # the one in reach
+
+
+def test_row_click_point_lands_on_the_row_and_varies() -> None:
+    targeting = TargetingDecision(None, (100, 200, 156, 300), ui_scale=1.0)
+    cx, cy = targeting.row_center(2)
+    points = {targeting.row_click_point(2) for _ in range(50)}
+    assert len(points) > 10
+    for x, y in points:
+        assert 100 + 23 <= x < 100 + 156
+        assert cy - 11 < y < cy + 11
+    assert abs(cx - min(x for x, _ in points)) > 5

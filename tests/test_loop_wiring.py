@@ -84,20 +84,22 @@ def test_healing_decide_and_send_every_tick() -> None:
 
 def test_targeting_decide_feeds_attack() -> None:
     action = SimpleNamespace(kind="select", battle_list_row=2, reason="lowest hp")
-    targeting = idle_module(**{"decide.return_value": action, "row_center.return_value": (5, 6)})
+    targeting = idle_module(
+        **{"decide.return_value": action, "row_click_point.return_value": (5, 6)}
+    )
     clicker = mock.Mock(busy=False, **{"step.return_value": None})
     gl, _ = make_loop(make_state(monsters=3), FakeInput(), targeting=targeting, clicker=clicker)
     gl.tick()
     targeting.decide.assert_called_once()
     assert gl.current_state is BotState.ATTACK
-    targeting.row_center.assert_called_once_with(2)
+    targeting.row_click_point.assert_called_once_with(2)
     clicker.request.assert_called_once_with((5, 6), side=ClickSide.LEFT)
 
 
 def test_stuck_cavebot_hands_over_to_stuck_targeting_until_a_kill() -> None:
     action = SimpleNamespace(kind="select", battle_list_row=0, reason="all others")
     stuck_targeting = idle_module(
-        **{"decide.return_value": action, "row_center.return_value": (5, 6)}
+        **{"decide.return_value": action, "row_click_point.return_value": (5, 6)}
     )
     cavebot = idle_module(
         stuck_on_creatures=True,
@@ -185,7 +187,9 @@ def test_kill_mid_fight_loots_before_next_target() -> None:
 
 def test_ring_press_does_not_stop_the_attack() -> None:
     action = SimpleNamespace(kind="select", battle_list_row=0, reason="r")
-    targeting = idle_module(**{"decide.return_value": action, "row_center.return_value": (5, 6)})
+    targeting = idle_module(
+        **{"decide.return_value": action, "row_click_point.return_value": (5, 6)}
+    )
     looting = idle_module(**{"ring_due.return_value": True})
     clicker = mock.Mock(busy=False, **{"step.return_value": None})
     ws = make_state(target="Wolf", monsters=2)
@@ -246,8 +250,12 @@ def test_perceive_runs_before_snapshot() -> None:
 
     clock = Clock()
     gl = GameLoop(
-        ws, FakeInput(), LoopConfig(enable_f12_monitor=False),
-        clock=clock, sleep_fn=clock.sleep, perceive=perceive,
+        ws,
+        FakeInput(),
+        LoopConfig(enable_f12_monitor=False),
+        clock=clock,
+        sleep_fn=clock.sleep,
+        perceive=perceive,
     )
     gl.tick()
     assert gl.current_state is BotState.IDLE  # perceive set screen_ok, so not PAUSED
