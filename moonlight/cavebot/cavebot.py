@@ -211,6 +211,30 @@ _NO_LABEL = ("deposit", "bank", "trade")
 NO_TILE = _JUMP_ACTIONS + _HAND_ACTIONS
 
 
+def _load_echo_raid_duds() -> set[tuple[int, int, int]]:
+    """The saved tiles whose echo raid never triggered."""
+    try:
+        lines = ECHO_RAID_DUDS_FILE.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return set()
+    duds = set()
+    for line in lines:
+        parts = line.split()
+        if len(parts) == 3 and all(p.isdigit() for p in parts):
+            duds.add((int(parts[0]), int(parts[1]), int(parts[2])))
+    return duds
+
+
+def _save_echo_raid_dud(tile: tuple[int, int, int]) -> None:
+    path = ECHO_RAID_DUDS_FILE
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write("{} {} {}\n".format(*tile))
+    except OSError:
+        logger.warning("cavebot: could not save %s", path)
+
+
 def has_tile(wp: Waypoint) -> bool:
     """True when the bot walks to *wp*'s tile before doing it."""
     return wp.action not in NO_TILE or (wp.x, wp.y, wp.z) != (0, 0, 0)
@@ -300,6 +324,9 @@ ECHO_RAID_FORGET = 30.0
 ECHO_RAID_AFTER_WAIT = 2.0
 #: Screenshots 1 s after each echo raid click, the clicked pixel circled (bot.log names each).
 ECHO_RAID_SHOTS_DIR = Path("logs") / "echo_raids"
+#: Tiles whose "echo raid" never triggered (a coffin, a lamp...): ``x y z`` per
+#: line, never clicked again, also after a restart.
+ECHO_RAID_DUDS_FILE = Path("data") / "echo_raid_duds.txt"
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
 # doc: docs/prs/depot.md#npc-pacing
 #: Seconds paused after each NPC line (owner's ranges: the NPC needs time to react).
@@ -681,6 +708,7 @@ class Cavebot:
         self._echo_raid_tries = 0
         #: Triggers given up on (no way, or tries used up) -> when last seen.
         self._ignored_echo_raids: dict[tuple[int, int], float] = {}
+        self._echo_raid_duds = _load_echo_raid_duds()
         self._echo_raid_wait_until = float("-inf")
         self._previous_pos: Position | None = None  # where the view still is right after a step
         #: Bumped tiles a scan saw a creature on: free again once it walks off.
@@ -1078,6 +1106,8 @@ class Cavebot:
             self._click_echo_raid(goal, pos, now, safe)  # a spawn after a click: look first
             return None
         candidates = self.echo_raids - self._ignored_echo_raids.keys()
+        if self._echo_raid_duds:
+            candidates = {t for t in candidates if (*t, pos.z) not in self._echo_raid_duds}
         if not safe:
             self._drop_echo_raid_goal()
         elif goal is None and candidates:
@@ -1130,6 +1160,8 @@ class Cavebot:
                     *goal, ECHO_RAID_TRIES,
                 )  # fmt: skip
                 self._ignored_echo_raids[goal[:2]] = now
+                _save_echo_raid_dud(goal)
+                self._echo_raid_duds.add(goal)
                 self._drop_echo_raid_goal()
                 self._plan_again()
                 return

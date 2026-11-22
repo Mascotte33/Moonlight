@@ -48,3 +48,4 @@ moonlight/data/
 # A local shortcut with the Moonlight icon
 *.lnk
 data/monsters/
+data/echo_raid_duds.txt
