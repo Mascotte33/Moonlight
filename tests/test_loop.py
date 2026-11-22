@@ -30,7 +30,7 @@ from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
 from moonlight.healing.healing import HealingAction, HealingDecision
 from moonlight.looting.looting import Looting
-from moonlight.scripts.rotation import Account, Rotation, RotationConfig
+from moonlight.scripts.rotation import Rotation, RotationConfig
 from moonlight.scripts.scripts import ScriptRunner
 from moonlight.targeting.attack_hotkeys import AttackHotkeys
 from moonlight.targeting.targeting import AreaRule, MonsterRow, TargetingConfig, TargetingDecision
@@ -1297,24 +1297,47 @@ class TestExtras:
 
 
 
-# doc: docs/prs/rotation.md#rotation
+# doc: docs/prs/stamina-switch.md#stamina-switch
 class TestRotation:
-    def test_the_switch_runs_on_the_login_screen_without_pausing(self) -> None:
+    def test_the_switch_runs_on_the_login_screen_without_pausing(self, tmp_path: Path) -> None:
         clock = FakeClock()
-        accounts = (Account("a", "p", minutes=1.0), Account("b", "q"))
+        accounts = tmp_path / "accounts.txt"
+        accounts.write_text("a p\nb q\n", encoding="utf-8")
+        window = {"open": True}
+
+        def start_client(_exe: Path) -> None:
+            window["open"] = True
+
         scripts = ScriptRunner(clock=clock)
-        scripts.rotation = Rotation(RotationConfig(accounts=accounts), clock=clock)
+        scripts.stamina = lambda: 100
+        scripts.rotation = Rotation(
+            RotationConfig(accounts_file=accounts),
+            clock=clock,
+            start_client=start_client,
+            window_open=lambda: window["open"],
+            focus_client=lambda: True,
+        )
         ws = make_state()
         inp = FakeInput()
         gl, _ = make_loop(ws, inp, clock=clock, modules=DecisionModules(scripts=scripts))
-        clock.advance(60.0)
-        assert scripts.start("rotate")
+        assert scripts.start("account_rotate")
         for _ in range(3):
             gl.tick()
             clock.advance(0.2)
         assert inp.sent_lines == ["K ctrl+l"]
         ws.screen_ok = False  # logged out
-        for _ in range(30):
+        for _ in range(20):
+            gl.tick()
+            clock.advance(0.2)
+        assert inp.sent_lines == ["K ctrl+l", "K alt+f4"]
+        window["open"] = False  # the client is gone: not focused, the switch still steps
+        ws.client_focused = False
+        for _ in range(8):
+            gl.tick()
+            clock.advance(0.2)
+        assert window["open"]  # the script started the client although nothing was focused
+        ws.client_focused = True
+        for _ in range(60):
             gl.tick()
             clock.advance(0.2)
         assert gl.current_state is not BotState.PAUSED and "K tab" in inp.sent_lines
