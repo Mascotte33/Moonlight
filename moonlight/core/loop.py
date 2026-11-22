@@ -973,7 +973,7 @@ class GameLoop:
             point, side = targeting.slot_center(self._target.creature_slot), ClickSide.RIGHT
             tile: tuple[int, int, int] | None = self._target.creature_tile
         else:
-            point, side, tile = targeting.row_center(row), ClickSide.LEFT, None
+            point, side, tile = targeting.row_click_point(row), ClickSide.LEFT, None
 
         def click() -> bool | None:
             clicker.request(point, side=side)

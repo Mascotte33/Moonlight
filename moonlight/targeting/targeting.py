@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import heapq
 import logging
+import random
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -66,6 +67,9 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+#: How far (px at 100 %) a select click may land above/below the row middle.
+ROW_CLICK_HALF_HEIGHT = 5
 
 MOVEMENTS = ("none", "follow", "keep distance")
 # doc: docs/prs/attack-types.md#area-kinds
@@ -641,6 +645,20 @@ class TargetingDecision:
             return (priority, monster.battle_list_row)
         hp = monster.hp_percent if order == "lowest hp" else -monster.hp_percent
         return (priority, hp, monster.battle_list_row)
+
+    def row_click_point(self, battle_list_row: int) -> tuple[int, int]:
+        """A random frame pixel on *battle_list_row*'s name, new each call.
+
+        A real hand never hits the same pixel twice; clicks anywhere on the
+        name (the text rows above the HP bar) select the row.
+
+        Raises:
+            ValueError: If no ``battle_list`` region was given.
+        """
+        cx, cy = self.row_center(battle_list_row)
+        half_w = round(NAME_WIDTH * self._ui_scale * 0.35)
+        half_h = round(ROW_CLICK_HALF_HEIGHT * self._ui_scale)
+        return cx + random.randint(-half_w, half_w), cy + random.randint(-half_h, half_h)
 
     def row_center(self, battle_list_row: int) -> tuple[int, int]:
         """Frame pixel at the middle of *battle_list_row*'s name.
