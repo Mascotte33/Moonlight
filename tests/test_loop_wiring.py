@@ -70,6 +70,7 @@ def idle_module(**overrides: object) -> mock.Mock:
     m.send.return_value = True
     m.alarm = None
     m.route.current = 0
+    m.config.next_target_hotkey = ""
     m.configure_mock(**overrides)
     return m
 

@@ -713,6 +713,43 @@ class TestSelectClick:
         ticks(gl, clock, 3)
         assert inp.sent_lines == ["A 189 288", "C L"]  # 200+11+3*22+11
 
+    # doc: docs/prs/targeting.md#next-target-key
+    def test_the_next_target_key_selects_instead_of_a_click(self) -> None:
+        ws = make_state()
+        with ws.lock():
+            ws.monsters = [Monster("Wolf", 50.0)]
+        inp = FakeInput()
+        config = TargetingConfig(next_target_hotkey="space")
+        gl, clock = make_targeting_loop(ws, inp, targeting_config=config)
+        ticks(gl, clock, 3)
+        assert inp.sent_lines == ["K space"]
+
+    def test_the_next_target_key_is_pressed_again_until_the_pick_shows(self) -> None:
+        ws = make_state()
+        with ws.lock():
+            ws.monsters = [Monster("Wolf", 90.0), Monster("Wolf", 10.0, battle_list_row=1)]
+        inp = FakeInput()
+        config = TargetingConfig(next_target_hotkey="space")
+        gl, clock = make_targeting_loop(ws, inp, targeting_config=config)
+        ticks(gl, clock, 1)
+        clock.advance(1.0)  # no outline on row 1: press again
+        ticks(gl, clock, 1)
+        assert inp.sent_lines == ["K space", "K space"]
+
+    def test_the_row_is_clicked_once_the_key_never_reaches_it(self) -> None:
+        ws = make_state()
+        with ws.lock():
+            ws.monsters = [Monster("Wolf", 50.0)]
+        inp = FakeInput()
+        config = TargetingConfig(next_target_hotkey="space")
+        gl, clock = make_targeting_loop(ws, inp, targeting_config=config)
+        for _ in range(3):  # 1 monster + 1 extra + 1: then the click
+            ticks(gl, clock, 1)
+            clock.advance(1.0)
+        ticks(gl, clock, 3)
+        assert inp.sent_lines[:3] == ["K space"] * 3
+        assert inp.sent_lines[3:] == ["A 189 222", "C L"]
+
     # doc: docs/prs/near-targeting.md#moved-row
     def test_a_click_is_aimed_again_when_its_row_moves(self) -> None:
         ws = make_state()
