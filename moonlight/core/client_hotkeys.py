@@ -117,6 +117,14 @@ def bot_keys(cfg: BotConfig) -> list[BotKey]:
         if targeting.toggle_chase_hotkey:
             chase = targeting.toggle_chase_hotkey
             keys.append(BotKey(chase, "Toggle chase", client_action="ToggleChaseOpponents"))
+        if targeting.next_target_hotkey:
+            keys.append(
+                BotKey(
+                    targeting.next_target_hotkey,
+                    "Attack next target",
+                    client_action="AttackNextTarget",
+                )
+            )
     cavebot = _module(cfg, "cavebot")
     if cavebot is not None:
         keys.append(BotKey(cavebot.rope_hotkey, "Rope", "SelectUseTarget", suggested="rope"))

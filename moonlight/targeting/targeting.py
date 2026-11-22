@@ -186,6 +186,8 @@ class TargetingConfig:
     unreachable_after_seconds: float = 4.0
     #: The client's "Toggle Chase Mode" key; "" = the bot leaves the owner's mode.
     toggle_chase_hotkey: str = ""
+    #: The client's "Attack Next Target" key; "" = select by clicking the row.
+    next_target_hotkey: str = ""
     target_order: str = "lowest hp"
     # doc: docs/prs/near-targeting.md#in-range
     only_attack_within_range: bool = False
@@ -227,6 +229,8 @@ class TargetingConfig:
             )
         if self.toggle_chase_hotkey:
             check_hotkey(self.toggle_chase_hotkey, "targeting.toggle_chase_hotkey")
+        if self.next_target_hotkey:
+            check_hotkey(self.next_target_hotkey, "targeting.next_target_hotkey")
         if isinstance(self.attack_range_tiles, bool) or self.attack_range_tiles < 1:
             raise ValueError("targeting.attack_range_tiles must be 1 or more")
         if isinstance(self.keep_distance_tiles, bool) or self.keep_distance_tiles < 1:

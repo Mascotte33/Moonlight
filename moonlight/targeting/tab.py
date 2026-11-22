@@ -97,6 +97,7 @@ class TargetingSettings(NamedTuple):
     kite_when_in_danger: bool = False
     kite_when_monsters_within_one_tile: str = "3"
     kite_when_hp_below_percent: str = "20"
+    next_target_hotkey: str = ""
 
 
 def _number(text: str, cast: Callable[[str], float], where: str) -> float:
@@ -176,6 +177,7 @@ def apply_targeting(
             settings.kite_when_monsters_within_one_tile, int, "kite monsters"
         ),
         kite_when_hp_below_percent=_number(settings.kite_when_hp_below_percent, int, "kite HP %"),
+        next_target_hotkey=settings.next_target_hotkey.strip(),
     )
     return BotConfig.from_dict(data)
 
@@ -385,6 +387,11 @@ class TargetingTab(Tab):
         ).pack(side="left")
         self._toggle_chase_hotkey = HotkeyBox(chase_line, self._save)
         self._toggle_chase_hotkey.pack(side="left", padx=(theme.UNIT, 0))
+        Label(chase_line, text="Attack Next Target", text_color=theme.TEXT_DIM).pack(
+            side="left", padx=(theme.PAD, 0)
+        )
+        self._next_target_hotkey = HotkeyBox(chase_line, self._save)
+        self._next_target_hotkey.pack(side="left", padx=(theme.UNIT, 0))
         # doc: docs/prs/GUI_visual_changes.md#target-order
         order_line = Row(settings_box)
         order_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
@@ -525,6 +532,7 @@ class TargetingTab(Tab):
             entry.delete(0, "end")
             entry.insert(0, value)
         self._toggle_chase_hotkey.set(targeting.toggle_chase_hotkey)
+        self._next_target_hotkey.set(targeting.next_target_hotkey)
         self._target_order.set(targeting.target_order)
         if targeting.only_attack_within_range:
             self._only_attack_within_range.select()
@@ -675,6 +683,7 @@ class TargetingTab(Tab):
             bool(self._kite_when_in_danger.get()),
             self._kite_monsters_entry.get(),
             self._kite_hp_entry.get(),
+            self._next_target_hotkey.get(),
         )
 
     def _save(self) -> None:

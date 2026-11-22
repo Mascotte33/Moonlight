@@ -143,6 +143,13 @@ TIMING_LOG_SECONDS = 10.0
 # Seconds a sent select click waits for the row's red outline before a
 # retry (clicking the attacked row again would stop the attack).
 _SELECT_OUTLINE_WAIT = 1.0
+
+# doc: docs/prs/targeting.md#next-target-key
+# Seconds an "Attack Next Target" press waits for the outline before the
+# next press, and the presses tried (beyond the battle list's length)
+# before falling back to a click.
+_NEXT_TARGET_WAIT = 0.4
+_NEXT_TARGET_EXTRA_PRESSES = 1
 # doc: docs/prs/pause-stop.md#stop-reads-only
 #: While stopped only every 4th tick reads the screen (5 a second at 20 Hz).
 STOPPED_READ_EVERY_TICKS = 4
@@ -318,6 +325,8 @@ class GameLoop:
         # The select click: (battle-list row, when to click again if no outline
         # shows; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
+        #: "Attack Next Target" presses since the last pick showed its outline.
+        self._next_target_presses = 0
         # The world tile an on-screen select click right-clicked (row -1 above).
         self._screen_click_tile: tuple[int, int, int] | None = None
         # Until when a pressed chase toggle may not show on screen yet (no second press).
@@ -959,11 +968,15 @@ class GameLoop:
                 self._screen_click_tile = None
             elif not outline_shows and now < retry_at:
                 return
+            if outline_shows:
+                self._next_target_presses = 0
             self._select_click = None
         if self._check_screen_click(snap, targeting, now):
             return
         if self._target is None:
             self._press_attack_hotkey(snap, targeting, now)
+            return
+        if self._target.kind == "select" and self._select_by_key(snap, targeting, now):
             return
         row = self._target.battle_list_row
         if self._target.kind == "select_on_screen":
@@ -985,6 +998,27 @@ class GameLoop:
 
         if self._send(snap, click):
             logger.debug("select click row %d at %s", row, point)
+
+    def _select_by_key(self, snap: WorldState, targeting: TargetingDecision, now: float) -> bool:
+        """Press the client's "Attack Next Target" key toward the picked row.
+
+        The key steps through the battle list in order, so it may take a few
+        presses; after one more than the list holds the row is clicked.
+        True when the key took this tick's turn.
+        """
+        assert self._target is not None
+        key = targeting.config.next_target_hotkey
+        if not key or self._next_target_presses > len(snap.monsters) + _NEXT_TARGET_EXTRA_PRESSES:
+            return False
+        row = self._target.battle_list_row
+        if not self._send(snap, lambda: self.input.press_combo(key)):
+            return True
+        self._next_target_presses += 1
+        self._select_click = (row, now + random_delay(_NEXT_TARGET_WAIT))
+        if self.modules.attack_hotkeys is not None:
+            self.modules.attack_hotkeys.new_target()
+        logger.debug("next target key %s toward row %d", key, row)
+        return True
 
     # doc: docs/prs/near-targeting.md#pick-on-screen
     def _check_screen_click(
