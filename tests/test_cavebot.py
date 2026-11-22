@@ -1885,6 +1885,12 @@ def _echo_sim(
     monkeypatch.setattr("moonlight.cavebot.cavebot.find_echo_raids", lambda _f, _g: echo_slots)
     shots = Path(tempfile.mkdtemp()) / "echo_raids"
     monkeypatch.setattr("moonlight.cavebot.cavebot.ECHO_RAID_SHOTS_DIR", shots)
+    # The swirl turns: every scan sees it changed (the motion check has its own tests).
+    monkeypatch.setattr(
+        Cavebot,
+        "_watch_echo_raid_motion",
+        lambda self, _f, raids, _px, _py: self._echo_raids_moving.update(raids),
+    )
     sim = Sim(
         waypoints,
         Position(100, 100, 7),
@@ -2078,3 +2084,32 @@ def test_find_item_row_tells_a_potion_from_the_stronger_ones_by_its_icon() -> No
     assert find_item_row(frame, trade_at, "mana potion") == (136, 186)
     assert find_item_row(frame, trade_at, "great mana potion") == (136, 116)
     assert find_item_row(frame, trade_at, "health potion") is None
+
+
+def _motion_bot() -> Cavebot:
+    bot = Cavebot.__new__(Cavebot)
+    bot._game_region = (0, 0, 150, 110)  # 10 px tiles
+    bot._echo_raid_looks, bot._echo_raids_moving = {}, set()
+    return bot
+
+
+def test_a_still_echo_raid_lookalike_is_never_marked_turning() -> None:
+    bot = _motion_bot()
+    frame = np.random.default_rng(1).integers(0, 255, (110, 150, 3), dtype=np.uint8)
+    for _ in range(5):  # a coffin: the same pixels every look
+        bot._watch_echo_raid_motion(frame, {(5, 5)}, 0, 0)
+    assert bot._echo_raids_moving == set()
+
+
+def test_a_turning_echo_raid_is_marked_once_its_sprite_changes() -> None:
+    bot = _motion_bot()
+    rng = np.random.default_rng(2)
+    frame = rng.integers(0, 255, (110, 150, 3), dtype=np.uint8)
+    bot._watch_echo_raid_motion(frame, {(5, 5)}, 0, 0)
+    assert bot._echo_raids_moving == set()  # one look: not yet
+    turned = frame.copy()
+    turned[40:60, 40:60] = rng.integers(0, 255, (20, 20, 3), dtype=np.uint8)  # its arms
+    bot._watch_echo_raid_motion(turned, {(5, 5)}, 0, 0)
+    assert bot._echo_raids_moving == {(5, 5)}
+    bot._watch_echo_raid_motion(turned, set(), 0, 0)
+    assert bot._echo_raids_moving == set()  # gone: forgotten
