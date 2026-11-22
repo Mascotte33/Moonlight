@@ -578,6 +578,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="start the bot loop right away (by default the GUI opens Stopped)",
     )
     parser.add_argument(
+        "--minimized",
+        action="store_true",
+        help="open minimized, so the window does not cover the client",
+    )
+    parser.add_argument(
         "--route",
         dest="open_route_on_map",
         metavar="NAME",
@@ -628,6 +633,8 @@ def main(argv: list[str] | None = None) -> int:
     app.root.report_callback_exception = lambda kind, error, trace: logging.getLogger(
         "moonlight.crash"
     ).error("GUI error", exc_info=(kind, error, trace))
+    if args.minimized:
+        app.root.after(300, app.root.iconify)  # once the window is drawn
     app.root.mainloop()
     return 0
 
