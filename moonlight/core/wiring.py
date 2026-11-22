@@ -46,6 +46,7 @@ __all__ = [
     "capture_regions",
     "check_module_regions",
     "make_perceive",
+    "walk_map_walkable",
 ]
 
 FrameProvider = Callable[[], np.ndarray]
@@ -581,7 +582,7 @@ def needs_restart(old: BotConfig, new: BotConfig) -> bool:
 
 
 # doc: docs/prs/attack-types.md#keep-distance
-def _walk_map_walkable(map_dir: Path) -> Callable[[int, int, int], bool] | None:
+def walk_map_walkable(map_dir: Path) -> Callable[[int, int, int], bool] | None:
     """Walk-map tiles a fight may step on or aim at; None without a walk map."""
     from moonlight.cavebot.pathing import CostMap
 
@@ -638,7 +639,7 @@ def build_modules(
             m.cavebot, m.looting, m.drop_items = prev.cavebot, prev.looting, prev.drop_items
     if config.healing is not None and m.healing is None:
         m.healing = HealingDecision(config.healing, clock=clock)
-    walkable = _walk_map_walkable(MAP_DIR)
+    walkable = walk_map_walkable(MAP_DIR)
     if config.targeting is not None and m.targeting is None:
         m.targeting = TargetingDecision(
             config.targeting,
