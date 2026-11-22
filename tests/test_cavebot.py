@@ -715,6 +715,15 @@ def test_stop_mid_route_and_restart() -> None:
     assert sim.route.current == 0 and sim.bot.is_active()
 
 
+def test_switch_route_starts_the_new_route_at_waypoint_zero() -> None:
+    sim = Sim([walk(110, 100), walk(120, 100)], Position(100, 100, 7))
+    sim.bot.start()
+    sim.route.current = 1
+    new_route = Route("other", "", [walk(130, 100), walk(140, 100)], loop=False)
+    sim.bot.switch_route(new_route)
+    assert sim.bot.route is new_route and new_route.current == 0 and sim.bot.is_active()
+
+
 def test_screen_not_ok_sends_nothing() -> None:
     sim = Sim([walk(110, 100)], Position(100, 100, 7))
     sim.state.screen_ok = False

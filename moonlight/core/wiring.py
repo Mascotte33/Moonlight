@@ -717,9 +717,13 @@ def build_modules(
             from moonlight.perception.stamina import StaminaReader
 
             m.scripts.stamina = StaminaReader(screen_grab).minutes
+            from moonlight.perception.stamina import LevelReader
+
+            m.scripts.level = LevelReader(screen_grab).level
             from moonlight.perception.cap import CapReader
 
             m.scripts.free_cap = CapReader(screen_grab).cap
+    m.scripts.routes_dir = config.routes_dir
     m.scripts.clicker = m.clicker
     m.scripts.game_grid = (
         profile.regions["game_grid"].to_tuple if "game_grid" in profile.regions else None
@@ -730,7 +734,9 @@ def build_modules(
     elif m.scripts.rotation is None or not same("rotation"):
         from moonlight.scripts.rotation import Rotation
 
-        m.scripts.rotation = Rotation(config.rotation, clock=clock or time.monotonic)
+        m.scripts.rotation = Rotation(
+            config.rotation, clock=clock or time.monotonic, window_title=config.window_title
+        )
     from moonlight.extras.extras import Extras
 
     if prev is not None and prev.extras is not None and same("extras"):

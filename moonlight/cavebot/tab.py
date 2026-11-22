@@ -580,6 +580,18 @@ class CavebotTab(Tab):
         """True when there are no unsaved edits, or the user lets them go."""
         return not self._dirty or messagebox.askyesno("Unsaved changes", "Discard unsaved changes?")
 
+    # doc: docs/prs/make-route.md#open-route
+    def open_route(self, name: str) -> None:
+        """Pick route *name* as if from the dropdown (``python -m moonlight --route``).
+
+        Raises:
+            RouteError: For a name with no route file.
+        """
+        if name not in route_names(self._routes_dir):
+            raise RouteError(f"no route {name!r} in {self._routes_dir}")
+        self.menu_route.set(name)
+        self._pick_route(name)
+
     def _pick_route(self, name: str) -> None:
         """Load route *name* into the editor and make it the cavebot's route."""
         if name == self._name:
@@ -600,6 +612,17 @@ class CavebotTab(Tab):
             return
         self.lbl_hint.configure(text="")
         self.ctx.config_changed()
+
+    # doc: docs/prs/cavebot-rotate.md#tab-follows-rotate
+    def _follow_rotated_route(self, name: str) -> None:
+        """``cavebot_rotate`` switched the running route: show it here and on the Map tab.
+
+        The editor is locked while the cavebot runs, so no edits are lost.
+        """
+        self._show_route(name)
+        self.menu_route.set(name)
+        self._text = ""  # redraw the list
+        self.lbl_msg.configure(text=f"Cavebot rotate switched to {name}")
 
     def _show_route(self, name: str) -> None:
         """Load route *name* into the editor; unsaved edits are dropped."""
@@ -688,7 +711,9 @@ class CavebotTab(Tab):
         on = bool(self._switches[SWITCH.field].get())
         if on != self._locked:
             self._lock(on)
-        current = live.current if live is not None and live.name == self._name else None
+        if self._locked and live is not None and live.name != self._name:
+            self._follow_rotated_route(live.name)
+        current =live.current if live is not None and live.name == self._name else None
         route = Route("editor", waypoints=self._waypoints)
         text = self._error or waypoint_table(route, current, self._runs_badly)
         running = "Not running"

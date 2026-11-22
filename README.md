@@ -131,6 +131,7 @@ python tools/check_setup.py
 
 # 4. Launch the desktop GUI (or "Start Moonlight GUI.bat" / ./start-moonlight-gui.sh)
 python -m moonlight
+python -m moonlight --route "MyHunt 20-40"   # that route as the cavebot route, Map tab open
 
 # Later: which route waypoints the bot gets stuck on most (reads logs/bot.log*)
 python tools/stuck_spots.py
@@ -144,6 +145,32 @@ Settings, "Drop these items", "+", show the client within 3 s, box the item
 1-3 min". When no monster is in view the bot drags each listed item from the
 open backpacks onto a free sqm within 2 of the character (`drop: <name> -> (x, y)`
 in the log). The pictures live in the profiles folder, `drop_items/`.
+
+To play several accounts in turn (stamina switch): write a text file with
+one account per line, `login password` (an email login is fine: letters,
+digits and `@ . - _`, US keyboard layout in Windows; blank lines
+and lines starting with `#` are ignored; at least 2 lines; the first line is
+the account playing when the bot starts). In Settings, Scripts box, pick it
+with "Accounts file" Browse (config key `modules.rotation.accounts_file`) and
+check "Tibia program" (`modules.rotation.client_exe`, default
+`%LOCALAPPDATA%\Tibia\packages\Tibia\bin\client_launcher.exe`). Put a
+`script account_rotate` waypoint after `deposit`. When the stamina is under 39:30 the
+bot goes to the depot, logs out, closes Tibia (Alt+F4), starts it again and
+logs the next line's account in with its first character, then walks on.
+The file is yours alone: keep it outside the project folder, and the bot never
+logs the login or the password.
+
+To spread the characters over routes by level (cavebot rotate): end a route
+file's name with the levels it is for, `VenoreSwampTrolls 20-40.json` (levels
+20 to 40, both included; a route without that range is never picked). At the
+depot put `deposit`, `script account_rotate`, `script cavebot_rotate`, then
+`label Depo_Break`. When the account did not switch, `cavebot_rotate` reads
+the Level from the Skills window (keep it open), picks a random route that
+fits (it may be the current one) and starts it at waypoint 0 (log: `cavebot
+rotate: level N -> <route>`). The route starts with `script go_to_city`; it
+skips its first `cavebot_rotate` so it does not switch again at once. An
+unread level or no route for the level stops the cavebot with an alarm. The Cavebot
+and Map tabs switch to the picked route.
 
 The Map tab shows the whole game map with the Cavebot tab's route on it:
 drag to pan, wheel to zoom, ▲/▼ for the floor; the top row shows the sqm
@@ -168,7 +195,7 @@ For building routes by hand (or by Claude) from the command line:
 
 ```bash
 python tools/map.py show MyHunt            # logs/map_MyHunt.png: the area with the route
-python tools/map.py area 32369,32220,7     # any area, no route
+python tools/map.py area 32369,32220,7     # any area, spot marked
 python tools/map.py check MyHunt           # bad legs, misplaced floor changes, refill gaps, loop length
 python tools/route.py new MyHunt < wps.txt # new route, lines "x y z [action [label]]" or "action label"
 python tools/map.py stairs 32369,32220,7   # floor changes nearby and where they lead
@@ -177,8 +204,22 @@ python tools/map.py find depot --near 32369,32220,7        # your map markers + 
 python tools/map.py monsters Troll         # where a monster spawns (data/spawns.json)
 python tools/map.py refresh                # download data/spawns.json + data/monsters/ from tibiaroute.com
 python tools/route.py block refill 32941,32215,8 --depot 32922,32073,7 --bank 33019,32053,6 --shop 32970,32085,6
+python tools/route.py block travel --depot 32922,32073,7 > travel.txt   # point 0: any city depot -> this depot
+python tools/route.py insert MyHunt 0 < travel.txt   # put lines before waypoint 0 of a saved route
+python tools/route.py buy MyHunt < buy.txt   # the buy list, one "item, percent" per line
 python tools/video_route.py hunt.mp4 > hunt.txt   # route lines from someone's hunting video
 ```
+
+`block travel` prints point 0, the start of a route: `script go_to_city`
+reads where you stand and jumps to `From<City>` of that city's depot
+(Venore, Thais, Carlin, Ab'Dendriel, Kazordoon, ...); each `From` block walks
+to the route's depot and ends with `goto Depot`, so the route needs a
+`label Depot` before its `finddepo`. Walks use the door scripts and boat
+talks saved routes already make; a city no saved route reaches (an island
+before any route sails there) is left out and named. Free-account cities
+use only the free boats (Thais, Carlin, Ab'Dendriel, Venore); islands may
+take any boat, so one route works for free and premium. Start the route at
+waypoint 0. Scripts can read `bot.position` (x, y, z).
 
 `video_route.py` reads the minimap in a hunting video (a recording of a
 full-screen client; `--zoom 1` if its minimap shows 1 px per sqm,

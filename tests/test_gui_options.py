@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from moonlight.core.config import BotConfig, ConfigError
@@ -206,11 +208,17 @@ def test_each_extra_is_one_row_hotkey_then_checkbox() -> None:
     assert all(option.control != "switch" for option in EXTRAS_OPTIONS)
 
 
-def test_rotation_logout_hotkey_is_kept_while_it_has_no_accounts() -> None:
+def test_rotation_logout_hotkey_is_kept_while_it_has_no_accounts_file() -> None:
     from moonlight.gui.settings_tab import MODULE_SWITCHES, ROTATION_OPTIONS
 
     assert all(not option.field.startswith("rotation") for option in MODULE_SWITCHES)
-    (hotkey,) = ROTATION_OPTIONS
+    hotkey, *_ = ROTATION_OPTIONS
     cfg = write_option(BotConfig.default(), hotkey, "ctrl+q")
-    assert cfg.rotation is None  # off: no accounts
+    assert cfg.rotation is None  # off: no accounts file
     assert cfg.off["rotation"].logout_hotkey == "ctrl+q"
+    _, accounts_file, client_exe = ROTATION_OPTIONS
+    cfg = write_option(cfg, client_exe, "tibia/client.exe")
+    assert cfg.rotation is None and cfg.off["rotation"].client_exe == Path("tibia/client.exe")
+    cfg = write_option(cfg, accounts_file, "accounts.txt")  # picking the file turns it on
+    assert cfg.rotation is not None and cfg.rotation.accounts_file == Path("accounts.txt")
+    assert write_option(cfg, accounts_file, "").rotation is None

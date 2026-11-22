@@ -29,6 +29,7 @@ __all__ = [
     "save_route",
     "should_add",
     "should_stop_recording",
+    "waypoint_json",
     "stairs_waypoint",
     "position_line",
     "cursor_line",
@@ -158,6 +159,15 @@ def route_path(routes_dir: Path, name: str) -> Path:
     return Path(routes_dir) / f"{name}.json"
 
 
+def waypoint_json(wp: Waypoint) -> dict[str, object]:
+    """*wp* as a route file stores it."""
+    if not has_tile(wp):
+        return {"action": wp.action, "label": wp.label}
+    if wp.action in (*NO_TILE, "step"):
+        return {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action, "label": wp.label}
+    return {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action}
+
+
 def save_route(
     routes_dir: Path, name: str, waypoints: list[Waypoint], buy: Sequence[tuple[str, int]] = ()
 ) -> Path:
@@ -169,14 +179,7 @@ def save_route(
     path = route_path(routes_dir, name)
     raw = {
         "name": name,
-        "waypoints": [
-            {"action": wp.action, "label": wp.label}
-            if not has_tile(wp)
-            else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action, "label": wp.label}
-            if wp.action in (*NO_TILE, "step")
-            else {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action}
-            for wp in waypoints
-        ],
+        "waypoints": [waypoint_json(wp) for wp in waypoints],
         "buy": [{"item": item, "percent": percent} for item, percent in buy],
     }
     RouteFileLoader.parse(raw)

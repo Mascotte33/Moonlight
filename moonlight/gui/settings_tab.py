@@ -10,6 +10,7 @@ baud rate and simulation live in Hardware.
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
@@ -90,8 +91,12 @@ ALARMS_OPTIONS = [
     Option("Staying player: go refill", "extras.player_refill", "checkbox"),
     Option("Private message", "extras.pm_alarm", "checkbox"),
 ]
-#: Rotation has no switch: the accounts typed into the config file turn it on (docs).
-ROTATION_OPTIONS = [Option("Logout hotkey", "rotation.logout_hotkey", "hotkey")]
+#: Rotation has no switch: picking an accounts file turns it on (docs/prs/stamina-switch.md).
+ROTATION_OPTIONS = [
+    Option("Logout hotkey", "rotation.logout_hotkey", "hotkey"),
+    Option("Accounts file", "rotation.accounts_file", "entry"),
+    Option("Tibia program", "rotation.client_exe", "entry"),
+]
 
 #: Bot refusal text -> what the user reads next to the switch (T2.F4.K3).
 REASONS = [
@@ -158,6 +163,19 @@ class SettingsTab(Tab):
         box_scripts = section(parent, "Scripts")
         box_scripts.pack(fill="x", padx=10, pady=4)
         self.build_options(box_scripts, ROTATION_OPTIONS)
+        for row, field, title in zip(
+            [w for w in box_scripts.winfo_children() if isinstance(w, Row)][-2:],
+            ("rotation.accounts_file", "rotation.client_exe"),
+            ("The accounts text file (login password per line)", "The Tibia program"),
+            strict=True,
+        ):
+            row_button(
+                row,
+                "Browse",
+                partial(self._browse_rotation_file, field, title),
+                width=80,
+                pack_left=False,
+            ).pack(side="right", before=row.pack_slaves()[-1])
         self._build_client_hotkeys(parent)
         rows = [w for w in self.box_options.winfo_children() if isinstance(w, Row)]
         Label(
@@ -238,6 +256,12 @@ class SettingsTab(Tab):
                 continue
             text = cfg.client_hotkeys.get(key.combo, key.suggested)
             self._client_texts[key.combo] = row_entry(row, text, 260, self._save_client_hotkeys)
+
+    def _browse_rotation_file(self, field: str, title: str) -> None:
+        name = filedialog.askopenfilename(title=title)
+        if name:
+            self._writers[field](name)
+            self.submit()
 
     def _browse_client_file(self) -> None:
         name = filedialog.askopenfilename(
