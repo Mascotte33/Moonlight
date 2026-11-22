@@ -165,7 +165,8 @@ the Level from the Skills window (keep it open), picks a random route that
 fits (it may be the current one) and starts it at waypoint 0 (log: `cavebot
 rotate: level N -> <route>`). The route starts with `script go_to_city`; it
 skips its first `cavebot_rotate` so it does not switch again at once. An
-unread level or no route for the level stops the cavebot with an alarm.
+unread level or no route for the level stops the cavebot with an alarm. The Cavebot
+and Map tabs switch to the picked route.
 
 The Map tab shows the whole game map with the Cavebot tab's route on it:
 drag to pan, wheel to zoom, ▲/▼ for the floor; the top row shows the sqm
