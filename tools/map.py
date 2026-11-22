@@ -4,7 +4,7 @@
 Usage:
     python tools/map.py show MountSternumUndeads          # the route's area as a PNG
     python tools/map.py show MountSternumUndeads --floor 8
-    python tools/map.py area 32369,32241,7 --size 80        # any area, no route
+    python tools/map.py area 32369,32241,7 --size 80        # any area, spot marked
     python tools/map.py check MountSternumUndeads           # legs with no walkable path
     python tools/map.py stairs 32369,32241,7 --size 20      # floor changes near a sqm
     python tools/map.py find depot --near 32369,32241,7     # client markers + route town spots
@@ -68,9 +68,9 @@ def _leg_path() -> LegPath:
 
 def _save(name: str, x0: int, y0: int, z: int, w: int, h: int, args: argparse.Namespace,
           waypoints: list[Waypoint], bad: list[tuple[int, int]],
-          path: LegPath | None = None) -> None:  # fmt: skip
+          path: LegPath | None = None, me: Spot | None = None) -> None:  # fmt: skip
     area = MapTiles(MAP_DIR).area(x0, y0, z, w, h)
-    image = draw_route(area, (x0, y0), z, args.scale, waypoints, bad, path=path)
+    image = draw_route(area, (x0, y0), z, args.scale, waypoints, bad, path=path, me=me)
     out = Path(args.out or f"logs/map_{name}.png")
     out.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
@@ -159,7 +159,7 @@ def main() -> None:
         x, y, z = parse_spot(args.target)
         half = args.size // 2
         name = f"{x}_{y}_{z}"
-        _save(name, x - half, y - half, z, args.size, args.size, args, [], [])
+        _save(name, x - half, y - half, z, args.size, args.size, args, [], [], me=(x, y, z))
         return
     route = _route(args.target)
     waypoints = route.waypoints

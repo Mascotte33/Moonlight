@@ -169,7 +169,7 @@ For building routes by hand (or by Claude) from the command line:
 
 ```bash
 python tools/map.py show MyHunt            # logs/map_MyHunt.png: the area with the route
-python tools/map.py area 32369,32220,7     # any area, no route
+python tools/map.py area 32369,32220,7     # any area, spot marked
 python tools/map.py check MyHunt           # bad legs, misplaced floor changes, refill gaps, loop length
 python tools/route.py new MyHunt < wps.txt # new route, lines "x y z [action [label]]" or "action label"
 python tools/map.py stairs 32369,32220,7   # floor changes nearby and where they lead
