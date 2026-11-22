@@ -324,6 +324,11 @@ ECHO_RAID_FORGET = 30.0
 ECHO_RAID_AFTER_WAIT = 2.0
 #: Screenshots 1 s after each echo raid click, the clicked pixel circled (bot.log names each).
 ECHO_RAID_SHOTS_DIR = Path("logs") / "echo_raids"
+#: An echo raid is clicked only once its sprite changed between two looks: at
+#: least this share of its pixels ...
+ECHO_RAID_MOTION_SHARE = 0.02
+#: ... changed by more than this in some colour (a still coffin: 0).
+ECHO_RAID_MOTION_LEVEL = 40
 #: Tiles whose "echo raid" never triggered (a coffin, a lamp...): ``x y z`` per
 #: line, never clicked again, also after a restart.
 ECHO_RAID_DUDS_FILE = Path("data") / "echo_raid_duds.txt"
@@ -709,6 +714,9 @@ class Cavebot:
         #: Triggers given up on (no way, or tries used up) -> when last seen.
         self._ignored_echo_raids: dict[tuple[int, int], float] = {}
         self._echo_raid_duds = _load_echo_raid_duds()
+        #: The last settled look at each echo raid sprite, and the ones seen turning.
+        self._echo_raid_looks: dict[tuple[int, int], np.ndarray] = {}
+        self._echo_raids_moving: set[tuple[int, int]] = set()
         self._echo_raid_wait_until = float("-inf")
         self._previous_pos: Position | None = None  # where the view still is right after a step
         #: Bumped tiles a scan saw a creature on: free again once it walks off.
@@ -1105,7 +1113,7 @@ class Cavebot:
         if goal is not None and self._echo_raid_click is not None:
             self._click_echo_raid(goal, pos, now, safe)  # a spawn after a click: look first
             return None
-        candidates = self.echo_raids - self._ignored_echo_raids.keys()
+        candidates = (self.echo_raids & self._echo_raids_moving) - self._ignored_echo_raids.keys()
         if self._echo_raid_duds:
             candidates = {t for t in candidates if (*t, pos.z) not in self._echo_raid_duds}
         if not safe:
@@ -2045,6 +2053,7 @@ class Cavebot:
             )  # fmt: skip
             self._echo_raid_wait_until = now + random_delay(ECHO_RAID_AFTER_WAIT)
         self.echo_raids = echo_raids
+        self._watch_echo_raid_motion(frame, echo_raids, px, py)
         for tile in echo_raids & self._ignored_echo_raids.keys():
             self._ignored_echo_raids[tile] = now
         self._ignored_echo_raids = {
@@ -2053,6 +2062,40 @@ class Cavebot:
             if now - seen < ECHO_RAID_FORGET
         }
         return True
+
+    # doc: docs/prs/echo-raid.md#motion-check
+    def _watch_echo_raid_motion(
+        self, frame: np.ndarray, echo_raids: set[tuple[int, int]], px: int, py: int
+    ) -> None:
+        """Mark the echo raids whose sprite changed between two settled looks.
+
+        The trigger's swirl turns; a still thing of the same colour (an orange
+        coffin in Venore, 2026-11-22) never does, so it is never clicked.
+        """
+        gx, gy, gw, gh = self._game_region
+        tw, th = gw / 15, gh / 11
+        looks: dict[tuple[int, int], np.ndarray] = {}
+        for tile in echo_raids:
+            col, row = tile[0] - px, tile[1] - py
+            # The sprite is 2x2 tiles drawn up and to the left of its tile.
+            x0, y0 = int(gx + (col - 1) * tw), int(gy + (row - 1) * th)
+            x1, y1 = int(gx + (col + 1) * tw), int(gy + (row + 1) * th)
+            if x0 < gx or y0 < gy or x1 > gx + gw or y1 > gy + gh:
+                continue
+            look = frame[y0:y1, x0:x1].astype(np.int16)
+            before = self._echo_raid_looks.get(tile)
+            if before is not None and before.shape == look.shape:
+                changed = (np.abs(look - before).max(axis=2) > ECHO_RAID_MOTION_LEVEL).mean()
+                if changed >= ECHO_RAID_MOTION_SHARE:
+                    if tile not in self._echo_raids_moving:
+                        logger.info(
+                            "cavebot: echo raid at %s,%s turns (%.0f %% changed)",
+                            *tile, changed * 100,
+                        )  # fmt: skip
+                    self._echo_raids_moving.add(tile)
+            looks[tile] = look
+        self._echo_raid_looks = looks
+        self._echo_raids_moving &= echo_raids
 
     def _press_walk_key(self, step: tuple[int, int], again: bool = False) -> None:
         """Hold the key of *step*; *again* lets go first for a fresh key press.
