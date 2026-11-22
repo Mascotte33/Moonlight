@@ -13,7 +13,7 @@ import dataclasses
 import tkinter as tk
 from collections.abc import Mapping
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog
 from typing import TYPE_CHECKING
 
 import customtkinter as ctk
@@ -375,7 +375,8 @@ class CalibrationTab(Tab):
 
     def new_profile(self) -> None:
         """Ask for a name, save it empty and pick it; Start calibration then fills it."""
-        name = ctk.CTkInputDialog(text="Name for the new calibration:", title="New").get_input()
+        # Tk's own prompt: customtkinter's dialog could not be closed on Linux.
+        name = simpledialog.askstring("New", "Name for the new calibration:", parent=self.parent)
         if name is None:  # cancelled
             return
         name = name.strip()

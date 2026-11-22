@@ -1778,6 +1778,13 @@ def test_trade_buys_each_row_and_buys_a_potion_again_when_its_total_did_not_go_u
         [c[0] for c in clicker.clicks].count((500, 600)) % 2 == 0, (500, 600)))  # fmt: skip
     looks = iter([None] * 3)  # the window shows on the 4th look
     monkeypatch.setattr(cb, "find_picture", lambda frame, path: next(looks, (700, 400)))
+    rows_looked: list[str] = []
+
+    def row(frame: np.ndarray, at: tuple[int, int], item: str) -> tuple[int, int]:
+        rows_looked.append(item)
+        return at[0] + 53, at[1] + 44
+
+    monkeypatch.setattr(cb, "find_item_row", row)
     mana = iter([10, 10, 10, 20])  # the first buy did not arrive
     frame = np.zeros((10, 10, 3), np.uint8)
     sim = Sim([Waypoint(100, 100, 7, "trade"), walk(110, 100)], Position(100, 100, 7),
@@ -1788,6 +1795,8 @@ def test_trade_buys_each_row_and_buys_a_potion_again_when_its_total_did_not_go_u
     run_until(sim, 40)
     assert sim.bot.alarm is None and sim.route.current == 1
     points = [c[0] for c in clicker.clicks]
+    # the potion found by its icon, twice (bought again); the rope has none: first row
+    assert rows_looked == ["strong mana potion", "strong mana potion"]
     assert points.count((817, 395)) == 1  # the Buy switch
     assert points.count((816, 725)) == 3  # Buy: the potion twice, the rope once
     keys = "".join(line[2:] for line in sim.fake.sent_lines if line.startswith("K "))
@@ -1800,6 +1809,28 @@ def test_trade_buys_each_row_and_buys_a_potion_again_when_its_total_did_not_go_u
     assert mouse == drag * 2  # the rope's 0 % leaves the slider at 1
 
 
+def test_trade_looks_for_the_chat_and_window_on_the_full_screen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # On Linux the tick frame holds only the calibrated regions: the chat
+    # button and the trade window are black there, so trade never started.
+    import moonlight.cavebot.cavebot as cb
+
+    tick, screen = np.zeros((10, 10, 3), np.uint8), np.zeros((10, 10, 3), np.uint8)
+    seen: list[np.ndarray] = []
+
+    def chat(frame: np.ndarray) -> tuple[bool, tuple[int, int]]:
+        seen.append(frame)
+        return False, (500, 600)
+
+    monkeypatch.setattr(cb, "find_chat", chat)
+    sim = Sim([Waypoint(100, 100, 7, "trade"), walk(110, 100)], Position(100, 100, 7),
+              frames=lambda: tick, screen=lambda: screen, clicker=SteppedClicker())  # fmt: skip
+    sim.bot.start()
+    run_until(sim, 2)
+    assert seen and all(frame is screen for frame in seen)
+
+
 def test_trade_buys_a_potion_at_most_twice_when_its_total_never_goes_up(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1810,6 +1841,7 @@ def test_trade_buys_a_potion_at_most_twice_when_its_total_never_goes_up(
     monkeypatch.setattr(cb, "find_chat", lambda frame: (
         [c[0] for c in clicker.clicks].count((500, 600)) % 2 == 0, (500, 600)))  # fmt: skip
     monkeypatch.setattr(cb, "find_picture", lambda frame, path: (700, 400))
+    monkeypatch.setattr(cb, "find_item_row", lambda frame, at, item: (at[0] + 53, at[1] + 44))
     frame = np.zeros((10, 10, 3), np.uint8)
     sim = Sim([Waypoint(100, 100, 7, "trade"), walk(110, 100)], Position(100, 100, 7),
               frames=lambda: frame, clicker=clicker,
@@ -2023,3 +2055,23 @@ def test_walk_keys_fight_an_ignored_creature_on_the_exact_tile(
     assert pressed(sim) == ["s", "s"]  # into it, then the bump
     assert sim.bot.stuck_on_creatures
     assert sim.clicker.clicks == [((440, 176 + 32), ClickSide.RIGHT)]  # the ghost on the stand tile
+
+
+def test_find_item_row_tells_a_potion_from_the_stronger_ones_by_its_icon() -> None:
+    import cv2
+
+    from moonlight.cavebot.town import ITEMS_DIR, find_item_row
+
+    frame = np.full((500, 400, 3), 60, np.uint8)
+    for row, name in enumerate(("great_mana_potion", "strong_mana_potion", "mana_potion")):
+        rgba = cv2.imread(str(ITEMS_DIR / f"{name}.png"), cv2.IMREAD_UNCHANGED)
+        assert rgba is not None
+        sprite = rgba[:, :, 2::-1]
+        alpha = rgba[:, :, 3:] > 0
+        y = 100 + 35 * row
+        spot = frame[y : y + 32, 120 : 152]
+        spot[:] = np.where(alpha, sprite, spot)
+    trade_at = (150, 70)  # the list starts 25 px under it
+    assert find_item_row(frame, trade_at, "mana potion") == (136, 186)
+    assert find_item_row(frame, trade_at, "great mana potion") == (136, 116)
+    assert find_item_row(frame, trade_at, "health potion") is None

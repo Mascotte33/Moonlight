@@ -148,3 +148,15 @@ def test_game_grid_of_a_half_screen_client() -> None:
     shot[60, 5:569] = 24
     shot[60:474, 5] = 24
     assert find_game_grid(shot) == (6, 61, 562, 412)
+
+
+def test_a_picture_cut_on_this_os_wins(tmp_path: Path) -> None:
+    import sys
+
+    from moonlight.perception.pictures import for_this_os
+
+    shared = tmp_path / "stop_button.png"
+    assert for_this_os(shared) == shared
+    (tmp_path / sys.platform).mkdir()
+    (tmp_path / sys.platform / "stop_button.png").write_bytes(b"x")
+    assert for_this_os(shared) == tmp_path / sys.platform / "stop_button.png"

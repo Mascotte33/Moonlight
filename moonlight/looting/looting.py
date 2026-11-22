@@ -54,11 +54,25 @@ RING_GONE_SECONDS = 0.8
 #: ... and the hotkey is pressed again when one still shows this long after a press.
 RING_GONE_TIMEOUT = 1.5
 #: Presses for the same rings before they are left until the character moves.
-RING_PRESSES = 2
+RING_PRESSES = 3
 #: Seconds between two steps toward a ring 2 tiles away (one step takes about 0.3 s).
 RING_STEP_SECONDS = 0.5
 #: Steps toward it before a ring 2 tiles away is left (a wall or a player in the way).
 RING_STEPS = 3
+#: A selected target that leaves the battle list was killed (or walked off: then the
+#: wait below only costs a moment). Any HP: one hit from 40 % killed trolls the 25 %
+#: floor missed, and the cavebot walked off the corpse (2026-11-21) ...
+KILL_HP = 100.0
+#: ... and its corpse's ring shows a moment later: no new attack before this many
+#: seconds (random) pass or a ring by the player is seen (owner 2026-11-21: the bot
+#: attacked the next monster before the ring showed and walked off the corpse).
+KILL_RING_WAIT = 1.5
+#: Seconds (random) after a kill's first loot press to press again: the target can
+#: leave the battle list a moment before its corpse lies there to loot.
+SECOND_PRESS_SECONDS = 0.6
+#: Presses for a kill next to the player (the first, then one every
+#: ``SECOND_PRESS_SECONDS``): a corpse that lands late is still looted.
+KILL_PRESSES = 3
 #: A screenshot of each loot press, the ring circled.
 # ponytail: a diagnosis aid (owner 2026-11-04: "it didnt loot"); delete it
 # once ring looting is trusted.
@@ -99,6 +113,18 @@ class Looting:
         self._rings = RingWatch(game_region) if game_region is not None else None
         #: The ring around the player seen this tick, not looted yet.
         self._ring: Ring | None = None
+        #: A ring by the player was seen lately and is not confirmed yet.
+        self._checking = False
+        #: The selected target's last HP, and until when a kill waits for its ring.
+        self._target_hp: float | None = None
+        #: A creature stood next to the player while the target was selected; a kill
+        #: then presses the loot hotkey at once, no ring needed (owner 2026-11-21).
+        self._target_near = False
+        self._kill_press = False
+        #: When a kill's second loot press goes: the first can come before the corpse.
+        self._second_press_at: float | None = None
+        self._kill_presses = 0
+        self._kill_wait_until = float("-inf")
         #: A ring 2 tiles away seen this tick: walked to when no fight is on.
         self._far_ring: Ring | None = None
         #: Where and when rings were seen lately.
@@ -127,7 +153,18 @@ class Looting:
         one tile farther is kept for :meth:`step` to walk to.
         """
         self._ring = self._far_ring = None
+        self._checking = False
         now = self._clock()
+        if self._second_press_at is not None and now >= self._second_press_at:
+            self._second_press_at = None
+            self._kill_press = True  # pressed below like the first
+            self._pressed_at = None
+        if self._kill_press and self._pressed_at is None:
+            # A kill next to the player: Quick Loot takes every corpse around, no ring needed.
+            if self._frames is not None and snap.client_focused and snap.screen_ok:
+                assert self._game_region is not None
+                self._ring = Ring(slot_ring(self._game_region, PLAYER_SLOT).point, 0)
+                return not self._hp_too_low(snap)
         if self._frames is None or self._rings is None:
             return False
         if not (snap.client_focused and snap.screen_ok):
@@ -146,6 +183,12 @@ class Looting:
         ]
         if self._holding(now, snap.position) or self._given_up_at is not None:
             return False
+        # A ring by the player still being confirmed: no new target walks off from it.
+        player = slot_ring(self._game_region, PLAYER_SLOT).point
+        self._checking = any(
+            self._near(point, player) and point not in creatures
+            for point, _ in self._ring_sightings
+        )
         self._far_ring = next((r for r in rings if r.tiles_away == reach.stop), None)
         if self._far_ring is None:
             self._steps = 0
@@ -202,8 +245,23 @@ class Looting:
             raise RuntimeError("press_ring needs a seen ring")
         log.info("looting: ring at %s, %d tiles away: press %s", *self._ring,
                  self._config.loot_hotkey)
-        self._save_shot(self._ring.point)
+        dropped = getattr(self._input, "dropped", 0)
         self._input.press_combo(self._config.loot_hotkey)
+        if getattr(self._input, "dropped", 0) != dropped:
+            # The wire rate limit kept it (right after attack or heal keys): the ring
+            # stays due and the press goes again next tick, not "looted".
+            log.info("looting: the press was held back by the rate limit, again next tick")
+            return
+        if self._kill_press:
+            self._kill_presses += 1
+            if self._kill_presses < KILL_PRESSES:
+                self._second_press_at = self._clock() + random_delay(SECOND_PRESS_SECONDS)
+            else:
+                self._kill_presses = 0
+        # Once: the second press scheduled another one each time (Alt+Q every 0.6 s
+        # for 1.5 min, no attack, 2026-11-21).
+        self._kill_press = False
+        self._save_shot(self._ring.point)
         self._pressed_at, self._presses, self._steps = self._clock(), self._presses + 1, 0
         # doc: docs/prs/random-delays.md#spread
         self._wait_seconds = random_delay(self._config.wait_ms / 1000)
@@ -235,7 +293,27 @@ class Looting:
         (bot.log 2026-11-04: the fight walked off right after the loot, and
         nothing was looted.)
         """
-        busy = self._ring is not None or self._holding(self._clock(), snap.position)
+        now = self._clock()
+        if snap.selected_target is not None:
+            self._target_hp = snap.selected_target.hp_percent
+            pc, pr = PLAYER_SLOT
+            self._target_near = any(
+                max(abs(c - pc), abs(r - pr)) <= 1 for c, r in snap.creature_slots
+            )
+        elif self._target_hp is not None:
+            if self._target_hp <= KILL_HP:
+                self._kill_wait_until = now + random_delay(KILL_RING_WAIT)
+                self._kill_press = self._target_near
+                self._kill_presses = 0
+            self._target_hp, self._target_near = None, False
+        busy = (
+            self._ring is not None
+            or self._kill_press
+            or self._second_press_at is not None
+            or self._checking
+            or now < self._kill_wait_until
+            or self._holding(now, snap.position)
+        )
         return busy and not self._hp_too_low(snap)
 
     def step(self, snap: WorldState) -> bool:

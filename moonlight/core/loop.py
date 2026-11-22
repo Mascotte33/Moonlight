@@ -918,7 +918,9 @@ class GameLoop:
         """Extras: press the due hotkey (food, ring, amulet, haste, buff); True when sent."""
         extras = self.modules.extras
         assert extras is not None
-        key = extras.due(walking=self._state is not BotState.IDLE, only_haste=only_haste)
+        key = extras.due(
+            walking=self._state is not BotState.IDLE, only_haste=only_haste, mana=snap.mp_points
+        )
         if key is None or not self._send(snap, lambda: self.input.press_combo(key)):
             return False
         extras.pressed(key)
@@ -1110,6 +1112,8 @@ class GameLoop:
             return False
         self._task = f"Script {scripts.running}"
         scripts.cavebot = self.modules.cavebot  # for bot.goto
+        scripts.drop_items = self.modules.drop_items  # for bot.drop_items
+        scripts.extras = self.modules.extras  # for bot.ring
         scripts.targetings = (self.all_modules.targeting, self.modules.stuck_targeting)
         self._send(snap, lambda: scripts.step(snap, self.input))
         if scripts.running is None and self.modules.cavebot is not None:
@@ -1125,6 +1129,12 @@ class GameLoop:
         """
         drop, m = self.modules.drop_items, self.modules
         if drop is None or not drop.due(snap):
+            return False
+        if not drop.in_round and m.looting is not None and (
+            m.looting.should_loot(snap) or m.looting.loot_first(snap)
+        ):
+            # A ring still to loot: items dropped next to the player covered the
+            # corpse's ring and it was never looted (2026-11-21).
             return False
         if not drop.in_round and (
             (m.clicker is not None and m.clicker.busy)

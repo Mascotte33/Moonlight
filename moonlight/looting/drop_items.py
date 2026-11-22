@@ -20,16 +20,17 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+import cv2
 import numpy as np
 
-from moonlight.cavebot.town import find_picture
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import ClickSide, InputBackend
 from moonlight.perception.corpses import slot_ring
 from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
-    "DROP_ITEMS_DIR", "DropItems", "drop_picture_path", "drop_pictures", "free_drop_slots",
+    "DROPPING_FILE", "DROP_ITEMS_DIR", "DropItems", "drop_picture_path", "drop_pictures",
+    "dropping", "free_drop_slots", "saved_pictures", "set_dropping",
 ]
 
 #: The picked item pictures, ``<name>.png``, in the profiles folder.
@@ -50,9 +51,34 @@ log = logging.getLogger(__name__)
 Point = tuple[int, int]
 
 
-def drop_pictures(folder: Path) -> list[Path]:
-    """The picked item pictures in *folder*, by name."""
+#: The names on the drop list, one per line, next to the saved pictures.
+DROPPING_FILE = "dropping.txt"
+
+
+def saved_pictures(folder: Path) -> list[Path]:
+    """Every item picture clipped into *folder*, by name (dropped or not)."""
     return sorted(folder.glob("*.png"))
+
+
+def dropping(folder: Path) -> list[str]:
+    """The names on the drop list; with no list yet, every saved picture."""
+    path = folder / DROPPING_FILE
+    if not path.exists():
+        return [p.stem for p in saved_pictures(folder)]
+    return [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def set_dropping(folder: Path, names: list[str]) -> None:
+    """Save the drop list (unique names, in order)."""
+    folder.mkdir(parents=True, exist_ok=True)
+    unique = list(dict.fromkeys(names))
+    (folder / DROPPING_FILE).write_text("".join(f"{n}\n" for n in unique), encoding="utf-8")
+
+
+def drop_pictures(folder: Path) -> list[Path]:
+    """The pictures of the items on the drop list, by name."""
+    names = set(dropping(folder))
+    return [p for p in saved_pictures(folder) if p.stem in names]
 
 
 def drop_picture_path(folder: Path, name: str) -> Path:
@@ -65,6 +91,35 @@ def drop_picture_path(folder: Path, name: str) -> Path:
     if not name or any(c in name for c in '\\/:*?"<>|') or name.startswith("."):
         raise ValueError(f"not an item name: {name!r}")
     return folder / f"{name}.png"
+
+
+#: Largest squared colour difference per pixel and channel of the item's body that is
+#: still the item. Live 2026-11-21: the clipped items 0..6, the closest other item
+#: 282. The old grey 0.8 match threw away an item that was not on the list.
+DROP_MATCH_MAX = 50.0
+#: The stack count's corner, left out of the match: rows from this share down ...
+_COUNT_TOP = 0.6
+#: ... and columns from this share right.
+_COUNT_LEFT = 0.35
+
+
+def find_item(frame: np.ndarray, path: Path) -> Point | None:
+    """Centre of the item pictured at *path* in *frame* (RGB), or None.
+
+    Strict on purpose: a wrong match throws an item away. Compared in colour,
+    the stack count's corner left out (it changes as the stack does).
+    """
+    pic = cv2.imread(str(path))  # the file holds the frame's RGB as is
+    if pic is None or pic.shape[0] > frame.shape[0] or pic.shape[1] > frame.shape[1]:
+        return None
+    h, w = pic.shape[:2]
+    mask = np.full((h, w, 3), 255, np.uint8)
+    mask[int(h * _COUNT_TOP) :, int(w * _COUNT_LEFT) :] = 0
+    scores = cv2.matchTemplate(np.ascontiguousarray(frame), pic, cv2.TM_SQDIFF, mask=mask)
+    _, _, (x, y), _ = cv2.minMaxLoc(scores)
+    if scores[y, x] / float((mask > 0).sum()) > DROP_MATCH_MAX:
+        return None
+    return x + w // 2, y + h // 2
 
 
 def free_drop_slots(
@@ -134,6 +189,14 @@ class DropItems:
         now = self._clock()
         if not self.in_round:
             self.in_round, self._left, self._dragged, self._tried = True, [], None, []
+        if self._sends and self._sends[0] == self._check:
+            self._sends.pop(0)
+            if not self._still_there():
+                path, item = self._dragged if self._dragged else (Path("?"), (0, 0))
+                log.warning("drop: %s moved before the drag, not dragged; looking again", path.stem)
+                self._sends, self._dragged, self._tried = [], None, []
+                self._look_again_at = now + LOOK_AGAIN_SECONDS
+            return
         if self._sends:
             dropped = getattr(self._input, "dropped", 0)
             self._sends[0]()
@@ -171,12 +234,36 @@ class DropItems:
         send = self._input
         self._sends = [
             lambda: send.mouse_to(*a),
+            self._check,  # the backpack may have changed since the look: same item still there?
             lambda: send.mouse_down(ClickSide.LEFT),
             lambda: send.mouse_to(*b),
             lambda: send.mouse_up(ClickSide.LEFT),
         ]
         dx, dy = slot[0] - PLAYER_SLOT[0], slot[1] - PLAYER_SLOT[1]
         log.info("drop: %s -> (%d, %d)", path.stem, snap.position.x + dx, snap.position.y + dy)
+
+    def _check(self) -> None:
+        """A marker in the drag: :meth:`step` checks the item before the button goes down."""
+
+    def _still_there(self) -> bool:
+        """The dragged item is still at its spot in a fresh grab (a loot press or a used
+        item moves the backpack's items; the wrong one would be thrown away)."""
+        if self._dragged is None:
+            return False
+        path, (x, y) = self._dragged
+        frame = self._grab()
+        pic = cv2.imread(str(path))
+        if pic is None:
+            return False
+        h, w = pic.shape[:2]
+        pad = SAME_SPOT_PIXELS
+        top, left = max(0, y - h // 2 - pad), max(0, x - w // 2 - pad)
+        spot = find_item(np.ascontiguousarray(frame[top : y + h, left : x + w]), path)
+        return spot is not None and abs(left + spot[0] - x) <= pad and abs(top + spot[1] - y) <= pad
+
+    def start_now(self) -> None:
+        """Start a round as soon as no monster is in the battle list (``bot.drop_items``)."""
+        self._next_round_at = self._clock()
 
     def _end_round(self, now: float, wait: bool = True) -> None:
         self.in_round = False
@@ -192,7 +279,7 @@ class DropItems:
         right = self._game_region[0] + self._game_region[2]
         side = np.ascontiguousarray(frame[:, right:])
         for path in drop_pictures(self.pictures_dir):
-            at = find_picture(side, path)
+            at = find_item(side, path)
             if at is None:
                 continue
             found = (path, (at[0] + right, at[1]))

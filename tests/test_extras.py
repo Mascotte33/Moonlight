@@ -234,3 +234,26 @@ def test_screenshots_keep_the_newest(tmp_path: Path) -> None:
     save_screenshot(np.zeros((4, 4, 3), np.uint8), tmp_path, keep=2)
     names = sorted(p.name for p in tmp_path.glob("*.png"))
     assert len(names) == 2 and names[0] == "20260102-000000.png"
+
+
+def test_a_switched_on_extras_picture_is_searched_every_scan() -> None:
+    # 2026-11-21: taking turns with all 7 pictures, a just-hasted character was
+    # "not hasted" for up to 7 s and the haste was cast 4 times.
+    rng = np.random.default_rng(1)
+    pictures = {n: rng.integers(0, 255, (10, 10, 3), np.uint8) for n in ICONS}
+    frame = np.zeros((200, 300, 3), np.uint8)
+    frame[40:50, 60:70] = pictures["haste"]
+    clock = Clock()
+    config = ExtrasConfig(haste=True, haste_hotkey="F7")
+    e = Extras(config, grab=lambda: frame, clock=clock, pictures=pictures)
+    e.observe(WorldState())
+    assert "haste" in e.icons  # the first scan finds it
+    assert e.due(walking=True) is None  # hasted: no cast
+
+
+def test_haste_waits_for_its_mana() -> None:
+    clock = Clock()
+    config = ExtrasConfig(haste=True, haste_hotkey="F7", haste_min_mana=60)
+    e = extras(config, clock)
+    assert e.due(walking=True, mana=30) is None  # not enough mana: no press
+    assert e.due(walking=True, mana=60) == "F7"

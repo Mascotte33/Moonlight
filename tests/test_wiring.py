@@ -27,6 +27,20 @@ def make_profile() -> CalibrationProfile:
     return p
 
 
+def with_bar_borders(frame: np.ndarray) -> np.ndarray:
+    """*frame* with the border rows the client draws under the HP and MP bars."""
+    profile = make_profile()
+    for name in ("hp_bar", "mp_bar"):
+        x, y, w, h = profile.get_region(name).to_tuple
+        frame[y + h, x : x + w] = 120
+    return frame
+
+
+def blank_screen() -> np.ndarray:
+    """A black 800x600 screen showing only the bars' border rows."""
+    return with_bar_borders(np.zeros((600, 800, 3), dtype=np.uint8))
+
+
 def write_profile(d: Path, name: str = "default") -> None:
     d.mkdir(parents=True, exist_ok=True)
     make_profile().save(d / f"{name}.json")
@@ -80,7 +94,9 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
         capacity_source=True,
     ).validate()
     rng = np.random.default_rng(0)
-    frames = [rng.integers(0, 256, (600, 800, 3), dtype=np.uint8) for _ in range(3)]
+    frames = [
+        with_bar_borders(rng.integers(0, 256, (600, 800, 3), dtype=np.uint8)) for _ in range(3)
+    ]
     calls = iter(range(10**6))
 
     def frame_provider() -> np.ndarray:
@@ -153,7 +169,7 @@ def test_capture_regions_lists_tick_regions_or_falls_back_to_full() -> None:
 def test_targeting_gets_the_clicker_and_battle_list_region() -> None:
     cfg = BotConfig.default()
     assert cfg.targeting is not None  # targeting is on by default
-    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    frame = blank_screen()
     loop = wiring.build_loop(
         cfg, make_profile(), FakeInput(), frame_provider=lambda: frame, state=WorldState()
     )
@@ -181,7 +197,7 @@ def test_start_seeds_minimap_reader(monkeypatch: pytest.MonkeyPatch, tmp_path: P
             return None
 
     monkeypatch.setattr("moonlight.perception.minimap.MinimapReader", _FakeMinimap)
-    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    frame = blank_screen()
     wiring.make_perceive(
         WorldState(), make_profile(), lambda: frame, start=Position(100, 200, 7), map_dir=tmp_path
     )
@@ -204,7 +220,7 @@ def test_lost_minimap_clears_state_position(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr("moonlight.perception.minimap.MinimapReader", _LostMinimap)
     state = WorldState()
     state.position = Position(100, 200, 7)
-    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    frame = blank_screen()
     wiring.make_perceive(state, make_profile(), lambda: frame)()
     assert state.screen_ok
     assert state.position == Position(0, 0, 0)
@@ -215,7 +231,7 @@ def test_perceive_fails_closed_on_a_covered_hp_bar(caplog: pytest.LogCaptureFixt
     """A window over the HP bar pauses the bot instead of healing on a made-up HP."""
     profile = make_profile()
     x, y, w, h = profile.get_region("hp_bar").to_tuple
-    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    frame = blank_screen()
     frame[y : y + h, x + 10 : x + w] = (0, 181, 0)  # the left 10 px are covered
     state = WorldState()
     perceive = wiring.make_perceive(state, profile, lambda: frame)
@@ -291,7 +307,7 @@ def test_cavebot_starts_at_start_index() -> None:
         cavebot=CavebotConfig(route, start_index=1),
     ).validate()
     loop = wiring.build_loop(
-        cfg, make_profile(), FakeInput(), frame_provider=lambda: np.zeros((600, 800, 3), np.uint8)
+        cfg, make_profile(), FakeInput(), frame_provider=lambda: blank_screen()
     )
     assert loop.modules.cavebot is not None
     assert loop.modules.cavebot.route.current == 1
@@ -314,7 +330,7 @@ def test_stuck_targeting_attacks_every_monster_even_with_targeting_off(targeting
     )
     loop = wiring.build_loop(
         cfg.validate(), make_profile(), FakeInput(),
-        frame_provider=lambda: np.zeros((600, 800, 3), np.uint8),
+        frame_provider=lambda: blank_screen(),
     )
     stuck = loop.modules.stuck_targeting
     assert stuck is not None and not stuck.config.default_monster.ignore
@@ -334,7 +350,7 @@ def test_start_index_past_the_end_is_refused() -> None:
 
 
 def _live_loop(cfg: BotConfig, state: WorldState | None = None) -> GameLoop:
-    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    frame = blank_screen()
     return wiring.build_loop(
         cfg, make_profile(), FakeInput(), frame_provider=lambda: frame, state=state
     )
@@ -413,7 +429,7 @@ def test_perceive_writes_active_status_icons(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr("moonlight.perception.status_icons.StatusIconReader", _Icons)
     state = WorldState()
-    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    frame = blank_screen()
     wiring.make_perceive(state, make_profile(), lambda: frame)()
     assert state.screen_ok
     assert state.snapshot().active_status_icons == {"poison"}
@@ -433,7 +449,7 @@ def test_perceive_reads_status_icons_every_few_ticks(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("moonlight.perception.status_icons.StatusIconReader", _Icons)
     state = WorldState()
-    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    frame = blank_screen()
     perceive = wiring.make_perceive(state, make_profile(), lambda: frame)
     for _ in range(wiring.SLOW_READ_EVERY_TICKS):
         perceive()
@@ -452,6 +468,7 @@ def test_perceive_fills_names_from_the_seen_monsters_store(tmp_path: Path) -> No
     frame, region = make_frame([{"text": True}])
     full = np.zeros((600, 800, 3), dtype=np.uint8)
     full[: frame.shape[0], : frame.shape[1]] = frame
+    with_bar_borders(full)
     profile.set_region("battle_list", Region(*region))
     store = SeenMonsters(tmp_path / "p.seen_monsters.json")
     state = WorldState()
@@ -475,7 +492,7 @@ def test_targeting_keeps_game_grid_in_the_capture_regions() -> None:
 
 def test_perceive_writes_the_creature_slots() -> None:
     """With a creature grid, perceive scans the health bars into creature_slots."""
-    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    frame = blank_screen()
     state = WorldState()
     wiring.make_perceive(state, make_profile(), lambda: frame, creature_grid=(0, 0, 150, 110))()
     assert state.screen_ok
