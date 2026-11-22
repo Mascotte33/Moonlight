@@ -94,6 +94,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from moonlight.core.random_delay import random_delay
 from moonlight.hardware.input import ABS_MAX, MAX_MOUSE_DELTA, ClickSide, InputBackend
 from moonlight.perception.cursor import CursorReader, Rect
 
@@ -108,6 +109,12 @@ logger = logging.getLogger("moonlight.hardware.clicker")
 
 #: Default convergence tolerance in pixels (±2 px, T17 requirement).
 DEFAULT_TOLERANCE = 2
+
+#: Seconds (randomized) the cursor stays still after a click. libinput holds
+#: a button release back a few ms (debounce), so a move right after the click
+#: reaches the game between press and release: a drag, and the click is lost
+#: (measured 2026-11-22: 1-8 battle-list clicks per target).
+STILL_AFTER_CLICK = 0.12
 
 #: Default maximum number of correcting moves after the initial move.
 DEFAULT_MAX_ITERS = 5
@@ -226,6 +233,8 @@ class ClickController:
         self._sleep = sleep_fn
         self._jobs: deque[_Job] = deque()
         self._last_move = float("-inf")
+        #: No move before this clock time (see STILL_AFTER_CLICK).
+        self._still_until = float("-inf")
         #: Last verified cursor position: a new click's first read searches
         #: a small ROI there, the full cursor region only on a miss.
         self._seen: tuple[int, int] | None = None
@@ -302,6 +311,8 @@ class ClickController:
             when the click was sent this step, False when it failed (the
             whole queue is dropped -- fail closed, no blind click).
         """
+        if self._clock() < self._still_until:
+            return None
         if self._screen is not None:
             return self._step_absolute()
         if not self._jobs:
@@ -328,6 +339,7 @@ class ClickController:
         if dist <= job.tolerance:
             if not self._sent(lambda: self._input.click(job.side)):
                 return None  # rate limited: click on the next step
+            self._clicked()
             self._jobs.popleft()
             return True
         if job.budget <= 0:
@@ -389,6 +401,7 @@ class ClickController:
             self._sleep(wait)
         if not self._sent(lambda: self._input.click(job.side)):
             return None  # rate limited: click on the next step
+        self._clicked()
         self._jobs.popleft()
         tx, ty = job.target
         if self._park_point is not None and any(
@@ -396,6 +409,9 @@ class ClickController:
         ):
             self._park = self.to_wire(self._park_point)
         return True
+
+    def _clicked(self) -> None:
+        self._still_until = self._clock() + random_delay(STILL_AFTER_CLICK, only_longer=True)
 
     def to_wire(self, point: tuple[int, int]) -> tuple[int, int]:
         """Frame point -> firmware absolute units (0..ABS_MAX per axis)."""

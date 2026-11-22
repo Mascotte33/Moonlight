@@ -383,6 +383,7 @@ class TestStateMachine:
 
 def _absolute(**kwargs: object) -> tuple[FakeInput, ClickController]:
     fake = FakeInput()
+    kwargs.setdefault("clock", lambda: _NOW[0])
     reader = CursorReader(cursor_region=REGION, cursor_templates=[TEMPLATE])
     clicker = ClickController(
         fake,
@@ -407,6 +408,10 @@ def test_absolute_jumps_then_clicks_without_reading_the_cursor() -> None:
     assert not clicker.busy
 
 
+#: Fake clock of the absolute-mode clickers.
+_NOW = [0.0]
+
+
 def test_absolute_parks_off_the_minimap_after_a_minimap_click() -> None:
     fake, clicker = _absolute(park_point=(784, 50), park_after_clicks_in=((800, 0, 100, 100),))
     clicker.request((850, 50))
@@ -414,10 +419,14 @@ def test_absolute_parks_off_the_minimap_after_a_minimap_click() -> None:
     clicker.step()
     assert clicker.busy  # the park is still pending
     clicker.step()
+    assert fake.sent_lines[-1] == "C L"  # the cursor stays still right after the click
+    _NOW[0] += 1.0
+    clicker.step()
     assert fake.sent_lines[-1] == "A 28983 6586"  # screen (884, 100)
     assert not clicker.busy
 
     fake.sent_lines.clear()
+    _NOW[0] += 1.0
     clicker.request((10, 10))  # outside the minimap: no park
     clicker.step()
     clicker.step()
