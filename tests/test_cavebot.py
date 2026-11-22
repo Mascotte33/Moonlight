@@ -1980,7 +1980,7 @@ def test_cavebot_stands_still_2_s_after_an_echo_raid_next_to_the_player_is_gone(
     assert len(pressed(sim)) > keys  # walks on
 
 
-def test_use_ignores_an_echo_raid_after_three_tries_until_30_s_off_screen(
+def test_use_never_clicks_an_echo_raid_again_after_three_tries(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     sim, echo = _next_to_echo_raid(monkeypatch)
@@ -2000,7 +2000,10 @@ def test_use_ignores_an_echo_raid_after_three_tries_until_30_s_off_screen(
     echo[:] = [(8, 5)]
     sim.step(1.0)  # the scan sees it
     sim.step(1.0)
-    assert sim.bot._echo_raid_goal == (102, 100, 7)  # new again
+    assert sim.bot._echo_raid_goal is None  # a coffin, not an echo raid: never again
+    from moonlight.cavebot.cavebot import _load_echo_raid_duds
+
+    assert (102, 100, 7) in _load_echo_raid_duds()  # kept after a restart
 
 
 def test_use_never_reads_echo_raids_mid_step(

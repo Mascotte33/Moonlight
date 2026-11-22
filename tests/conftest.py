@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 
@@ -29,3 +31,11 @@ def _no_random_delay(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("moonlight.core.random_delay.REACTION_SPREAD", 0.0)
     monkeypatch.setattr("moonlight.core.random_delay.TYPING_GAP_SECONDS", (0.0, 0.0))
     monkeypatch.setattr("moonlight.core.random_delay.HEAL_REACTION_SECONDS", (0.0, 0.0))
+
+
+@pytest.fixture(autouse=True)
+def _echo_raid_duds_in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests never read or write the real list of tiles whose echo raid never triggered."""
+    import moonlight.cavebot.cavebot as cavebot
+
+    monkeypatch.setattr(cavebot, "ECHO_RAID_DUDS_FILE", tmp_path / "echo_raid_duds.txt")
