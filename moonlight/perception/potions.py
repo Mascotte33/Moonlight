@@ -29,6 +29,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from moonlight.perception.pictures import for_this_os
+
 __all__ = ["DIGITS", "POTION_TEMPLATES_DIR", "PotionCounter", "read_count"]
 
 logger = logging.getLogger(__name__)
@@ -42,6 +44,13 @@ COUNT_ROWS = slice(24, 30)
 #: Action bar count digits: pixels with an RGB sum of 400 or more, row by row.
 #: The game's count text is white with coloured edges, the potions are darker.
 DIGITS = {
+    "###./..##/...#/..#./.#../####": "2",  # Linux client, 21 health potions 2026-11-21
+    "###./.##./.##./.##./.##./####": "1",  # Linux client, 21 health potions
+    ".##./.##./.##./.##./####/....": "1",  # Linux client (a row higher)
+    "###./..#./..#./..#./..#./####": "1",  # Linux client
+    "####/...#/.###/...#/...#/###.": "3",  # Linux client
+    ".###./#.##./#####/..##./..##./.....": "4",  # Linux client 2026-11-21
+    "..##/..##/..#./##../####/....": "2",  # Linux client 2026-11-21
     ".##./###./.##./.##./.##./####": "1",
     "###./#..#/#..#/#..#/#..#/####": "0",
     "####/#.../###./..##/...#/###.": "5",
@@ -90,7 +99,8 @@ class PotionCounter:
         #: (type, name, rgb, mask, weight sum)
         self._kinds: list[tuple[str, str, np.ndarray, np.ndarray, float]] = []
         for kind in TYPES:
-            for path in sorted((templates_dir / kind).glob("*.png")):
+            for shared in sorted((templates_dir / kind).glob("*.png")):
+                path = for_this_os(shared)
                 bgra = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
                 if bgra is None or bgra.ndim != 3 or bgra.shape[2] != 4:
                     raise FileNotFoundError(f"missing or non-RGBA potion picture: {path}")

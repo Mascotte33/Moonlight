@@ -60,7 +60,7 @@ Safety invariants (re-checked on every tick, never just at startup):
   ``max_consecutive_errors`` consecutive tick exceptions (operator alert).
 * **Stopped** -- ``stopped`` (the GUI's Stop): the loop keeps reading the
   screen, presses nothing and raises no alarm; keys are released once.
-  The account switch (``rotate``) is no pause: it alone runs on the
+  The account switch (``account_rotate``) is no pause: it alone runs on the
   login screen, needing only ``client_focused``.
 * **Death stop** -- an empty HP bar on a readable screen for
   ``DEATH_SECONDS`` stops the loop for good: keys released, alert (beep),
@@ -533,17 +533,20 @@ class GameLoop:
         self._consecutive_errors = 0
         self._record_tick_time(t0)
 
-    # doc: docs/prs/rotation.md#rotation
+    # doc: docs/prs/stamina-switch.md#stamina-switch
     def _switching_account(self, snap: WorldState) -> bool:
         """The account switch, alone: True while it runs (the login screen is not a pause)."""
         scripts = self.modules.scripts
-        if scripts is None or scripts.rotation is None or scripts.running != "rotate":
+        if scripts is None or scripts.rotation is None or scripts.running != "account_rotate":
             return False
         self._task = "Switching account"
-        self._send(snap, lambda: scripts.step(snap, self.input), login_screen=True)
+        if scripts.rotation.client_closed:
+            scripts.step(snap, self.input)  # no window to focus: only waits, nothing is typed
+        else:
+            self._send(snap, lambda: scripts.step(snap, self.input), login_screen=True)
         if scripts.rotation.failed:
             scripts.rotation.failed = False
-            self._fail_stop("no rotation account logged in")
+            self._fail_stop("the account switch failed")
         elif scripts.running is None and self.modules.cavebot is not None:
             self.modules.cavebot.resume()  # the switch is not "stuck"
         self._paused_since = None
@@ -701,9 +704,10 @@ class GameLoop:
             m.extras.observe(snap)
             if m.extras.refill_due and m.cavebot is not None:
                 m.cavebot.refill_now = True  # a player stays: the next check goes to refill
-        rotation = m.scripts.rotation if m.scripts is not None else None
-        if rotation is not None and m.cavebot is not None and rotation.refill_due():
-            m.cavebot.refill_now = True  # the account's time is up: to the depot's rotate
+        scripts = m.scripts
+        if scripts is not None and scripts.rotation is not None and m.cavebot is not None:
+            if scripts.rotation.refill_due(scripts.last_stamina_minutes):
+                m.cavebot.refill_now = True  # the stamina is low: to the depot's rotate
 
     def _targeting_paused(self, now: float) -> bool:
         return now < self._targeting_paused_until
@@ -914,7 +918,9 @@ class GameLoop:
         """Extras: press the due hotkey (food, ring, amulet, haste, buff); True when sent."""
         extras = self.modules.extras
         assert extras is not None
-        key = extras.due(walking=self._state is not BotState.IDLE, only_haste=only_haste)
+        key = extras.due(
+            walking=self._state is not BotState.IDLE, only_haste=only_haste, mana=snap.mp_points
+        )
         if key is None or not self._send(snap, lambda: self.input.press_combo(key)):
             return False
         extras.pressed(key)
@@ -1106,6 +1112,8 @@ class GameLoop:
             return False
         self._task = f"Script {scripts.running}"
         scripts.cavebot = self.modules.cavebot  # for bot.goto
+        scripts.drop_items = self.modules.drop_items  # for bot.drop_items
+        scripts.extras = self.modules.extras  # for bot.ring
         scripts.targetings = (self.all_modules.targeting, self.modules.stuck_targeting)
         self._send(snap, lambda: scripts.step(snap, self.input))
         if scripts.running is None and self.modules.cavebot is not None:
@@ -1121,6 +1129,12 @@ class GameLoop:
         """
         drop, m = self.modules.drop_items, self.modules
         if drop is None or not drop.due(snap):
+            return False
+        if not drop.in_round and m.looting is not None and (
+            m.looting.should_loot(snap) or m.looting.loot_first(snap)
+        ):
+            # A ring still to loot: items dropped next to the player covered the
+            # corpse's ring and it was never looted (2026-11-21).
             return False
         if not drop.in_round and (
             (m.clicker is not None and m.clicker.busy)

@@ -18,8 +18,11 @@ tick back to the loop::
 ``bot.press`` / ``say`` / ``click`` / ``goto`` return the wire commands to
 send; the runner sends one per tick, so the rate limit never drops them. A
 yielded number waits that many seconds. ``bot.hp``, ``bot.mana`` and
-``bot.cap`` (used capacity %, 0 when unknown) read the current tick;
-``bot.count("mana")`` the action-bar potion total.
+``bot.cap`` (used capacity %, 0 when unknown) and ``bot.position`` (x, y, z)
+read the current tick;
+``bot.count("mana")`` the action-bar potion total, ``bot.free_cap`` the
+"Cap:" number in oz (None when unread); ``bot.drop_items()`` starts a drop
+round of the Cavebot tab's drop items.
 
 The loop runs a script only in MOVE and IDLE, after healing: it pauses
 walking (the route holds) and pauses itself during a fight or looting.
@@ -57,6 +60,7 @@ from moonlight.hardware.input import ClickSide, InputBackend
 if TYPE_CHECKING:
     from moonlight.cavebot.cavebot import Cavebot
     from moonlight.hardware.clicker import ClickController
+    from moonlight.looting.drop_items import DropItems
     from moonlight.scripts.rotation import Rotation
     from moonlight.targeting.targeting import TargetingDecision
 
@@ -163,15 +167,37 @@ class Bot:
         return cap.percent if cap.max_weight > 0 else 0.0
 
     @property
+    def position(self) -> tuple[int, int, int]:
+        """(x, y, z) of the character; (0, 0, 0) while it is not known."""
+        pos = self._snap.position
+        return pos.x, pos.y, pos.z
+
+    @property
+    def free_cap(self) -> int | None:
+        """Free capacity in oz (the "Cap:" number), None when it does not read."""
+        read = self._runner.free_cap
+        return None if read is None else read()
+
+    def drop_items(self) -> list[Command]:
+        """Start throwing away the Cavebot tab's drop items now (once no monster is listed)."""
+        return [self._runner.start_drop_round]
+
+    def ring(self, on: bool) -> list[Command]:
+        """Turn Extras' ring on or off; off also presses the ring hotkey (takes the ring off)."""
+        return [functools.partial(self._runner.set_ring, on)]
+
+    @property
     def in_game(self) -> bool:
         """The game screen reads (False on the login screen)."""
         return self._snap.screen_ok and self._snap.hp_percent > 0
 
     def type(self, text: str, *, secret: bool = False) -> list[Command]:
-        """Type *text* (letters and digits, no Enter); *secret* keeps it out of the command log."""
-        if not re.fullmatch(r"[A-Za-z0-9]*", text):
-            raise ValueError("type text is letters and digits")
-        keys = [f"shift+{ch.lower()}" if ch.isupper() else ch for ch in text]
+        """Type *text* (an email or a name, no Enter); *secret* keeps it out of the command log."""
+        if not re.fullmatch(TYPEABLE, text):
+            raise ValueError("type text is letters, digits and @ . - _")
+        keys = [
+            _SYMBOL_KEYS.get(ch) or (f"shift+{ch.lower()}" if ch.isupper() else ch) for ch in text
+        ]
         press = _secret_press if secret else _press
         return [functools.partial(press, self._runner, k) for k in keys]
 
@@ -247,6 +273,19 @@ class Bot:
             raise RuntimeError("bot.stamina needs a screen capture")
         return reader()
 
+    # doc: docs/prs/cavebot-rotate.md#level-read
+    def level(self) -> int | None:
+        """The character level from the open Skills window; None when unread."""
+        reader = self._runner.level
+        if reader is None:
+            raise RuntimeError("bot.level needs a screen capture")
+        return reader()
+
+    # doc: docs/prs/cavebot-rotate.md#cavebot-rotate
+    def skip_next_cavebot_rotate(self) -> None:
+        """The account switched: the next ``cavebot_rotate`` keeps the route."""
+        self._runner.skip_cavebot_rotate = True
+
     # doc: docs/prs/scripts.md#find-picture
     def find(self, image: str) -> tuple[int, int] | None:
         """Centre of picture *image* (a file in ``scripts/``) on screen, or None."""
@@ -272,6 +311,11 @@ def _press(runner: ScriptRunner, key: str) -> None:
     """Press a typed key, then wait a typing gap."""
     runner.input.press_combo(key)
     runner.wait_typing_gap()
+
+
+TYPEABLE = r"[A-Za-z0-9@.\-_]*"
+"""What :meth:`Bot.type` can type: the Arduino's keys on a US layout."""
+_SYMBOL_KEYS = {"@": "shift+2", ".": "period", "-": "minus", "_": "shift+minus"}
 
 
 def _secret_press(runner: ScriptRunner, key: str) -> None:
@@ -313,6 +357,12 @@ class ScriptRunner:
         self.potion_counts: Callable[[], dict[str, int | None]] | None = None
         #: Stamina minutes from the Skills window for ``bot.stamina`` and the log.
         self.stamina: Callable[[], int | None] | None = None
+        #: The character level from the Skills window for ``bot.level``.
+        self.level: Callable[[], int | None] | None = None
+        #: Where ``cavebot_rotate`` looks for routes (docs/prs/cavebot-rotate.md#cavebot-rotate).
+        self.routes_dir: Path | None = None
+        #: Skip the next ``cavebot_rotate``: an account or route switch just happened.
+        self.skip_cavebot_rotate = False
         self._stamina_logged_at: float | None = None
         #: The last stamina read (minutes) for the dashboard; None when unread.
         self.last_stamina_minutes: int | None = None
@@ -342,19 +392,29 @@ class ScriptRunner:
         self.snap = WorldState()
         self.input: InputBackend
         self.cavebot: Cavebot | None = None
+        #: The "Cap:" number (free oz) and the drop items module, for ``bot.free_cap``
+        #: and ``bot.drop_items``.
+        self.free_cap: Callable[[], int | None] | None = None
+        self.drop_items: DropItems | None = None
+        #: Extras, for ``bot.ring``.
+        self.extras: Any = None
         #: The loop's targeting and stuck targeting, for ``bot.only_monsters_within_range``.
         self.targetings: tuple[TargetingDecision | None, ...] = ()
         #: ``bot.targeting(False)`` ran: the loop picks no target until ``(True)``.
         self.targeting_turned_off = False
-        #: Account rotation: the ``rotate`` script is its switch (docs/prs/rotation.md).
+        #: Account rotation: the ``account_rotate`` script is its switch (docs/prs/rotation.md).
         self.rotation: Rotation | None = None
 
     def start(self, name: str) -> bool:
         """Start script *name* (read fresh from disk); False when it cannot run."""
         path = self.scripts_dir / f"{name}.py"
         try:
-            if name == "rotate" and self.rotation is not None:
+            if name == "account_rotate" and self.rotation is not None:
                 self._script = self.rotation.run(Bot(self))  # built in, no file
+            elif name == "cavebot_rotate":
+                from moonlight.scripts import cavebot_rotate
+
+                self._script = cavebot_rotate.run(self)  # built in, no file
             else:
                 spec = importlib.util.spec_from_file_location(
                     f"moonlight_user_script_{name}", path
@@ -390,6 +450,15 @@ class ScriptRunner:
             live[0].config.attack_range_tiles,
             "on" if on else "off",
         )
+
+    def set_ring(self, on: bool) -> None:
+        extras = self.extras
+        if extras is None or not extras.config.ring_hotkey:
+            raise RuntimeError("bot.ring needs Extras on and a ring hotkey set")
+        extras.config = replace(extras.config, ring=on)
+        if not on:
+            _press(self, extras.config.ring_hotkey)
+        log.info("script: ring %s", "on" if on else "off (taken off)")
 
     def set_targeting(self, on: bool) -> None:
         if not self.targetings or self.targetings[0] is None:
@@ -463,6 +532,13 @@ class ScriptRunner:
         self.failed[name] = f"{where}{type(exc).__name__}: {exc}"
         log.warning("script %s %s: %s", name, what, self.failed[name])
         self.timers = [(n, p) for n, p in self.timers if n != name]
+
+    def start_drop_round(self) -> None:
+        if self.drop_items is None:
+            log.warning("script: bot.drop_items needs Drop the items ticked (Cavebot tab)")
+            return
+        log.info("script: drop items now")
+        self.drop_items.start_now()
 
     def goto(self, label: str) -> None:
         if self.cavebot is None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 import moonlight.looting.looting as looting_module
 from moonlight.core.state import Position, WorldState
@@ -125,13 +126,14 @@ def test_rings_that_stay_get_one_more_press_then_are_left_until_the_character_mo
     see_ring(looting, clock)
     looting.press_ring()
     wait(looting, clock, RING_GONE_TIMEOUT)
-    see_ring(looting, clock)  # still there: pressed again
-    looting.press_ring()
-    wait(looting, clock, RING_GONE_TIMEOUT)
+    for _ in range(2):  # still there: pressed again, up to RING_PRESSES
+        see_ring(looting, clock)
+        looting.press_ring()
+        wait(looting, clock, RING_GONE_TIMEOUT)
     for _ in range(8):  # a full backpack: left alone here
         assert not looting.ring_due(NEAR, WS) and not looting.should_loot(WS)
         clock.t += 0.125
-    assert inp.sent_lines == ["K alt+q", "K alt+q"]
+    assert inp.sent_lines == ["K alt+q"] * 3
     moved = WorldState(client_focused=True, screen_ok=True, hp_percent=100.0,
                        position=Position(1, 0, 7))
     assert looting.ring_due(NEAR, moved)  # walked on: rings here are new
@@ -200,3 +202,109 @@ def test_far_ring_is_not_looted() -> None:
     for _ in range(8):
         assert not looting.ring_due(NEAR, WS) and not looting.should_loot(WS)
         clock.t += 0.125
+
+
+def test_a_ring_by_the_player_holds_the_next_attack_while_it_is_confirmed() -> None:
+    # 2026-11-21: the bot attacked the next monster before the ring confirmed and
+    # walked off the corpse, so nothing was looted.
+    clock = Clock()
+    looting = make_ring(clock)
+    assert not looting.ring_due(NEAR, WS)  # seen once: not confirmed yet ...
+    assert looting.loot_first(WS)  # ... but no new target walks off from it
+    hide_ring(looting)  # a one-look flash: it goes
+    clock.t += 1.1
+    assert not looting.ring_due(NEAR, WS) and not looting.loot_first(WS)
+
+
+def test_a_kill_waits_a_moment_for_its_ring_before_the_next_attack() -> None:
+    from moonlight.core.state import Monster
+    from moonlight.looting.looting import KILL_RING_WAIT
+
+    clock = Clock()
+    looting = make_ring(clock)
+    hide_ring(looting)
+    dying = WorldState(
+        client_focused=True, screen_ok=True, hp_percent=100.0,
+        selected_target=Monster(name="swamp troll", hp_percent=10.0),
+    )
+    assert not looting.loot_first(dying)  # the fight goes on
+    assert looting.loot_first(WS)  # killed: its ring shows a moment later
+    clock.t += KILL_RING_WAIT * 1.2
+    assert not looting.loot_first(WS)  # no ring came: the next attack goes
+    walked = WorldState(
+        client_focused=True, screen_ok=True, hp_percent=100.0,
+        selected_target=Monster(name="swamp troll", hp_percent=100.0),
+    )
+    looting.loot_first(walked)
+    assert looting.loot_first(WS)  # gone at any HP: one hit can kill from 40 %
+
+
+def test_a_press_the_rate_limit_drops_is_tried_again() -> None:
+    clock = Clock()
+
+    class Busy(FakeInput):
+        dropped = 0
+
+        def press_combo(self, combo: str) -> None:
+            self.dropped += 1  # the limiter kept it
+
+    inp = Busy()
+    looting = make_ring(clock, inp=inp)
+    see_ring(looting, clock)
+    looting.press_ring()
+    clock.t += 0.125  # the next tick
+    assert looting.ring_due(NEAR, WS)  # still due: pressed again, not "looted"
+
+
+@pytest.mark.parametrize(("slot", "pressed"), [((8, 5), True), ((10, 5), False)])
+def test_a_kill_next_to_the_player_presses_loot_at_once(
+    slot: tuple[int, int], pressed: bool
+) -> None:
+    from moonlight.core.state import Monster
+
+    clock, inp = Clock(), FakeInput()
+    looting = make_ring(clock, inp=inp)
+    hide_ring(looting)  # no ring shows yet
+    fighting = WorldState(
+        client_focused=True, screen_ok=True, hp_percent=100.0, creature_slots=(slot,),
+        selected_target=Monster(name="swamp troll", hp_percent=10.0),
+    )
+    looting.loot_first(fighting)
+    looting.loot_first(WS)  # killed
+    due = looting.ring_due(NEAR, WS)
+    assert due is pressed
+    if due:
+        looting.press_ring()
+        assert inp.sent_lines == ["K alt+q"]
+
+
+def test_a_kill_next_to_the_player_is_looted_three_times() -> None:
+    # The target can leave the battle list before its corpse lies there: the first
+    # press found nothing; a second one a moment later loots it.
+    from moonlight.core.state import Monster
+    from moonlight.looting.looting import SECOND_PRESS_SECONDS
+
+    clock, inp = Clock(), FakeInput()
+    looting = make_ring(clock, inp=inp)
+    hide_ring(looting)
+    fighting = WorldState(
+        client_focused=True, screen_ok=True, hp_percent=100.0, creature_slots=((8, 5),),
+        selected_target=Monster(name="witch", hp_percent=60.0),
+    )
+    looting.loot_first(fighting)
+    looting.loot_first(WS)
+    assert looting.ring_due(NEAR, WS)
+    looting.press_ring()
+    clock.t += SECOND_PRESS_SECONDS * 0.5
+    assert looting.loot_first(WS) and not looting.ring_due(NEAR, WS)  # waits, no attack
+    clock.t += SECOND_PRESS_SECONDS
+    assert looting.ring_due(NEAR, WS)
+    looting.press_ring()
+    clock.t += SECOND_PRESS_SECONDS * 1.5
+    assert looting.ring_due(NEAR, WS)
+    looting.press_ring()
+    assert inp.sent_lines == ["K alt+q"] * 3
+    for _ in range(40):  # 5 s of ticks: no fourth press, and the fight may go on
+        clock.t += 0.125
+        assert not looting.ring_due(NEAR, WS)
+    assert inp.sent_lines == ["K alt+q"] * 3 and not looting.loot_first(WS)

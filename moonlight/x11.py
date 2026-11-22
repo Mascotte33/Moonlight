@@ -69,7 +69,11 @@ def _matches(title: str, wanted: str) -> bool:
 
 
 def find_window(title: str) -> int | None:
-    """Id of the first shown window whose title is or starts with *title*."""
+    """Id of the biggest shown window whose title is or starts with *title*.
+
+    The biggest, not the first: the Tibia launcher is also titled "Tibia"
+    (800x550) and was captured instead of the game.
+    """
     with _lock:
         d = _d()
         if d is None:
@@ -78,10 +82,16 @@ def find_window(title: str) -> int | None:
             wid = _cached.get(title)
             if wid is not None and _viewable(d, wid) and _matches(_title(d, wid), title):
                 return wid
-            for wid in _clients(d):
-                if _viewable(d, wid) and _matches(_title(d, wid), title):
-                    _cached[title] = wid
-                    return wid
+            found = [w for w in _clients(d) if _viewable(d, w) and _matches(_title(d, w), title)]
+            if not found:
+                return None
+
+            def area(w: int) -> int:
+                geom = d.create_resource_object("window", w).get_geometry()
+                return int(geom.width) * int(geom.height)
+
+            _cached[title] = max(found, key=area)
+            return _cached[title]
         except Exception:  # noqa: BLE001 - BadWindow when a window closes mid-scan
             _cached.pop(title, None)
         return None

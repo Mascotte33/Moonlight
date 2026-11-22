@@ -103,3 +103,12 @@ def test_a_red_creature_is_no_trigger(monkeypatch: pytest.MonkeyPatch) -> None:
     frame = np.zeros((1369, 2560, 3), np.uint8)
     frame[61 + 5 * 96 : 61 + 11 * 96, 330 : 330 + 3 * 96] = crop[..., ::-1]  # rows 5-10, cols 0-2
     assert find_echo_raids(frame, (330, 61, 1440, 1056)) == []
+
+
+def test_fire_basins_are_not_triggers() -> None:
+    # Venore 2026-11-21 (Linux client): the bot right-clicked a fire basin every 3 s.
+    # Game view at half size.
+    # Their fire is orange (green minus blue ~120), the trigger's core salmon (~30).
+    frame = np.array(Image.open(Path(__file__).parent / "echo_raid_fire_basins.png").convert("RGB"))
+    h, w = frame.shape[:2]
+    assert find_echo_raids(frame, (0, 0, w, h)) == []

@@ -18,6 +18,7 @@ from moonlight.perception.vitals import (
     BAR_BACKGROUND_RGB,
     HP_FILL_RGB,
     MP_FILL_RGB,
+    BarHiddenError,
     HpBarCoveredError,
     VitalsReader,
     bar_percent,
@@ -26,6 +27,8 @@ from moonlight.perception.vitals import (
 WIDTH = 100
 HEIGHT = 23
 FULL_REGION = (0, 0, WIDTH, HEIGHT)
+#: The client's light-grey border row under each bar.
+BORDER_RGB = (120, 120, 120)
 
 
 def make_bar_frame(
@@ -51,6 +54,7 @@ def make_bar_frame(
     filled = int(round(width * fill_percent / 100.0))
     if filled > 0:
         bar[:, :filled] = fill_rgb
+    frame[oy + height, ox : ox + width] = BORDER_RGB
     return frame
 
 
@@ -191,8 +195,23 @@ class TestCoveredHpBar:
         frame = make_bar_frame(100.0, fill_rgb=(0, 181, 0), width=326, height=12)
         frame[:, :114] = (0, 0, 0)
         reader = VitalsReader(hp_region=(0, 0, 326, 12))
+        with pytest.raises(HpBarCoveredError, match="HP bar hidden"):
+            reader.read_hp(frame)
+        frame[12, :114] = BORDER_RGB  # the window ends just above the border
         with pytest.raises(HpBarCoveredError, match="columns 114..325"):
             reader.read_hp(frame)
+
+    def test_undrawn_bars_with_the_desktop_showing_raise(self) -> None:
+        # 2026-11-20 22:57: the capture caught the client's top strip undrawn;
+        # a few green desktop pixels at the left read as 2 % HP and 0 % MP.
+        frame = make_bar_frame(0.0, bg_rgb=(30, 30, 32))
+        frame[HEIGHT] = (25, 25, 28)
+        frame[:, :2] = (0, 181, 0)
+        reader = VitalsReader(hp_region=FULL_REGION, mp_region=FULL_REGION)
+        with pytest.raises(HpBarCoveredError, match="HP bar hidden"):
+            reader.read_hp(frame)
+        with pytest.raises(BarHiddenError, match="MP bar hidden"):
+            reader.read_mp(frame)
 
     def test_window_with_matching_pixels_over_the_bar_raises(self) -> None:
         # 16:49 / 17:00: another app over the whole client had green pixels
@@ -254,16 +273,18 @@ class TestVitalsReader:
     def test_constructor_from_profile(self) -> None:
         profile = CalibrationProfile(landmark=(100, 100))
         profile.set_region("hp_bar", Region(5, 10, WIDTH, HEIGHT))
-        profile.set_region("mp_bar", Region(5, 33, WIDTH, HEIGHT))
+        profile.set_region("mp_bar", Region(5, 40, WIDTH, HEIGHT))
         reader = VitalsReader(profile)
 
         # Build a frame with both bars at their profile offsets (absolute).
         frame = np.zeros((80, WIDTH + 10, 3), dtype=np.uint8)
         frame[:] = (10, 20, 30)
+        frame[10 + HEIGHT, 5 : 5 + WIDTH] = BORDER_RGB
+        frame[40 + HEIGHT, 5 : 5 + WIDTH] = BORDER_RGB
         hp_crop = frame[10 : 10 + HEIGHT, 5 : 5 + WIDTH]
         hp_crop[:] = BAR_BACKGROUND_RGB
         hp_crop[:, : int(WIDTH * 0.7)] = HP_FILL_RGB
-        mp_crop = frame[33 : 33 + HEIGHT, 5 : 5 + WIDTH]
+        mp_crop = frame[40 : 40 + HEIGHT, 5 : 5 + WIDTH]
         mp_crop[:] = BAR_BACKGROUND_RGB
         mp_crop[:, : int(WIDTH * 0.3)] = MP_FILL_RGB
 
@@ -294,6 +315,7 @@ class TestPerformance:
         bar = frame[400:423, 1000:1094]
         bar[:] = BAR_BACKGROUND_RGB
         bar[:, : 47] = HP_FILL_RGB
+        frame[423, 1000:1094] = BORDER_RGB
         region = (1000, 400, 94, 23)
 
         reader = VitalsReader(hp_region=region)

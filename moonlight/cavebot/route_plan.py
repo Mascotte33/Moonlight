@@ -9,6 +9,10 @@ sqm, else guessed: down = ``stairs``, up = ``ladder``.
 
 # doc: docs/prs/route-tools.md#floor-changes
 # doc: docs/prs/route-tools.md#path
+
+A link is a trip a saved route already makes with hand actions: a door script
+that moves you down a floor, a boat captain's ``say hi / venore / yes``.
+``find_path`` takes links like floor changes.
 """
 
 from __future__ import annotations
@@ -16,21 +20,23 @@ from __future__ import annotations
 import heapq
 import json
 import urllib.request
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Any
 
-from moonlight.cavebot.cavebot import Route, RouteError, RouteFileLoader, has_tile
+from moonlight.cavebot.cavebot import Route, RouteError, RouteFileLoader, Waypoint, has_tile
 from moonlight.cavebot.pathing import WALK_STEPS, CostMap
 
 __all__ = [
-    "FLOOR_KINDS", "PICTURES_DIR", "SPAWNS_FILE", "SPAWNS_URL", "FloorChange", "FloorMap",
+    "CITY_DEPOTS", "FLOOR_KINDS", "PICTURES_DIR", "SPAWNS_FILE", "SPAWNS_URL", "FloorChange",
+    "FloorMap", "Link", "nearest_city",
     "MonsterSpot", "download_pictures", "download_spawns", "find_path", "known_floor_kinds",
     "picture_files", "spawn_points",
-    "load_floor_map", "loop_sqm", "monster_spots", "parse_spot", "read_markers", "route_places",
-    "route_warnings",
+    "load_floor_map", "loop_sqm", "monster_spots", "parse_spot", "read_markers", "route_links",
+    "route_places", "route_warnings",
 ]  # fmt: skip
 
 Spot = tuple[int, int, int]
@@ -52,6 +58,55 @@ class FloorChange:
     to: Spot
     kind: str
     known: bool  # True: a route already uses *at* with *kind*
+
+
+#: Hand actions that can take you elsewhere: a door script, a boat captain's ``say``.
+LINK_ACTIONS = ("script", "say", "key", "wait")
+#: A hand action followed by a waypoint farther than this (or on another floor) is a link.
+LINK_SQM = 30
+
+
+@dataclass(frozen=True)
+class Link:
+    """Doing *actions* (``route.py new`` lines) on *at* puts you on *to*."""
+
+    at: Spot
+    to: Spot
+    actions: tuple[str, ...]
+
+
+def _sqm(a: Spot, b: Spot) -> int:
+    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+#: A sqm in each city's depot (from the routes and the client's map markers).
+CITY_DEPOTS: dict[str, Spot] = {
+    "Venore": (32922, 32073, 7),
+    "Thais": (32346, 32220, 7),
+    "Carlin": (32335, 31781, 8),
+    "AbDendriel": (32682, 31685, 7),
+    "Kazordoon": (32661, 31908, 8),
+    "Yalahar": (32788, 31247, 7),
+    "Edron": (33169, 31812, 7),
+    "Darashia": (33214, 32455, 7),
+    "Ankrahmun": (33127, 32843, 7),
+    "PortHope": (32623, 32746, 7),
+    "LibertyBay": (32327, 32835, 7),
+    "Svargrond": (32263, 31140, 7),
+}
+#: How far (sqm) from its depot sqm you still count as in that city's depot.
+CITY_DEPOT_SQM = 50
+
+
+# doc: docs/prs/city-travel.md#point-0
+def nearest_city(x: int, y: int, z: int) -> str | None:
+    """The city whose depot is within ``CITY_DEPOT_SQM`` of (x, y, z), nearest first."""
+    near = [
+        (_sqm(depot, (x, y, z)), city)
+        for city, depot in CITY_DEPOTS.items()
+        if abs(depot[2] - z) <= 2 and _sqm(depot, (x, y, z)) <= CITY_DEPOT_SQM
+    ]
+    return min(near)[1] if near else None
 
 
 def _ring(x: int, y: int, radius: int) -> list[tuple[int, int, int]]:
@@ -228,26 +283,60 @@ def spawn_points(spawns_path: Path) -> dict[Spot, list[str]]:
     return points
 
 
+def _saved_routes(routes_dir: Path) -> Iterator[Route]:
+    for path in sorted(routes_dir.glob("*.json")):
+        try:
+            yield RouteFileLoader.load(path)
+        except (RouteError, OSError, ValueError):
+            continue  # not a route (or a broken one): nothing to learn
+
+
 def known_floor_kinds(routes_dir: Path) -> dict[Spot, str]:
     """The floor-change kind of every sqm the saved routes use one on."""
     kinds: dict[Spot, str] = {}
-    for path in sorted(routes_dir.glob("*.json")):
-        try:
-            route = RouteFileLoader.load(path)
-        except (RouteError, OSError, ValueError):
-            continue  # not a route (or a broken one): nothing to learn
+    for route in _saved_routes(routes_dir):
         for wp in route.waypoints:
             if wp.action in FLOOR_KINDS:
                 kinds[wp.x, wp.y, wp.z] = wp.action
     return kinds
 
 
+# doc: docs/prs/city-travel.md#links
+def route_links(waypoints: list[Waypoint]) -> list[Link]:
+    """The door scripts and boat talks of a route: hand actions after which
+    the next waypoint is on another floor or more than ``LINK_SQM`` away."""
+    links: list[Link] = []
+    at: Spot | None = None
+    actions: list[str] = []
+    for wp in waypoints:
+        if wp.action in LINK_ACTIONS:
+            actions.append(f"{wp.action} {wp.label}".strip())
+            if has_tile(wp):
+                at = (wp.x, wp.y, wp.z)
+        elif wp.action == "label":
+            continue
+        elif wp.action in ("goto", "check") or not has_tile(wp):
+            actions = []  # a jump or a town action: not a trip
+        else:
+            to = (wp.x, wp.y, wp.z)
+            far = at is not None and (to[2] != at[2] or _sqm(at, to) > LINK_SQM)
+            if actions and at is not None and far:
+                links.append(Link(at, to, tuple(actions)))
+            at, actions = to, []
+    return links
+
+
 def load_floor_map(map_dir: Path, routes_dir: Path) -> FloorMap:
-    """The floor map of *map_dir*'s walk map, with the kinds the saved routes use."""
+    """The floor map of *map_dir*'s walk map, with the kinds and links the saved routes use."""
     cost = CostMap(map_dir / "cost")
     if cost.empty:
         raise FileNotFoundError(f"no walk map in {map_dir / 'cost'}")
-    return FloorMap(cost, known_floor_kinds(routes_dir))
+    links: dict[Spot, list[Link]] = {}
+    for route in _saved_routes(routes_dir):
+        for link in route_links(route.waypoints):
+            if link not in links.setdefault(link.at, []):
+                links[link.at].append(link)
+    return FloorMap(cost, known_floor_kinds(routes_dir), links)
 
 
 def parse_spot(text: str) -> Spot:
@@ -259,9 +348,12 @@ def parse_spot(text: str) -> Spot:
 class FloorMap:
     """The walk map with its floor changes paired across floors."""
 
-    def __init__(self, cost: CostMap, known: dict[Spot, str]) -> None:
+    def __init__(
+        self, cost: CostMap, known: dict[Spot, str], links: dict[Spot, list[Link]] | None = None
+    ) -> None:
         self.cost = cost
         self.known = known
+        self.links = links or {}
         self.changes_at = cache(self._changes_at)
 
     def walkable(self, x: int, y: int, z: int) -> bool:
@@ -359,7 +451,7 @@ def loop_sqm(route: Route) -> int:
 
 
 #: One step of a path: a sqm walked onto, or a floor change taken.
-Step = Spot | FloorChange
+Step = Spot | FloorChange | Link
 
 
 def find_path(a: Spot, b: Spot, floors: FloorMap, *, margin: int = 60) -> list[Step] | None:
@@ -370,11 +462,12 @@ def find_path(a: Spot, b: Spot, floors: FloorMap, *, margin: int = 60) -> list[S
     x0, x1 = min(a[0], b[0]) - margin, max(a[0], b[0]) + margin
     y0, y1 = min(a[1], b[1]) - margin, max(a[1], b[1]) + margin
 
-    def guess(s: Spot) -> int:  # never more than the real cost: A* stays exact
-        return max(abs(s[0] - b[0]), abs(s[1] - b[1]))
+    # ponytail: a boat link is cheaper than this guess, so A* may miss a shorter trip
+    def guess(s: Spot) -> int:
+        return _sqm(s, b)
 
     best = {a: 0}
-    came: dict[Spot, tuple[Spot, FloorChange | None]] = {}
+    came: dict[Spot, tuple[Spot, FloorChange | Link | None]] = {}
     queue = [(guess(a), 0, a)]
     while queue:
         _, cost, here = heapq.heappop(queue)
@@ -388,20 +481,22 @@ def find_path(a: Spot, b: Spot, floors: FloorMap, *, margin: int = 60) -> list[S
         if cost > best[here]:
             continue
         x, y, z = here
+        moves: list[tuple[Spot, int, FloorChange | Link | None]] = [
+            (link.to, CHANGE_COST, link) for link in floors.links.get(here, ())
+        ]
         for (dx, dy), step_cost in WALK_STEPS:
             nx, ny = x + dx, y + dy
             if not (x0 <= nx <= x1 and y0 <= ny <= y1):
                 continue
             n = (nx, ny, z)
-            moves: list[tuple[Spot, int, FloorChange | None]] = []
             if n == b or floors.walkable(*n):
                 moves.append((n, step_cost, None))
             else:
                 moves += [(c.to, step_cost + CHANGE_COST, c) for c in floors.changes_at(*n)]
-            for to, move_cost, change in moves:
-                new = cost + move_cost
-                if new < best.get(to, new + 1):
-                    best[to] = new
-                    came[to] = (here, change)
-                    heapq.heappush(queue, (new + guess(to), new, to))
+        for to, move_cost, change in moves:
+            new = cost + move_cost
+            if new < best.get(to, new + 1):
+                best[to] = new
+                came[to] = (here, change)
+                heapq.heappush(queue, (new + guess(to), new, to))
     return None

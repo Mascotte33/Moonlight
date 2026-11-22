@@ -15,6 +15,7 @@ import argparse
 import ctypes
 import logging
 import logging.handlers
+import os
 import sys
 import threading
 import time
@@ -165,6 +166,7 @@ class GuiApp:
         self,
         start_bot: bool = False,
         log: LogFeed | None = None,
+        open_route_on_map: str | None = None,
     ) -> None:
         theme.apply()
 
@@ -241,7 +243,11 @@ class GuiApp:
         map_tab, cavebot_tab = self.tabs["Map"], self.tabs["Cavebot"]
         assert isinstance(map_tab, MapTab) and isinstance(cavebot_tab, CavebotTab)
         map_tab.editor = cavebot_tab  # one route, edited from both tabs
-        self.select_tab(next(iter(self.tabs)))
+        if open_route_on_map is None:
+            self.select_tab(next(iter(self.tabs)))
+        else:
+            cavebot_tab.open_route(open_route_on_map)
+            self.select_tab("Map")
         self._size = (0, 0)
         self.root.bind("<Configure>", self._resized, add="+")
 
@@ -398,7 +404,7 @@ class GuiApp:
             ctrl.loop.stopped = False
             self._update_topbar()
         else:
-            self.start_bot(resume=ctrl is not None)
+            self.start_bot(resume=ctrl is not None, raise_client=True)
 
     def apply_config(self, restart: bool = False) -> None:
         """Hand the picked config to the running bot (live apply).
@@ -422,7 +428,7 @@ class GuiApp:
         ctrl.stop("calibration saved" if restart else "settings need a restart")
         self.start_bot(resume=True)
 
-    def start_bot(self, *, resume: bool = False) -> None:
+    def start_bot(self, *, resume: bool = False, raise_client: bool = False) -> None:
         """Start the real bot loop through :mod:`moonlight.core.wiring` (F-13).
 
         Builds the loop via :func:`moonlight.gui.loop_factory.build_gui_loop`,
@@ -437,7 +443,9 @@ class GuiApp:
             return
         self._retry_at = time.monotonic() + RETRY_S
         try:
-            loop = build_gui_loop(hardware=self.hardware, state=self.state)
+            loop = build_gui_loop(
+                hardware=self.hardware, state=self.state, raise_client=raise_client
+            )
         except Exception as exc:  # noqa: BLE001 - report, don't crash the app
             if isinstance(exc, NoArduinoFoundError):
                 self._retry_at = time.monotonic() + ARDUINO_RETRY_S
@@ -554,11 +562,8 @@ class GuiApp:
             self.root.destroy()
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Entry point for ``python -m moonlight`` / ``python -m moonlight.gui``.
-
-    ``--help`` prints usage and exits 0 without creating any window.
-    """
+def parse_args(argv: list[str] | None) -> argparse.Namespace:
+    """The GUI's command line options."""
     parser = argparse.ArgumentParser(
         prog="python -m moonlight.gui",
         description=(
@@ -572,7 +577,21 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="start the bot loop right away (by default the GUI opens Stopped)",
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--route",
+        dest="open_route_on_map",
+        metavar="NAME",
+        help="make route NAME the cavebot route and open the Map tab on it",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point for ``python -m moonlight`` / ``python -m moonlight.gui``.
+
+    ``--help`` prints usage and exits 0 without creating any window.
+    """
+    args = parse_args(argv)
 
     # doc: docs/prs/gui-log.md#bot-log-in-the-gui
     # No console window: the lines it showed go to the GUI's log (debug only to the file).
@@ -594,10 +613,14 @@ def main(argv: list[str] | None = None) -> int:
     # interval a busy GUI (a row redraw) made a numpy/cv2 tick 6.6x slower;
     # at 0.5 ms 1.2x (measured).
     sys.setswitchinterval(0.0005)
+    if sys.platform == "linux":
+        # Tk asks the ibus input method about every widget over XIM: the window
+        # took 73 s to open instead of 1.5 s and ibus ate 20 % CPU. Must be set before Tk starts.
+        os.environ["XMODIFIERS"] = "@im=none"
     copied = sync_client_map()
     logging.getLogger("moonlight.gui.app").info(f"map: {copied} new tiles from the client")
     try:
-        app = GuiApp(start_bot=args.start, log=feed)
+        app = GuiApp(start_bot=args.start, log=feed, open_route_on_map=args.open_route_on_map)
     except Exception as exc:
         logging.getLogger("moonlight.crash").critical("GUI did not start", exc_info=True)
         show_start_error(exc)

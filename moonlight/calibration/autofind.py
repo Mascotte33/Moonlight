@@ -16,6 +16,7 @@ import numpy as np
 
 from moonlight.calibration.calibrate import Point, Rect
 from moonlight.perception.battle import TOP_PADDING
+from moonlight.perception.pictures import for_this_os
 from moonlight.perception.vitals import hp_fill_mask
 
 # doc: docs/prs/gui-calibration.md#finder-registry
@@ -89,7 +90,7 @@ MATCH_MIN = 0.8  # floor indicator scores 0.837 at worst, wrong spots under 0.5
 
 @cache
 def _anchor(name: str) -> np.ndarray | None:
-    return cv2.imread(str(ANCHORS_DIR / f"{name}.png"), cv2.IMREAD_GRAYSCALE)
+    return cv2.imread(str(for_this_os(ANCHORS_DIR / f"{name}.png")), cv2.IMREAD_GRAYSCALE)
 
 
 def _match(screenshot: np.ndarray, name: str) -> tuple[int, int] | None:
