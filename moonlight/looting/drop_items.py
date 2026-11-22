@@ -109,12 +109,8 @@ _ITEM_BRIGHT = 150
 _ITEM_MIN_PIXELS = 30
 
 
-def find_item(frame: np.ndarray, path: Path) -> Point | None:
-    """Centre of the item pictured at *path* in *frame* (RGB), or None.
-
-    Strict on purpose: a wrong match throws an item away. Compared in colour,
-    the stack count's corner left out (it changes as the stack does).
-    """
+def _scores(frame: np.ndarray, path: Path) -> tuple[np.ndarray, int, int] | None:
+    """Per-pixel match of the item at *path* in *frame* (mean squared difference), w, h."""
     pic = cv2.imread(str(path))  # the file holds the frame's RGB as is
     if pic is None or pic.shape[0] > frame.shape[0] or pic.shape[1] > frame.shape[1]:
         return None
@@ -130,10 +126,32 @@ def find_item(frame: np.ndarray, path: Path) -> Point | None:
         keep[int(h * _COUNT_TOP) :, int(w * _COUNT_LEFT) :] = False
     mask = np.repeat(np.where(keep, 255, 0).astype(np.uint8)[:, :, None], 3, axis=2)
     scores = cv2.matchTemplate(np.ascontiguousarray(frame), pic, cv2.TM_SQDIFF, mask=mask)
+    return scores / float((mask > 0).sum()), w, h
+
+
+def find_item(frame: np.ndarray, path: Path) -> Point | None:
+    """Centre of the item pictured at *path* in *frame* (RGB), or None.
+
+    Strict on purpose: a wrong match throws an item away. Compared in colour,
+    the stack count's corner left out (it changes as the stack does).
+    """
+    found = _scores(frame, path)
+    if found is None:
+        return None
+    scores, w, h = found
     _, _, (x, y), _ = cv2.minMaxLoc(scores)
-    if scores[y, x] / float((mask > 0).sum()) > DROP_MATCH_MAX:
+    if scores[y, x] > DROP_MATCH_MAX:
         return None
     return x + w // 2, y + h // 2
+
+
+def count_items(frame: np.ndarray, path: Path) -> int:
+    """How many slots in *frame* hold the item at *path*."""
+    found = _scores(frame, path)
+    if found is None:
+        return 0
+    hits = (found[0] <= DROP_MATCH_MAX).astype(np.uint8)
+    return int(cv2.connectedComponents(hits)[0]) - 1
 
 
 def free_drop_slots(
@@ -189,6 +207,8 @@ class DropItems:
         self._look_again_at = float("-inf")
         #: The item dragged last and where it was, checked at the next look.
         self._dragged: tuple[Path, Point] | None = None
+        self._dragged_count = 0
+        self._side: np.ndarray | None = None
         #: Slots tried for ``_dragged``.
         self._tried: list[Point] = []
         #: Items left alone this round (no sqm took them).
@@ -203,6 +223,7 @@ class DropItems:
         now = self._clock()
         if not self.in_round:
             self.in_round, self._left, self._dragged, self._tried = True, [], None, []
+            self._dragged_count = 0
         if self._sends and self._sends[0] == self._check:
             self._sends.pop(0)
             if not self._still_there():
@@ -225,6 +246,15 @@ class DropItems:
             self._end_round(now, wait=False)  # start again once the screen is clear
             return
         found = self._find()
+        if (
+            found is not None
+            and self._dragged is not None
+            and self._same(found, self._dragged)
+            and self._count(found[0]) < self._dragged_count
+        ):
+            # One fewer: the drop worked, the next one slid into its slot
+            # (2026-11-22: a bag of torches left after 3 "tries").
+            self._dragged = None
         if found is not None and self._dragged is not None and self._same(found, self._dragged):
             if len(self._tried) >= TRIES_PER_ITEM:
                 log.warning("drop: %s stayed after %d tries, left", found[0].stem, len(self._tried))
@@ -243,6 +273,7 @@ class DropItems:
         slot = self._rng.choice(slots)
         self._tried.append(slot)
         self._dragged = found
+        self._dragged_count = self._count(found[0])
         path, item = found
         a, b = self._to_wire(item), self._to_wire(slot_ring(self._game_region, slot).point)
         send = self._input
@@ -291,7 +322,7 @@ class DropItems:
         """
         frame = self._grab()
         right = self._game_region[0] + self._game_region[2]
-        side = np.ascontiguousarray(frame[:, right:])
+        side = self._side = np.ascontiguousarray(frame[:, right:])
         for path in drop_pictures(self.pictures_dir):
             at = find_item(side, path)
             if at is None:
@@ -300,6 +331,10 @@ class DropItems:
             if not any(self._same(found, left) for left in self._left):
                 return found
         return None
+
+    def _count(self, path: Path) -> int:
+        """Slots holding the item at *path* in the last :meth:`_find` look."""
+        return 0 if self._side is None else count_items(self._side, path)
 
     @staticmethod
     def _same(a: tuple[Path, Point], b: tuple[Path, Point]) -> bool:
