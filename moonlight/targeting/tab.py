@@ -69,6 +69,7 @@ class MonsterRowFields(NamedTuple):
     hotkey: str
     minimum_mana: str
     movement: str
+    cooldown_ms: str = ""
 
 
 class AreaRuleFields(NamedTuple):
@@ -80,6 +81,7 @@ class AreaRuleFields(NamedTuple):
     minimum_mana: str
     enabled: bool = True
     area: tuple[tuple[int, int], ...] = SQUARE_AREA
+    cooldown_ms: str = ""
 
 
 class TargetingSettings(NamedTuple):
@@ -133,6 +135,7 @@ def apply_targeting(
                 row.minimum_mana, int, f"monster row {number} minimum mana"
             ),
             "movement": row.movement,
+            "cooldown_ms": _number(row.cooldown_ms, int, f"monster row {number} cooldown"),
         }
         for number, row in enumerate(monster_rows)
         if number == 0 or row.name.strip()
@@ -148,6 +151,7 @@ def apply_targeting(
                 row.minimum_mana, int, f"area rule {number} minimum mana"
             ),
             "enabled": row.enabled,
+            "cooldown_ms": _number(row.cooldown_ms, int, f"area rule {number} cooldown"),
             "area": [list(offset) for offset in row.area],
         }
         for number, row in enumerate(area_rows, start=1)
@@ -222,6 +226,7 @@ class _MonsterLine:
     hotkey: HotkeyBox
     mana: ctk.CTkEntry
     movement: ctk.CTkOptionMenu
+    cooldown: ctk.CTkEntry
     widgets: list[Any]
 
     def fields(self) -> MonsterRowFields:
@@ -234,6 +239,7 @@ class _MonsterLine:
             self.hotkey.get(),
             self.mana.get(),
             movement,
+            self.cooldown.get(),
         )
 
 
@@ -246,6 +252,7 @@ class _AreaLine:
     hotkey: HotkeyBox
     count: ctk.CTkEntry
     mana: ctk.CTkEntry
+    cooldown: ctk.CTkEntry
     edit_area: ctk.CTkButton
     preview: tk.Canvas
     area: tuple[tuple[int, int], ...]
@@ -259,12 +266,15 @@ class _AreaLine:
             self.mana.get(),
             bool(self.enabled.get()),
             self.area,
+            self.cooldown.get(),
         )
 
     def show_lock(self) -> None:
         """A ticked (working) rule grays its values so they are not changed by accident."""
         state = "disabled" if self.enabled.get() else "normal"
-        for widget in (self.hotkey.btn, self.kind, self.count, self.mana, self.edit_area):
+        for widget in (
+            self.hotkey.btn, self.kind, self.count, self.mana, self.cooldown, self.edit_area
+        ):
             widget.configure(state=state)
 
     def draw_preview(self) -> None:
@@ -427,7 +437,7 @@ class TargetingTab(Tab):
         monsters_box, self._monsters_frame = _card(targeting_page, "Targeting")
         _header(
             self._monsters_frame,
-            ["Monster", "Priority", "", "Attack key", "Min mana", "Movement", ""],
+            ["Monster", "Priority", "", "Attack key", "Min mana", "Cooldown ms", "Movement", ""],
         )
         _add_button(monsters_box, "+ Add monster", self._add_monster)
 
@@ -436,7 +446,8 @@ class TargetingTab(Tab):
             "Area spells (the first matching rule is used)",
         )
         _header(
-            self._area_frame, ["Use", "Kind", "Key", "Min monsters", "Min mana", "Area", "", ""]
+            self._area_frame,
+            ["Use", "Kind", "Key", "Min monsters", "Min mana", "Cooldown ms", "Area", "", ""],
         )
         _add_button(area_box, "+ Add area spell", self._add_area_rule)
 
@@ -488,6 +499,7 @@ class TargetingTab(Tab):
                     row.hotkey,
                     _blank_zero(row.minimum_mana),
                     row.movement,
+                    _blank_zero(row.cooldown_ms),
                 )
             )
         for rule in targeting.area_rules:
@@ -499,6 +511,7 @@ class TargetingTab(Tab):
                     _blank_zero(rule.minimum_mana),
                     rule.enabled,
                     rule.area,
+                    _blank_zero(rule.cooldown_ms),
                 )
             )
         for entry, value in (
@@ -552,8 +565,9 @@ class TargetingTab(Tab):
             command=lambda _v: self._save(),
         )
         movement.set(MOVEMENT_LABELS[row.movement])
-        widgets: list[Any] = [name_widget, priority, ignore, hotkey, mana, movement]
-        line = _MonsterLine(name, priority, ignore, hotkey, mana, movement, widgets)
+        cooldown = row_entry(rows, row.cooldown_ms, 56, self._save, pack_left=False)
+        widgets: list[Any] = [name_widget, priority, ignore, hotkey, mana, cooldown, movement]
+        line = _MonsterLine(name, priority, ignore, hotkey, mana, movement, cooldown, widgets)
         if not first:
             widgets.append(
                 row_button(rows, "✕", partial(self._delete_monster, line), pack_left=False)
@@ -577,14 +591,15 @@ class TargetingTab(Tab):
         hotkey.set(row.hotkey)
         count = row_entry(rows, row.minimum_monsters, 40, self._save, pack_left=False)
         mana = row_entry(rows, row.minimum_mana, 48, self._save, pack_left=False)
+        cooldown = row_entry(rows, row.cooldown_ms, 56, self._save, pack_left=False)
         preview_size = (2 * AREA_GRID_RADIUS + 1) * _PREVIEW_TILE_PIXELS
         preview = tk.Canvas(
             rows, width=preview_size, height=preview_size, bg=theme.NIGHT, highlightthickness=0
         )
         edit_area = row_button(rows, "Edit area", lambda: None, 80, False)
         buttons = Row(rows)
-        line = _AreaLine(enabled, kind, hotkey, count, mana, edit_area, preview, row.area)
-        line.widgets = [enabled, kind, hotkey, count, mana, preview, edit_area, buttons]
+        line = _AreaLine(enabled, kind, hotkey, count, mana, cooldown, edit_area, preview, row.area)
+        line.widgets = [enabled, kind, hotkey, count, mana, cooldown, preview, edit_area, buttons]
         line.draw_preview()
         kind.configure(command=partial(self._change_area_kind, line))
         edit_area.configure(

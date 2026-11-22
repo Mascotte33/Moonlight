@@ -12,7 +12,12 @@ import numpy as np
 import pytest
 
 from moonlight.core.state import Monster, Position, WorldState
-from moonlight.looting.drop_items import DropItems, drop_picture_path, free_drop_slots
+from moonlight.looting.drop_items import (
+    DropItems,
+    drop_picture_path,
+    drop_pictures,
+    free_drop_slots,
+)
 
 GRID = (0, 0, 150, 110)  # 10 px sqm; the backpacks are right of x 150
 BOOTS_AT = (200, 40)  # top-left of the boots in the frame
@@ -113,7 +118,8 @@ def test_waits_1_to_3_minutes_and_for_a_clear_battle_list(tmp_path: Path) -> Non
 def test_drags_the_item_to_a_free_sqm_and_ends_when_it_is_gone(tmp_path: Path) -> None:
     picture = boots(tmp_path)
     clock, inp = Clock(), Input()
-    frames = [frame_with(picture), frame_with(None)]
+    # the look, the check before the drag, then gone
+    frames = [frame_with(picture), frame_with(picture), frame_with(None)]
     drop = dropper(tmp_path, frames, clock, inp)
     clock.now = 180.0
     run_round(drop, clock, snap())
@@ -153,9 +159,57 @@ def test_a_monster_mid_round_stops_it_until_the_screen_is_clear(tmp_path: Path) 
     drop = dropper(tmp_path, [frame_with(picture)], clock, inp)
     clock.now = 180.0
     drop.step(snap())  # the first look starts a drag
-    for _ in range(4):
+    for _ in range(5):  # move, check the item is still there, down, move, up
         drop.step(snap(monsters=1))  # the drag is finished, never cut
     clock.now += 1.0
     drop.step(snap(monsters=1))
     assert not drop.in_round and len(inp.sent) == 4
     assert drop.due(snap())  # again at once once clear
+
+
+def test_the_drop_list_is_apart_from_the_saved_pictures(tmp_path: Path) -> None:
+    from moonlight.looting.drop_items import dropping, saved_pictures, set_dropping
+
+    for name in ("boots", "leather armor", "fish"):
+        (tmp_path / f"{name}.png").write_bytes(b"x")
+    assert dropping(tmp_path) == ["boots", "fish", "leather armor"]  # no list yet: all
+    set_dropping(tmp_path, ["fish", "boots", "fish"])
+    assert dropping(tmp_path) == ["fish", "boots"]
+    assert [p.stem for p in drop_pictures(tmp_path)] == ["boots", "fish"]
+    set_dropping(tmp_path, ["boots"])  # "-": off the list, the picture stays
+    assert [p.stem for p in saved_pictures(tmp_path)] == ["boots", "fish", "leather armor"]
+    assert [p.stem for p in drop_pictures(tmp_path)] == ["boots"]
+
+
+def test_only_the_clipped_item_itself_is_found(tmp_path: Path) -> None:
+    # 2026-11-21: the grey 0.8 match threw away an item that was not on the list.
+    from moonlight.looting.drop_items import find_item
+
+    rng = np.random.default_rng(3)
+    item = rng.integers(0, 255, (32, 32, 3), np.uint8)
+    cv2.imwrite(str(tmp_path / "torch.png"), item)
+    frame = np.full((200, 200, 3), 60, np.uint8)
+    lookalike = item.copy()
+    lookalike[:, :, 0] = 255 - lookalike[:, :, 0]  # same shape, other colours
+    frame[20:52, 20:52] = lookalike
+    assert find_item(frame, tmp_path / "torch.png") is None
+    counted = item.copy()
+    counted[24:, 20:] = 255  # another stack count in the corner
+    frame[100:132, 100:132] = counted
+    assert find_item(frame, tmp_path / "torch.png") == (116, 116)
+
+
+def test_an_item_that_moved_before_the_drag_is_not_dragged(tmp_path: Path) -> None:
+    # 2026-11-21: a loot press or a used item shifted the backpack between the look
+    # and the drag, and an item not on the list was thrown away.
+    picture = boots(tmp_path)
+    clock, inp = Clock(), Input()
+    frames = [frame_with(picture), frame_with(None)]  # the look sees it; then it moved
+    drop = dropper(tmp_path, frames, clock, inp)
+    clock.now = 180.0
+    drop.step(snap())  # the look starts a drag
+    drop.step(snap())  # the mouse goes to it
+    drop.step(snap())  # the check: gone from there
+    for _ in range(3):
+        drop.step(snap())
+    assert [c for c in inp.sent if c[0] != "to"] == []  # never pressed, never dropped

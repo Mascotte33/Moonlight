@@ -15,6 +15,7 @@ import argparse
 import ctypes
 import logging
 import logging.handlers
+import os
 import sys
 import threading
 import time
@@ -398,7 +399,7 @@ class GuiApp:
             ctrl.loop.stopped = False
             self._update_topbar()
         else:
-            self.start_bot(resume=ctrl is not None)
+            self.start_bot(resume=ctrl is not None, raise_client=True)
 
     def apply_config(self, restart: bool = False) -> None:
         """Hand the picked config to the running bot (live apply).
@@ -422,7 +423,7 @@ class GuiApp:
         ctrl.stop("calibration saved" if restart else "settings need a restart")
         self.start_bot(resume=True)
 
-    def start_bot(self, *, resume: bool = False) -> None:
+    def start_bot(self, *, resume: bool = False, raise_client: bool = False) -> None:
         """Start the real bot loop through :mod:`moonlight.core.wiring` (F-13).
 
         Builds the loop via :func:`moonlight.gui.loop_factory.build_gui_loop`,
@@ -437,7 +438,9 @@ class GuiApp:
             return
         self._retry_at = time.monotonic() + RETRY_S
         try:
-            loop = build_gui_loop(hardware=self.hardware, state=self.state)
+            loop = build_gui_loop(
+                hardware=self.hardware, state=self.state, raise_client=raise_client
+            )
         except Exception as exc:  # noqa: BLE001 - report, don't crash the app
             if isinstance(exc, NoArduinoFoundError):
                 self._retry_at = time.monotonic() + ARDUINO_RETRY_S
@@ -594,6 +597,10 @@ def main(argv: list[str] | None = None) -> int:
     # interval a busy GUI (a row redraw) made a numpy/cv2 tick 6.6x slower;
     # at 0.5 ms 1.2x (measured).
     sys.setswitchinterval(0.0005)
+    if sys.platform == "linux":
+        # Tk asks the ibus input method about every widget over XIM: the window
+        # took 73 s to open instead of 1.5 s and ibus ate 20 % CPU. Must be set before Tk starts.
+        os.environ["XMODIFIERS"] = "@im=none"
     copied = sync_client_map()
     logging.getLogger("moonlight.gui.app").info(f"map: {copied} new tiles from the client")
     try:

@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 
 from moonlight.calibration.calibrate import CalibrationProfile
+from moonlight.perception.pictures import for_this_os
 
 __all__ = ["CONDITION_TEMPLATES_DIR", "MATCH_THRESHOLD", "StatusIconReader"]
 
@@ -36,7 +37,7 @@ class StatusIconReader:
         self._region = profile.get_region("status_icons").to_tuple
         self._tiles: dict[str, tuple[np.ndarray, np.ndarray, float]] = {}
         for name in CONDITIONS:
-            path = templates_dir / f"{name}.png"
+            path = for_this_os(templates_dir / f"{name}.png")
             bgra = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
             if bgra is None or bgra.ndim != 3 or bgra.shape[2] != 4:
                 raise FileNotFoundError(f"missing or non-RGBA condition template: {path}")

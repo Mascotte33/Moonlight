@@ -23,6 +23,7 @@ import numpy as np
 from moonlight.core.random_delay import random_delay
 from moonlight.core.state import WorldState
 from moonlight.healing.healing import check_hotkey
+from moonlight.perception.pictures import for_this_os
 
 __all__ = [
     "ICONS", "ICONS_DIR", "Extras", "ExtrasConfig", "locate", "pm_shown", "save_screenshot"
@@ -69,6 +70,9 @@ class ExtrasConfig:
     food_hotkey: str = ""
     haste: bool = False
     haste_hotkey: str = ""
+    #: Mana points haste needs; 0 = none. Without enough mana the key was pressed
+    #: over and over (2026-11-21).
+    haste_min_mana: int = 0
     buff: bool = False
     buff_hotkey: str = ""
     spell_buff: bool = False
@@ -90,6 +94,8 @@ class ExtrasConfig:
         for name in ("food", "haste", "buff", "spell_buff", "ring", "amulet"):
             if getattr(self, name):
                 check_hotkey(getattr(self, f"{name}_hotkey"), f"extras.{name}")
+        if isinstance(self.haste_min_mana, bool) or self.haste_min_mana < 0:
+            raise ValueError("extras.haste_min_mana must be 0 or more mana points")
         if self.player_minutes < 0:
             raise ValueError("extras.player_minutes must be >= 0")
         return self
@@ -101,7 +107,7 @@ def load_icons(directory: Path = ICONS_DIR) -> dict[str, np.ndarray]:
 
     out = {}
     for name in ICONS:
-        image = cv2.imread(str(directory / f"{name}.png"), cv2.IMREAD_COLOR)
+        image = cv2.imread(str(for_this_os(directory / f"{name}.png")), cv2.IMREAD_COLOR)
         if image is not None:
             out[name] = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     return out
@@ -175,7 +181,7 @@ class Extras:
         if grab and config.pm_alarm:
             import cv2
 
-            self._npcs_tab = cv2.imread(str(NPCS_TAB), cv2.IMREAD_GRAYSCALE)
+            self._npcs_tab = cv2.imread(str(for_this_os(NPCS_TAB)), cv2.IMREAD_GRAYSCALE)
         for name in ("food", "haste", "buff", "spell_buff", "ring", "amulet"):
             picture = {
                 "food": "hungry",
@@ -237,10 +243,18 @@ class Extras:
                 if locate(window, picture) is not None:
                     found.add(name)
         not_found_yet = [name for name in self._pictures if name not in self._spots]
-        if not_found_yet:
-            name = not_found_yet[self._search_turn % len(not_found_yet)]
+        # The pictures of switched-on extras are searched every scan: taking turns with
+        # the 7 pictures, a just-hasted character was "not hasted" for up to 7 s and the
+        # haste was cast 4 times (2026-11-21). The others still take turns.
+        wanted = [name for name in not_found_yet if name in self._wanted_pictures()]
+        others = [name for name in not_found_yet if name not in wanted]
+        search = list(wanted)
+        if others:
+            search.append(others[self._search_turn % len(others)])
             self._search_turn += 1
+        if search:
             gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        for name in search:
             spot = locate(gray, cv2.cvtColor(self._pictures[name], cv2.COLOR_RGB2GRAY))
             if spot is not None:
                 self._spots[name] = spot
@@ -248,6 +262,23 @@ class Extras:
         if self.config.pm_alarm and pm_shown(frame, self._npcs_tab):
             found.add("pm")
         return frozenset(found)
+
+    def _wanted_pictures(self) -> set[str]:
+        """The pictures the switched-on extras decide by."""
+        c = self.config
+        return {
+            picture
+            for on, pictures in (
+                (c.food, ("hungry",)),
+                (c.haste, ("haste", "pz")),
+                (c.buff, ("buff",)),
+                (c.spell_buff, ("spell_buff",)),
+                (c.ring, ("ring_empty",)),
+                (c.amulet, ("amulet_empty",)),
+            )
+            if on
+            for picture in pictures
+        }
 
     @property
     def staying(self) -> bool:
@@ -263,9 +294,10 @@ class Extras:
             return f"player in sight over {self.config.player_minutes:g} min"
         return None
 
-    def due(self, walking: bool, only_haste: bool = False) -> str | None:
+    def due(self, walking: bool, only_haste: bool = False, mana: int = 0) -> str | None:
         """The hotkey to press now, or None. *walking*: the route walks or the
-        player chases. *only_haste*: in a fight, between heals and attacks."""
+        player chases. *only_haste*: in a fight, between heals and attacks.
+        *mana*: mana points now (0 when unknown, under any haste minimum)."""
         c, icons, seen = self.config, self.icons, self._pictures
         if "hungry" not in icons:
             self._food_presses = 0
@@ -276,7 +308,10 @@ class Extras:
             (
                 c.haste,
                 c.haste_hotkey,
-                walking and "haste" in seen and not icons & {"haste", "pz"},
+                walking
+                and "haste" in seen
+                and not icons & {"haste", "pz"}
+                and mana >= c.haste_min_mana,
             ),
             (c.buff, c.buff_hotkey, "buff" in seen and "buff" not in icons),
             (

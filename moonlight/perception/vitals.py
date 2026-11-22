@@ -53,6 +53,7 @@ __all__ = [
     "HP_FILL_COLOURS",
     "MP_FILL_COLOURS",
     "BAR_BACKGROUND_RGB",
+    "BarHiddenError",
     "DEFAULT_TOLERANCE",
     "HP_BAR_EDGE_SLACK_COLUMNS",
     "HpBarCoveredError",
@@ -99,7 +100,37 @@ DEFAULT_TOLERANCE = 20
 HP_BAR_EDGE_SLACK_COLUMNS = 2
 
 
-class HpBarCoveredError(ValueError):
+#: Grey range of the light border row right under both bars (``detect_bars``
+#: calibrates the bars by it, so it is the row at the region's bottom edge).
+BAR_BORDER_GREY = (105, 140)
+
+#: Share of that row that must show the border. On Linux the screen capture
+#: sometimes grabs the client mid-redraw with its top strip undrawn: the
+#: desktop shows through, a few greenish pixels read as 2 % HP and the bot
+#: healed at full HP. Real frames show ~100 %, those under 5 %.
+BAR_BORDER_MIN = 0.9
+
+
+class BarHiddenError(ValueError):
+    """A bar's border row is missing: a window covers it or it is not drawn."""
+
+
+def _border_shown(frame: np.ndarray, region: Rect) -> bool:
+    """True when the border row under *region* (+-1 row) is there."""
+    x, y, w, h = region
+    low, high = BAR_BORDER_GREY
+    for row_y in (y + h - 1, y + h, y + h + 1):
+        if not 0 <= row_y < frame.shape[0]:
+            continue
+        row = frame[row_y, max(0, x) : x + w, :3].astype(np.int16)
+        neutral = row.max(axis=1) - row.min(axis=1) <= 6
+        grey = neutral & (row[:, 0] >= low) & (row[:, 0] <= high)
+        if row.size and grey.mean() >= BAR_BORDER_MIN:
+            return True
+    return False
+
+
+class HpBarCoveredError(BarHiddenError):
     """The HP fill is not one run from the left edge: a window covers the bar.
 
     The HP bar always fills from the left, so a fill that starts further in
@@ -259,6 +290,9 @@ class VitalsReader:
         if clipped is None:
             return 0.0
         crop, width = clipped
+        assert region is not None  # clipped is None without one
+        if not _border_shown(frame, region):
+            raise HpBarCoveredError("HP bar hidden: its border row is not on screen")
         filled_columns = np.flatnonzero(hp_fill_mask(crop).any(axis=0))
         # doc: docs/prs/covered-hp-bar.md#covered-bar
         if filled_columns.size and (
@@ -281,10 +315,15 @@ class VitalsReader:
         Args:
             frame: RGB ``(H, W, 3)`` capture.
             region: MP region to use; defaults to the constructor region.
+
+        Raises:
+            BarHiddenError: When the bar's border row is not on screen.
         """
         region = region if region is not None else self._mp_region
         if region is None:
             return 0.0
+        if not _border_shown(frame, region):
+            raise BarHiddenError("MP bar hidden: its border row is not on screen")
         return bar_percent(frame, region, MP_FILL_COLOURS, self.tolerance)
 
     # doc: docs/prs/client-hotkeys.md#mana-points

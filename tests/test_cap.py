@@ -14,8 +14,14 @@ import pytest
 from moonlight.perception.cap import CAP_DIGITS, CapReader, read_number
 from moonlight.refill.refill import LAST_READ, RefillConfig, supplies_low
 
-#: A real crop of the side panel: Soul 100, Cap 985.
+#: A real crop of the side panel: Soul 100, Cap 985 (the Windows client).
 PANEL = Path(__file__).parent / "cap_panel.png"
+
+
+@pytest.fixture(autouse=True)
+def _windows_pictures(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The panel is a Windows grab: read it with the Windows label, on any OS."""
+    monkeypatch.setattr("moonlight.perception.pictures.sys.platform", "win32")
 
 
 def panel_in_frame(x: int, y: int) -> np.ndarray:
@@ -80,3 +86,14 @@ def test_digits_match_a_known_shape_or_one_clearly_nearest() -> None:
     between = "####./#####/##.##/##.##/#####/#..##/#####/####."  # half 0, half 9
     assert between not in CAP_DIGITS
     assert read_number(draw(shape["1"], between)) is None
+
+
+def test_an_unlisted_touching_pair_is_split_where_both_halves_read() -> None:
+    # Linux client 2026-11-21: "375" with the 7 and the 5 joined by one pixel.
+    seventy_five = (
+        "#####..#####/######.#####/...##..##.../...##..####./"
+        "..##...#####/..##......##/.##...######/.##...#####."
+    )
+    assert seventy_five not in CAP_DIGITS
+    three = "#####/#####/...##/.###./.####/...##/#####/#####"
+    assert read_number(draw(three, seventy_five)) == 375

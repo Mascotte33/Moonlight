@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from moonlight.calibration.calibrate import CalibrationProfile
-from moonlight.core.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
+from moonlight.core.config import BotConfig, ConfigError
 from moonlight.calibration.profile import ProfileManager
 from moonlight.core.wiring import check_module_regions
 
@@ -33,16 +33,18 @@ _PERCEPTION_MODULES = (
 )
 
 
-def _load_config(config_arg: str) -> BotConfig:
+def _load_config(config_arg: str | None) -> BotConfig:
+    if config_arg is None:  # the config the GUI's Start uses
+        from moonlight.gui.loop_factory import load_real_config
+
+        return load_real_config()
     path = Path(config_arg)
-    if path.exists():
-        return BotConfig.load(path)
-    if config_arg != DEFAULT_CONFIG_FILE:
+    if not path.exists():
         raise ConfigError(f"config file not found: {path}")
-    return BotConfig.default()
+    return BotConfig.load(path)
 
 
-def check(config_arg: str, profiles_dir: Path | None, profile_name: str | None) -> int:
+def check(config_arg: str | None, profiles_dir: Path | None, profile_name: str | None) -> int:
     ok = True
 
     def report(passed: bool, what: str) -> None:
@@ -53,15 +55,18 @@ def check(config_arg: str, profiles_dir: Path | None, profile_name: str | None) 
     config: BotConfig | None
     try:
         config = _load_config(config_arg)
-        report(True, f"config ({config_arg})")
+        report(True, f"config ({config_arg or 'the one picked in the GUI'})")
     except ConfigError as exc:
         report(False, f"config: {exc}")
         config = None
     try:
         from moonlight.hardware.input import find_arduino_port
 
-        port = config.serial_port if config and config.serial_port else find_arduino_port()
-        report(port is not None, f"serial port: {port or 'no Arduino found'}")
+        # A typed port that is gone (COM3 from another PC) falls back to the detected one.
+        port = find_arduino_port()
+        typed = config.serial_port if config else None
+        note = f" (typed {typed} is not here)" if typed and typed != port else ""
+        report(port is not None, f"serial port: {port or 'no Arduino found'}{note}")
     except Exception as exc:  # noqa: BLE001 - pyserial missing etc.
         report(False, f"serial port: {exc}")
     name = profile_name or (config.profile if config else None)
@@ -102,8 +107,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Check the MOONLIGHT setup.")
     parser.add_argument("profile", nargs="?", default=None, help="profile (default: config)")
     parser.add_argument(
-        "--config", default=DEFAULT_CONFIG_FILE,
-        help=f"bot config JSON (default: ./{DEFAULT_CONFIG_FILE}; built-in defaults if absent)",
+        "--config", default=None,
+        help="bot config JSON (default: the config picked in the GUI)",
     )
     parser.add_argument("--profiles-dir", type=Path, default=None, help="profiles directory")
     args = parser.parse_args(argv)

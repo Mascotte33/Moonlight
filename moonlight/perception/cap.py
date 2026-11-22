@@ -20,6 +20,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from moonlight.perception.pictures import for_this_os
+
 __all__ = ["CAP_DIGITS", "CapReader", "read_number"]
 
 logger = logging.getLogger(__name__)
@@ -115,6 +117,9 @@ CAP_DIGITS = {
         ".#####.#####/##..##....##/######.####./.####..####."
     ): "89",
     "####./#####/##.##/##.##/#####/...##/#####/####.": "9",
+    "#####/#####/...##/.###./.####/...##/#####/#####": "3",  # Linux client 2026-11-21
+    ".####./.#####/....#./..###./..###./....##/######/#####.": "3",  # Linux client
+    ".####/#####/##.##/##.##/#####/..###/.####/.###.": "9",  # Linux client 2026-11-21
     ".####./#####./##..##/###.##/.#####/...##./.####./.###..": "9",
     ".####./#####./##..##/##..##/######/...##./.####./.###..": "9",
     ".###./##.##/##.##/##.##/#####/...##/#####/####.": "9",
@@ -142,13 +147,33 @@ def read_number(pixels: np.ndarray) -> int | None:
         while end < len(cols) and cols[end]:
             end += 1
         pattern = "/".join("".join("#" if v else "." for v in row) for row in lit[:, x:end])
-        digit = CAP_DIGITS.get(pattern) or _near(lit[:, x:end])
+        digit = CAP_DIGITS.get(pattern) or _near(lit[:, x:end]) or _split(lit[:, x:end])
         if digit is None:
             logger.info("cap: unknown digit %s", pattern)
             return None
         text += digit
         x = end
     return int(text) if text else None
+
+
+def _one(shape: np.ndarray) -> str | None:
+    pattern = "/".join("".join("#" if v else "." for v in row) for row in shape)
+    found = CAP_DIGITS.get(pattern) or _near(shape)
+    return found if found is not None and len(found) == 1 else None
+
+
+def _split(shape: np.ndarray) -> str | None:
+    """Two touching digits: the one cut where both halves read, or None.
+
+    On Linux the client's font joins other pairs than on Windows (a 7 and a 5
+    touched by one pixel in "375"), so they cannot all be listed.
+    """
+    reads = {
+        a + b
+        for cut in range(3, shape.shape[1] - 2)
+        if (a := _one(shape[:, :cut])) is not None and (b := _one(shape[:, cut:])) is not None
+    }
+    return reads.pop() if len(reads) == 1 else None
 
 
 def _blurred(shape: np.ndarray, left: int, width: int) -> np.ndarray:
@@ -190,7 +215,7 @@ class CapReader:
         grab: Callable[[], np.ndarray],
         label: Path = CAP_LABEL,
     ) -> None:
-        bgr = cv2.imread(str(label))
+        bgr = cv2.imread(str(for_this_os(label)))
         if bgr is None:
             raise FileNotFoundError(f"missing cap label picture: {label}")
         self._label = np.ascontiguousarray(bgr[:, :, ::-1]).astype(np.float32)

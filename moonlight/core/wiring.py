@@ -717,6 +717,9 @@ def build_modules(
             from moonlight.perception.stamina import StaminaReader
 
             m.scripts.stamina = StaminaReader(screen_grab).minutes
+            from moonlight.perception.cap import CapReader
+
+            m.scripts.free_cap = CapReader(screen_grab).cap
     m.scripts.clicker = m.clicker
     m.scripts.game_grid = (
         profile.regions["game_grid"].to_tuple if "game_grid" in profile.regions else None
@@ -761,6 +764,7 @@ def build_modules(
                 walk_keys=config.walk_keys,
                 cost_map=CostMap(MAP_DIR / "cost") if config.walk_keys else None,
                 frames=frames,
+                screen=screen_grab,
                 clock=clock,
                 scripts=m.scripts,
                 supplies_low=supplies_low(config.refill, screen_grab),

@@ -43,6 +43,9 @@ _CORE_RED_OVER_GREEN = 60
 # Green minus blue of a core pixel at least: the core's salmon is 16..142 (5th..95th
 # percentile), the pink city crystals -100..-25 (tests/echo_raid_crystals.png).
 _CORE_GREEN_OVER_BLUE = 0
+#: Median green minus blue of a whole core at most: the trigger's salmon is ~30, the
+#: orange fire of Venore's fire basins 107..134 (tests/echo_raid_fire_basins.png).
+_CORE_MEDIAN_GREEN_OVER_BLUE = 70
 
 
 def find_echo_raids(frame: np.ndarray, grid: tuple[int, int, int, int]) -> list[tuple[int, int]]:
@@ -61,13 +64,17 @@ def find_echo_raids(frame: np.ndarray, grid: tuple[int, int, int, int]) -> list[
     if not cv2.countNonZero(core):
         return []
     mask = cv2.morphologyEx(core, cv2.MORPH_CLOSE, _CLOSE_KERNEL)
-    count, _, stats, centres = cv2.connectedComponentsWithStats(mask)
+    count, labels, stats, centres = cv2.connectedComponentsWithStats(mask)
     tw, th = gw / _COLS, gh / _ROWS
+    green_over_blue = green - blue
     slots: list[tuple[int, int]] = []
     biggest_first = sorted(range(1, count), key=lambda label: -stats[label, cv2.CC_STAT_AREA])
     for label in biggest_first:  # 0 is the background
         if stats[label, cv2.CC_STAT_AREA] < CORE_SHARE * tw * th:
             break
+        pixels = (labels == label) & (core > 0)
+        if np.median(green_over_blue[pixels]) > _CORE_MEDIAN_GREEN_OVER_BLUE:
+            continue  # orange: fire, not the salmon core
         cx, cy = centres[label]
         col, row = int(cx / tw + _CORE_OFFSET), int(cy / th + _CORE_OFFSET)
         next_to_a_core = any(max(abs(col - c), abs(row - r)) <= 1 for c, r in slots)

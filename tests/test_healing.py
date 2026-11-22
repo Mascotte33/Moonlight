@@ -151,3 +151,18 @@ def test_cure_waits_for_a_spell_rule_on_cooldown() -> None:
 def test_validation_errors(change: dict[str, object], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         HealingDecision(replace(HealingConfig(), **change))  # type: ignore[arg-type]
+
+
+def test_a_spell_rule_without_its_mana_is_skipped_for_the_next() -> None:
+    from moonlight.healing.healing import HealingConfig, HealingDecision, HealingRule
+
+    config = HealingConfig(
+        rules=(
+            HealingRule("spell", "F1", hp_below_percent=85.0, minimum_mana=40),
+            HealingRule("spell", "F2", hp_below_percent=85.0),
+        ),
+    )
+    decision = HealingDecision(config, clock=lambda: 100.0)
+    low = WorldState(hp_percent=50.0, mp_percent=10.0, mp_points=15)
+    actions = decision.decide(low)
+    assert [a.hotkey for a in actions] == ["F2"]  # F1 needs 40 mana: the next rule heals

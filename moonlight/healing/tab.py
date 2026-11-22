@@ -52,6 +52,7 @@ class RuleRow(NamedTuple):
     hotkey: str
     hp_below_percent: str
     mp_below_percent: str
+    minimum_mana: str = ""
 
 
 class CureRow(NamedTuple):
@@ -92,6 +93,7 @@ def apply_healing(
             row.hotkey.strip(),
             _percent(row.hp_below_percent, f"healing rule {number} HP"),
             _percent(row.mp_below_percent, f"healing rule {number} MP"),
+            int(_percent(row.minimum_mana, f"healing rule {number} min mana")),
         )
         for number, row in enumerate(rules, start=1)
     )
@@ -173,6 +175,7 @@ class HealingTab(Tab):
                     r.hotkey,
                     blank_zero(r.hp_below_percent),
                     blank_zero(r.mp_below_percent),
+                    blank_zero(r.minimum_mana),
                 )
                 for r in rules
             ]
@@ -224,6 +227,7 @@ class HealingTab(Tab):
             for label, value in (
                 ("HP <", row.hp_below_percent),
                 ("MP <", row.mp_below_percent),
+                ("min mana", row.minimum_mana),
             ):
                 Label(line, text=label, text_color=theme.TEXT_DIM).pack(
                     side="left", padx=(theme.UNIT, 0)

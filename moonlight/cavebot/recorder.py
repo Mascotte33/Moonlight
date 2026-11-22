@@ -23,9 +23,7 @@ from moonlight.cavebot.cavebot import (
 from moonlight.core.state import Position
 
 __all__ = [
-    "buy_text",
     "make_waypoint",
-    "parse_buy",
     "route_path",
     "StandTracker",
     "save_route",
@@ -150,28 +148,6 @@ def cursor_line(
 
 
 # doc: docs/prs/depot.md#trade-waypoint
-def parse_buy(text: str) -> list[tuple[str, int]]:
-    """The Refill page's buy list: one ``item, percent`` per line, blank lines skipped.
-
-    Raises:
-        RouteError: For a line without a 0..100 percent after its last comma.
-    """
-    rows = []
-    for n, line in enumerate(text.splitlines(), 1):
-        if not line.strip():
-            continue
-        item, _, percent = line.rpartition(",")
-        if not item.strip() or not percent.strip().isdigit() or int(percent) > 100:
-            raise RouteError(f"buy line {n}: write item, percent (0..100)")
-        rows.append((item.strip(), int(percent)))
-    return rows
-
-
-def buy_text(rows: Sequence[tuple[str, int]]) -> str:
-    """*rows* as the Refill page shows them (:func:`parse_buy` reads it back)."""
-    return "".join(f"{item}, {percent}\n" for item, percent in rows)
-
-
 def route_path(routes_dir: Path, name: str) -> Path:
     """The file of route *name* in *routes_dir*.
 

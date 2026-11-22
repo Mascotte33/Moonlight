@@ -156,7 +156,16 @@ import cv2
 import numpy as np
 
 from moonlight.cavebot.pathing import CostMap, next_step
-from moonlight.cavebot.town import STASH, TRADE, find_chat, find_lockers, find_picture, pick_locker
+from moonlight.cavebot.town import (
+    STASH,
+    TRADE,
+    find_chat,
+    find_item_row,
+    find_lockers,
+    find_picture,
+    item_picture,
+    pick_locker,
+)
 from moonlight.core.random_delay import random_delay, typing_gap
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.clicker import ClickController
@@ -492,7 +501,9 @@ def trade_steps(buy: list[tuple[str, int]], npc_tab_hotkey: str) -> list[TalkSte
     """The ``trade`` talk, then the buy list in the trade window. Tuples are
     ``(op, a, b)``: ``win`` waits for the window, ``click`` / ``to`` click /
     move the mouse at (a, b) from the window's ``npc_trade.png``, ``down`` /
-    ``up`` the left button, ``count`` reads the potions, ``health`` / ``mana``
+    ``up`` the left button, ``row`` clicks the item's row (found by its
+    icon: the search also lists stronger potions), ``count`` reads the
+    potions, ``health`` / ``mana``
     goes back to step a once when that total did not go up. Esc closes the
     window at the end so the walk goes on."""
     steps: list[TalkStep] = [*talk_steps(npc_tab_hotkey, ("hi", "trade"))]
@@ -500,8 +511,9 @@ def trade_steps(buy: list[tuple[str, int]], npc_tab_hotkey: str) -> list[TalkSte
     for item, percent in buy:
         row = len(steps)
         steps += [("count", 0, 0), ("click", *_SEARCH_CLEAR), 0.3, ("click", *_SEARCH), 0.3]
+        steps += ["ctrl+a", "backspace"]  # the X alone left the last name in (Linux client)
         steps += say_keys(item)[1:-1]  # the search box has the keys: no Enter
-        steps += [0.8, ("click", *_FIRST_ROW), 0.3]
+        steps += [0.8, ("row", len(steps), 0), 0.3]
         if percent:
             x, y = _SLIDER_MIN
             right = x + round(percent * _SLIDER_SPAN / 100)
@@ -534,6 +546,7 @@ class Cavebot:
         walk_keys: bool = False,
         cost_map: CostMap | None = None,
         frames: Callable[[], np.ndarray] | None = None,
+        screen: Callable[[], np.ndarray] | None = None,
         clock: Callable[[], float] | None = None,
         on_waypoint_reached: Callable[[int], None] | None = None,
         scripts: ScriptRunner | None = None,
@@ -571,6 +584,9 @@ class Cavebot:
                 it the bot steps straight at the waypoint.
             frames: The current screenshot, for the creature scan; without
                 it creatures are found only by bumping into them.
+            screen: A full client-window grab for what lies outside the
+                tick's regions (chat button, trade window, depot); defaults
+                to *frames*. On Linux the tick frame holds only the regions.
             clock: Monotonic-clock override (tests).
             on_waypoint_reached: Called with the index of each reached
                 positional waypoint.
@@ -629,6 +645,7 @@ class Cavebot:
         #: The walk key held down, kept between steps so the client walks on.
         self._held_walk_key: str | None = None
         self._frames = frames
+        self._screen_grab = screen
         #: Creatures leave no way through: the loop targets them (cleared after each kill).
         self.stuck_on_creatures = False
         #: Set by the loop while targeting is paused: walk on past a selected target.
@@ -1092,7 +1109,7 @@ class Cavebot:
 
     def _save_echo_raid_shot(self, goal: tuple[int, int, int], side: ClickSide) -> None:
         """Save the screen 1 s after a click on *goal*, the clicked pixel circled in yellow."""
-        frame = self._frames() if self._frames is not None else None
+        frame = self._screen()
         if frame is None:
             return
         picture = cv2.cvtColor(np.ascontiguousarray(frame), cv2.COLOR_RGB2BGR)
@@ -1134,11 +1151,16 @@ class Cavebot:
 
     # -- internals ----------------------------------------------------------
 
+    def _screen(self) -> np.ndarray | None:
+        """The whole client window, for looking outside the tick regions."""
+        grab = self._screen_grab or self._frames
+        return None if grab is None else grab()
+
     # doc: docs/prs/depot.md#chat-toggle
     def _chat_turned_off(self) -> bool:
         """A walk key that did not move: with the chat on it typed a letter,
         so click the chat button off. True when it was on."""
-        frame = self._frames() if self._frames is not None else None
+        frame = self._screen()
         chat = None if frame is None else find_chat(frame)
         if chat is None or not chat[0]:
             return False
@@ -1331,7 +1353,7 @@ class Cavebot:
             return
         step = self._talk[self._sends_done]
         if isinstance(step, bool):  # the chat on (True) or off
-            frame = self._frames() if self._frames is not None else None
+            frame = self._screen()
             chat = None if frame is None else find_chat(frame)
             if chat is None:
                 return  # not seen: look again
@@ -1357,7 +1379,7 @@ class Cavebot:
     def _trade_op(self, op: str, a: int, b: int, now: float) -> None:
         """One tuple step of :func:`trade_steps`."""
         if op == "win":
-            frame = self._frames() if self._frames is not None else None
+            frame = self._screen()
             self._trade_at = None if frame is None else find_picture(frame, TRADE)
             if self._trade_at is not None:
                 self._trade_wait_until = None
@@ -1385,6 +1407,21 @@ class Cavebot:
                         return
             self._sends_done += 1
             return
+        if op == "row":
+            assert self._trade_at is not None  # "win" came first
+            frame = self._screen()
+            item = self._trade_item(a)
+            if not item_picture(item).exists():  # no icon to tell it by: the first row
+                spot: tuple[int, int] | None = (
+                    self._trade_at[0] + _FIRST_ROW[0], self._trade_at[1] + _FIRST_ROW[1]
+                )
+            else:
+                spot = None if frame is None else find_item_row(frame, self._trade_at, item)
+            if spot is None:
+                return  # the list is still filtering: look again next tick
+            self._clicker.request(spot)
+            self._sends_done += 1
+            return
         send = self._input
         assert self._trade_at is not None and send is not None  # "win" came first
         point = (self._trade_at[0] + a, self._trade_at[1] + b)
@@ -1401,6 +1438,12 @@ class Cavebot:
             send.mouse_up(ClickSide.LEFT)
         if getattr(send, "dropped", 0) == dropped:
             self._sends_done += 1
+
+    def _trade_item(self, step: int) -> str:
+        """The item whose search was typed before *step* of the trade."""
+        assert self._talk is not None
+        rows = [i for i, s in enumerate(self._talk[:step]) if s == ("count", 0, 0)]
+        return self.route.buy[len(rows) - 1][0]
 
     # doc: docs/prs/steps.md#step-waypoint
     def _stepped(self, wp: Waypoint, pos: Position, now: float) -> bool:
@@ -1535,7 +1578,7 @@ class Cavebot:
         if not settled or now - self._depot_looked < _DEPOT_RELOOK:
             return None if on_tile else wp
         self._depot_looked = now
-        frame = self._frames() if self._frames is not None else None
+        frame = self._screen()
         picked = None
         if frame is not None:
             px, py = pos.x - PLAYER_SLOT[0], pos.y - PLAYER_SLOT[1]
@@ -1575,7 +1618,7 @@ class Cavebot:
     def _open_locker(self, now: float) -> None:
         """``deposit``: right-click the picked locker until the stash and the
         loot backpack are on screen; still missing 3 s later, alarm ``"deposit"``."""
-        frame = self._frames() if self._frames is not None else None
+        frame = self._screen()
         bag_file = self._backpack
         stash = None if frame is None else find_picture(frame, STASH)
         bag = None if frame is None or bag_file is None else find_picture(frame, bag_file)
