@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import Any
 
 from moonlight.cavebot.cavebot import RouteFileLoader, Waypoint
-from moonlight.cavebot.recorder import parse_buy, route_path, save_route, waypoint_json
+from moonlight.cavebot.recorder import route_path, save_route, waypoint_json
 from moonlight.cavebot.route_plan import (
     CITY_DEPOTS,
     FloorChange,
@@ -71,6 +71,19 @@ from moonlight.gui.loop_factory import load_real_config
 FREE_CITIES = ("Venore", "Thais", "Carlin", "AbDendriel", "Kazordoon")
 #: What a free account may say on a link: boats run only between these four.
 FREE_TALK = ("hi", "yes", "thais", "carlin", "ab'dendriel", "venore")
+
+
+def parse_buy(text: str) -> list[tuple[str, int]]:
+    """A buy list: one ``item, percent`` per line, blank lines skipped; exits on a bad line."""
+    rows = []
+    for line_number, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        item, _, percent = line.rpartition(",")
+        if not item.strip() or not percent.strip().isdigit() or int(percent) > 100:
+            sys.exit(f"buy line {line_number}: write item, percent (0..100)")
+        rows.append((item.strip(), int(percent)))
+    return rows
 
 
 def _free_action(action: str) -> bool:
