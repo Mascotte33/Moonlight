@@ -35,6 +35,7 @@ data/maps/
 *.md
 *.MD
 !/README.md
+!/.claude/skills/*/SKILL.md
 *.json
 !/tests/golden/labels.json
 !/tests/golden_profile/*.json
