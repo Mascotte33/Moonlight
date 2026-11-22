@@ -16,6 +16,7 @@ from moonlight.cavebot.route_map import (
     draw_route,
     leg_path,
     legs,
+    place_labels,
     waypoint_at,
 )
 
@@ -119,3 +120,17 @@ def test_matching_spawns_by_part_of_the_name() -> None:
     spawns = {(1, 1, 7): ["Troll", "Swamp Troll"], (2, 2, 7): ["Rat"]}
     assert matching_spawns(spawns, " troll") == {(1, 1, 7): ["Troll", "Swamp Troll"]}
     assert matching_spawns(spawns, "") is spawns
+
+
+def test_labels_of_crowded_dots_do_not_overlap() -> None:
+    dots = [(50, 50), (56, 50), (50, 56), (62, 52)]
+    labels = [(dot, str(n)) for n, dot in enumerate(dots, 1)] + [((50, 50), "45")]
+    placed = place_labels(labels, dots, 4)
+    boxes = []
+    for (x, y), text in placed:
+        (width, height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 3)
+        boxes.append((x, y - height, x + width, y))
+    dot_boxes = [(x - 4, y - 4, x + 4, y + 4) for x, y in dots]
+    for i, a in enumerate(boxes):
+        for b in boxes[i + 1 :] + dot_boxes:
+            assert not (a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3])
