@@ -7,6 +7,7 @@ Usage:
     python tools/route.py move MountSternumUndeads 199-335 --after 154
     python tools/route.py insert MountSternumUndeads 0 < waypoints.txt
     python tools/route.py new MyHunt < waypoints.txt
+    python tools/route.py buy MyHunt < buy.txt         # one "item, percent" per line
     python tools/route.py path 32369,32220,7 32400,32190,8 > waypoints.txt
 
 ``new`` writes a new route from stdin, one waypoint per line:
@@ -46,9 +47,11 @@ import argparse
 import json
 import shutil
 import sys
+from pathlib import Path
+from typing import Any
 
 from moonlight.cavebot.cavebot import RouteFileLoader, Waypoint
-from moonlight.cavebot.recorder import route_path, save_route, waypoint_json
+from moonlight.cavebot.recorder import parse_buy, route_path, save_route, waypoint_json
 from moonlight.cavebot.route_plan import (
     CITY_DEPOTS,
     FloorChange,
@@ -199,7 +202,7 @@ def _print_steps(steps: list[Step], every_sqm: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=("show", "delete", "move", "insert", "new", "path", "block"))
+    parser.add_argument("command", choices=("show", "delete", "move", "insert", "new", "buy", "path", "block"))
     parser.add_argument(
         "route",
         help="file name in data/waypoints, without .json (path: A as x,y,z; block: refill, travel)",
@@ -215,6 +218,9 @@ def main() -> None:
     if args.command == "new":
         _new(args.route)
         return
+    if args.command == "buy":
+        _buy(args.route)
+        return
     if args.command == "block" and args.route == "travel":
         _travel_block(args)
         return
@@ -228,8 +234,7 @@ def main() -> None:
             parser.error("the blocks are refill and travel")
         _refill_block(args)
         return
-    path = load_real_config().routes_dir / f"{args.route}.json"
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    path, raw = _route_file(args.route)
     waypoints = raw["waypoints"]
     first, last = _range(args.waypoints)
     block = waypoints[first : last + 1]
@@ -247,11 +252,30 @@ def main() -> None:
         after = args.after if args.after < first else args.after - len(block)
         rest[after + 1 : after + 1] = block
     raw["waypoints"] = rest
+    _save(path, raw)
+    print(f"{args.command} {first}-{last}: {len(waypoints)} -> {len(rest)} waypoints")
+
+
+def _route_file(name: str) -> tuple[Path, dict[str, Any]]:
+    path = load_real_config().routes_dir / f"{name}.json"
+    return path, json.loads(path.read_text(encoding="utf-8"))
+
+
+def _save(path: Path, raw: dict[str, Any]) -> None:
+    """Write *raw* over *path*, the old file kept as ``.json.bak``."""
     RouteFileLoader.parse(raw)  # raises on a broken route, before the file is touched
     shutil.copy(path, path.with_suffix(".json.bak"))
     path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
-    print(f"{args.command} {first}-{last}: {len(waypoints)} -> {len(rest)} waypoints")
     load_real_config()  # raises when the config's start waypoint is now past the end
+
+
+# doc: docs/prs/make-route.md#buy-command
+def _buy(name: str) -> None:
+    """The route's buy list from stdin, one ``item, percent`` per line."""
+    path, raw = _route_file(name)
+    raw["buy"] = [{"item": item, "percent": percent} for item, percent in parse_buy(sys.stdin.read())]
+    _save(path, raw)
+    print(f"{name}: {len(raw['buy'])} items to buy")
 
 
 if __name__ == "__main__":

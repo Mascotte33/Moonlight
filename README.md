@@ -131,6 +131,7 @@ python tools/check_setup.py
 
 # 4. Launch the desktop GUI (or "Start Moonlight GUI.bat" / ./start-moonlight-gui.sh)
 python -m moonlight
+python -m moonlight --route "MyHunt 20-40"   # that route as the cavebot route, Map tab open
 
 # Later: which route waypoints the bot gets stuck on most (reads logs/bot.log*)
 python tools/stuck_spots.py
@@ -179,6 +180,7 @@ python tools/map.py refresh                # download data/spawns.json + data/mo
 python tools/route.py block refill 32941,32215,8 --depot 32922,32073,7 --bank 33019,32053,6 --shop 32970,32085,6
 python tools/route.py block travel --depot 32922,32073,7 > travel.txt   # point 0: any city depot -> this depot
 python tools/route.py insert MyHunt 0 < travel.txt   # put lines before waypoint 0 of a saved route
+python tools/route.py buy MyHunt < buy.txt   # the buy list, one "item, percent" per line
 python tools/video_route.py hunt.mp4 > hunt.txt   # route lines from someone's hunting video
 ```
 

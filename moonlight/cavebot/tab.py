@@ -572,6 +572,18 @@ class CavebotTab(Tab):
         """True when there are no unsaved edits, or the user lets them go."""
         return not self._dirty or messagebox.askyesno("Unsaved changes", "Discard unsaved changes?")
 
+    # doc: docs/prs/make-route.md#open-route
+    def open_route(self, name: str) -> None:
+        """Pick route *name* as if from the dropdown (``python -m moonlight --route``).
+
+        Raises:
+            RouteError: For a name with no route file.
+        """
+        if name not in route_names(self._routes_dir):
+            raise RouteError(f"no route {name!r} in {self._routes_dir}")
+        self.menu_route.set(name)
+        self._pick_route(name)
+
     def _pick_route(self, name: str) -> None:
         """Load route *name* into the editor and make it the cavebot's route."""
         if name == self._name:
