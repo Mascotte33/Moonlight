@@ -101,6 +101,12 @@ DROP_MATCH_MAX = 50.0
 _COUNT_TOP = 0.6
 #: ... and columns from this share right.
 _COUNT_LEFT = 0.35
+#: An item pixel: channels this far apart (the slot is gray) ...
+_ITEM_SATURATION = 12
+#: ... or this bright (the slot is darker).
+_ITEM_BRIGHT = 150
+#: Fewer item pixels than this: the whole picture is matched.
+_ITEM_MIN_PIXELS = 30
 
 
 def find_item(frame: np.ndarray, path: Path) -> Point | None:
@@ -113,8 +119,16 @@ def find_item(frame: np.ndarray, path: Path) -> Point | None:
     if pic is None or pic.shape[0] > frame.shape[0] or pic.shape[1] > frame.shape[1]:
         return None
     h, w = pic.shape[:2]
-    mask = np.full((h, w, 3), 255, np.uint8)
-    mask[int(h * _COUNT_TOP) :, int(w * _COUNT_LEFT) :] = 0
+    # Only the item's own pixels: the slot behind it is lighter or darker by
+    # backpack and client (2026-11-22: a torch clipped on a lighter slot never
+    # matched). The slot is plain gray; items are coloured or bright.
+    px = pic.astype(np.int32)
+    keep = (px.max(axis=2) - px.min(axis=2) > _ITEM_SATURATION) | (px.max(axis=2) >= _ITEM_BRIGHT)
+    keep[int(h * _COUNT_TOP) :, int(w * _COUNT_LEFT) :] = False
+    if keep.sum() < _ITEM_MIN_PIXELS:  # a plain gray item: the whole picture
+        keep[:] = True
+        keep[int(h * _COUNT_TOP) :, int(w * _COUNT_LEFT) :] = False
+    mask = np.repeat(np.where(keep, 255, 0).astype(np.uint8)[:, :, None], 3, axis=2)
     scores = cv2.matchTemplate(np.ascontiguousarray(frame), pic, cv2.TM_SQDIFF, mask=mask)
     _, _, (x, y), _ = cv2.minMaxLoc(scores)
     if scores[y, x] / float((mask > 0).sum()) > DROP_MATCH_MAX:
