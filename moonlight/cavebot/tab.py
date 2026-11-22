@@ -600,6 +600,17 @@ class CavebotTab(Tab):
         self.lbl_hint.configure(text="")
         self.ctx.config_changed()
 
+    # doc: docs/prs/cavebot-rotate.md#tab-follows-rotate
+    def _follow_rotated_route(self, name: str) -> None:
+        """``cavebot_rotate`` switched the running route: show it here and on the Map tab.
+
+        The editor is locked while the cavebot runs, so no edits are lost.
+        """
+        self._show_route(name)
+        self.menu_route.set(name)
+        self._text = ""  # redraw the list
+        self.lbl_msg.configure(text=f"Cavebot rotate switched to {name}")
+
     def _show_route(self, name: str) -> None:
         """Load route *name* into the editor; unsaved edits are dropped."""
         self._waypoints = []
@@ -687,7 +698,9 @@ class CavebotTab(Tab):
         on = bool(self._switches[SWITCH.field].get())
         if on != self._locked:
             self._lock(on)
-        current = live.current if live is not None and live.name == self._name else None
+        if self._locked and live is not None and live.name != self._name:
+            self._follow_rotated_route(live.name)
+        current =live.current if live is not None and live.name == self._name else None
         route = Route("editor", waypoints=self._waypoints)
         text = self._error or waypoint_table(route, current, self._runs_badly)
         running = "Not running"

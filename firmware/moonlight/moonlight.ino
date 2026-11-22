@@ -30,7 +30,7 @@
  * Key tokens (case-insensitive, '+' separated):
  *   ctrl, alt, shift, meta (win/cmd), a-z, 0-9, f1-f24,
  *   tab, enter, space, backspace, delete, insert, home, end,
- *   pgup, pgdn, up, down, left, right, esc
+ *   pgup, pgdn, up, down, left, right, esc, minus, period
  */
 
 #include <Keyboard.h>
@@ -80,6 +80,8 @@
 #define HID_A         'a'    // 'a' .. 'z'
 #define HID_1         '1'    // '1' .. '9'
 #define HID_0         '0'
+#define HID_MINUS     '-'    // US layout: shift+minus is '_'
+#define HID_PERIOD    '.'
 #define HID_F1        0xC2   // HID_F1 .. HID_F12 (0xC2..0xCD)
 #define HID_F13       0xF0   // HID_F13 .. HID_F24 (0xF0..0xFB)
 
@@ -256,6 +258,8 @@ static int mapTokenToKey(const char* tok) {
   if (!strcmp(lower, "left"))                              return HID_LEFT;
   if (!strcmp(lower, "right"))                             return HID_RIGHT;
   if (!strcmp(lower, "esc") || !strcmp(lower, "escape"))   return HID_ESC;
+  if (!strcmp(lower, "minus"))                             return HID_MINUS;
+  if (!strcmp(lower, "period"))                            return HID_PERIOD;
 
   return -1;
 }

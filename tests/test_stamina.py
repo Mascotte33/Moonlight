@@ -5,7 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from moonlight.perception.stamina import StaminaReader
+from moonlight.perception.stamina import LevelReader, StaminaReader
 
 SKILLS = Path(__file__).with_name("stamina_skills.png")  # the Skills window at 41:23
 
@@ -30,3 +30,15 @@ def test_stamina_is_read_wherever_the_window_is() -> None:
 def test_no_skills_window_is_unknown() -> None:
     reader = StaminaReader(lambda: np.full((400, 500, 3), 40, np.uint8))
     assert reader.minutes() is None
+
+
+def test_level_is_read_wherever_the_window_is() -> None:
+    frames = [frame_with_skills(10, 20), frame_with_skills(300, 150)]
+    reader = LevelReader(lambda: frames[0])
+    assert reader.level() == 65
+    frames.pop(0)
+    assert reader.level() == 65
+
+
+def test_no_skills_window_is_an_unknown_level() -> None:
+    assert LevelReader(lambda: np.full((400, 500, 3), 40, np.uint8)).level() is None

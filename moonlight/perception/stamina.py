@@ -1,10 +1,12 @@
-"""Stamina from the Skills window (relog trigger).
+"""Stamina and Level from the Skills window (relog trigger, cavebot rotate).
 
 The Skills window must be open. Its ``Stamina`` line is found by the word's
 lit pixels (once, then checked in place) and the ``HH:MM`` at the right end
-of that line is read from the window's digit font.
+of that line is read from the window's digit font. The ``Level`` line is read
+the same way (:class:`LevelReader`).
 
 # doc: docs/prs/client-hotkeys.md#stamina
+# doc: docs/prs/cavebot-rotate.md#level-read
 
 A stamina that cannot be read (window closed, unknown glyph) is None and is
 logged; it never counts as low.
@@ -18,7 +20,7 @@ from collections.abc import Callable
 import cv2
 import numpy as np
 
-__all__ = ["LOW_STAMINA_MINUTES", "StaminaReader", "read_stamina_minutes"]
+__all__ = ["LOW_STAMINA_MINUTES", "LevelReader", "StaminaReader", "read_stamina_minutes"]
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,27 @@ _LABEL = np.array(
         )
     ]
 )
+#: The word ``Level`` as the Skills window draws it (9 rows: the ``l`` is tall).
+_LEVEL_LABEL = np.array(
+    [
+        [c == "#" for c in row]
+        for row in (
+            "...............................##",
+            "##.............................##",
+            "##.............................##",
+            "##......####...##..##...####...##",
+            "##.....##..##..##..##..##..##..##",
+            "##.....######..##..##..######..##",
+            "##.....##.......####...##......##",
+            "##.....##...#...####...##...#..##",
+            "######..####.....##.....####...##",
+        )
+    ]
+)
+#: Empty columns that still separate two digits of one number (the window's
+#: scroll marks stand further right).
+_DIGIT_GAP = 3
+_MAX_LEVEL_DIGITS = 5
 _DIGITS = {
     ".####./##..##/##..##/##..##/##..##/##..##/##..##/.####.": "0",
     ".##./###./.##./.##./.##./.##./.##./####": "1",
@@ -57,12 +80,24 @@ _DIGITS = {
 }
 
 
-def _find_label(lit: np.ndarray) -> tuple[int, int] | None:
-    """Top-left of the ``Stamina`` word in the lit-pixel mask, or None."""
-    word = _LABEL.astype(np.float32) * 2 - 1  # lit +1, dark -1
+def _find_label(lit: np.ndarray, label: np.ndarray) -> tuple[int, int] | None:
+    """Top-left of the word *label* in the lit-pixel mask, or None."""
+    word = label.astype(np.float32) * 2 - 1  # lit +1, dark -1
     scores = cv2.matchTemplate(lit.astype(np.float32), word, cv2.TM_CCORR)
     _, best, _, (x, y) = cv2.minMaxLoc(scores)
-    return (x, y) if best > _LABEL.sum() - 0.5 else None  # float sums
+    return (x, y) if best > label.sum() - 0.5 else None  # float sums
+
+
+def _locate(
+    lit: np.ndarray, label: np.ndarray, cached: tuple[int, int] | None
+) -> tuple[int, int] | None:
+    """Where *label* is: the *cached* spot while it still shows the word, else a new search."""
+    if cached is not None:
+        x, y = cached
+        here = lit[y : y + label.shape[0], x : x + label.shape[1]]
+        if here.shape == label.shape and (here == label).all():
+            return cached
+    return _find_label(lit, label)
 
 
 def _read_time(lit: np.ndarray) -> str | None:
@@ -95,6 +130,55 @@ def read_stamina_minutes(frame: np.ndarray, label: tuple[int, int]) -> int | Non
     return int(text[:2]) * 60 + int(text[3:])
 
 
+def read_level(frame: np.ndarray, label: tuple[int, int]) -> int | None:
+    """The number right of the ``Level`` word at *label* (digits up to the first wide gap)."""
+    x, y = label
+    # The digits are 8 rows high and start one row below the tall ``l`` of the word.
+    strip = frame[y + 1 : y + 9, x + _LEVEL_LABEL.shape[1] :].astype(np.int32).sum(axis=2) >= _LIT
+    cols = np.asarray(strip.any(axis=0))
+    text, col = "", 0
+    while col < len(cols) and len(text) < _MAX_LEVEL_DIGITS:
+        if not cols[col:].any() or (text and not cols[col : col + _DIGIT_GAP + 1].any()):
+            break
+        if not cols[col]:
+            col += 1
+            continue
+        end = col
+        while end < len(cols) and cols[end]:
+            end += 1
+        glyph = "/".join("".join("#" if v else "." for v in row) for row in strip[:, col:end])
+        digit = _DIGITS.get(glyph)
+        if digit is None or digit == ":":
+            logger.info("level: unknown glyph %s", glyph)
+            return None
+        text += digit
+        col = end
+    return int(text) if text else None
+
+
+class LevelReader:
+    """Character level read from a full client-window grab; logs each change."""
+
+    def __init__(self, grab: Callable[[], np.ndarray]) -> None:
+        self._grab = grab
+        self._label: tuple[int, int] | None = None
+        self._last: int | None = None
+
+    def level(self) -> int | None:
+        """The level, or None when the Skills window does not show it."""
+        frame = self._grab()
+        lit = frame.astype(np.int32).sum(axis=2) >= _LIT
+        self._label = _locate(lit, _LEVEL_LABEL, self._label)
+        level = None if self._label is None else read_level(frame, self._label)
+        if level != self._last:
+            if level is None:
+                logger.warning("level: not read (open the Skills window)")
+            else:
+                logger.info("level %d", level)
+            self._last = level
+        return level
+
+
 class StaminaReader:
     """Stamina minutes read from a full client-window grab; logs each change."""
 
@@ -107,13 +191,7 @@ class StaminaReader:
         """Stamina in minutes, or None when the Skills window does not show it."""
         frame = self._grab()
         lit = frame.astype(np.int32).sum(axis=2) >= _LIT
-        if self._label is not None:
-            x, y = self._label
-            here = lit[y : y + _LABEL.shape[0], x : x + _LABEL.shape[1]]
-            if here.shape != _LABEL.shape or not (here == _LABEL).all():
-                self._label = None
-        if self._label is None:
-            self._label = _find_label(lit)
+        self._label = _locate(lit, _LABEL, self._label)
         minutes = None if self._label is None else read_stamina_minutes(frame, self._label)
         if minutes != self._last:
             if minutes is None:

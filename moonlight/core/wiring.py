@@ -717,9 +717,13 @@ def build_modules(
             from moonlight.perception.stamina import StaminaReader
 
             m.scripts.stamina = StaminaReader(screen_grab).minutes
+            from moonlight.perception.stamina import LevelReader
+
+            m.scripts.level = LevelReader(screen_grab).level
             from moonlight.perception.cap import CapReader
 
             m.scripts.free_cap = CapReader(screen_grab).cap
+    m.scripts.routes_dir = config.routes_dir
     m.scripts.clicker = m.clicker
     m.scripts.game_grid = (
         profile.regions["game_grid"].to_tuple if "game_grid" in profile.regions else None

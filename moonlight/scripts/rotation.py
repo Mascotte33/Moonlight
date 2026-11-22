@@ -10,10 +10,10 @@ it is low, logs out, closes the Tibia client, starts it again and logs the
 next account's first character in. Stamina not low (or unread), ``account_rotate``
 does nothing.
 
-The login is typed (letters and digits only: the Arduino has no symbol
-keys). An account that does not log in within :data:`LOGIN_WAIT` s is logged
-and skipped; when every account fails the bot alarms and stops. Passwords
-never reach a log.
+The login and password are typed (letters, digits and ``@ . - _``: the
+Arduino's keys on a US layout), both kept out of the log. An account that
+does not log in within :data:`LOGIN_WAIT` s is logged and skipped; when
+every account fails the bot alarms and stops.
 
 # doc: docs/prs/stamina-switch.md#stamina-switch
 """
@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING
 from moonlight.healing.healing import check_hotkey
 from moonlight.perception.capture import _find_window_hwnd, focus_window
 from moonlight.perception.stamina import LOW_STAMINA_MINUTES
+from moonlight.scripts.scripts import TYPEABLE
 
 if TYPE_CHECKING:
     from moonlight.scripts.scripts import Bot
@@ -83,7 +84,7 @@ def load_accounts(path: Path) -> tuple[Account, ...]:
 
     Raises:
         ValueError: For a missing file, a bad line, a login or password that
-            is not letters and digits, or fewer than 2 accounts.
+            :meth:`Bot.type` can't type, or fewer than 2 accounts.
     """
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -98,9 +99,10 @@ def load_accounts(path: Path) -> tuple[Account, ...]:
         if len(words) != 2:
             raise ValueError(f"rotation accounts file line {number}: expected 'login password'")
         for name, word in zip(("login", "password"), words, strict=True):
-            if not re.fullmatch(r"[A-Za-z0-9]+", word):
+            if not word or not re.fullmatch(TYPEABLE, word):
                 raise ValueError(
-                    f"rotation accounts file line {number}: {name} must be letters and digits"
+                    f"rotation accounts file line {number}: "
+                    f"{name} must be letters, digits and @ . - _"
                 )
         accounts.append(Account(*words))
     if len(accounts) < 2:
@@ -172,6 +174,7 @@ class Rotation:
             yield from self._login(bot, self.accounts[nxt])
             if (yield from self._wait(bot, in_game=True, limit=LOGIN_WAIT)):
                 self._logged_in(nxt)
+                bot.skip_next_cavebot_rotate()  # docs/prs/cavebot-rotate.md#cavebot-rotate
                 return
             log.warning("rotation: account %d did not log in, skipped", nxt + 1)
             yield bot.press("esc")  # close the error message
@@ -188,7 +191,7 @@ class Rotation:
         log.info("rotation: account %d playing", index + 1)
 
     def _login(self, bot: Bot, acc: Account) -> Generator[object, None, None]:
-        yield [*bot.press("ctrl+a"), *bot.type(acc.login), *bot.press("tab")]
+        yield [*bot.press("ctrl+a"), *bot.type(acc.login, secret=True), *bot.press("tab")]
         yield [*bot.press("ctrl+a"), *bot.type(acc.password, secret=True), *bot.press("enter")]
         yield 3  # the character list opens
         yield [c for k in ["up"] * LIST_TOP + ["enter"] for c in bot.press(k)]  # the first one
