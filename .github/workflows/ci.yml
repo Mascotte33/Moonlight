@@ -31,6 +31,11 @@ jobs:
       - name: Pytest (unit tests)
         run: python -m pytest -v
 
+      - name: GUI exploration (real window under Xvfb)
+        env:
+          MOONLIGHT_GUI_EXPLORE: "1"
+        run: xvfb-run -a python -m pytest tests/test_gui_explore.py -v
+
   benchmark:
     name: Performance benchmarks (non-blocking)
     runs-on: ubuntu-latest
