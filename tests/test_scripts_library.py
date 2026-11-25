@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -83,3 +84,12 @@ def test_with_scripts_writes_the_section_checked() -> None:
     assert with_scripts(cfg, scripts).scripts == scripts
     with pytest.raises(ConfigError):
         with_scripts(cfg, ScriptsConfig(pause_ms={"eat": 10}))
+
+
+# doc: docs/prs/stamina-switch.md#symbols
+def test_type_presses_the_key_and_shift_for_every_symbol() -> None:
+    from moonlight.scripts.scripts import _SYMBOL_KEYS, TYPEABLE
+
+    assert re.fullmatch(TYPEABLE, "aB3?]#+:-.@_\\x27")
+    assert _SYMBOL_KEYS["?"] == "shift+slash" and _SYMBOL_KEYS["]"] == "rbracket"
+    assert not re.fullmatch(TYPEABLE, "two words")  # no spaces in a login

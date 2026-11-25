@@ -686,3 +686,45 @@ def _control(
         shade()
 
     return lambda: entry.get(), put_entry
+
+
+# doc: docs/prs/profiles.md#module-switches
+def module_switch(ctx: GuiContext, parent: Any, module: str, label: str) -> ctk.CTkSwitch:
+    """A switch for *module* that saves itself and follows every other one.
+
+    The Dashboard and each module's own tab show one for the same module:
+    flipping either saves the picked profile, and every switch reloads from
+    it. A refused switch (the cavebot without a route) flips back and says why.
+    """
+    option = Option(label, f"{module}.enabled", "switch")
+    row = Row(parent)
+    row.pack(side="left", padx=(0, theme.PAD), pady=theme.UNIT)
+    reason = Label(row, text="", anchor="w", text_color=theme.BLOOD)
+
+    def reload() -> None:
+        try:
+            on = bool(read_option(load_real_config(), option.field))
+        except ConfigError:
+            return
+        switch.select() if on else switch.deselect()
+
+    def toggle() -> None:
+        path = picked_config()
+        try:
+            cfg = write_option(load_real_config(path), option, bool(switch.get()))
+            cfg.save(path)
+        except ConfigError as exc:
+            reload()
+            from moonlight.gui.settings_tab import plain_reason
+
+            reason.configure(text=plain_reason(str(exc)))
+            return
+        reason.configure(text="")
+        ctx.config_changed()
+
+    switch = ctk.CTkSwitch(row, text=label, command=toggle, progress_color=theme.LIFE)
+    switch.pack(side="left")
+    reason.pack(side="left", padx=theme.UNIT)
+    ctx.config_listeners.append(reload)
+    reload()
+    return switch

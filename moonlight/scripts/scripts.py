@@ -193,11 +193,7 @@ class Bot:
 
     def type(self, text: str, *, secret: bool = False) -> list[Command]:
         """Type *text* (an email or a name, no Enter); *secret* keeps it out of the command log."""
-        if not re.fullmatch(TYPEABLE, text):
-            raise ValueError("type text is letters, digits and @ . - _")
-        keys = [
-            _SYMBOL_KEYS.get(ch) or (f"shift+{ch.lower()}" if ch.isupper() else ch) for ch in text
-        ]
+        keys = type_keys(text)
         press = _secret_press if secret else _press
         return [functools.partial(press, self._runner, k) for k in keys]
 
@@ -281,11 +277,6 @@ class Bot:
             raise RuntimeError("bot.level needs a screen capture")
         return reader()
 
-    # doc: docs/prs/cavebot-rotate.md#cavebot-rotate
-    def skip_next_cavebot_rotate(self) -> None:
-        """The account switched: the next ``cavebot_rotate`` keeps the route."""
-        self._runner.skip_cavebot_rotate = True
-
     # doc: docs/prs/scripts.md#find-picture
     def find(self, image: str) -> tuple[int, int] | None:
         """Centre of picture *image* (a file in ``scripts/``) on screen, or None."""
@@ -313,9 +304,31 @@ def _press(runner: ScriptRunner, key: str) -> None:
     runner.wait_typing_gap()
 
 
-TYPEABLE = r"[A-Za-z0-9@.\-_]*"
-"""What :meth:`Bot.type` can type: the Arduino's keys on a US layout."""
-_SYMBOL_KEYS = {"@": "shift+2", ".": "period", "-": "minus", "_": "shift+minus"}
+# doc: docs/prs/stamina-switch.md#symbols
+#: Each printable symbol -> the Arduino key (US layout) that types it.
+_SYMBOL_KEYS = {
+    ".": "period", "-": "minus", "/": "slash", ";": "semicolon", "=": "equals",
+    ",": "comma", "'": "quote", "`": "backtick", "\\": "backslash",
+    "[": "lbracket", "]": "rbracket",
+    "!": "shift+1", "@": "shift+2", "#": "shift+3", "$": "shift+4", "%": "shift+5",
+    "^": "shift+6", "&": "shift+7", "*": "shift+8", "(": "shift+9", ")": "shift+0",
+    "_": "shift+minus", "+": "shift+equals", "?": "shift+slash", ":": "shift+semicolon",
+    "<": "shift+comma", ">": "shift+period", '"': "shift+quote", "~": "shift+backtick",
+    "|": "shift+backslash", "{": "shift+lbracket", "}": "shift+rbracket",
+}  # fmt: skip
+TYPEABLE = "[A-Za-z0-9" + re.escape("".join(_SYMBOL_KEYS)) + "]*"
+"""What :meth:`Bot.type` can type: letters, digits and every US-layout symbol."""
+
+
+def type_keys(text: str) -> list[str]:
+    """The Arduino key presses that type *text* on a US layout.
+
+    Raises:
+        ValueError: For a space or a letter the keyboard has no key for.
+    """
+    if not re.fullmatch(TYPEABLE, text):
+        raise ValueError("type text is letters, digits and symbols, no spaces")
+    return [_SYMBOL_KEYS.get(ch) or (f"shift+{ch.lower()}" if ch.isupper() else ch) for ch in text]
 
 
 def _secret_press(runner: ScriptRunner, key: str) -> None:
@@ -361,8 +374,15 @@ class ScriptRunner:
         self.level: Callable[[], int | None] | None = None
         #: Where ``cavebot_rotate`` looks for routes (docs/prs/cavebot-rotate.md#cavebot-rotate).
         self.routes_dir: Path | None = None
-        #: Skip the next ``cavebot_rotate``: an account or route switch just happened.
-        self.skip_cavebot_rotate = False
+        # doc: docs/prs/profiles.md#level-pick
+        #: Where ``cavebot_rotate`` looks for profiles.
+        from moonlight.core.config import PROFILES_DIR  # config imports the scripts
+
+        self.profiles_dir = PROFILES_DIR
+        #: The running profile's name; set by the GUI.
+        self.profile_name: Callable[[], str] | None = None
+        #: Switch the whole bot to profile *name*; set by the GUI.
+        self.switch_profile: Callable[[str], None] | None = None
         self._stamina_logged_at: float | None = None
         #: The last stamina read (minutes) for the dashboard; None when unread.
         self.last_stamina_minutes: int | None = None

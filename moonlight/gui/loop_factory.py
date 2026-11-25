@@ -29,10 +29,9 @@ from typing import TYPE_CHECKING, Any
 
 from moonlight import x11
 from moonlight.calibration import autofind
-from moonlight.calibration.calibrate import REGIONS
-from moonlight.calibration.profile import ProfileManager
+from moonlight.calibration.calibrate import CALIBRATION_FILE, REGIONS, data_dir
 from moonlight.cavebot.cavebot import Waypoint
-from moonlight.core.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
+from moonlight.core.config import DEFAULT_CONFIG_FILE, PROFILES_DIR, BotConfig, ConfigError
 from moonlight.core.state import WorldState
 from moonlight.core.wiring import build_loop, capture_providers, make_perceive
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
@@ -65,8 +64,8 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 #: Named configs live here as ``<name>.json``; ``last.txt`` holds the pick.
-CONFIGS_DIR = Path("configs")
-_NAME = re.compile(r"[A-Za-z0-9_-]+")
+CONFIGS_DIR = PROFILES_DIR
+_NAME = re.compile(r"[A-Za-z0-9_' -]+")
 
 
 def window_titles() -> list[str]:
@@ -100,10 +99,11 @@ def config_path(name: str, configs_dir: str | Path = CONFIGS_DIR) -> Path:
     """The file for config *name*.
 
     Raises:
-        ConfigError: When *name* is not only letters, digits, ``-`` and ``_``.
+        ConfigError: When *name* is not only letters, digits, spaces, ``'``,
+            ``-`` and ``_``.
     """
-    if not _NAME.fullmatch(name):
-        raise ConfigError(f"bad config name {name!r}: use letters, digits, - and _")
+    if not _NAME.fullmatch(name) or name != name.strip():
+        raise ConfigError(f"bad profile name {name!r}: use letters, digits, spaces, ' - and _")
     return Path(configs_dir) / f"{name}.json"
 
 
@@ -184,11 +184,11 @@ def load_real_config(config_path: str | Path | None = None) -> BotConfig:
     return BotConfig.load(path)
 
 
-def load_profile(
-    profile_name: str, profiles_dir: str | Path | None = None
-) -> CalibrationProfile:
-    """Load and validate calibration profile *profile_name* (F-11)."""
-    return ProfileManager(profiles_dir).load(profile_name)
+def load_profile(path: Path | None = None) -> CalibrationProfile:
+    """Load and validate the saved calibration (``data/calibration.json``)."""
+    from moonlight.calibration.calibrate import load_calibration
+
+    return load_calibration(path)
 
 
 class LoggedInput(InputBackend):
@@ -315,8 +315,7 @@ def check_layout(
 
 
 def start_calibration(
-    manager: ProfileManager,
-    name: str,
+    path: Path,
     frame: Callable[[], Any],
     log: Callable[[str], None],
 ) -> CalibrationProfile:
@@ -329,14 +328,14 @@ def start_calibration(
 
     old: CalibrationProfile | None = None
     try:
-        old = manager.load(name)
+        old = load_profile(path)
         check_layout(old, frame, log)
         if all(n in old.regions for n in REGIONS):
             return old
         log("calibration: an area is missing, searching again")
     except (ValueError, RuntimeError, OSError) as exc:  # none saved, broken or moved
         log(f"calibration: {exc}, searching the client")
-    return calibrate_and_save(frame(), manager.path(name), old, log)
+    return calibrate_and_save(frame(), path, old, log)
 
 
 # doc: docs/prs/auto-calibration.md#side-panel
@@ -431,7 +430,7 @@ def build_gui_loop(
     hardware: HardwareController,
     state: WorldState,
     config_path: str | Path | None = None,
-    profiles_dir: str | Path | None = None,
+    calibration_file: Path | None = None,
     raise_client: bool = False,
 ) -> GameLoop:
     """Build the real bot loop for the GUI Start button (F-13).
@@ -447,11 +446,11 @@ def build_gui_loop(
         hardware: The shared hardware controller (owns the Arduino).
         state: The shared :class:`~moonlight.core.state.WorldState` to mutate.
         config_path: Path to the real config file; ``None`` uses the picked one.
-        profiles_dir: Directory holding calibration profiles.
+        calibration_file: The calibration to use; ``None`` is ``data/calibration.json``.
 
     Raises:
-        ValueError: When no calibration profile can be loaded, or the
-            layout changed since calibration (:func:`check_layout`).
+        ValueError: When an area the bot needs is not on screen
+            (:func:`start_calibration`).
         NoArduinoFoundError: When no Arduino is found and ``simulation`` is
             not enabled (F-13: no silent ``FakeInput``).
         ConfigError: When the real config fails validation.
@@ -470,15 +469,17 @@ def build_gui_loop(
     # clicked) would cover the client and fail the layout check.
     if raise_client and focus_window(real_config.window_title):
         time.sleep(RAISE_WAIT)
+    backend = None
+    if real_config.rotation is not None and real_config.rotation.accounts_file is not None:
+        # doc: docs/prs/stamina-switch.md#login-on-start
+        backend = make_backend(real_config, hardware)
+        _login_first(real_config, capture, backend, log)
     # doc: docs/prs/auto-calibration.md#on-start
     profile = start_calibration(
-        ProfileManager(profiles_dir or real_config.profiles_dir),
-        real_config.profile,
-        capture.get_frame,
-        log,
+        calibration_file or data_dir() / CALIBRATION_FILE, capture.get_frame, log
     )  # before the Arduino opens
     require_side_panel(capture.get_frame, real_config)
-    backend = make_backend(real_config, hardware)
+    backend = backend or make_backend(real_config, hardware)
     providers = capture_providers(capture, profile, real_config)
     providers["focus_check"] = watch_layout(profile, capture.get_frame, log)
     return build_loop(
@@ -487,10 +488,63 @@ def build_gui_loop(
     )
 
 
+def _quiet(backend: Any, on: bool) -> None:
+    """Mute (or unmute) every command log in the wrapped *backend* chain."""
+    while backend is not None:  # the wire wrappers keep the next one in .backend / .inner
+        if "quiet" in vars(type(backend)):
+            backend.quiet = on
+        backend = vars(backend).get("backend") or vars(backend).get("inner")
+
+
+def _login_first(cfg: BotConfig, capture: Any, backend: Any, log: Callable[[str], None]) -> None:
+    """Open Tibia and log the first account in when the game does not show yet."""
+    import subprocess
+
+    from moonlight.perception.capture import TIBIA_WINDOW_TITLE, focus_window
+    from moonlight.scripts.rotation import login_on_start
+
+    def window_open() -> bool:
+        return x11.find_window(TIBIA_WINDOW_TITLE) is not None if sys.platform == "linux" else True
+
+    def in_game() -> bool:
+        # doc: docs/prs/stamina-switch.md#login-on-start
+        # The title, not the screen: a window over the client hides the game
+        # but must never pull the client back to the front to "log in".
+        if sys.platform == "linux":
+            wid = x11.find_window(TIBIA_WINDOW_TITLE)
+            title = x11.title_of(wid) if wid is not None else None
+            return title is not None and title.startswith("Tibia - ")
+        try:
+            return autofind.find_hp_bar(capture.get_frame()[..., ::-1]) is not None
+        except Exception:  # noqa: BLE001 - no window yet / mid-redraw
+            return False
+
+    global _login_failed
+    if _login_failed:
+        raise RuntimeError("login failed before: log in by hand, then Start")
+    assert cfg.rotation is not None
+    _login_failed = True  # a failed login is never retried by itself (a wrong password)
+    login_on_start(
+        cfg.rotation,
+        window_open=window_open,
+        start_client=lambda exe: subprocess.Popen([str(exe)], cwd=Path(exe).parent),
+        focus_client=lambda: focus_window(TIBIA_WINDOW_TITLE),
+        in_game=in_game,
+        press=backend.press_combo,
+        quiet=lambda on: _quiet(backend, on),
+        log_info=log,
+    )
+    _login_failed = False
+
+
+#: A Start login that failed; the retries do not type the password again.
+_login_failed = False
+
+
 def build_position_reader(
     state: WorldState,
     config_path: str | Path | None = None,
-    profiles_dir: str | Path | None = None,
+    calibration_file: Path | None = None,
 ) -> Callable[[], None]:
     """One screen read into *state* for while the bot is stopped.
 
@@ -500,6 +554,6 @@ def build_position_reader(
     from moonlight.perception.capture import ScreenCapture
 
     cfg = load_real_config(config_path)
-    profile = load_profile(cfg.profile, profiles_dir or cfg.profiles_dir)
+    profile = load_profile(calibration_file)
     capture = ScreenCapture(window_title=cfg.window_title)
     return make_perceive(state, profile, capture.get_frame, start=state.position)

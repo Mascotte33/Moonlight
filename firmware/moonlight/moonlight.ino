@@ -30,7 +30,8 @@
  * Key tokens (case-insensitive, '+' separated):
  *   ctrl, alt, shift, meta (win/cmd), a-z, 0-9, f1-f24,
  *   tab, enter, space, backspace, delete, insert, home, end,
- *   pgup, pgdn, up, down, left, right, esc, minus, period
+ *   pgup, pgdn, up, down, left, right, esc, minus, period,
+ *   slash, semicolon, equals, comma, quote, backtick, backslash, lbracket, rbracket
  */
 
 #include <Keyboard.h>
@@ -82,6 +83,16 @@
 #define HID_0         '0'
 #define HID_MINUS     '-'    // US layout: shift+minus is '_'
 #define HID_PERIOD    '.'
+// The other US-layout symbol keys; shift gives ? : + < " ~ | { }.
+#define HID_SLASH     '/'
+#define HID_SEMICOLON ';'
+#define HID_EQUALS    '='
+#define HID_COMMA     ','
+#define HID_QUOTE     '\''
+#define HID_BACKTICK  '`'
+#define HID_BACKSLASH '\\'
+#define HID_LBRACKET  '['
+#define HID_RBRACKET  ']'
 #define HID_F1        0xC2   // HID_F1 .. HID_F12 (0xC2..0xCD)
 #define HID_F13       0xF0   // HID_F13 .. HID_F24 (0xF0..0xFB)
 
@@ -260,6 +271,15 @@ static int mapTokenToKey(const char* tok) {
   if (!strcmp(lower, "esc") || !strcmp(lower, "escape"))   return HID_ESC;
   if (!strcmp(lower, "minus"))                             return HID_MINUS;
   if (!strcmp(lower, "period"))                            return HID_PERIOD;
+  if (!strcmp(lower, "slash"))                             return HID_SLASH;
+  if (!strcmp(lower, "semicolon"))                         return HID_SEMICOLON;
+  if (!strcmp(lower, "equals"))                            return HID_EQUALS;
+  if (!strcmp(lower, "comma"))                             return HID_COMMA;
+  if (!strcmp(lower, "quote"))                             return HID_QUOTE;
+  if (!strcmp(lower, "backtick"))                          return HID_BACKTICK;
+  if (!strcmp(lower, "backslash"))                         return HID_BACKSLASH;
+  if (!strcmp(lower, "lbracket"))                          return HID_LBRACKET;
+  if (!strcmp(lower, "rbracket"))                          return HID_RBRACKET;
 
   return -1;
 }

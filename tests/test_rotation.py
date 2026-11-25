@@ -107,9 +107,9 @@ def test_load_accounts(tmp_path: Path) -> None:
     [
         ("a1 p1\nb2\n", "line 2"),  # a bad line
         ("a1 p1 extra\nb2 p2\n", "line 1"),
-        ("a1 p1\nb2 p!2\n", "password must be letters, digits and @"),  # a symbol
-        ("a!1 p1\nb2 p2\n", "login must be letters, digits and @"),
-        ("a1 p1\n# only one\n", "at least 2 accounts"),
+        ("a1 p1\nb2 pż2\n", "password must be letters, digits and symbols"),  # not on the keyboard
+        ("aż1 p1\nb2 p2\n", "login must be letters, digits and symbols"),
+        ("a1 p1\n# only one\n", "at least 2 account"),
     ],
 )
 def test_a_bad_accounts_file_is_refused_without_the_password(
@@ -117,7 +117,7 @@ def test_a_bad_accounts_file_is_refused_without_the_password(
 ) -> None:
     with pytest.raises(ValueError, match=message) as error:
         load_accounts(accounts_file(tmp_path, text))
-    assert "p!2" not in str(error.value)
+    assert "pż2" not in str(error.value)
 
 
 def test_a_missing_accounts_file_is_refused(tmp_path: Path) -> None:
@@ -162,7 +162,6 @@ def test_low_stamina_restarts_tibia_and_logs_the_next_account_in(tmp_path: Path)
     assert inp.sent_lines == ["K ctrl+l", "K alt+f4", *LOGIN_B, *PICK_1]
     play(r, inp, clock, True, 1, client)
     assert r.running is None and rot.index == 1 and not rot.failed
-    assert r.skip_cavebot_rotate  # the new account keeps the route
 
 
 def test_a_failed_login_is_skipped_and_all_failing_stops(tmp_path: Path) -> None:
@@ -172,7 +171,7 @@ def test_a_failed_login_is_skipped_and_all_failing_stops(tmp_path: Path) -> None
     play(r, inp, clock, True, 0.2, client)
     play(r, inp, clock, False, 90, client)  # B, then A, never log in
     assert inp.sent_lines.count("K esc") == 2 and inp.sent_lines.count("K ctrl+l") == 1
-    assert rot.failed and r.running is None and rot.index == 0 and not r.skip_cavebot_rotate
+    assert rot.failed and r.running is None and rot.index == 0
 
 
 def test_the_client_that_never_shows_stops_the_bot(tmp_path: Path) -> None:

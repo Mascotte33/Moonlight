@@ -172,7 +172,7 @@ class DiagnosticsTab(Tab):
 
         try:
             cfg = load_real_config()
-            grid = load_profile(cfg.profile, cfg.profiles_dir).get_region("game_grid").to_tuple
+            grid = load_profile().get_region("game_grid").to_tuple
         except Exception as exc:  # any setup failure is shown, never raised in Tk
             self.lbl_sees.configure(text=plain_reason(str(exc)))
             return

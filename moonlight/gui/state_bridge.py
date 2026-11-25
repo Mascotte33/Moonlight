@@ -449,7 +449,9 @@ class GuiContext:
     hardware: HardwareController
     log: LogFeed
     controller: BotController | None = None
-    #: Called after another named config is picked (tabs refill their options).
+    #: Called after the picked profile changed on disk or another one was
+    #: picked: every tab refills its controls, so the same switch on two
+    #: tabs always agrees (docs/prs/profiles.md#module-switches).
     config_listeners: list[Callable[[], None]] = field(default_factory=list)
     #: Called after any option is saved (the app applies it to the bot).
     on_config_change: Callable[[bool], None] | None = None
@@ -465,8 +467,6 @@ class GuiContext:
     def pick_config(self, name: str) -> Path:
         """Pick named config *name* and tell every listener."""
         path = loop_factory.pick_config(name)
-        for listener in self.config_listeners:
-            listener()
         self.config_changed()
         return path
 
@@ -477,6 +477,8 @@ class GuiContext:
         recalibrated profile changes the layout, not the config).
         """
         # doc: docs/prs/gui-calibration.md#live-apply
+        for listener in list(self.config_listeners):
+            listener()
         if self.on_config_change is not None:
             self.on_config_change(restart)
 

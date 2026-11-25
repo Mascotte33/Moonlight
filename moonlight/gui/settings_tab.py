@@ -1,31 +1,25 @@
-"""Settings tab: named configs and core options (T2.F2.K1).
+"""Settings tab: this PC's settings, shared by every profile (T2.F2.K1).
 
-The config dropdown picks a named config in ``configs/`` and applies it
-live. Every control saves into the picked config as it changes; Save
-writes it again on demand, New copies it under a new name and picks the
-copy, Delete removes it (T0.F1.K3, T0.F1.K5). Start/Pause/Kill live in the top bar; port,
-baud rate and simulation live in Hardware.
+Tick rate, walking keys and the client's hotkeys (``data/machine.json``).
+The profile picker and module switches live on the Dashboard; extras and
+alarms have their own tabs (docs/prs/profiles.md#layout). Port, baud rate
+and simulation live in Hardware. The option lists of the other tabs stay
+defined here.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 
 import customtkinter as ctk
 
 from moonlight.core.client_hotkeys import OFFICIAL_CLIENT_FILE, bot_keys, write_moonlight_set
-from moonlight.core.config import ConfigError
-from moonlight.core.state import WorldState
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import (
-    config_names,
-    delete_config,
     load_real_config,
     picked_config,
-    save_config_as,
     window_titles,
 )
 from moonlight.gui.tab_base import (
@@ -36,7 +30,6 @@ from moonlight.gui.tab_base import (
     row_button,
     row_entry,
     section,
-    write_option,
 )
 from moonlight.x11 import is_tibia_title
 
@@ -45,11 +38,18 @@ __all__ = [
     "EXTRAS_OPTIONS",
     "MODULE_SWITCHES",
     "OPTIONS",
+    "PROFILE_OPTIONS",
     "ROTATION_OPTIONS",
     "SettingsTab",
     "plain_reason",
 ]
 
+# doc: docs/prs/profiles.md#level-range
+#: The picked profile's level range (0 and 0: never picked by level).
+PROFILE_OPTIONS = [
+    Option("Min level", "min_level", "entry"),
+    Option("Max level", "max_level", "entry"),
+]
 OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
     Option("Cavebot walks with WSAD keys", "walk_keys", "switch"),
@@ -113,86 +113,22 @@ def plain_reason(message: str) -> str:
 
 
 class SettingsTab(Tab):
-    """Named configs (pick, New, Save, Delete) and core options."""
+    """This PC's settings: tick rate, walking keys and the client's hotkeys."""
 
     title = "Settings"
-    options = [*OPTIONS, *MODULE_SWITCHES, *EXTRAS_OPTIONS, *ALARMS_OPTIONS, *ROTATION_OPTIONS]
-
-    def on_poll(self, snap: WorldState) -> None:
-        # doc: docs/prs/near-targeting.md#food-pause
-        extras = self.ctx.live_module("extras")
-        if extras is not None and not extras.config.food and self._readers["extras.food"]():
-            self._writers["extras.food"](False)
-            self.submit()
+    options = OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
-        io_box = section(parent, "Config")
-        io_box.pack(fill="x", padx=10, pady=(10, 4))
-        row = Row(io_box)
-        row.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
-        self.menu_config = ctk.CTkOptionMenu(
-            row,
-            values=config_names() or [picked_config().stem],
-            command=self._on_pick,
-            fg_color=theme.RAISED,
-            button_color=theme.RAISED,
-            button_hover_color=theme.HOVER,
-        )
-        self.menu_config.set(picked_config().stem)
-        self.menu_config.pack(side="left")
-        for text, command, color, hover in (
-            ("New", self._on_new, theme.RAISED, theme.HOVER),
-            ("Save", self._on_save, theme.RAISED, theme.HOVER),
-            ("Delete", self._on_delete, theme.BLOOD, theme.BLOOD_HOVER),
-        ):
-            ctk.CTkButton(
-                row, text=text, width=80, command=command, fg_color=color, hover_color=hover
-            ).pack(side="left", padx=(theme.UNIT, 0))
-        self.lbl_io = Label(io_box, text="", anchor="w", text_color=theme.TEXT_DIM)
-        self.lbl_io.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
-
-        self.box_options = section(parent, "Options")
-        self.box_options.pack(fill="x", padx=10, pady=4)
-        self.build_options(self.box_options, [*OPTIONS, *MODULE_SWITCHES])
-        box_extras = section(parent, "Extras")
-        box_extras.pack(fill="x", padx=10, pady=4)
-        self.build_options(box_extras, EXTRAS_OPTIONS)
-        box_alarms = section(parent, "Alarms")
-        box_alarms.pack(fill="x", padx=10, pady=4)
-        self.build_options(box_alarms, ALARMS_OPTIONS)
-        box_scripts = section(parent, "Scripts")
-        box_scripts.pack(fill="x", padx=10, pady=4)
-        self.build_options(box_scripts, ROTATION_OPTIONS)
-        for row, field, title in zip(
-            [w for w in box_scripts.winfo_children() if isinstance(w, Row)][-2:],
-            ("rotation.accounts_file", "rotation.client_exe"),
-            ("The accounts text file (login password per line)", "The Tibia program"),
-            strict=True,
-        ):
-            row_button(
-                row,
-                "Browse",
-                partial(self._browse_rotation_file, field, title),
-                width=80,
-                pack_left=False,
-            ).pack(side="right", before=row.pack_slaves()[-1])
-        self._build_client_hotkeys(parent)
-        rows = [w for w in self.box_options.winfo_children() if isinstance(w, Row)]
+        box = section(parent, "This PC")
+        box.pack(fill="x", padx=10, pady=(10, 4))
         Label(
-            self.box_options,
-            text="MODULES",
+            box,
+            text="Shared by every profile. Hunt settings: Dashboard and each module's tab.",
             anchor="w",
-            font=ctk.CTkFont(size=theme.SIZE_TITLE, weight="bold"),
-            text_color=theme.TEXT_MUTED,
-        ).pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0), before=rows[len(OPTIONS)])
-        self._reasons: dict[str, Label] = {}
-        for option, row in zip([*OPTIONS, *MODULE_SWITCHES], rows, strict=True):
-            for switch in row.winfo_children():
-                if isinstance(switch, ctk.CTkSwitch):
-                    switch.configure(command=lambda f=option.field: self._check_switch(f))
-                    reason = Label(row, text="", anchor="w", text_color=theme.BLOOD)
-                    reason.pack(side="left", padx=theme.UNIT)
-                    self._reasons[option.field] = reason
+            text_color=theme.TEXT_DIM,
+        ).pack(fill="x", padx=theme.PAD)
+        self.build_options(box)
+        self._build_client_hotkeys(parent)
 
     # -- client hotkeys ------------------------------------------------------
     # doc: docs/prs/client-hotkeys.md#moonlight-set
@@ -244,12 +180,6 @@ class SettingsTab(Tab):
             text = cfg.client_hotkeys.get(key.combo, key.suggested)
             self._client_texts[key.combo] = row_entry(row, text, 260, self._save_client_hotkeys)
 
-    def _browse_rotation_file(self, field: str, title: str) -> None:
-        name = filedialog.askopenfilename(title=title)
-        if name:
-            self._writers[field](name)
-            self.submit()
-
     def _browse_client_file(self) -> None:
         name = filedialog.askopenfilename(
             title="The client's conf/clientoptions.json",
@@ -290,66 +220,3 @@ class SettingsTab(Tab):
             text=f"Wrote the Moonlight set to {path} (the old file is {path.name}.bak). "
             "Open the client: the set is in use."
         )
-
-    def _check_switch(self, field: str) -> None:
-        """Flip a module switch back when the config would refuse it, else apply it."""
-        cfg = load_real_config()
-        try:
-            for option in self.options:
-                cfg = write_option(cfg, option, self._readers[option.field]())
-        except ConfigError as exc:
-            self._writers[field](not self._readers[field]())
-            self._reasons[field].configure(text=plain_reason(str(exc)))
-            return
-        self._reasons[field].configure(text="")
-        self.submit()
-
-    # -- named configs -------------------------------------------------------
-
-    def _on_pick(self, name: str) -> None:
-        self.ctx.pick_config(name)
-        self.lbl_io.configure(text=f"picked {name}")
-
-    def _on_save(self) -> None:
-        """Write the picked config to its file."""
-        try:
-            load_real_config().save(picked_config())
-        except (ConfigError, OSError) as exc:
-            self.lbl_io.configure(text=str(exc))
-            return
-        self.lbl_io.configure(text=f"saved {self.menu_config.get()}")
-
-    def _on_new(self) -> None:
-        """Copy the picked config under a new name and pick the copy."""
-        name = ctk.CTkInputDialog(text="Config name:", title="New config").get_input()
-        if not name:
-            return
-        cfg = load_real_config()
-        try:
-            try:
-                save_config_as(cfg, name)
-            except FileExistsError:
-                if not messagebox.askyesno("New config", f"{name} exists. Replace it?"):
-                    return
-                save_config_as(cfg, name, overwrite=True)
-        except ConfigError as exc:
-            self.lbl_io.configure(text=str(exc))
-            return
-        self.menu_config.configure(values=config_names())
-        self.menu_config.set(name)
-        self._on_pick(name)
-        self.lbl_io.configure(text=f"saved {name}")
-
-    def _on_delete(self) -> None:
-        name = self.menu_config.get()
-        if not messagebox.askyesno("Delete config", f"Delete {name}?"):
-            return
-        try:
-            picked = delete_config(name)
-        except ConfigError as exc:
-            self.lbl_io.configure(text=str(exc))
-            return
-        self.menu_config.configure(values=config_names())
-        self.menu_config.set(picked.stem)
-        self._on_pick(picked.stem)
-        self.lbl_io.configure(text=f"deleted {name}")

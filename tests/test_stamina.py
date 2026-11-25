@@ -42,3 +42,20 @@ def test_level_is_read_wherever_the_window_is() -> None:
 
 def test_no_skills_window_is_an_unknown_level() -> None:
     assert LevelReader(lambda: np.full((400, 500, 3), 40, np.uint8)).level() is None
+
+
+# doc: docs/prs/stamina-switch.md#tight-font
+def test_the_tight_drawing_of_level_and_stamina_reads() -> None:
+    from moonlight.perception.stamina import (
+        _LABEL_TIGHT,
+        _LABELS,
+        _LEVEL_LABEL_TIGHT,
+        _LEVEL_LABELS,
+        _locate_any,
+    )
+
+    for label, labels in ((_LEVEL_LABEL_TIGHT, _LEVEL_LABELS), (_LABEL_TIGHT, _LABELS)):
+        lit = np.zeros((40, 120), dtype=bool)
+        lit[10 : 10 + label.shape[0], 20 : 20 + label.shape[1]] = label
+        found = _locate_any(lit, labels, None)
+        assert found is not None and found[0] == (20, 10) and found[1] is label

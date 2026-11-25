@@ -9,7 +9,6 @@ import pytest
 
 from moonlight.calibration.calibrate import CalibrationProfile, Region
 from moonlight.calibration.calibration_steps import AREAS
-from moonlight.calibration.profile import ProfileManager
 from moonlight.calibration.tab import (
     AREA_HELP,
     MIN_MARGIN,
@@ -114,32 +113,6 @@ def test_load_old_profile(tmp_path: Path) -> None:
 def test_every_area_has_help() -> None:
     assert set(AREA_HELP) == set(AREAS)
     assert all(t.endswith(".") for t in AREA_HELP.values())
-
-
-@pytest.mark.parametrize("name", ["main", "Knight_2", "a-b", "x" * 40])
-def test_valid_profile_names(name: str) -> None:
-    assert ProfileManager.valid_name(name)
-
-
-@pytest.mark.parametrize("name", ["", "x" * 41, "a.b", "../x", "a/b", "a\b", "a b", "zażółć"])
-def test_invalid_profile_names(name: str) -> None:
-    assert not ProfileManager.valid_name(name)
-
-
-def test_list_profiles(tmp_path: Path) -> None:
-    assert ProfileManager(tmp_path / "missing").list_profiles() == []
-    for name in ("b.json", "a.json", "notes.txt", "a.seen_monsters.json"):
-        (tmp_path / name).write_text("{}", encoding="utf-8")
-    assert ProfileManager(tmp_path).list_profiles() == ["a", "b"]
-
-
-def test_delete_removes_profile_and_screenshot(tmp_path: Path) -> None:
-    manager = ProfileManager(tmp_path)
-    for path in (manager.path("a"), manager.shot_path("a"), manager.path("b")):
-        path.write_text("{}", encoding="utf-8")
-    manager.delete("a")
-    manager.delete("missing")
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["b.json"]
 
 
 def test_summary_draws_boxes_on_a_copy() -> None:

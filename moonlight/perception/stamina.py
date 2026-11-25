@@ -61,6 +61,44 @@ _LEVEL_LABEL = np.array(
         )
     ]
 )
+# doc: docs/prs/stamina-switch.md#tight-font
+#: The same words as some clients draw them: one column less between letters.
+_LABEL_TIGHT = np.array(
+    [
+        [c == "#" for c in row]
+        for row in (
+            ".####..##......................##................",
+            "##...#.##........................................",
+            "##....#####..####...#####.###..##..#####....####.",
+            "#####..##.......##..##..##..##.##..##..##......##",
+            ".#####.##....#####..##..##..##.##..##..##...#####",
+            "....##.##...##..##..##..##..##.##..##..##..##..##",
+            "#...##.##...##..##..##..##..##.##..##..##..##..##",
+            ".####...###..#####..##..##..##.##..##..##...#####",
+        )
+    ]
+)
+_LEVEL_LABEL_TIGHT = np.array(
+    [
+        [c == "#" for c in row]
+        for row in (
+            "............................##",
+            "##..........................##",
+            "##..........................##",
+            "##......####..##..##..####..##",
+            "##.....##..##.##..##.##..##.##",
+            "##.....######.##..##.######.##",
+            "##.....##......####..##.....##",
+            "##.....##...#..####..##...#.##",
+            "######..####....##....####..##",
+        )
+    ]
+)
+_LABELS = (_LABEL, _LABEL_TIGHT)
+_LEVEL_LABELS = (_LEVEL_LABEL, _LEVEL_LABEL_TIGHT)
+#: Where a word was found and which of its drawings it is.
+_Found = tuple[tuple[int, int], np.ndarray]
+
 #: Empty columns that still separate two digits of one number (the window's
 #: scroll marks stand further right).
 _DIGIT_GAP = 3
@@ -100,6 +138,19 @@ def _locate(
     return _find_label(lit, label)
 
 
+def _locate_any(
+    lit: np.ndarray, labels: tuple[np.ndarray, ...], cached: _Found | None
+) -> _Found | None:
+    """The first drawing of a word in *labels* that shows, and where (*cached* first)."""
+    if cached is not None and _locate(lit, cached[1], cached[0]) == cached[0]:
+        return cached
+    for label in labels:
+        spot = _find_label(lit, label)
+        if spot is not None:
+            return spot, label
+    return None
+
+
 def _read_time(lit: np.ndarray) -> str | None:
     """The first five glyphs (``HH:MM``) of an 8-row text strip, or None."""
     cols = np.asarray(lit.any(axis=0))
@@ -120,21 +171,25 @@ def _read_time(lit: np.ndarray) -> str | None:
     return text
 
 
-def read_stamina_minutes(frame: np.ndarray, label: tuple[int, int]) -> int | None:
-    """Stamina in minutes from the line whose ``Stamina`` word is at *label*."""
+def read_stamina_minutes(
+    frame: np.ndarray, label: tuple[int, int], width: int = _LABEL.shape[1]
+) -> int | None:
+    """Stamina in minutes from the line whose ``Stamina`` word (*width* wide) is at *label*."""
     x, y = label
-    strip = frame[y : y + 8, x + _LABEL.shape[1] :].astype(np.int32).sum(axis=2) >= _LIT
+    strip = frame[y : y + 8, x + width :].astype(np.int32).sum(axis=2) >= _LIT
     text = _read_time(strip)
     if text is None or len(text) != 5 or text[2] != ":" or ":" in text[:2] + text[3:]:
         return None
     return int(text[:2]) * 60 + int(text[3:])
 
 
-def read_level(frame: np.ndarray, label: tuple[int, int]) -> int | None:
-    """The number right of the ``Level`` word at *label* (digits up to the first wide gap)."""
+def read_level(
+    frame: np.ndarray, label: tuple[int, int], width: int = _LEVEL_LABEL.shape[1]
+) -> int | None:
+    """The number right of the ``Level`` word (*width* wide) at *label* (up to a wide gap)."""
     x, y = label
     # The digits are 8 rows high and start one row below the tall ``l`` of the word.
-    strip = frame[y + 1 : y + 9, x + _LEVEL_LABEL.shape[1] :].astype(np.int32).sum(axis=2) >= _LIT
+    strip = frame[y + 1 : y + 9, x + width :].astype(np.int32).sum(axis=2) >= _LIT
     cols = np.asarray(strip.any(axis=0))
     text, col = "", 0
     while col < len(cols) and len(text) < _MAX_LEVEL_DIGITS:
@@ -161,15 +216,15 @@ class LevelReader:
 
     def __init__(self, grab: Callable[[], np.ndarray]) -> None:
         self._grab = grab
-        self._label: tuple[int, int] | None = None
+        self._label: _Found | None = None
         self._last: int | None = None
 
     def level(self) -> int | None:
         """The level, or None when the Skills window does not show it."""
         frame = self._grab()
         lit = frame.astype(np.int32).sum(axis=2) >= _LIT
-        self._label = _locate(lit, _LEVEL_LABEL, self._label)
-        level = None if self._label is None else read_level(frame, self._label)
+        self._label = found = _locate_any(lit, _LEVEL_LABELS, self._label)
+        level = None if found is None else read_level(frame, found[0], found[1].shape[1])
         if level != self._last:
             if level is None:
                 logger.warning("level: not read (open the Skills window)")
@@ -184,15 +239,17 @@ class StaminaReader:
 
     def __init__(self, grab: Callable[[], np.ndarray]) -> None:
         self._grab = grab
-        self._label: tuple[int, int] | None = None
+        self._label: _Found | None = None
         self._last: int | None = None
 
     def minutes(self) -> int | None:
         """Stamina in minutes, or None when the Skills window does not show it."""
         frame = self._grab()
         lit = frame.astype(np.int32).sum(axis=2) >= _LIT
-        self._label = _locate(lit, _LABEL, self._label)
-        minutes = None if self._label is None else read_stamina_minutes(frame, self._label)
+        self._label = found = _locate_any(lit, _LABELS, self._label)
+        minutes = (
+            None if found is None else read_stamina_minutes(frame, found[0], found[1].shape[1])
+        )
         if minutes != self._last:
             if minutes is None:
                 logger.warning("stamina: not read (open the Skills window)")

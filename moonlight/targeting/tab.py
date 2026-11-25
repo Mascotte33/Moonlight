@@ -29,6 +29,7 @@ from moonlight.gui.tab_base import (
     Label,
     Row,
     Tab,
+    module_switch,
     read_option,
     row_button,
     row_entry,
@@ -132,9 +133,7 @@ def apply_targeting(
             "priority": _number(row.priority, int, f"monster row {number} priority"),
             "ignore": row.ignore,
             "hotkey": row.hotkey.strip(),
-            "minimum_mana": _number(
-                row.minimum_mana, int, f"monster row {number} minimum mana"
-            ),
+            "minimum_mana": _number(row.minimum_mana, int, f"monster row {number} minimum mana"),
             "movement": row.movement,
             "cooldown_ms": _number(row.cooldown_ms, int, f"monster row {number} cooldown"),
         }
@@ -148,9 +147,7 @@ def apply_targeting(
             "minimum_monsters": _number(
                 row.minimum_monsters, int, f"area rule {number} minimum monsters"
             ),
-            "minimum_mana": _number(
-                row.minimum_mana, int, f"area rule {number} minimum mana"
-            ),
+            "minimum_mana": _number(row.minimum_mana, int, f"area rule {number} minimum mana"),
             "enabled": row.enabled,
             "cooldown_ms": _number(row.cooldown_ms, int, f"area rule {number} cooldown"),
             "area": [list(offset) for offset in row.area],
@@ -275,7 +272,12 @@ class _AreaLine:
         """A ticked (working) rule grays its values so they are not changed by accident."""
         state = "disabled" if self.enabled.get() else "normal"
         for widget in (
-            self.hotkey.btn, self.kind, self.count, self.mana, self.cooldown, self.edit_area
+            self.hotkey.btn,
+            self.kind,
+            self.count,
+            self.mana,
+            self.cooldown,
+            self.edit_area,
         ):
             widget.configure(state=state)
 
@@ -290,8 +292,12 @@ class _AreaLine:
                 x = (dx + AREA_GRID_RADIUS) * _PREVIEW_TILE_PIXELS
                 y = (dy + AREA_GRID_RADIUS) * _PREVIEW_TILE_PIXELS
                 self.preview.create_rectangle(
-                    x, y, x + _PREVIEW_TILE_PIXELS - 1, y + _PREVIEW_TILE_PIXELS - 1,
-                    fill=color, width=0,
+                    x,
+                    y,
+                    x + _PREVIEW_TILE_PIXELS - 1,
+                    y + _PREVIEW_TILE_PIXELS - 1,
+                    fill=color,
+                    width=0,
                 )
 
 
@@ -305,9 +311,7 @@ _PREVIEW_TILE_PIXELS = 3
 
 
 # doc: docs/prs/attack-types.md#area-kinds
-def _edit_area_window(
-    parent: ctk.CTkFrame, line: _AreaLine, on_change: Callable[[], None]
-) -> None:
+def _edit_area_window(parent: ctk.CTkFrame, line: _AreaLine, on_change: Callable[[], None]) -> None:
     """A 13x13 grid of game tiles; a click lights a tile the spell hits or clears it.
 
     The middle tile is the player ("around me", "wave": drawn facing up) or
@@ -350,6 +354,10 @@ class TargetingTab(Tab):
     _live_only_attack_within_range: bool | None = None
 
     def build(self, parent: ctk.CTkFrame) -> None:
+        # doc: docs/prs/profiles.md#module-switches
+        top = Row(parent)
+        top.pack(fill="x", padx=10, pady=(10, 0))
+        module_switch(self.ctx, top, "targeting", "Targeting on")
         holder = Row(parent)
         pages = {name: Row(holder) for name in ("Targeting", "Seen Monsters")}
 
@@ -372,19 +380,17 @@ class TargetingTab(Tab):
         settings_box = section(targeting_page, "Settings")  # packed below Area spells
         line = Row(settings_box)
         line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
-        Label(line, text="Attack key every (ms)", text_color=theme.TEXT_DIM).pack(
-            side="left"
-        )
+        Label(line, text="Attack key every (ms)", text_color=theme.TEXT_DIM).pack(side="left")
         self._cooldown_entry = row_entry(line, "", 64, self._save)
-        Label(
-            line, text="Give up on a target after (s)", text_color=theme.TEXT_DIM
-        ).pack(side="left", padx=(theme.PAD, 0))
+        Label(line, text="Give up on a target after (s)", text_color=theme.TEXT_DIM).pack(
+            side="left", padx=(theme.PAD, 0)
+        )
         self._unreachable_entry = row_entry(line, "", 48, self._save)
         chase_line = Row(settings_box)
         chase_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
-        Label(
-            chase_line, text="Client key: Toggle Chase Mode", text_color=theme.TEXT_DIM
-        ).pack(side="left")
+        Label(chase_line, text="Client key: Toggle Chase Mode", text_color=theme.TEXT_DIM).pack(
+            side="left"
+        )
         self._toggle_chase_hotkey = HotkeyBox(chase_line, self._save)
         self._toggle_chase_hotkey.pack(side="left", padx=(theme.UNIT, 0))
         Label(chase_line, text="Attack Next Target", text_color=theme.TEXT_DIM).pack(
@@ -395,9 +401,9 @@ class TargetingTab(Tab):
         # doc: docs/prs/GUI_visual_changes.md#target-order
         order_line = Row(settings_box)
         order_line.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
-        Label(
-            order_line, text="Same priority: attack first the", text_color=theme.TEXT_DIM
-        ).pack(side="left")
+        Label(order_line, text="Same priority: attack first the", text_color=theme.TEXT_DIM).pack(
+            side="left"
+        )
         self._target_order = ctk.CTkOptionMenu(
             order_line,
             values=list(TARGET_ORDERS),
@@ -476,9 +482,7 @@ class TargetingTab(Tab):
 
         self.lbl_msg = Label(parent, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=10)
-        self.lbl_live = Label(
-            seen_page, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
-        )
+        self.lbl_live = Label(seen_page, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO))
         self.lbl_live.pack(fill="x", padx=10)
 
         self._monster_lines: list[_MonsterLine] = []
@@ -776,9 +780,7 @@ class TargetingTab(Tab):
     def _show_seen_monsters(self, store: SeenMonsters) -> None:
         """A line per seen monster that has no monster row yet."""
         names_with_a_row = {
-            line.name.get().strip().lower()
-            for line in self._monster_lines
-            if line.name is not None
+            line.name.get().strip().lower() for line in self._monster_lines if line.name is not None
         }
         for monster in store.entries():
             name = monster.display_name.lower()
