@@ -1,4 +1,4 @@
-"""T0.F1.K3 and K5: named configs in configs/ (no window opened)."""
+"""Profiles: one file per hunt in profiles/, this PC's settings in data/ (no window opened)."""
 
 from __future__ import annotations
 
@@ -27,8 +27,8 @@ def _in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_first_run_creates_default_from_defaults() -> None:
-    assert picked_config() == Path("configs/default.json")
-    assert BotConfig.load("configs/default.json") == BotConfig.default()
+    assert picked_config() == Path("profiles/default.json")
+    assert BotConfig.load("profiles/default.json") == BotConfig.default()
 
 
 def test_first_run_copies_moonlight_config() -> None:
@@ -37,11 +37,29 @@ def test_first_run_copies_moonlight_config() -> None:
 
 
 def test_save_as_writes_named_file_and_picks_it() -> None:
-    cfg = replace(BotConfig.default(), serial_baudrate=9600)
-    path = save_config_as(cfg, "rot-worms_2")
-    assert path == Path("configs/rot-worms_2.json")
-    assert json.loads(path.read_text())["serial_baudrate"] == 9600
+    cfg = replace(BotConfig.default(), min_level=20, max_level=40)
+    path = save_config_as(cfg, "Forest Fury Ab'Dendriel")
+    assert path == Path("profiles/Forest Fury Ab'Dendriel.json")
+    assert json.loads(path.read_text())["max_level"] == 40
     assert picked_config() == path
+
+
+# doc: docs/prs/profiles.md#machine-file
+def test_this_pcs_settings_live_outside_every_profile() -> None:
+    from moonlight.core.config import MACHINE_FILE
+
+    a = save_config_as(replace(BotConfig.default(), serial_baudrate=9600), "a")
+    saved = json.loads(a.read_text())
+    assert "serial_baudrate" not in saved and "clicker" not in saved
+    assert json.loads(MACHINE_FILE.read_text())["serial_baudrate"] == 9600
+    save_config_as(BotConfig.default(), "b")  # the same PC: one machine file for both
+    assert BotConfig.load(a).serial_baudrate == BotConfig.default().serial_baudrate
+
+
+def test_a_profile_change_stays_in_that_profile() -> None:
+    a = save_config_as(replace(BotConfig.default(), min_level=10, max_level=20), "a")
+    b = save_config_as(replace(BotConfig.default(), min_level=30, max_level=50), "b")
+    assert (BotConfig.load(a).min_level, BotConfig.load(b).min_level) == (10, 30)
 
 
 def test_save_as_asks_before_overwrite() -> None:
@@ -52,7 +70,7 @@ def test_save_as_asks_before_overwrite() -> None:
     assert load_real_config().simulation is True
 
 
-@pytest.mark.parametrize("name", ["", "a b", "../x", "x.json", "ż"])
+@pytest.mark.parametrize("name", ["", " a", "../x", "x.json", "ż"])
 def test_bad_name_refused(name: str) -> None:
     with pytest.raises(ConfigError):
         save_config_as(BotConfig.default(), name)
@@ -66,25 +84,25 @@ def test_dropdown_lists_the_files() -> None:
 
 def test_last_pick_is_restored() -> None:
     save_config_as(BotConfig.default(), "a")
-    save_config_as(replace(BotConfig.default(), simulation=True), "b")
+    save_config_as(replace(BotConfig.default(), min_level=5, max_level=9), "b")
     pick_config("a")
-    assert Path("configs/last.txt").read_text() == "a"
-    assert picked_config() == Path("configs/a.json")
-    assert load_real_config().simulation is False
+    assert Path("profiles/last.txt").read_text() == "a"
+    assert picked_config() == Path("profiles/a.json")
+    assert load_real_config().min_level == 0
 
 
 def test_delete_removes_file_and_picks_another() -> None:
     save_config_as(BotConfig.default(), "a")
     save_config_as(BotConfig.default(), "b")
-    assert delete_config("b") == Path("configs/a.json")
+    assert delete_config("b") == Path("profiles/a.json")
     assert config_names() == ["a"]
-    assert picked_config() == Path("configs/a.json")
+    assert picked_config() == Path("profiles/a.json")
 
 
 def test_delete_keeps_the_pick_when_another_goes() -> None:
     save_config_as(BotConfig.default(), "a")
     save_config_as(BotConfig.default(), "b")
-    assert delete_config("a") == Path("configs/b.json")
+    assert delete_config("a") == Path("profiles/b.json")
 
 
 def test_only_config_cannot_be_deleted() -> None:

@@ -85,6 +85,36 @@ __all__ = [
 #: Default config file name (looked up in the current directory).
 DEFAULT_CONFIG_FILE = "moonlight_config.json"
 
+# doc: docs/prs/profiles.md#machine-file
+#: One file per hunt: its route and every module's settings (the dropdown).
+#: Relative like ``routes_dir``: the bot runs from the repo folder.
+PROFILES_DIR = Path("profiles")
+#: This PC's settings, shared by every profile: Arduino port, clicks, client
+#: hotkeys, account rotation. A profile file never holds them.
+MACHINE_FILE = Path("data/machine.json")
+#: Top-level keys kept in :data:`MACHINE_FILE`.
+MACHINE_KEYS = (
+    "serial_port",
+    "serial_baudrate",
+    "simulation",
+    "log_commands",
+    "walk_keys",
+    "templates_dir",
+    "routes_dir",
+    "loop",
+    "clicker",
+    "monster_name_source",
+    "capacity_source",
+    "client_options_file",
+    "client_hotkeys",
+)
+#: Module sections kept in :data:`MACHINE_FILE`.
+MACHINE_MODULES = ("rotation",)
+
+
+def _is_profile(path: Path) -> bool:
+    return path.resolve().parent == PROFILES_DIR.resolve()
+
 #: Modules with no switch: always built, no ``enabled`` key (a missing section = defaults).
 ALWAYS_ON = ("alarms", "extras", "scripts")
 
@@ -109,6 +139,8 @@ _TOP_KEYS = {
     "walk_keys",
     "templates_dir",
     "routes_dir",
+    "min_level",
+    "max_level",
     "monster_name_source",
     "capacity_source",
     "client_options_file",
@@ -160,6 +192,11 @@ class BotConfig:
     window_title: str = "Tibia"
     templates_dir: Path = Path("data/templates")
     routes_dir: Path = Path("data/waypoints")
+    # doc: docs/prs/profiles.md#level-range
+    #: Levels this profile's hunt fits, both included; 0 and 0: never picked
+    #: by level (``cavebot_rotate`` and each login pick among the others).
+    min_level: int = 0
+    max_level: int = 0
     loop: LoopConfig = LoopConfig()
     #: Clicker mode (F-14): closed loop by default; open loop if T33 HIL
     #: shows the rendered cursor cannot be captured.
@@ -209,8 +246,18 @@ class BotConfig:
         p = Path(path)
         try:
             raw = json.loads(p.read_text(encoding="utf-8"))
+            machine = (
+                json.loads(MACHINE_FILE.read_text(encoding="utf-8"))
+                if _is_profile(p) and MACHINE_FILE.exists()
+                else None
+            )
         except (OSError, json.JSONDecodeError) as exc:
             raise ConfigError(f"cannot read config {p}: {exc}") from exc
+        if isinstance(raw, dict) and isinstance(machine, dict):
+            # doc: docs/prs/profiles.md#machine-file
+            raw = {**raw, **{k: v for k, v in machine.items() if k != "modules"}}
+            modules = {**raw.get("modules", {}), **machine.get("modules", {})}
+            raw["modules"] = modules
         return cls.from_dict(raw)
 
     @classmethod
@@ -238,6 +285,8 @@ class BotConfig:
             "walk_keys",
             "templates_dir",
             "routes_dir",
+            "min_level",
+            "max_level",
             "monster_name_source",
             "capacity_source",
             "client_options_file",
@@ -340,8 +389,24 @@ class BotConfig:
         return result
 
     def save(self, path: str | Path) -> None:
-        """Write :meth:`to_dict` to *path* as JSON."""
-        Path(path).write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
+        """Write :meth:`to_dict` to *path* as JSON.
+
+        A profile (a file in :data:`PROFILES_DIR`) gets only its hunt's
+        settings; this PC's go to :data:`MACHINE_FILE`.
+        """
+        data = self.to_dict()
+        p = Path(path)
+        if _is_profile(p):
+            modules = data["modules"]
+            machine = {k: data.pop(k) for k in MACHINE_KEYS if k in data}
+            machine["modules"] = {m: modules.pop(m) for m in MACHINE_MODULES if m in modules}
+            MACHINE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            MACHINE_FILE.write_text(json.dumps(machine, indent=2), encoding="utf-8")
+        p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def fits_level(self, level: int) -> bool:
+        """True when this profile has a level range and *level* is in it."""
+        return bool(self.max_level) and self.min_level <= level <= self.max_level
 
     def validate(self) -> BotConfig:
         """Cross-field checks; return self.
@@ -352,6 +417,10 @@ class BotConfig:
         for name in self.off:
             if name not in MODULES or getattr(self, name) is not None:
                 raise ConfigError(f"off: {name!r} is not a module that is off")
+        if self.min_level < 0 or self.max_level < 0 or (
+            self.max_level and self.min_level > self.max_level
+        ):
+            raise ConfigError("levels: min must be 0..max (0 and 0: no level range)")
         try:
             GameLoop._validate_config(self.loop)
             sections: tuple[Any, ...] = (

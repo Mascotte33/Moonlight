@@ -1,6 +1,6 @@
 """Settings tab: named configs and core options (T2.F2.K1).
 
-The config dropdown picks a named config in ``configs/`` and applies it
+The profile dropdown picks a hunt profile in ``profiles/`` and applies it
 live. Every control saves into the picked config as it changes; Save
 writes it again on demand, New copies it under a new name and picks the
 copy, Delete removes it (T0.F1.K3, T0.F1.K5). Start/Pause/Kill live in the top bar; port,
@@ -45,11 +45,18 @@ __all__ = [
     "EXTRAS_OPTIONS",
     "MODULE_SWITCHES",
     "OPTIONS",
+    "PROFILE_OPTIONS",
     "ROTATION_OPTIONS",
     "SettingsTab",
     "plain_reason",
 ]
 
+# doc: docs/prs/profiles.md#level-range
+#: The picked profile's level range (0 and 0: never picked by level).
+PROFILE_OPTIONS = [
+    Option("Min level", "min_level", "entry"),
+    Option("Max level", "max_level", "entry"),
+]
 OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
     Option("Cavebot walks with WSAD keys", "walk_keys", "switch"),
@@ -126,7 +133,7 @@ class SettingsTab(Tab):
             self.submit()
 
     def build(self, parent: ctk.CTkFrame) -> None:
-        io_box = section(parent, "Config")
+        io_box = section(parent, "Profile")
         io_box.pack(fill="x", padx=10, pady=(10, 4))
         row = Row(io_box)
         row.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
@@ -150,6 +157,7 @@ class SettingsTab(Tab):
             ).pack(side="left", padx=(theme.UNIT, 0))
         self.lbl_io = Label(io_box, text="", anchor="w", text_color=theme.TEXT_DIM)
         self.lbl_io.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
+        self.build_options(io_box, PROFILE_OPTIONS)
 
         self.box_options = section(parent, "Options")
         self.box_options.pack(fill="x", padx=10, pady=4)
@@ -320,8 +328,8 @@ class SettingsTab(Tab):
         self.lbl_io.configure(text=f"saved {self.menu_config.get()}")
 
     def _on_new(self) -> None:
-        """Copy the picked config under a new name and pick the copy."""
-        name = ctk.CTkInputDialog(text="Config name:", title="New config").get_input()
+        """Copy the picked profile under a new name and pick the copy."""
+        name = ctk.CTkInputDialog(text="Profile name:", title="New profile").get_input()
         if not name:
             return
         cfg = load_real_config()
@@ -329,7 +337,7 @@ class SettingsTab(Tab):
             try:
                 save_config_as(cfg, name)
             except FileExistsError:
-                if not messagebox.askyesno("New config", f"{name} exists. Replace it?"):
+                if not messagebox.askyesno("New profile", f"{name} exists. Replace it?"):
                     return
                 save_config_as(cfg, name, overwrite=True)
         except ConfigError as exc:
@@ -342,7 +350,7 @@ class SettingsTab(Tab):
 
     def _on_delete(self) -> None:
         name = self.menu_config.get()
-        if not messagebox.askyesno("Delete config", f"Delete {name}?"):
+        if not messagebox.askyesno("Delete profile", f"Delete {name}?"):
             return
         try:
             picked = delete_config(name)

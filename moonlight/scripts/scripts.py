@@ -281,11 +281,6 @@ class Bot:
             raise RuntimeError("bot.level needs a screen capture")
         return reader()
 
-    # doc: docs/prs/cavebot-rotate.md#cavebot-rotate
-    def skip_next_cavebot_rotate(self) -> None:
-        """The account switched: the next ``cavebot_rotate`` keeps the route."""
-        self._runner.skip_cavebot_rotate = True
-
     # doc: docs/prs/scripts.md#find-picture
     def find(self, image: str) -> tuple[int, int] | None:
         """Centre of picture *image* (a file in ``scripts/``) on screen, or None."""
@@ -361,8 +356,15 @@ class ScriptRunner:
         self.level: Callable[[], int | None] | None = None
         #: Where ``cavebot_rotate`` looks for routes (docs/prs/cavebot-rotate.md#cavebot-rotate).
         self.routes_dir: Path | None = None
-        #: Skip the next ``cavebot_rotate``: an account or route switch just happened.
-        self.skip_cavebot_rotate = False
+        # doc: docs/prs/profiles.md#level-pick
+        #: Where ``cavebot_rotate`` looks for profiles.
+        from moonlight.core.config import PROFILES_DIR  # config imports the scripts
+
+        self.profiles_dir = PROFILES_DIR
+        #: The running profile's name; set by the GUI.
+        self.profile_name: Callable[[], str] | None = None
+        #: Switch the whole bot to profile *name*; set by the GUI.
+        self.switch_profile: Callable[[str], None] | None = None
         self._stamina_logged_at: float | None = None
         #: The last stamina read (minutes) for the dashboard; None when unread.
         self.last_stamina_minutes: int | None = None

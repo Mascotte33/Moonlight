@@ -41,6 +41,7 @@ data/maps/
 !/tests/golden_profile/*.json
 docs/
 configs/
+profiles/
 moonlight/profiles/
 moonlight/data/
 

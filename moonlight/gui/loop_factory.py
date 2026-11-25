@@ -31,7 +31,7 @@ from moonlight import x11
 from moonlight.calibration import autofind
 from moonlight.calibration.calibrate import CALIBRATION_FILE, REGIONS, data_dir
 from moonlight.cavebot.cavebot import Waypoint
-from moonlight.core.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
+from moonlight.core.config import DEFAULT_CONFIG_FILE, PROFILES_DIR, BotConfig, ConfigError
 from moonlight.core.state import WorldState
 from moonlight.core.wiring import build_loop, capture_providers, make_perceive
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
@@ -64,8 +64,8 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 #: Named configs live here as ``<name>.json``; ``last.txt`` holds the pick.
-CONFIGS_DIR = Path("configs")
-_NAME = re.compile(r"[A-Za-z0-9_-]+")
+CONFIGS_DIR = PROFILES_DIR
+_NAME = re.compile(r"[A-Za-z0-9_' -]+")
 
 
 def window_titles() -> list[str]:
@@ -99,10 +99,11 @@ def config_path(name: str, configs_dir: str | Path = CONFIGS_DIR) -> Path:
     """The file for config *name*.
 
     Raises:
-        ConfigError: When *name* is not only letters, digits, ``-`` and ``_``.
+        ConfigError: When *name* is not only letters, digits, spaces, ``'``,
+            ``-`` and ``_``.
     """
-    if not _NAME.fullmatch(name):
-        raise ConfigError(f"bad config name {name!r}: use letters, digits, - and _")
+    if not _NAME.fullmatch(name) or name != name.strip():
+        raise ConfigError(f"bad profile name {name!r}: use letters, digits, spaces, ' - and _")
     return Path(configs_dir) / f"{name}.json"
 
 

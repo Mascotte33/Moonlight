@@ -39,6 +39,7 @@ from moonlight.gui.loop_factory import (
     build_gui_loop,
     build_position_reader,
     gui_bot_config,
+    picked_config,
 )
 from moonlight.gui.settings_tab import SettingsTab
 from moonlight.gui.state_bridge import (
@@ -256,6 +257,8 @@ class GuiApp:
         self._held = not start_bot
         #: Pause: the bot runs without cavebot and targeting until Start.
         self._retry_at = 0.0
+        #: A profile the bot thread asked for (cavebot_rotate); the poll applies it.
+        self._profile_request: str | None = None
         self._start_error = ""
         f12_pressed()  # drop a press from before the app opened
         self._closing = threading.Event()
@@ -458,11 +461,20 @@ class GuiApp:
         self._start_error = ""
         if resume and loop.modules.cavebot is not None:
             loop.modules.cavebot.start(nearest=True)
+        # doc: docs/prs/profiles.md#level-pick
+        scripts = loop.modules.scripts
+        if scripts is not None:
+            scripts.profile_name = lambda: picked_config().stem
+            scripts.switch_profile = self._ask_profile
         loop.paused = self.ctx.paused  # a restart keeps a Pause
         loop.stopped = self._held  # and a Stop
         self.ctx.controller = BotController(loop, log=self.log)
         self.ctx.controller.start()
         self._update_topbar()
+
+    def _ask_profile(self, name: str) -> None:
+        """From the bot thread: switch to profile *name* on the next poll."""
+        self._profile_request = name
 
     def stop_bot(self) -> None:
         """Stop: nothing is pressed (healing, spells, alarms too) until Start.
@@ -509,6 +521,10 @@ class GuiApp:
         try:
             if f12_pressed():
                 self.resume_bot() if self._held or self.ctx.paused else self.pause_bot()
+            name, self._profile_request = self._profile_request, None
+            if name is not None:
+                self.log.info(f"profile: switching to {name}")
+                self.ctx.pick_config(name)  # applies it to the running bot
             self._keep_running()
             snap = self.ctx.state.snapshot()
             for title, tab in self.tabs.items():
