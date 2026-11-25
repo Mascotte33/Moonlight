@@ -91,3 +91,24 @@ def test_a_count_drawn_a_row_off_still_reads(shift: int) -> None:
             if v == "#":
                 slot[COUNT_ROWS.start + shift + r, 20 + c] = 255
     assert read_count(slot) == 0
+
+
+# doc: docs/prs/potion-count.md#nearest-shape
+def test_a_digit_a_pixel_off_reads_as_the_closest_shape() -> None:
+    from moonlight.perception.potions import _bitmap, _nearest
+
+    seven = _bitmap("####/...#/..#./.##./.#../##..")
+    seven[5, 1] = False  # one pixel off a known 7
+    assert _nearest(seven)[0] == "7"
+
+
+def test_without_its_own_shape_no_digit_reads_as_another() -> None:
+    import moonlight.perception.potions as potions
+
+    shapes = list(potions._SHAPES)
+    try:
+        for i, (shape, digit) in enumerate(shapes):
+            potions._SHAPES = shapes[:i] + shapes[i + 1 :]
+            assert potions._nearest(shape)[0] in (digit, None)  # right, or unsure
+    finally:
+        potions._SHAPES = shapes
