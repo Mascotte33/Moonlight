@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -555,21 +556,25 @@ class GuiApp:
 
     def _watch_position(self) -> None:
         """Keep reading the position while the bot is stopped (screen only)."""
-        perceive = None
+        perceive: Callable[[], None] | None = None
+        close: Callable[[], None] = lambda: None  # noqa: E731
         retry_at = 0.0
         while not self._closing.wait(WATCH_S):
             if self.ctx.bot_running():
-                perceive = None  # the next stop starts from the bot's last position
+                if perceive is not None:  # the next stop starts from the bot's last position
+                    close()  # doc: docs/prs/auto-calibration.md#x-connections
+                    perceive = None
                 continue
             if perceive is None:
                 if time.monotonic() < retry_at:
                     continue
                 try:
-                    perceive = build_position_reader(self.state)
+                    perceive, close = build_position_reader(self.state)
                 except Exception:  # noqa: BLE001 - no profile or window yet; try again
                     retry_at = time.monotonic() + RETRY_S
                     continue
             perceive()
+        close()
 
     def on_close(self) -> None:
         """Window close: stop the bot and close hardware."""

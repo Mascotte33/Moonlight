@@ -460,10 +460,33 @@ def build_gui_loop(
     real_config = gui_bot_config(config_path)
     # Real screen capture: frame provider + focus check (F-13). Imported at
     # call time so importing this module never pulls in mss.
-    from moonlight.perception.capture import ScreenCapture, default_backend, focus_window
+    from moonlight.perception.capture import ScreenCapture, default_backend
 
     # dxcam's camera is one per screen and shared, so only the bot uses it.
     capture = ScreenCapture(backend=default_backend(), window_title=real_config.window_title)
+    try:
+        loop = _build_on(capture, real_config, hardware, state, calibration_file, raise_client)
+    except BaseException:
+        # doc: docs/prs/auto-calibration.md#x-connections
+        # Each capture holds an X connection; Start retries every few seconds,
+        # and unclosed ones filled the X server ("Maximum number of clients").
+        capture.close()
+        raise
+    loop.on_shutdown.append(capture.close)
+    return loop
+
+
+def _build_on(
+    capture: Any,
+    real_config: BotConfig,
+    hardware: HardwareController,
+    state: WorldState,
+    calibration_file: Path | None,
+    raise_client: bool,
+) -> GameLoop:
+    """:func:`build_gui_loop` on an open *capture* (closed by the caller on failure)."""
+    from moonlight.perception.capture import focus_window
+
     log = hardware.log.info if hardware.log is not None else logger.info
     # The capture reads the screen, so the bot's own window (where Start was
     # clicked) would cover the client and fail the layout check.
@@ -545,15 +568,20 @@ def build_position_reader(
     state: WorldState,
     config_path: str | Path | None = None,
     calibration_file: Path | None = None,
-) -> Callable[[], None]:
-    """One screen read into *state* for while the bot is stopped.
+) -> tuple[Callable[[], None], Callable[[], None]]:
+    """One screen read into *state* for while the bot is stopped, and its close.
 
     It only captures the client, so the position stays current; it never
-    opens the Arduino or sends input. The next Start searches near it.
+    opens the Arduino or sends input. The next Start searches near it. The
+    caller calls the close when it drops the reader (its X connection).
     """
     from moonlight.perception.capture import ScreenCapture
 
     cfg = load_real_config(config_path)
     profile = load_profile(calibration_file)
     capture = ScreenCapture(window_title=cfg.window_title)
-    return make_perceive(state, profile, capture.get_frame, start=state.position)
+    try:
+        return make_perceive(state, profile, capture.get_frame, start=state.position), capture.close
+    except BaseException:
+        capture.close()
+        raise
