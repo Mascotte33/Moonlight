@@ -1,8 +1,10 @@
 """Dashboard tab: stat cards, bot health, battle list and log tail (T1).
 
 Five stat cards (Uptime, Ticks, Creatures, HP, Stamina) show hero-size values from
-the loop's stats and the live :class:`WorldState`. The module switches live
-in Settings. A Machine line shows the HWID and the public IP.
+the loop's stats and the live :class:`WorldState`. The Profile box picks
+the hunt profile (New copies it, Delete removes it), its level range and
+the module switches, which each module's tab shows too
+(docs/prs/profiles.md#layout). A Machine line shows the HWID and the public IP.
 """
 
 from __future__ import annotations
@@ -12,13 +14,33 @@ import threading
 import time
 import urllib.request
 import uuid
+from tkinter import messagebox
 
 import customtkinter as ctk
 
+from moonlight.core.config import ConfigError
 from moonlight.core.state import WorldState
 from moonlight.gui import theme
+from moonlight.gui.loop_factory import (
+    config_names,
+    delete_config,
+    load_real_config,
+    picked_config,
+    save_config_as,
+)
+from moonlight.gui.settings_tab import PROFILE_OPTIONS
 from moonlight.gui.state_bridge import LogFeed
-from moonlight.gui.tab_base import Label, Row, Tab, dot_color, health, section, set_label, stat_num
+from moonlight.gui.tab_base import (
+    Label,
+    Row,
+    Tab,
+    dot_color,
+    health,
+    module_switch,
+    section,
+    set_label,
+    stat_num,
+)
 
 __all__ = [
     "CARDS",
@@ -33,6 +55,14 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 CARDS = ("Uptime", "Ticks", "Creatures", "HP", "Stamina")
+#: Modules with an on/off switch, as the Dashboard shows them.
+MODULE_SWITCHES = (
+    ("healing", "Healing"),
+    ("targeting", "Targeting"),
+    ("cavebot", "Cavebot"),
+    ("looting", "Looting"),
+    ("refill", "Refill"),
+)
 #: Seconds between public IP lookups (a VPN or router restart changes it).
 PUBLIC_IP_REFRESH_SECONDS = 300
 
@@ -86,13 +116,15 @@ class DashboardTab(Tab):
     """Stat cards, battle list and event log."""
 
     title = "Dashboard"
+    options = PROFILE_OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
         parent.grid_columnconfigure(0, weight=1)
-        parent.grid_rowconfigure(1, weight=1)
+        parent.grid_rowconfigure(2, weight=1)
 
+        self._build_profile(parent)
         cards = Row(parent)
-        cards.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+        cards.grid(row=1, column=0, sticky="ew", padx=10, pady=(theme.UNIT, 0))
         self.lbl_task = Label(
             cards,
             text="Current task: Idle",
@@ -122,9 +154,7 @@ class DashboardTab(Tab):
         dots.pack(fill="x", padx=theme.PAD, pady=(0, theme.PAD))
         self._dots: dict[str, Label] = {}
         for name, _ in health(WorldState(), False, False):
-            self._dots[name] = Label(
-                dots, text=f"● {name}", text_color=theme.TEXT_MUTED
-            )
+            self._dots[name] = Label(dots, text=f"● {name}", text_color=theme.TEXT_MUTED)
             self._dots[name].pack(side="left", padx=(0, theme.PAD))
 
         # doc: docs/prs/near-targeting.md#machine-line
@@ -143,7 +173,7 @@ class DashboardTab(Tab):
         threading.Thread(target=self._keep_public_ip, daemon=True, name="public-ip").start()
 
         body = Row(parent)
-        body.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        body.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
         body.grid_columnconfigure(0, weight=1)
         body.grid_rowconfigure(1, weight=3)
         body.grid_rowconfigure(2, weight=2)
@@ -187,6 +217,82 @@ class DashboardTab(Tab):
         except Exception:  # noqa: BLE001 - display only
             return {}
 
+    # -- profile -----------------------------------------------------------
+    # doc: docs/prs/profiles.md#layout
+
+    def _build_profile(self, parent: ctk.CTkFrame) -> None:
+        box = section(parent, "Profile")
+        box.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+        row = Row(box)
+        row.pack(fill="x", padx=theme.PAD, pady=theme.UNIT)
+        self.menu_profile = ctk.CTkOptionMenu(
+            row,
+            values=config_names() or [picked_config().stem],
+            command=self._on_pick,
+            width=240,
+            fg_color=theme.RAISED,
+            button_color=theme.RAISED,
+            button_hover_color=theme.HOVER,
+        )
+        self.menu_profile.set(picked_config().stem)
+        self.menu_profile.pack(side="left")
+        for text, command, color, hover in (
+            ("New", self._on_new, theme.RAISED, theme.HOVER),
+            ("Delete", self._on_delete, theme.BLOOD, theme.BLOOD_HOVER),
+        ):
+            ctk.CTkButton(
+                row, text=text, width=80, command=command, fg_color=color, hover_color=hover
+            ).pack(side="left", padx=(theme.UNIT, 0))
+        self.lbl_profile = Label(row, text="", anchor="w", text_color=theme.TEXT_DIM)
+        self.lbl_profile.pack(side="left", padx=theme.PAD)
+        switches = Row(box)
+        switches.pack(fill="x", padx=theme.PAD)
+        for module, label in MODULE_SWITCHES:
+            module_switch(self.ctx, switches, module, label)
+        self.build_options(box)
+        self.ctx.config_listeners.append(self._show_picked)
+
+    def _show_picked(self) -> None:
+        """The dropdown follows a pick made elsewhere (level rotation)."""
+        self.menu_profile.configure(values=config_names())
+        self.menu_profile.set(picked_config().stem)
+
+    def _on_pick(self, name: str) -> None:
+        self.ctx.pick_config(name)
+        self.lbl_profile.configure(text=f"picked {name}")
+
+    def _on_new(self) -> None:
+        """Copy the picked profile under a new name and pick the copy."""
+        name = ctk.CTkInputDialog(text="Profile name:", title="New profile").get_input()
+        if not name:
+            return
+        name = name.strip()
+        cfg = load_real_config()
+        try:
+            try:
+                save_config_as(cfg, name)
+            except FileExistsError:
+                if not messagebox.askyesno("New profile", f"{name} exists. Replace it?"):
+                    return
+                save_config_as(cfg, name, overwrite=True)
+        except ConfigError as exc:
+            self.lbl_profile.configure(text=str(exc))
+            return
+        self._on_pick(name)
+        self.lbl_profile.configure(text=f"saved {name}")
+
+    def _on_delete(self) -> None:
+        name = self.menu_profile.get()
+        if not messagebox.askyesno("Delete profile", f"Delete {name}?"):
+            return
+        try:
+            picked = delete_config(name)
+        except ConfigError as exc:
+            self.lbl_profile.configure(text=str(exc))
+            return
+        self._on_pick(picked.stem)
+        self.lbl_profile.configure(text=f"deleted {name}")
+
     def on_poll(self, snap: WorldState) -> None:
         stats = self._loop_stats()
         task = f"Current task: {stats.get('current_task', 'Idle')}"
@@ -205,9 +311,7 @@ class DashboardTab(Tab):
         battle = "empty"
         if snap.monsters:
             monsters = snap.monsters[:20]
-            lines = [
-                f"{i + 1}. {m.name}  ({m.hp_percent:.0f}% HP)" for i, m in enumerate(monsters)
-            ]
+            lines = [f"{i + 1}. {m.name}  ({m.hp_percent:.0f}% HP)" for i, m in enumerate(monsters)]
             if snap.selected_target is not None:
                 lines.insert(0, f"> selected: {snap.selected_target.name}")
             battle = "\n".join(lines)

@@ -49,7 +49,16 @@ from moonlight.core.state import Position, WorldState
 from moonlight.gui import loop_factory, theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
 from moonlight.gui.settings_tab import plain_reason
-from moonlight.gui.tab_base import Label, Option, Row, Tab, read_option, section, write_option
+from moonlight.gui.tab_base import (
+    Label,
+    Option,
+    Row,
+    Tab,
+    module_switch,
+    read_option,
+    section,
+    write_option,
+)
 from moonlight.refill.refill import LAST_READ
 from moonlight.scripts.library import script_names
 from moonlight.scripts.scripts import DEFAULT_SCRIPTS_DIR
@@ -346,6 +355,11 @@ class CavebotTab(Tab):
         box = section(root, "Waypoints")
         box.grid(row=0, column=0, sticky="nsew", padx=(0, theme.GAP))
         self.build_options(box, OPTIONS)
+        # doc: docs/prs/profiles.md#module-switches
+        more = Row(box)
+        more.pack(fill="x", padx=theme.PAD)
+        module_switch(self.ctx, more, "looting", "Looting on")
+        module_switch(self.ctx, more, "refill", "Refill on")
         self.menu_route = _menu(box, OPTIONS, ROUTE)
         self.menu_route.configure(command=self._pick_route)
         self._switches[SWITCH.field].configure(command=self._turn)
@@ -713,7 +727,7 @@ class CavebotTab(Tab):
             self._lock(on)
         if self._locked and live is not None and live.name != self._name:
             self._follow_rotated_route(live.name)
-        current =live.current if live is not None and live.name == self._name else None
+        current = live.current if live is not None and live.name == self._name else None
         route = Route("editor", waypoints=self._waypoints)
         text = self._error or waypoint_table(route, current, self._runs_badly)
         running = "Not running"

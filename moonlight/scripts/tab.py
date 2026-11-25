@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from functools import partial
 from pathlib import Path
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
 from typing import TYPE_CHECKING, Any
 
 import customtkinter as ctk
@@ -20,6 +20,7 @@ import customtkinter as ctk
 from moonlight.core.config import BotConfig, ConfigError
 from moonlight.gui import theme
 from moonlight.gui.loop_factory import load_real_config, picked_config
+from moonlight.gui.settings_tab import ROTATION_OPTIONS
 from moonlight.gui.tab_base import Label, Row, Tab, row_button, row_entry, section
 from moonlight.perception.capture import focus_window
 from moonlight.scripts.library import (
@@ -56,6 +57,15 @@ class ScriptsTab(Tab):
 
     title = "Scripts"
     polls_hidden = True  # a script that failed is unticked even while hidden
+    # doc: docs/prs/profiles.md#layout
+    #: Account rotation (this PC's): the account_rotate script's settings.
+    options = ROTATION_OPTIONS
+
+    def _browse_file(self, field: str, title: str) -> None:
+        name = filedialog.askopenfilename(title=title)
+        if name:
+            self._writers[field](name)
+            self.submit()
 
     def build(self, parent: ctk.CTkFrame) -> None:
         self._dir: Path = DEFAULT_SCRIPTS_DIR
@@ -71,6 +81,19 @@ class ScriptsTab(Tab):
         for col, weight in enumerate((2, 3)):
             root.grid_columnconfigure(col, weight=weight, uniform="cards")
         root.grid_rowconfigure(0, weight=1)
+
+        rotation = section(parent, "Account rotation (account_rotate script)")
+        rotation.pack(fill="x", padx=10, pady=(0, 10))
+        self.build_options(rotation)
+        for row, field, title in zip(
+            [w for w in rotation.winfo_children() if isinstance(w, Row)][-2:],
+            ("rotation.accounts_file", "rotation.client_exe"),
+            ("The accounts text file (login password per line)", "The Tibia program"),
+            strict=True,
+        ):
+            row_button(
+                row, "Browse", partial(self._browse_file, field, title), width=80, pack_left=False
+            ).pack(side="right", before=row.pack_slaves()[-1])
 
         box = section(root, "Scripts")
         box.grid(row=0, column=0, sticky="nsew", padx=(0, theme.GAP))

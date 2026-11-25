@@ -35,6 +35,7 @@ from moonlight.core.wiring import sync_client_map
 from moonlight.gui import theme
 from moonlight.gui.dashboard_tab import DashboardTab
 from moonlight.gui.diagnostics_tab import DiagnosticsTab
+from moonlight.gui.extras_tab import AlarmsTab, ExtrasTab
 from moonlight.gui.loop_factory import (
     build_gui_loop,
     build_position_reader,
@@ -132,13 +133,16 @@ STATE_COLORS = {
 }
 
 #: The tabs in display order.
+# doc: docs/prs/profiles.md#layout
 TAB_ORDER = (
     DashboardTab,
     CavebotTab,
+    ScriptsTab,
     MapTab,
     HealingTab,
     TargetingTab,
-    ScriptsTab,
+    ExtrasTab,
+    AlarmsTab,
     HardwareTab,
     SettingsTab,
     StatusTab,
