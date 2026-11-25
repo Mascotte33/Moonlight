@@ -507,6 +507,13 @@ def _login_first(cfg: BotConfig, capture: Any, backend: Any, log: Callable[[str]
         return x11.find_window(TIBIA_WINDOW_TITLE) is not None if sys.platform == "linux" else True
 
     def in_game() -> bool:
+        # doc: docs/prs/stamina-switch.md#login-on-start
+        # The title, not the screen: a window over the client hides the game
+        # but must never pull the client back to the front to "log in".
+        if sys.platform == "linux":
+            wid = x11.find_window(TIBIA_WINDOW_TITLE)
+            title = x11.title_of(wid) if wid is not None else None
+            return title is not None and title.startswith("Tibia - ")
         try:
             return autofind.find_hp_bar(capture.get_frame()[..., ::-1]) is not None
         except Exception:  # noqa: BLE001 - no window yet / mid-redraw

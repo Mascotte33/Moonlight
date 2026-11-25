@@ -120,6 +120,18 @@ def find_window(title: str) -> int | None:
         return None
 
 
+def title_of(wid: int) -> str | None:
+    """The title of window *wid*; None when it closed."""
+    with _lock:
+        d = _d()
+        if d is None:
+            return None
+        try:
+            return _title(d, wid)
+        except Exception:  # noqa: BLE001 - BadWindow
+            return None
+
+
 def window_rect(wid: int) -> tuple[int, int, int, int] | None:
     """Screen ``(left, top, width, height)`` of the window, frame excluded."""
     with _lock:
