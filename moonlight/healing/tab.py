@@ -26,6 +26,7 @@ from moonlight.gui.tab_base import (
     Option,
     Row,
     Tab,
+    module_switch,
     read_option,
     row_button,
     row_entry,
@@ -113,8 +114,6 @@ def apply_healing(
     return BotConfig.from_dict(data)
 
 
-
-
 class HealingTab(Tab):
     """Healing rules, cures and cooldowns, saved into the picked config."""
 
@@ -122,12 +121,15 @@ class HealingTab(Tab):
     options = OPTIONS
 
     def build(self, parent: ctk.CTkFrame) -> None:
+        # doc: docs/prs/profiles.md#module-switches
+        top = Row(parent)
+        top.pack(fill="x", padx=10, pady=(10, 0))
+        module_switch(self.ctx, top, "healing", "Healing on")
         rules_box = section(parent, "Rules (checked top to bottom)")
         rules_box.pack(fill="x", padx=10, pady=(10, 0))
         Label(
             rules_box,
-            text="A rule presses its key when HP or MP is at or below its %. "
-            "Blank % = unused.",
+            text="A rule presses its key when HP or MP is at or below its %. Blank % = unused.",
             anchor="w",
             justify="left",
             wraplength=640,
@@ -149,9 +151,7 @@ class HealingTab(Tab):
 
         self.lbl_msg = Label(parent, text="", anchor="w", text_color=theme.AMBER)
         self.lbl_msg.pack(fill="x", padx=10)
-        self.lbl_live = Label(
-            parent, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO)
-        )
+        self.lbl_live = Label(parent, text="", anchor="w", font=ctk.CTkFont(family=theme.MONO))
         self.lbl_live.pack(fill="x", padx=10)
 
         self._rule_widgets: list[tuple[ctk.CTkOptionMenu, HotkeyBox, list[ctk.CTkEntry]]] = []
