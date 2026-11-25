@@ -74,8 +74,24 @@ DIGITS = {
 
 
 def read_count(slot: np.ndarray) -> int | None:
-    """The count in the bottom right of an action bar *slot* (RGB), or None."""
-    lit = slot[COUNT_ROWS].astype(np.int32).sum(axis=2) >= 400
+    """The count in the bottom right of an action bar *slot* (RGB), or None.
+
+    The client draws the count a row higher or lower now and then (a fresh
+    Linux client did), so the rows one up and one down are tried too.
+    """
+    # doc: docs/prs/potion-count.md#row-shift
+    unknown = ""
+    for shift in (0, -1, 1):
+        rows = slice(COUNT_ROWS.start + shift, COUNT_ROWS.stop + shift)
+        text, unknown = _read_rows(slot[rows].astype(np.int32).sum(axis=2) >= 400)
+        if text is not None:
+            return int(text) if text else None
+    logger.info("potions: unknown digit %s", unknown)
+    return None
+
+
+def _read_rows(lit: np.ndarray) -> tuple[str | None, str]:
+    """The digits in *lit* (None when one does not read) and the last unknown glyph."""
     cols = lit.any(axis=0)
     text, x = "", 0
     while x < len(cols):
@@ -87,11 +103,10 @@ def read_count(slot: np.ndarray) -> int | None:
             end += 1
         glyph = "/".join("".join("#" if v else "." for v in row) for row in lit[:, x:end])
         if glyph not in DIGITS:
-            logger.info("potions: unknown digit %s", glyph)
-            return None
+            return None, glyph
         text += DIGITS[glyph]
         x = end
-    return int(text) if text else None
+    return text, ""
 
 
 class PotionCounter:

@@ -358,8 +358,11 @@ class CavebotTab(Tab):
         # doc: docs/prs/profiles.md#module-switches
         more = Row(box)
         more.pack(fill="x", padx=theme.PAD)
-        module_switch(self.ctx, more, "looting", "Looting on")
-        module_switch(self.ctx, more, "refill", "Refill on")
+        # Looting and Refill switch any time, like on the Dashboard.
+        self._free = [
+            module_switch(self.ctx, more, "looting", "Looting on"),
+            module_switch(self.ctx, more, "refill", "Refill on"),
+        ]
         self.menu_route = _menu(box, OPTIONS, ROUTE)
         self.menu_route.configure(command=self._pick_route)
         self._switches[SWITCH.field].configure(command=self._turn)
@@ -706,14 +709,14 @@ class CavebotTab(Tab):
         self._draw()
 
     def _lock(self, locked: bool) -> None:
-        """Gray out every control while Cavebot is on; the switch, Refill now
-        and card pickers stay."""
+        """Gray out every control while Cavebot is on; the switch, Refill now,
+        the Looting and Refill switches and the card pickers stay."""
         self._locked = locked
         state = "disabled" if locked else "normal"
         stack = list(self._root.winfo_children())
         while stack:
             widget = stack.pop()
-            if widget in (self._switches[SWITCH.field], self.btn_refill_now):
+            if widget in (self._switches[SWITCH.field], self.btn_refill_now, *self._free):
                 continue
             if isinstance(widget, CONTROLS):
                 widget.configure(state=state)
