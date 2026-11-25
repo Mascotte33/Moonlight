@@ -61,6 +61,8 @@ from moonlight.healing.tab import HealingTab
 from moonlight.scripts.tab import ScriptsTab
 from moonlight.targeting.tab import TargetingTab
 
+#: Units one wheel notch scrolls a tab page (on X11 a unit is a tenth of the view).
+WHEEL_LINES = 1
 #: Poller period in ms (10 Hz — light enough for a low-spec laptop).
 POLL_MS = 100
 RETRY_S = 5.0  # seconds between tries to start a bot that is down
@@ -256,6 +258,11 @@ class GuiApp:
             self.select_tab("Map")
         self._size = (0, 0)
         self.root.bind("<Configure>", self._resized, add="+")
+        # doc: docs/prs/gui-smooth.md#linux-wheel
+        # Tk 8.6 on X11 sends the wheel as buttons 4 and 5, which
+        # customtkinter's scrollable pages never listen for.
+        self.root.bind_all("<Button-4>", lambda e: self._wheel(e, -1), add="+")
+        self.root.bind_all("<Button-5>", lambda e: self._wheel(e, 1), add="+")
 
         # doc: docs/prs/pause-stop.md#stop-reads-only
         #: Stop or the kill switch: the bot only reads the screen until Start.
@@ -270,6 +277,21 @@ class GuiApp:
         threading.Thread(target=self._watch_position, name="position", daemon=True).start()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.after(POLL_MS, self._poll)
+
+    def _wheel(self, event: Any, step: int) -> None:
+        """Scroll the shown page by *step* lines when the wheel turns over it."""
+        page = self._pages.get(self._current)
+        if not isinstance(page, ctk.CTkScrollableFrame):
+            return
+        widget = event.widget
+        while widget is not None:  # a list or text box under the pointer scrolls itself
+            if isinstance(widget, (tk.Text, tk.Listbox, ctk.CTkTextbox)):
+                return
+            if widget is page:
+                break
+            widget = getattr(widget, "master", None)
+        if widget is page and page._parent_canvas.yview() != (0.0, 1.0):
+            page._parent_canvas.yview_scroll(step * WHEEL_LINES, "units")
 
     def select_tab(self, title: str) -> None:
         """Raise ``title``'s page, highlight its sidebar entry and refresh it.
