@@ -22,11 +22,13 @@ from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import cv2
 import numpy as np
 import pytest
 
+import moonlight.gui.loop_factory as loop_factory
 from moonlight.calibration.calibrate import REGIONS, CalibrationProfile, Region
 from moonlight.core.config import BotConfig
 from moonlight.core.state import WorldState
@@ -91,6 +93,8 @@ def _no_display(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("moonlight.core.wiring._absolute_screen", lambda: (0, 0, 1920, 1080))
     # Start must never raise the owner's real game window during tests.
     monkeypatch.setattr("moonlight.perception.capture.focus_window", lambda _title: False)
+    # The side-panel readers need a real client; their own tests are below.
+    monkeypatch.setattr(loop_factory, "require_side_panel", lambda _frame, _cfg: None)
 
 
 @pytest.fixture()
@@ -211,7 +215,7 @@ def test_log_commands_switch(on: bool) -> None:
     assert log.text().endswith("[info] input: press F1") if on else log.text() == ""
 
 
-def test_start_passes_window_title_to_capture(
+def test_start_captures_any_tibia_client(
     profile_dir: Path, tmp_path: Path, state: WorldState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import moonlight.perception.capture as capture
@@ -231,7 +235,7 @@ def test_start_passes_window_title_to_capture(
     build_gui_loop(
         hardware=HardwareController(), state=state, config_path=path, profiles_dir=profile_dir
     )
-    assert seen == ["Tibia - Test"]
+    assert seen == [capture.TIBIA_WINDOW_TITLE]  # any client, never one character
 
 
 # -- layout check at Start (C4.F1) -------------------------------------------
@@ -311,8 +315,8 @@ def test_only_a_clicked_start_raises_the_client_before_the_layout_check(
 def test_layout_size_changed_refuses_to_start(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, anchors: Path
 ) -> None:
-    frame = np.zeros((600, 800, 3), dtype=np.uint8)
-    with pytest.raises(ValueError, match="Layout changed, recalibrate"):
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)  # nothing on it to find
+    with pytest.raises(ValueError, match="not found: open them in Tibia"):
         _start_with_window(tmp_path, monkeypatch, frame, window_size=(1024, 768))
 
 
@@ -322,7 +326,7 @@ def test_layout_a_pixel_or_two_off_still_starts(
 ) -> None:
     frame = np.zeros((1008, 1034, 3), dtype=np.uint8)
     _start_with_window(tmp_path, monkeypatch, frame, window_size=(1034, 1009))
-    with pytest.raises(ValueError, match="Layout changed, recalibrate"):
+    with pytest.raises(ValueError, match="not found: open them in Tibia"):
         _start_with_window(tmp_path, monkeypatch, frame, window_size=(1034, 1011))
 
 
@@ -342,7 +346,7 @@ def test_layout_stop_button_must_stay_at_the_landmark(
     frame = np.zeros((600, 800, 3), dtype=np.uint8)
     frame[300:313, 500:542] = stop[..., None]
     _start_with_window(tmp_path, monkeypatch, frame, landmark=(500, 300))
-    with pytest.raises(ValueError, match="Layout changed, recalibrate"):
+    with pytest.raises(ValueError, match="not found: open them in Tibia"):
         _start_with_window(tmp_path, monkeypatch, frame, landmark=(400, 300))
 
 
@@ -377,3 +381,80 @@ def test_a_client_on_another_monitor_moves_the_mouse_relative() -> None:
 
     assert _pointer_screen(lambda: (-1680, 25)) is None
     assert _pointer_screen(None) is None
+
+
+# doc: docs/prs/auto-calibration.md#on-start
+def test_a_changed_layout_is_calibrated_again_and_saved(tmp_path: Path) -> None:
+    from moonlight.calibration.calibrate import OPTIONAL_REGIONS
+    from moonlight.calibration.profile import ProfileManager
+
+    manager = ProfileManager(tmp_path)
+    old = CalibrationProfile(window_size=(1024, 768))
+    for name in REGIONS:
+        old.set_region(name, Region(0, 0, 10, 10))
+    old.save(manager.path("p"))
+    found = {n: (5, 5, 20, 20) for n in REGIONS + OPTIONAL_REGIONS}
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    lines: list[str] = []
+    with mock.patch("moonlight.calibration.auto.find_regions", return_value=(found, [])):
+        got = loop_factory.start_calibration(manager, "p", lambda: frame, lines.append)
+    assert got.window_size == (800, 600)
+    assert manager.load("p").get_region("battle_list").to_tuple == (5, 5, 20, 20)
+    assert any("saved to" in line for line in lines)
+
+
+def test_a_fitting_calibration_is_kept(tmp_path: Path) -> None:
+    from moonlight.calibration.profile import ProfileManager
+
+    manager = ProfileManager(tmp_path)
+    old = CalibrationProfile(window_size=(800, 600))
+    for name in REGIONS:
+        old.set_region(name, Region(0, 0, 10, 10))
+    old.save(manager.path("p"))
+    frame = np.zeros((600, 800, 3), dtype=np.uint8)
+    with mock.patch("moonlight.calibration.auto.find_regions") as find:
+        loop_factory.start_calibration(manager, "p", lambda: frame, lambda _l: None)
+    find.assert_not_called()
+
+
+def test_optional_areas_never_stop_the_start(tmp_path: Path) -> None:
+    from moonlight.calibration.profile import ProfileManager
+
+    found = {n: (5, 5, 20, 20) for n in REGIONS}  # no Players window, no condition icons
+    lines: list[str] = []
+    with mock.patch("moonlight.calibration.auto.find_regions", return_value=(found, [])):
+        loop_factory.start_calibration(
+            ProfileManager(tmp_path), "p", lambda: np.zeros((6, 8, 3), np.uint8), lines.append
+        )
+    assert any("Players window, Condition icons not found" in line for line in lines)
+
+
+@pytest.mark.parametrize(
+    ("cap", "level", "mana", "message"),
+    [
+        (None, 25, 3, "Cap box not found: open it in Tibia"),
+        (100, None, 3, r"Skills window \(level\) not found"),
+        (100, 25, None, "Potion counts on the action bar not found"),
+    ],
+)
+def test_the_side_panel_readers_are_required(
+    cap: int | None, level: int | None, mana: int | None, message: str
+) -> None:
+    from moonlight.refill.refill import RefillConfig
+
+    cfg = replace(BotConfig.default(), refill=RefillConfig(mana_potions_below=10))
+    with (
+        mock.patch("moonlight.perception.cap.CapReader.__init__", return_value=None),
+        mock.patch("moonlight.perception.cap.CapReader.cap", return_value=cap),
+        mock.patch("moonlight.perception.stamina.LevelReader.level", return_value=level),
+        mock.patch(
+            "moonlight.perception.potions.PotionCounter.counts",
+            return_value={"health": 1, "mana": mana},
+        ),
+        mock.patch("moonlight.perception.potions.PotionCounter.__init__", return_value=None),
+        pytest.raises(ValueError, match=message),
+    ):
+        _real_require_side_panel(lambda: np.zeros((6, 8, 3), np.uint8), cfg)
+
+
+_real_require_side_panel = loop_factory.require_side_panel

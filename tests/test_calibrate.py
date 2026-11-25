@@ -14,6 +14,7 @@ import pytest
 from moonlight.calibration.calibrate import (
     GAME_GRID_COLS,
     GAME_GRID_ROWS,
+    OPTIONAL_REGIONS,
     REGIONS,
     CalibrationError,
     CalibrationProfile,
@@ -33,10 +34,10 @@ class TestRegionsConstant:
             "battle_list",
             "minimap",
             "floor_indicator",
-            "status_icons",
             "game_grid",
         ):
             assert name in REGIONS
+        assert "status_icons" in OPTIONAL_REGIONS
 
     def test_no_duplicates(self) -> None:
         assert len(REGIONS) == len(set(REGIONS))

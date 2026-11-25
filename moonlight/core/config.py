@@ -257,6 +257,10 @@ class BotConfig:
                 kwargs[key] = _coerce(data[key], hints[key], key)
         if not kwargs["profile"]:
             raise ConfigError("profile must be a non-empty string")
+        # doc: docs/prs/auto-calibration.md#game-window
+        # The bot follows any client ("Tibia - <character>"); a saved title
+        # from before would pin it to one character.
+        kwargs.pop("window_title", None)
         if "loop" in data:
             kwargs["loop"] = _build(LoopConfig, data["loop"], "loop")
         if "clicker" in data:

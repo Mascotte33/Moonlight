@@ -46,12 +46,11 @@ REGIONS: tuple[str, ...] = (
     "battle_list",
     "minimap",
     "floor_indicator",
-    "status_icons",
     "game_grid",
     "chase_buttons",
 )
 #: Areas a profile may define; the extras that read them stay off without.
-OPTIONAL_REGIONS: tuple[str, ...] = ("player_list",)
+OPTIONAL_REGIONS: tuple[str, ...] = ("player_list", "status_icons")
 
 #: The game window is a 15x11 grid of slots; the player sits at (7, 5).
 GAME_GRID_COLS = 15
