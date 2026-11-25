@@ -591,7 +591,8 @@ class CavebotTab(Tab):
         names = self._refresh_names()
         picked = picked_route(cfg)
         self.menu_route.set(picked if picked in names else (PICK if names else NO_ROUTES))
-        self._show_route(self.menu_route.get())
+        if self.menu_route.get() != self._name:  # the open route keeps its edits
+            self._show_route(self.menu_route.get())
 
     def _discard_ok(self) -> bool:
         """True when there are no unsaved edits, or the user lets them go."""
@@ -687,12 +688,12 @@ class CavebotTab(Tab):
         self._buy = [*self._buy, (item, 80)]
         self.buy_picker.pack_forget()
         self._show_buy()
-        self._set_dirty(True)
+        self._save_buy()
 
     def _remove_buy(self, n: int) -> None:
         self._buy = [row for i, row in enumerate(self._buy) if i != n]
         self._show_buy()
-        self._set_dirty(True)
+        self._save_buy()
 
     def _buy_percent(self, n: int, entry: ctk.CTkEntry, _event: object = None) -> None:
         """Take a typed 0..100; anything else keeps the last good value."""
@@ -701,7 +702,26 @@ class CavebotTab(Tab):
             self._buy = [
                 (item, int(text)) if i == n else (item, p) for i, (item, p) in enumerate(self._buy)
             ]
-            self._set_dirty(True)
+            self._save_buy()
+
+    # doc: docs/prs/profiles.md#buy-list
+    def _save_buy(self) -> None:
+        """Write the buy list into the route file now, like every other setting.
+
+        Only the buy list: the waypoints on disk stay, so unsaved waypoint
+        edits still wait for Save. It waited for Save before, and any other
+        setting saved meanwhile reloaded the route and dropped it.
+        """
+        if not self._name:
+            return
+        try:
+            on_disk = RouteFileLoader.load(self._routes_dir / f"{self._name}.json").waypoints
+            save_route(self._routes_dir, self._name, list(on_disk), self._buy)
+        except (RouteError, OSError) as exc:
+            self.lbl_msg.configure(text=f"Buy list not saved: {exc}")
+            return
+        self.lbl_msg.configure(text="Buy list saved")
+        self.ctx.config_changed()  # the running bot takes the new list
 
     def _set_dirty(self, dirty: bool) -> None:
         self._dirty = dirty
