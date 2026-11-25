@@ -342,8 +342,8 @@ def start_calibration(
 def require_side_panel(frame: Callable[[], Any], config: BotConfig) -> None:
     """Raise when the side-panel readers the bot needs see nothing.
 
-    Cap box and Skills window (level) always; the potion counts of each kind
-    a refill threshold watches (a count of 0 still reads; None is not found).
+    Cap box and Skills window (level) always; the potion of each kind a
+    refill threshold watches must be on the action bar (its count may not read).
     """
     from moonlight.calibration.auto import CalibrationMissingError, missing_message
     from moonlight.perception.cap import CapReader
@@ -352,13 +352,20 @@ def require_side_panel(frame: Callable[[], Any], config: BotConfig) -> None:
 
     shot = frame()
     missing = []
-    counts = PotionCounter(lambda: shot).counts()
+    counter = PotionCounter(lambda: shot)
+    counts = counter.counts()
     refill = config.refill
     for kind in ("health", "mana"):
         watched = refill is not None and getattr(refill, f"{kind}_potions_below") > 0
-        if watched and counts.get(kind) is None:
+        if not watched:
+            continue
+        # The potion must be on the bar; its number may not read (the Linux
+        # client draws the digits in many shapes): refill then waits for it.
+        if kind not in counter.crops:
             missing.append("potions")
             break
+        if counts.get(kind) is None:
+            logger.warning("start: the %s potion count does not read", kind)
     if CapReader(lambda: shot).cap() is None:
         missing.append("cap")
     if LevelReader(lambda: shot).level() is None:
