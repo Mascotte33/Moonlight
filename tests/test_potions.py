@@ -8,6 +8,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
 from moonlight.perception.potions import DIGITS, PotionCounter, read_count
 
@@ -76,3 +77,17 @@ def test_an_empty_picture_counts_zero(tmp_path: Path) -> None:
     frame = np.zeros((300, 400, 3), np.uint8)
     frame[10:41, 10:45] = slot(3, "")
     assert PotionCounter(lambda: frame, tmp_path).counts()["mana"] == 0
+
+
+# doc: docs/prs/potion-count.md#row-shift
+@pytest.mark.parametrize("shift", [-1, 1])
+def test_a_count_drawn_a_row_off_still_reads(shift: int) -> None:
+    from moonlight.perception.potions import COUNT_ROWS, read_count
+
+    glyph = "###./#..#/#..#/#..#/#..#/####"  # a 0
+    slot = np.zeros((34, 34, 3), dtype=np.uint8)
+    for r, row in enumerate(glyph.split("/")):
+        for c, v in enumerate(row):
+            if v == "#":
+                slot[COUNT_ROWS.start + shift + r, 20 + c] = 255
+    assert read_count(slot) == 0
