@@ -304,6 +304,8 @@ class GameLoop:
         self.reconfigure: Callable[[Any], bool] | None = None
         #: Monsters seen in the battle list, for the Targeting tab (set by ``build_loop``).
         self.seen_monsters: SeenMonsters | None = None
+        #: Called once when the loop ends (the screen capture's X connection).
+        self.on_shutdown: list[Callable[[], object]] = []
         #: Grabs the client window for the death screenshot (set by ``build_loop``).
         self.screen_grab: Callable[[], Any] | None = None
         self._hp_empty_since: float | None = None
@@ -1231,6 +1233,12 @@ class GameLoop:
             self.input.close()
         except Exception:  # noqa: BLE001
             logger.exception("closing the input backend failed")
+        # doc: docs/prs/auto-calibration.md#x-connections
+        for close in self.on_shutdown:
+            try:
+                close()
+            except Exception:  # noqa: BLE001
+                logger.exception("closing %r failed", close)
         uptime = 0.0
         if self._start_time is not None:
             uptime = self._clock() - self._start_time
