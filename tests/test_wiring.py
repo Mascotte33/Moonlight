@@ -22,7 +22,9 @@ from moonlight.targeting.targeting import MonsterRow, TargetingConfig
 
 def make_profile() -> CalibrationProfile:
     p = CalibrationProfile(landmark=(100, 100))
-    for i, name in enumerate(REGIONS):
+    # status_icons is optional now; the order keeps every box where it was.
+    names = (*REGIONS[:5], "status_icons", *REGIONS[5:])
+    for i, name in enumerate(names):
         p.set_region(name, Region(10 + 40 * i, 20, 30, 10))
     return p
 

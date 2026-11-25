@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 
 from moonlight import x11
 from moonlight.calibration import autofind
+from moonlight.calibration.calibrate import REGIONS
 from moonlight.calibration.profile import ProfileManager
 from moonlight.cavebot.cavebot import Waypoint
 from moonlight.core.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
@@ -313,6 +314,60 @@ def check_layout(
             raise ValueError(LAYOUT_CHANGED)
 
 
+def start_calibration(
+    manager: ProfileManager,
+    name: str,
+    frame: Callable[[], Any],
+    log: Callable[[str], None],
+) -> CalibrationProfile:
+    """The saved calibration while the client still fits it, else a new one.
+
+    Raises:
+        CalibrationMissingError: When an area the bot needs is not on screen.
+    """
+    from moonlight.calibration.auto import calibrate_and_save
+
+    old: CalibrationProfile | None = None
+    try:
+        old = manager.load(name)
+        check_layout(old, frame, log)
+        if all(n in old.regions for n in REGIONS):
+            return old
+        log("calibration: an area is missing, searching again")
+    except (ValueError, RuntimeError, OSError) as exc:  # none saved, broken or moved
+        log(f"calibration: {exc}, searching the client")
+    return calibrate_and_save(frame(), manager.path(name), old, log)
+
+
+# doc: docs/prs/auto-calibration.md#side-panel
+def require_side_panel(frame: Callable[[], Any], config: BotConfig) -> None:
+    """Raise when the side-panel readers the bot needs see nothing.
+
+    Cap box and Skills window (level) always; the potion counts of each kind
+    a refill threshold watches (a count of 0 still reads; None is not found).
+    """
+    from moonlight.calibration.auto import CalibrationMissingError, missing_message
+    from moonlight.perception.cap import CapReader
+    from moonlight.perception.potions import PotionCounter
+    from moonlight.perception.stamina import LevelReader
+
+    shot = frame()
+    missing = []
+    counts = PotionCounter(lambda: shot).counts()
+    refill = config.refill
+    for kind in ("health", "mana"):
+        watched = refill is not None and getattr(refill, f"{kind}_potions_below") > 0
+        if watched and counts.get(kind) is None:
+            missing.append("potions")
+            break
+    if CapReader(lambda: shot).cap() is None:
+        missing.append("cap")
+    if LevelReader(lambda: shot).level() is None:
+        missing.append("level")
+    if missing:
+        raise CalibrationMissingError(missing_message(missing))
+
+
 LAYOUT_EVERY = 5.0  # s between layout checks while the bot runs
 RAISE_WAIT = 0.5  # s for the window manager to draw the client on top
 
@@ -404,7 +459,6 @@ def build_gui_loop(
             module (raised by :func:`moonlight.core.wiring.build_loop`).
     """
     real_config = gui_bot_config(config_path)
-    profile = load_profile(real_config.profile, profiles_dir or real_config.profiles_dir)
     # Real screen capture: frame provider + focus check (F-13). Imported at
     # call time so importing this module never pulls in mss.
     from moonlight.perception.capture import ScreenCapture, default_backend, focus_window
@@ -416,7 +470,14 @@ def build_gui_loop(
     # clicked) would cover the client and fail the layout check.
     if raise_client and focus_window(real_config.window_title):
         time.sleep(RAISE_WAIT)
-    check_layout(profile, capture.get_frame, log)  # before the Arduino opens
+    # doc: docs/prs/auto-calibration.md#on-start
+    profile = start_calibration(
+        ProfileManager(profiles_dir or real_config.profiles_dir),
+        real_config.profile,
+        capture.get_frame,
+        log,
+    )  # before the Arduino opens
+    require_side_panel(capture.get_frame, real_config)
     backend = make_backend(real_config, hardware)
     providers = capture_providers(capture, profile, real_config)
     providers["focus_check"] = watch_layout(profile, capture.get_frame, log)

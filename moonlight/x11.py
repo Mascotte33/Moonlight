@@ -64,15 +64,34 @@ def _viewable(d: Any, wid: int) -> bool:
     return bool(d.create_resource_object("window", wid).get_attributes().map_state == X.IsViewable)
 
 
+def is_tibia_title(title: str) -> bool:
+    """The game client: "Tibia" (logged out) or "Tibia - <character>"."""
+    return title == "Tibia" or title.startswith("Tibia - ")
+
+
 def _matches(title: str, wanted: str) -> bool:
+    if wanted == "Tibia":  # any client, not "Tibia wiki - Firefox"
+        return is_tibia_title(title)
     return title == wanted or title.startswith(wanted)
 
 
-def find_window(title: str) -> int | None:
-    """Id of the biggest shown window whose title is or starts with *title*.
+def _active(d: Any) -> int | None:
+    from Xlib import X
 
-    The biggest, not the first: the Tibia launcher is also titled "Tibia"
-    (800x550) and was captured instead of the game.
+    prop = d.screen().root.get_full_property(
+        d.intern_atom("_NET_ACTIVE_WINDOW"), X.AnyPropertyType
+    )
+    return int(prop.value[0]) if prop is not None and prop.value and prop.value[0] else None
+
+
+def find_window(title: str) -> int | None:
+    """Id of the shown window whose title is or starts with *title*.
+
+    The focused one when it matches (one Arduino drives the client in front),
+    else the biggest, not the first: the Tibia launcher is also titled
+    "Tibia" (800x550) and was captured instead of the game. The cached id
+    holds while it matches, so a character change (same window, new title)
+    is followed.
     """
     with _lock:
         d = _d()
@@ -85,6 +104,10 @@ def find_window(title: str) -> int | None:
             found = [w for w in _clients(d) if _viewable(d, w) and _matches(_title(d, w), title)]
             if not found:
                 return None
+            active = _active(d)
+            if active in found:
+                _cached[title] = active
+                return active
 
             def area(w: int) -> int:
                 geom = d.create_resource_object("window", w).get_geometry()

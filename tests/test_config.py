@@ -304,12 +304,13 @@ def test_off_entry_for_enabled_module_refused() -> None:
         replace(cfg, off={"healing": HealingConfig()}).validate()
 
 
-def test_window_title_roundtrip() -> None:
+# doc: docs/prs/auto-calibration.md#game-window
+def test_a_saved_window_title_is_ignored() -> None:
     from moonlight.perception.capture import TIBIA_WINDOW_TITLE
 
     assert BotConfig.default().window_title == TIBIA_WINDOW_TITLE
     cfg = replace(BotConfig.default(), window_title="Tibia - Gunzodus")
-    assert BotConfig.from_dict(cfg.to_dict()).window_title == "Tibia - Gunzodus"
+    assert BotConfig.from_dict(cfg.to_dict()).window_title == TIBIA_WINDOW_TITLE
 
 
 def test_old_game_map_key_is_ignored() -> None:

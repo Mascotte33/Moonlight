@@ -38,6 +38,7 @@ from moonlight.gui.tab_base import (
     section,
     write_option,
 )
+from moonlight.x11 import is_tibia_title
 
 __all__ = [
     "ALARMS_OPTIONS",
@@ -51,7 +52,6 @@ __all__ = [
 
 OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
-    Option("Game window", "window_title", "dropdown"),
     Option("Cavebot walks with WSAD keys", "walk_keys", "switch"),
 ]
 #: The only switch for each module (T2.F4.K2); cavebot has its own on its tab.
@@ -185,19 +185,6 @@ class SettingsTab(Tab):
             font=ctk.CTkFont(size=theme.SIZE_TITLE, weight="bold"),
             text_color=theme.TEXT_MUTED,
         ).pack(fill="x", padx=theme.PAD, pady=(theme.PAD, 0), before=rows[len(OPTIONS)])
-        window_row = rows[[o.field for o in OPTIONS].index("window_title")]
-        (self.menu_window,) = [
-            w for w in window_row.winfo_children() if isinstance(w, ctk.CTkOptionMenu)
-        ]
-        ctk.CTkButton(
-            window_row,
-            text="Refresh",
-            width=80,
-            command=self._refresh_windows,
-            fg_color=theme.RAISED,
-            hover_color=theme.HOVER,
-        ).pack(side="right", padx=theme.UNIT)
-        self._refresh_windows()
         self._reasons: dict[str, Label] = {}
         for option, row in zip([*OPTIONS, *MODULE_SWITCHES], rows, strict=True):
             for switch in row.winfo_children():
@@ -286,7 +273,7 @@ class SettingsTab(Tab):
         self._save_client_hotkeys()
         cfg = load_real_config()
         # ponytail: matches the game window title, not the client's folder.
-        if any(t.startswith(cfg.window_title) for t in window_titles()):
+        if any(is_tibia_title(t) for t in window_titles()):
             self.lbl_client.configure(
                 text="Close the game client first: it writes its own hotkeys back when it closes."
             )
@@ -303,9 +290,6 @@ class SettingsTab(Tab):
             text=f"Wrote the Moonlight set to {path} (the old file is {path.name}.bak). "
             "Open the client: the set is in use."
         )
-
-    def _refresh_windows(self) -> None:
-        self.menu_window.configure(values=window_titles() or ["No windows found"])
 
     def _check_switch(self, field: str) -> None:
         """Flip a module switch back when the config would refuse it, else apply it."""

@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 #: module is MISSING when any of its required regions is absent from the
 #: profile.
 MODULE_REGIONS: dict[str, tuple[str, ...]] = {
-    "healing": ("hp_bar", "mp_bar", "status_icons"),
+    "healing": ("hp_bar", "mp_bar"),
     "targeting": ("battle_list", "game_grid"),
     "cavebot": ("minimap", "floor_indicator", "game_grid"),
     "looting": (),
@@ -86,7 +86,6 @@ _PERCEIVE_REGIONS = (
     "battle_list",
     "minimap",
     "floor_indicator",
-    "status_icons",
 )
 
 
