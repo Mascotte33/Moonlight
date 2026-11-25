@@ -211,6 +211,27 @@ _NO_LABEL = ("deposit", "bank", "trade")
 NO_TILE = _JUMP_ACTIONS + _HAND_ACTIONS
 
 
+def _load_progress() -> dict[str, object]:
+    """Route name -> the last waypoint reached (:data:`ROUTE_PROGRESS_FILE`)."""
+    try:
+        data = json.loads(ROUTE_PROGRESS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_progress(route: str, index: int) -> None:
+    data = _load_progress()
+    if data.get(route) == index:
+        return
+    data[route] = index
+    try:
+        ROUTE_PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        ROUTE_PROGRESS_FILE.write_text(json.dumps(data), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("cavebot: route progress not saved: %s", exc)
+
+
 def _load_echo_raid_duds() -> set[tuple[int, int, int]]:
     """The saved tiles whose echo raid never triggered."""
     try:
@@ -332,6 +353,10 @@ ECHO_RAID_MOTION_LEVEL = 40
 #: Tiles whose "echo raid" never triggered (a coffin, a lamp...): ``x y z`` per
 #: line, never clicked again, also after a restart.
 ECHO_RAID_DUDS_FILE = Path("data") / "echo_raid_duds.txt"
+# doc: docs/prs/profiles.md#resume-place
+#: The last waypoint reached on each route, kept across restarts: a restart
+#: began the route at waypoint 0 and skipped the lap's refill check.
+ROUTE_PROGRESS_FILE = Path("data") / "route_progress.json"
 _DETOUR = 8  # extra steps worth walking around creatures; longer -> fight through
 # doc: docs/prs/depot.md#npc-pacing
 #: Seconds paused after each NPC line (owner's ranges: the NPC needs time to react).
@@ -782,11 +807,12 @@ class Cavebot:
         """Begin the route (clears any alarm).
 
         Args:
-            nearest: Resume at the positional waypoint nearest to the
-                current position on the current floor (e.g. after a refill
-                trip, F-25) instead of waypoint 0.
+            nearest: Resume where the bot was: the last waypoint reached on
+                this route (saved across restarts) while it is on our floor
+                within ``RESUME_TILES``, else the nearest positional
+                waypoint (e.g. after a refill trip, F-25), instead of 0.
         """
-        self.route.current = self._nearest_waypoint() if nearest else 0
+        self.route.current = self._resume_waypoint() if nearest else 0
         self.alarm = None
         self._active = True
         self._reset_tracking()
@@ -929,6 +955,7 @@ class Cavebot:
     def on_waypoint_reached(self, index: int) -> None:
         """Hook called when positional waypoint *index* is reached."""
         logger.debug("cavebot: reached waypoint %d at %s", index, self._where())
+        _save_progress(self.route.name, index)
         if self._callback is not None:
             self._callback(index)
 
@@ -1280,6 +1307,22 @@ class Cavebot:
             if has_tile(wp) and wp.z == pos.z
         ]
         return min(candidates)[1] if candidates else 0
+
+    def _resume_waypoint(self) -> int:
+        """The last waypoint reached on this route when still close, else the nearest."""
+        saved = _load_progress().get(self.route.name)
+        pos = self._read_position()
+        wps = self.route.waypoints
+        if isinstance(saved, int) and 0 <= saved < len(wps) and pos is not None:
+            wp = wps[saved]
+            if (
+                has_tile(wp)
+                and wp.z == pos.z
+                and max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= RESUME_TILES
+            ):
+                logger.info("cavebot: going on from waypoint %d, where the bot was", saved)
+                return saved
+        return self._nearest_waypoint()
 
     def _after_detour(self) -> int:
         """The waypoint to go on with after a detour: the one we were walking to
