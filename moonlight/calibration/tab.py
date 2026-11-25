@@ -9,11 +9,10 @@ functions below so it is tested without a window (R8).
 
 from __future__ import annotations
 
-import dataclasses
 import tkinter as tk
 from collections.abc import Mapping
 from pathlib import Path
-from tkinter import filedialog, messagebox, simpledialog
+from tkinter import filedialog, messagebox
 from typing import TYPE_CHECKING
 
 import customtkinter as ctk
@@ -22,16 +21,17 @@ import numpy as np
 
 from moonlight.calibration.autofind import find_regions, find_ui_scale
 from moonlight.calibration.calibrate import (
+    CALIBRATION_FILE,
     REGIONS,
     CalibrationError,
     CalibrationProfile,
     Point,
     Rect,
+    data_dir,
 )
 from moonlight.calibration.calibration_steps import AREAS, CalibrationSteps
-from moonlight.calibration.profile import ProfileManager
 from moonlight.gui import theme
-from moonlight.gui.loop_factory import load_real_config, picked_config
+from moonlight.gui.loop_factory import load_real_config
 from moonlight.gui.tab_base import Label, Row, Tab
 from moonlight.perception.capture import CaptureError, ScreenCapture
 
@@ -231,28 +231,11 @@ class CalibrationTab(Tab):
         )
         self.btn_start.pack(side="left", padx=(0, theme.GAP))
         ctk.CTkButton(row, text="Load screenshot", command=self.load).pack(side="left")
-        Label(row, text="Calibration").pack(side="left", padx=(theme.PAD, theme.UNIT))
-        self.menu_profile = ctk.CTkOptionMenu(
+        Label(
             row,
-            values=[""],
-            command=self.pick_profile,
-            fg_color=theme.RAISED,
-            button_color=theme.RAISED,
-            button_hover_color=theme.HOVER,
-        )
-        self.menu_profile.pack(side="left")
-        ctk.CTkButton(row, text="New", width=64, command=self.new_profile).pack(
-            side="left", padx=(theme.GAP, 0)
-        )
-        ctk.CTkButton(
-            row,
-            text="Delete",
-            width=64,
-            command=self.delete_profile,
-            fg_color=theme.BLOOD,
-            hover_color=theme.BLOOD_HOVER,
-            text_color=theme.NIGHT,
-        ).pack(side="left", padx=(theme.UNIT, 0))
+            text="Start finds the client by itself; fix an area here only if it was found wrong.",
+            text_color=theme.TEXT_DIM,
+        ).pack(side="left", padx=(theme.PAD, 0))
         self.lbl_status = Label(self.idle, text="", anchor="w")
         self.lbl_status.pack(fill="x", padx=theme.PAD)
         anchors = load_real_config().templates_dir / "anchors"
@@ -272,7 +255,6 @@ class CalibrationTab(Tab):
         self.summary.pack(fill="both", expand=True, padx=theme.PAD, pady=theme.PAD)
         self.summary.bind("<Configure>", lambda _e: self.render_summary())
         self.refill_profiles()
-        self.ctx.config_listeners.append(self.refill_profiles)
 
         self.work = Row(parent)
         self.work.grid(row=0, column=0, sticky="nsew")
@@ -352,66 +334,20 @@ class CalibrationTab(Tab):
                 state=state, **theme.button_colors(on, theme.MANA, theme.MANA_HOVER)
             )
 
-    # -- which calibration the bot uses -------------------------------------
+    # -- the calibration the bot uses -------------------------------------
 
     def refill_profiles(self) -> None:
-        """Fill the dropdown with the saved calibrations; show the picked one."""
-        cfg = load_real_config()
-        names = ProfileManager(cfg.profiles_dir).list_profiles()
-        if cfg.profile not in names:  # picked but not saved yet: show it anyway
-            names = sorted([*names, cfg.profile])
-        self.menu_profile.configure(values=names)
-        self.menu_profile.set(cfg.profile)
-        self.load_summary(ProfileManager(cfg.profiles_dir), cfg.profile)
-
-    def pick_profile(self, name: str) -> None:
-        """Make the bot use calibration *name* (a running bot restarts)."""
-        path = picked_config()
-        cfg = load_real_config(path)
-        dataclasses.replace(cfg, profile=name).save(path)
-        self.ctx.log.info(f"calibration: bot uses {name}")
-        self.ctx.config_changed()
-        self.refill_profiles()
-
-    def new_profile(self) -> None:
-        """Ask for a name, save it empty and pick it; Start calibration then fills it."""
-        # Tk's own prompt: customtkinter's dialog could not be closed on Linux.
-        name = simpledialog.askstring("New", "Name for the new calibration:", parent=self.parent)
-        if name is None:  # cancelled
-            return
-        name = name.strip()
-        if not ProfileManager.valid_name(name):
-            self.ctx.log.error(
-                f"calibration: bad name {name!r}: use 1 to 40 letters, digits, _ and -"
-            )
-            return
-        path = ProfileManager(load_real_config().profiles_dir).path(name)
-        if path.exists():
-            self.ctx.log.error(f"calibration: {name} already exists, pick it from the list")
-            return
-        CalibrationProfile((0, 0)).save(path)  # empty, so it stays in the list until calibrated
-        self.pick_profile(name)
-
-    def delete_profile(self) -> None:
-        """Delete the picked calibration after asking, then pick another saved one."""
-        cfg = load_real_config()
-        if not messagebox.askyesno("Delete", f"Delete calibration {cfg.profile}?"):
-            return
-        manager = ProfileManager(cfg.profiles_dir)
-        manager.delete(cfg.profile)
-        self.ctx.log.info(f"calibration: deleted {cfg.profile}")
-        rest = manager.list_profiles()
-        if rest:
-            self.pick_profile(rest[0])
-        else:  # nothing left: keep the name, the next calibration saves to it
-            self.refill_profiles()
+        """Show the saved calibration."""
+        self.load_summary()
 
     # -- summary of the picked calibration ----------------------------------
 
-    def load_summary(self, manager: ProfileManager, name: str) -> None:
-        """Draw *name*'s boxes on the screenshot it was calibrated on."""
-        profile = load_old_profile(manager.path(name))
-        shot_file = manager.shot_path(name)
+    def load_summary(self) -> None:
+        """Draw the calibration's boxes on the screenshot it was found on."""
+        name = "Calibration"
+        path = data_dir() / CALIBRATION_FILE
+        profile = load_old_profile(path)
+        shot_file = path.with_suffix(".png")
         shot = cv2.imread(str(shot_file)) if shot_file.exists() else None
         if profile is None or shot is None:
             self._summary = None
@@ -476,8 +412,7 @@ class CalibrationTab(Tab):
 
     def open(self, shot: np.ndarray) -> None:
         """Start the steps on *shot* (BGR)."""
-        cfg = load_real_config()
-        self.path = ProfileManager(cfg.profiles_dir).path(cfg.profile)
+        self.path = data_dir() / CALIBRATION_FILE
         old = load_old_profile(self.path)
         found = find_regions(shot)[0]
         scale, landmark = find_ui_scale(shot)

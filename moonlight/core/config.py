@@ -11,13 +11,10 @@ A module is **enabled** when its config is not ``None``.
 JSON format (``moonlight_config.json``)::
 
     {
-      "profile": "moonlight_user",         # default profile (F-11)
       "serial_port": null,                 # null = auto-detect the Arduino
       "serial_baudrate": 115200,
       "simulation": false,                 # true = FakeInput, no Arduino (F-13)
       "log_commands": false,               # true = every input command goes to the GUI log
-      "window_title": "Tibia",             # game window to capture (exact or prefix)
-      "profiles_dir": null,                # null = moonlight/profiles
       "templates_dir": "data/templates",   # cursor/*.png, loot/*.png
       "routes_dir": "data/waypoints",
       "loop": {"tick_rate": 20.0},         # any LoopConfig field
@@ -105,14 +102,11 @@ MODULES = (
 )
 
 _TOP_KEYS = {
-    "profile",
     "serial_port",
     "serial_baudrate",
     "simulation",
     "log_commands",
     "walk_keys",
-    "window_title",
-    "profiles_dir",
     "templates_dir",
     "routes_dir",
     "monster_name_source",
@@ -154,7 +148,6 @@ class CavebotConfig:
 class BotConfig:
     """Everything needed to build and run the bot (see the module docstring)."""
 
-    profile: str
     serial_port: str | None = None
     serial_baudrate: int = 115200
     #: F-13: true runs on a FakeInput instead of the Arduino. A missing
@@ -165,7 +158,6 @@ class BotConfig:
     walk_keys: bool = False
     #: Same as ``perception.capture.TIBIA_WINDOW_TITLE``; not imported, that pulls in mss.
     window_title: str = "Tibia"
-    profiles_dir: Path | None = None
     templates_dir: Path = Path("data/templates")
     routes_dir: Path = Path("data/waypoints")
     loop: LoopConfig = LoopConfig()
@@ -201,7 +193,6 @@ class BotConfig:
     def default(cls) -> BotConfig:
         """Safe defaults: healing and targeting on; the rest off."""
         cfg = cls(
-            profile="moonlight_user",
             healing=HealingConfig(),
             targeting=TargetingConfig(),
         )
@@ -232,20 +223,19 @@ class BotConfig:
         data = dict(_require_dict(raw, "config"))
         data.pop("minimap_start", None)  # old files: the map gives the position now
         data.pop("game_map", None)  # old files: only the real Tibia map is used now
+        # doc: docs/prs/auto-calibration.md#data-files
+        # Old files: one calibration in data/ and any client window now.
+        for old in ("profile", "profiles_dir", "window_title"):
+            data.pop(old, None)
         _reject_unknown(data, _TOP_KEYS, "config")
         hints = get_type_hints(cls)
         kwargs: dict[str, Any] = {}
-        if "profile" not in data:
-            raise ConfigError("config: missing required key 'profile'")
         for key in (
-            "profile",
             "serial_port",
             "serial_baudrate",
             "simulation",
             "log_commands",
             "walk_keys",
-            "window_title",
-            "profiles_dir",
             "templates_dir",
             "routes_dir",
             "monster_name_source",
@@ -255,12 +245,6 @@ class BotConfig:
         ):
             if key in data:
                 kwargs[key] = _coerce(data[key], hints[key], key)
-        if not kwargs["profile"]:
-            raise ConfigError("profile must be a non-empty string")
-        # doc: docs/prs/auto-calibration.md#game-window
-        # The bot follows any client ("Tibia - <character>"); a saved title
-        # from before would pin it to one character.
-        kwargs.pop("window_title", None)
         if "loop" in data:
             kwargs["loop"] = _build(LoopConfig, data["loop"], "loop")
         if "clicker" in data:
@@ -331,7 +315,7 @@ class BotConfig:
         data: dict[str, Any] = {
             f.name: getattr(self, f.name)
             for f in fields(self)
-            if f.name not in MODULES and f.name != "off"
+            if f.name not in MODULES and f.name not in ("off", "window_title")
         }
         data["loop"] = asdict(self.loop)
         data["clicker"] = asdict(self.clicker)

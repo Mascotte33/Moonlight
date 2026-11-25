@@ -38,8 +38,9 @@ hands-on hardware steps. See [Built by AI agents](#built-by-ai-agents).
 - **Closed-loop clicking** — move, read the rendered cursor back from the
   screen, correct to within ±2 px, then click; fail closed if the cursor is not
   found.
-- **Auto-calibration** — screen regions are found from anchor images, saved as
-  per-monitor profiles, and rejected when the layout changes.
+- **Auto-calibration** — on every Start the bot finds the Tibia client (the one
+  in front) and its screen regions by itself, keeps `data/calibration.json`
+  while it still fits and searches again when the layout changed.
 - **User scripting** — scripts are Python generators that yield one command at
   a time, so the main loop keeps its priorities between steps.
 - **Golden-frame testing** — 200 real labelled frames drive replay tests for
@@ -83,7 +84,7 @@ moonlight/
 ├── core/         the engine: loop, safety, wiring, WorldState, config
 ├── perception/   screen capture and the image readers
 ├── hardware/     Arduino input backends, closed-loop clicking
-├── calibration/  screen-region finder and profiles
+├── calibration/  screen-region finder, calibration on Start
 ├── gui/          the window shell, dashboard, diagnostics and settings
 ├── <feature>/    one folder per decision module: logic + its GUI tab
 └── x11.py        Linux desktop calls
@@ -144,7 +145,7 @@ Settings, "Drop these items", "+", show the client within 3 s, box the item
 (without its count), Enter, type a name. Tick "Drop the items below every
 1-3 min". When no monster is in view the bot drags each listed item from the
 open backpacks onto a free sqm within 2 of the character (`drop: <name> -> (x, y)`
-in the log). The pictures live in the profiles folder, `drop_items/`.
+in the log). The pictures live in `data/drop_items/`.
 
 To play several accounts in turn (stamina switch): write a text file with
 one account per line, `login password` (an email login is fine: letters,

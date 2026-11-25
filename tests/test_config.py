@@ -111,7 +111,6 @@ def test_old_script_timers_become_ticks_and_pauses() -> None:
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda d: d.pop("profile"),
         lambda d: d.pop("modules"),
         lambda d: d["modules"].pop("healing"),
         lambda d: d["modules"]["healing"].pop("enabled"),
@@ -128,7 +127,6 @@ def test_old_script_timers_become_ticks_and_pauses() -> None:
         ),
         lambda d: d["modules"].update(targeting={"enabled": True, "max_monsters_to_engage": True}),
         lambda d: d.update(loop={"tick_rate": -1.0}),
-        lambda d: d.update(profile=""),
         lambda d: d["modules"].update(cavebot={"enabled": True}),
         lambda d: d["modules"].update(cavebot={"enabled": True, "route": "missing"}),
     ],
@@ -273,7 +271,6 @@ def test_save_roundtrip_every_section(tmp_path: Path) -> None:
     )
     data.update(
         serial_port="COM7",
-        profiles_dir=str(tmp_path / "profiles"),
         routes_dir=str(tmp_path / "routes"),
         loop={"tick_rate": 10.0},
         clicker={"open_loop": True},

@@ -298,18 +298,18 @@ def _kind_heading(parent: ctk.CTkFrame, text: str) -> None:
 
 def _backpack_path() -> Path:
     """The loot backpack picture ``Pick backpack`` saves and ``deposit`` drags."""
-    from moonlight.calibration.calibrate import default_profiles_dir
+    from moonlight.calibration.calibrate import data_dir
     from moonlight.cavebot.town import BACKPACK_FILE
 
-    return (load_real_config().profiles_dir or default_profiles_dir()) / BACKPACK_FILE
+    return data_dir() / BACKPACK_FILE
 
 
 def _drop_items_dir() -> Path:
     """The item pictures "+" saves and drop items looks for (profiles folder)."""
-    from moonlight.calibration.calibrate import default_profiles_dir
+    from moonlight.calibration.calibrate import data_dir
     from moonlight.looting.drop_items import DROP_ITEMS_DIR
 
-    return (load_real_config().profiles_dir or default_profiles_dir()) / DROP_ITEMS_DIR
+    return data_dir() / DROP_ITEMS_DIR
 
 
 def _button(parent: ctk.CTkFrame, text: str, command: Callable[[], None]) -> ctk.CTkButton:

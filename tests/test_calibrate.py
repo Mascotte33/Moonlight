@@ -19,7 +19,6 @@ from moonlight.calibration.calibrate import (
     CalibrationError,
     CalibrationProfile,
     Region,
-    default_profiles_dir,
     normalize_rect,
     region_to_absolute,
     region_to_relative,
@@ -207,9 +206,3 @@ class TestProfileAccess:
         p.set_region("hp_bar", Region(5, 5, 10, 10))
         # At a different runtime landmark:
         assert p.region_absolute("hp_bar", (200, 300)) == (205, 305, 10, 10)
-
-
-class TestProfilesDir:
-    def test_default_profiles_dir_exists_as_path(self) -> None:
-        d = default_profiles_dir()
-        assert d.name == "profiles"

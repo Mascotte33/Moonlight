@@ -49,3 +49,8 @@ moonlight/data/
 *.lnk
 data/monsters/
 data/echo_raid_duds.txt
+# This PC's calibration, learned monster names and item pictures (data_dir()).
+data/calibration.png
+data/seen_monsters/
+data/loot_backpack.png
+data/drop_items/

@@ -517,11 +517,10 @@ def build_loop(
             screen_grab=screen_grab,
         )
 
-    from moonlight.calibration.calibrate import default_profiles_dir
+    from moonlight.calibration.calibrate import SEEN_MONSTERS_FILE, data_dir
     from moonlight.targeting.seen_monsters import SeenMonsters
 
-    profiles_dir = config.profiles_dir or default_profiles_dir()
-    seen_monsters = SeenMonsters(profiles_dir / f"{config.profile}.seen_monsters.json")
+    seen_monsters = SeenMonsters(data_dir() / SEEN_MONSTERS_FILE)
     current = config
     m = modules(config, None)
     loop = GameLoop(
@@ -760,7 +759,7 @@ def build_modules(
         assert m.clicker is not None
         clicker = m.clicker
         if config.cavebot is not None:
-            from moonlight.calibration.calibrate import default_profiles_dir
+            from moonlight.calibration.calibrate import data_dir
             from moonlight.cavebot.cavebot import Cavebot
             from moonlight.cavebot.pathing import CostMap
             from moonlight.cavebot.town import BACKPACK_FILE
@@ -786,7 +785,7 @@ def build_modules(
                 clock=clock,
                 scripts=m.scripts,
                 supplies_low=supplies_low(config.refill, screen_grab),
-                backpack=(config.profiles_dir or default_profiles_dir()) / BACKPACK_FILE,
+                backpack=data_dir() / BACKPACK_FILE,
                 potion_counts=None if screen_grab is None else PotionCounter(screen_grab).counts,
             )
             if prev is None or prev.cavebot is None:
@@ -806,7 +805,7 @@ def build_modules(
             )
             # doc: docs/prs/drop-items.md#drop-items
             if config.looting.drop_items and screen_grab is not None:
-                from moonlight.calibration.calibrate import default_profiles_dir
+                from moonlight.calibration.calibrate import data_dir
                 from moonlight.looting.drop_items import DROP_ITEMS_DIR, DropItems
 
                 if not clicker.absolute:
@@ -816,7 +815,7 @@ def build_modules(
                     clicker.to_wire,
                     screen_grab,
                     profile.get_region("game_grid").to_tuple,
-                    (config.profiles_dir or default_profiles_dir()) / DROP_ITEMS_DIR,
+                    data_dir() / DROP_ITEMS_DIR,
                     walkable,
                     clock=clock or time.monotonic,
                 )

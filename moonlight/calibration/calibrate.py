@@ -33,7 +33,10 @@ __all__ = [
     "region_to_relative",
     "region_to_absolute",
     "normalize_rect",
-    "default_profiles_dir",
+    "CALIBRATION_FILE",
+    "SEEN_MONSTERS_FILE",
+    "data_dir",
+    "load_calibration",
 ]
 
 #: All region keys a calibration profile must define, in canonical order.
@@ -335,6 +338,25 @@ class CalibrationProfile:
         return f"CalibrationProfile(landmark={self.landmark}, regions={sorted(self.regions)})"
 
 
-def default_profiles_dir() -> Path:
-    """Return the ``profiles/`` directory next to the package."""
-    return Path(__file__).resolve().parent.parent / "profiles"
+# doc: docs/prs/auto-calibration.md#data-files
+def data_dir() -> Path:
+    """The repo's ``data/`` folder: this PC's calibration, learned names, pictures."""
+    return Path(__file__).resolve().parents[2] / "data"
+
+
+#: The one calibration, found on Start (see :mod:`moonlight.calibration.auto`).
+CALIBRATION_FILE = "calibration.json"
+#: Monster names learned from the battle list.
+SEEN_MONSTERS_FILE = "seen_monsters.json"
+
+
+def load_calibration(path: Path | None = None) -> CalibrationProfile:
+    """Load and validate the saved calibration (``data/calibration.json``).
+
+    Raises:
+        OSError: When none is saved yet.
+        CalibrationError: When the file is malformed or incomplete.
+    """
+    profile = CalibrationProfile.load(path or data_dir() / CALIBRATION_FILE)
+    profile.validate()
+    return profile

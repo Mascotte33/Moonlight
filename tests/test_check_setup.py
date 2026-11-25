@@ -25,7 +25,7 @@ def test_missing_region_reports_fail(
     p = CalibrationProfile(landmark=(100, 100))
     for i, name in enumerate(REGIONS):
         p.set_region(name, Region(10 + 40 * i, 20, 30, 10))
-    p.save(tmp_path / "moonlight_user.json")
+    p.save(tmp_path / "calibration.json")
     config = BotConfig.default()
     with (
         # A region outside the standard calibration set.
@@ -33,6 +33,6 @@ def test_missing_region_reports_fail(
         mock.patch.object(check_setup, "_load_config", return_value=config),
         mock.patch("moonlight.hardware.input.find_arduino_port", return_value="COM9"),
     ):
-        assert check_setup.main(["--profiles-dir", str(tmp_path)]) == 1
+        assert check_setup.main(["--calibration", str(tmp_path / "calibration.json")]) == 1
     out = capsys.readouterr().out
     assert "[FAIL] module healing: missing calibration region(s) capacity" in out

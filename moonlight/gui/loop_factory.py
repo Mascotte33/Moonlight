@@ -29,8 +29,7 @@ from typing import TYPE_CHECKING, Any
 
 from moonlight import x11
 from moonlight.calibration import autofind
-from moonlight.calibration.calibrate import REGIONS
-from moonlight.calibration.profile import ProfileManager
+from moonlight.calibration.calibrate import CALIBRATION_FILE, REGIONS, data_dir
 from moonlight.cavebot.cavebot import Waypoint
 from moonlight.core.config import DEFAULT_CONFIG_FILE, BotConfig, ConfigError
 from moonlight.core.state import WorldState
@@ -184,11 +183,11 @@ def load_real_config(config_path: str | Path | None = None) -> BotConfig:
     return BotConfig.load(path)
 
 
-def load_profile(
-    profile_name: str, profiles_dir: str | Path | None = None
-) -> CalibrationProfile:
-    """Load and validate calibration profile *profile_name* (F-11)."""
-    return ProfileManager(profiles_dir).load(profile_name)
+def load_profile(path: Path | None = None) -> CalibrationProfile:
+    """Load and validate the saved calibration (``data/calibration.json``)."""
+    from moonlight.calibration.calibrate import load_calibration
+
+    return load_calibration(path)
 
 
 class LoggedInput(InputBackend):
@@ -315,8 +314,7 @@ def check_layout(
 
 
 def start_calibration(
-    manager: ProfileManager,
-    name: str,
+    path: Path,
     frame: Callable[[], Any],
     log: Callable[[str], None],
 ) -> CalibrationProfile:
@@ -329,14 +327,14 @@ def start_calibration(
 
     old: CalibrationProfile | None = None
     try:
-        old = manager.load(name)
+        old = load_profile(path)
         check_layout(old, frame, log)
         if all(n in old.regions for n in REGIONS):
             return old
         log("calibration: an area is missing, searching again")
     except (ValueError, RuntimeError, OSError) as exc:  # none saved, broken or moved
         log(f"calibration: {exc}, searching the client")
-    return calibrate_and_save(frame(), manager.path(name), old, log)
+    return calibrate_and_save(frame(), path, old, log)
 
 
 # doc: docs/prs/auto-calibration.md#side-panel
@@ -431,7 +429,7 @@ def build_gui_loop(
     hardware: HardwareController,
     state: WorldState,
     config_path: str | Path | None = None,
-    profiles_dir: str | Path | None = None,
+    calibration_file: Path | None = None,
     raise_client: bool = False,
 ) -> GameLoop:
     """Build the real bot loop for the GUI Start button (F-13).
@@ -447,11 +445,11 @@ def build_gui_loop(
         hardware: The shared hardware controller (owns the Arduino).
         state: The shared :class:`~moonlight.core.state.WorldState` to mutate.
         config_path: Path to the real config file; ``None`` uses the picked one.
-        profiles_dir: Directory holding calibration profiles.
+        calibration_file: The calibration to use; ``None`` is ``data/calibration.json``.
 
     Raises:
-        ValueError: When no calibration profile can be loaded, or the
-            layout changed since calibration (:func:`check_layout`).
+        ValueError: When an area the bot needs is not on screen
+            (:func:`start_calibration`).
         NoArduinoFoundError: When no Arduino is found and ``simulation`` is
             not enabled (F-13: no silent ``FakeInput``).
         ConfigError: When the real config fails validation.
@@ -472,10 +470,7 @@ def build_gui_loop(
         time.sleep(RAISE_WAIT)
     # doc: docs/prs/auto-calibration.md#on-start
     profile = start_calibration(
-        ProfileManager(profiles_dir or real_config.profiles_dir),
-        real_config.profile,
-        capture.get_frame,
-        log,
+        calibration_file or data_dir() / CALIBRATION_FILE, capture.get_frame, log
     )  # before the Arduino opens
     require_side_panel(capture.get_frame, real_config)
     backend = make_backend(real_config, hardware)
@@ -490,7 +485,7 @@ def build_gui_loop(
 def build_position_reader(
     state: WorldState,
     config_path: str | Path | None = None,
-    profiles_dir: str | Path | None = None,
+    calibration_file: Path | None = None,
 ) -> Callable[[], None]:
     """One screen read into *state* for while the bot is stopped.
 
@@ -500,6 +495,6 @@ def build_position_reader(
     from moonlight.perception.capture import ScreenCapture
 
     cfg = load_real_config(config_path)
-    profile = load_profile(cfg.profile, profiles_dir or cfg.profiles_dir)
+    profile = load_profile(calibration_file)
     capture = ScreenCapture(window_title=cfg.window_title)
     return make_perceive(state, profile, capture.get_frame, start=state.position)

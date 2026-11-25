@@ -26,7 +26,7 @@ def main() -> None:
     parser.add_argument("reads", type=int, nargs="?", default=20)
     reads = parser.parse_args().reads
     config = load_real_config()
-    profile = load_profile(config.profile, config.profiles_dir)
+    profile = load_profile()
     px_per_sqm = max(1, round(profile.ui_scale))
     world_map = _world_map(MAP_DIR,(px_per_sqm, 2 * px_per_sqm))
     minimap = MinimapReader(

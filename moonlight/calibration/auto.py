@@ -91,6 +91,9 @@ def calibrate_and_save(
         raise CalibrationMissingError(missing_message(missing))
     path.parent.mkdir(parents=True, exist_ok=True)
     profile.save(path)
+    import cv2
+
+    cv2.imwrite(str(path.with_suffix(".png")), frame_rgb[..., ::-1])  # the tab's summary
     log(f"calibration: found the client layout, saved to {path}")
     if optional:
         log(f"calibration: {missing_message(optional)} (optional, its features stay off)")

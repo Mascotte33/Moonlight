@@ -55,22 +55,22 @@ def _config(**overrides: object) -> BotConfig:
 
 
 def _config_file(tmp_path: Path, *, simulation: bool) -> Path:
-    """The real config file Start reads, naming the ``test_profile``."""
+    """The real config file Start reads."""
     path = tmp_path / "moonlight_config.json"
-    _config(profile="test_profile", simulation=simulation).save(path)
+    _config(simulation=simulation).save(path)
     return path
 
 
 @pytest.fixture()
 def profile_dir(tmp_path: Path) -> Path:
-    """A profiles dir holding a *full* calibration profile (every region)."""
+    """A *full* calibration (every region); Start is given its file."""
     d = tmp_path / "profiles"
     d.mkdir()
     p = CalibrationProfile(landmark=(100, 100))
     for name in REGIONS:
         p.set_region(name, Region(0, 0, 10, 10))
-    p.save(d / "test_profile.json")
-    return d
+    p.save(d / "calibration.json")
+    return d / "calibration.json"
 
 
 @pytest.fixture(autouse=True)
@@ -180,7 +180,7 @@ def test_build_gui_loop_wires_real_perceive(
         hardware=hw,
         state=state,
         config_path=_config_file(tmp_path, simulation=True),
-        profiles_dir=profile_dir,
+        calibration_file=profile_dir,
     )
     # A bare GameLoop has _perceive is None; build_loop always wires one.
     assert loop._perceive is not None
@@ -200,7 +200,7 @@ def test_build_gui_loop_no_silent_fakeinput(
             hardware=hw,
             state=state,
             config_path=_config_file(tmp_path, simulation=False),
-            profiles_dir=profile_dir,
+            calibration_file=profile_dir,
         )
     # The controller recorded the error and has no active backend.
     assert hw.backend is None
@@ -233,7 +233,7 @@ def test_start_captures_any_tibia_client(
     path = _config_file(tmp_path, simulation=True)
     replace(BotConfig.load(path), window_title="Tibia - Test").save(path)
     build_gui_loop(
-        hardware=HardwareController(), state=state, config_path=path, profiles_dir=profile_dir
+        hardware=HardwareController(), state=state, config_path=path, calibration_file=profile_dir
     )
     assert seen == [capture.TIBIA_WINDOW_TITLE]  # any client, never one character
 
@@ -273,13 +273,13 @@ def _start_with_window(
     p = CalibrationProfile(**profile)
     for name in REGIONS:
         p.set_region(name, Region(0, 0, 10, 10))
-    p.save(d / "test_profile.json")
+    p.save(d / "calibration.json")
     log = LogFeed()
     build_gui_loop(
         hardware=HardwareController(log=log),
         state=WorldState(),
         config_path=_config_file(tmp_path, simulation=True),
-        profiles_dir=d,
+        calibration_file=d / "calibration.json",
         raise_client=raise_client,
     )
     return log
@@ -386,45 +386,40 @@ def test_a_client_on_another_monitor_moves_the_mouse_relative() -> None:
 # doc: docs/prs/auto-calibration.md#on-start
 def test_a_changed_layout_is_calibrated_again_and_saved(tmp_path: Path) -> None:
     from moonlight.calibration.calibrate import OPTIONAL_REGIONS
-    from moonlight.calibration.profile import ProfileManager
-
-    manager = ProfileManager(tmp_path)
+    path = tmp_path / "calibration.json"
     old = CalibrationProfile(window_size=(1024, 768))
     for name in REGIONS:
         old.set_region(name, Region(0, 0, 10, 10))
-    old.save(manager.path("p"))
+    old.save(path)
     found = {n: (5, 5, 20, 20) for n in REGIONS + OPTIONAL_REGIONS}
     frame = np.zeros((600, 800, 3), dtype=np.uint8)
     lines: list[str] = []
     with mock.patch("moonlight.calibration.auto.find_regions", return_value=(found, [])):
-        got = loop_factory.start_calibration(manager, "p", lambda: frame, lines.append)
+        got = loop_factory.start_calibration(path, lambda: frame, lines.append)
     assert got.window_size == (800, 600)
-    assert manager.load("p").get_region("battle_list").to_tuple == (5, 5, 20, 20)
+    assert CalibrationProfile.load(path).get_region("battle_list").to_tuple == (5, 5, 20, 20)
+    assert path.with_suffix(".png").exists()  # the Calibration tab's summary
     assert any("saved to" in line for line in lines)
 
 
 def test_a_fitting_calibration_is_kept(tmp_path: Path) -> None:
-    from moonlight.calibration.profile import ProfileManager
-
-    manager = ProfileManager(tmp_path)
+    path = tmp_path / "calibration.json"
     old = CalibrationProfile(window_size=(800, 600))
     for name in REGIONS:
         old.set_region(name, Region(0, 0, 10, 10))
-    old.save(manager.path("p"))
+    old.save(path)
     frame = np.zeros((600, 800, 3), dtype=np.uint8)
     with mock.patch("moonlight.calibration.auto.find_regions") as find:
-        loop_factory.start_calibration(manager, "p", lambda: frame, lambda _l: None)
+        loop_factory.start_calibration(path, lambda: frame, lambda _l: None)
     find.assert_not_called()
 
 
 def test_optional_areas_never_stop_the_start(tmp_path: Path) -> None:
-    from moonlight.calibration.profile import ProfileManager
-
     found = {n: (5, 5, 20, 20) for n in REGIONS}  # no Players window, no condition icons
     lines: list[str] = []
     with mock.patch("moonlight.calibration.auto.find_regions", return_value=(found, [])):
         loop_factory.start_calibration(
-            ProfileManager(tmp_path), "p", lambda: np.zeros((6, 8, 3), np.uint8), lines.append
+            tmp_path / "c.json", lambda: np.zeros((6, 8, 3), np.uint8), lines.append
         )
     assert any("Players window, Condition icons not found" in line for line in lines)
 

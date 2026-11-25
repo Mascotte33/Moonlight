@@ -2,9 +2,8 @@
 """Check the bot is ready to run: config, serial port, profile, perception.
 
 Usage:
-    python tools/check_setup.py                 # profile from the config
-    python tools/check_setup.py my-profile      # check a specific profile
-    python tools/check_setup.py --config bot.json --profiles-dir path/
+    python tools/check_setup.py                 # data/calibration.json
+    python tools/check_setup.py --config bot.json --calibration path/calibration.json
 
 Prints one ``[OK]`` / ``[FAIL]`` line per check. Exit code 0 = all passed,
 1 = something failed, 2 = bad arguments / config.
@@ -17,9 +16,8 @@ import importlib
 import sys
 from pathlib import Path
 
-from moonlight.calibration.calibrate import CalibrationProfile
+from moonlight.calibration.calibrate import CalibrationProfile, load_calibration
 from moonlight.core.config import BotConfig, ConfigError
-from moonlight.calibration.profile import ProfileManager
 from moonlight.core.wiring import check_module_regions
 
 #: Modules imported to prove the perception stack loads.
@@ -44,7 +42,7 @@ def _load_config(config_arg: str | None) -> BotConfig:
     return BotConfig.load(path)
 
 
-def check(config_arg: str | None, profiles_dir: Path | None, profile_name: str | None) -> int:
+def check(config_arg: str | None, calibration: Path | None) -> int:
     ok = True
 
     def report(passed: bool, what: str) -> None:
@@ -69,16 +67,12 @@ def check(config_arg: str | None, profiles_dir: Path | None, profile_name: str |
         report(port is not None, f"serial port: {port or 'no Arduino found'}{note}")
     except Exception as exc:  # noqa: BLE001 - pyserial missing etc.
         report(False, f"serial port: {exc}")
-    name = profile_name or (config.profile if config else None)
     profile: CalibrationProfile | None = None
     try:
-        if name is None:
-            raise ValueError("no profile name")
-        directory = profiles_dir or (config.profiles_dir if config else None)
-        profile = ProfileManager(directory).load(name)
-        report(True, f"profile {name!r}")
-    except Exception as exc:  # noqa: BLE001 - ValueError / CalibrationError
-        report(False, f"profile {name!r}: {exc}")
+        profile = load_calibration(calibration)
+        report(True, "calibration")
+    except Exception as exc:  # noqa: BLE001 - none yet (Start makes it) / malformed
+        report(False, f"calibration: {exc} (Start finds the client and saves one)")
     if profile is not None and config is not None:
         for module, missing in check_module_regions(profile, config).items():
             if missing:
@@ -105,14 +99,15 @@ def check(config_arg: str | None, profiles_dir: Path | None, profile_name: str |
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Check the MOONLIGHT setup.")
-    parser.add_argument("profile", nargs="?", default=None, help="profile (default: config)")
     parser.add_argument(
         "--config", default=None,
         help="bot config JSON (default: the config picked in the GUI)",
     )
-    parser.add_argument("--profiles-dir", type=Path, default=None, help="profiles directory")
+    parser.add_argument(
+        "--calibration", type=Path, default=None, help="default: data/calibration.json"
+    )
     args = parser.parse_args(argv)
-    return check(args.config, args.profiles_dir, args.profile)
+    return check(args.config, args.calibration)
 
 
 if __name__ == "__main__":
