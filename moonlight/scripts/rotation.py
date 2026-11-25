@@ -173,8 +173,9 @@ class Rotation:
             nxt = (self.index + step) % n
             yield from self._login(bot, self.accounts[nxt])
             if (yield from self._wait(bot, in_game=True, limit=LOGIN_WAIT)):
+                # doc: docs/prs/profiles.md#level-pick
+                # cavebot_rotate (next in the route) picks the profile by level.
                 self._logged_in(nxt)
-                bot.skip_next_cavebot_rotate()  # docs/prs/cavebot-rotate.md#cavebot-rotate
                 return
             log.warning("rotation: account %d did not log in, skipped", nxt + 1)
             yield bot.press("esc")  # close the error message

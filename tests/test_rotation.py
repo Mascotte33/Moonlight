@@ -162,7 +162,6 @@ def test_low_stamina_restarts_tibia_and_logs_the_next_account_in(tmp_path: Path)
     assert inp.sent_lines == ["K ctrl+l", "K alt+f4", *LOGIN_B, *PICK_1]
     play(r, inp, clock, True, 1, client)
     assert r.running is None and rot.index == 1 and not rot.failed
-    assert r.skip_cavebot_rotate  # the new account keeps the route
 
 
 def test_a_failed_login_is_skipped_and_all_failing_stops(tmp_path: Path) -> None:
@@ -172,7 +171,7 @@ def test_a_failed_login_is_skipped_and_all_failing_stops(tmp_path: Path) -> None
     play(r, inp, clock, True, 0.2, client)
     play(r, inp, clock, False, 90, client)  # B, then A, never log in
     assert inp.sent_lines.count("K esc") == 2 and inp.sent_lines.count("K ctrl+l") == 1
-    assert rot.failed and r.running is None and rot.index == 0 and not r.skip_cavebot_rotate
+    assert rot.failed and r.running is None and rot.index == 0
 
 
 def test_the_client_that_never_shows_stops_the_bot(tmp_path: Path) -> None:

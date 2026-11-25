@@ -1,103 +1,88 @@
-"""The built-in script ``cavebot_rotate``: pick a route that fits the character's level.
+"""The built-in script ``cavebot_rotate``: run the profile that fits the character's level.
 
-A route file ``VenoreSwampTrolls 20-40.json`` is for levels 20 to 40, both
-included; a route without such a trailing `` <min>-<max>`` is never picked. In
-a route the script stands after ``deposit`` and ``script account_rotate``::
+Each profile may have a level range (``min_level``..``max_level``, both
+included; 0 and 0 means none). In a route the script stands after ``deposit``
+and ``script account_rotate``, so it runs after every login too::
 
     deposit, script account_rotate, script cavebot_rotate, label Depo_Break
 
-The level comes from the Skills window. A random route that fits is loaded and
-started at waypoint 0 (it may be the current one: then the route goes on). One
-flag, ``ScriptRunner.skip_cavebot_rotate``, skips the next run: the account
-switch sets it (the new account keeps this route) and so does a route switch
-(the new route reaches its own ``cavebot_rotate`` from waypoint 0; without the
-skip it would switch again forever). An unread level or no route that fits
-stops the route with an alarm instead of guessing.
+The level comes from the Skills window. While the running profile fits the
+level it stays. Otherwise a random profile that fits is picked: the whole
+profile (route, healing, targeting, ...) switches, and the bot goes on from
+the new route's nearest waypoint. No profile that fits, or an unread level,
+keeps the running one (logged).
 
-# doc: docs/prs/cavebot-rotate.md#cavebot-rotate
+# doc: docs/prs/profiles.md#level-pick
 """
 
 from __future__ import annotations
 
 import logging
 import random
-import re
 from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from moonlight.core.config import PROFILES_DIR, BotConfig, ConfigError
+
 if TYPE_CHECKING:
     from moonlight.scripts.scripts import ScriptRunner
 
-__all__ = ["CavebotRotateError", "pick_route", "route_level_range", "run"]
+__all__ = ["fitting_profiles", "pick_profile", "run"]
 
 log = logging.getLogger(__name__)
 
 
-class CavebotRotateError(RuntimeError):
-    """The route cannot be rotated: the route stops with this as its alarm."""
+def fitting_profiles(level: int, profiles_dir: Path = PROFILES_DIR) -> list[str]:
+    """Names of the profiles whose level range holds *level*, sorted."""
+    names = []
+    for path in sorted(profiles_dir.glob("*.json")):
+        try:
+            if BotConfig.load(path).fits_level(level):
+                names.append(path.stem)
+        except ConfigError as exc:
+            log.warning("cavebot rotate: profile %s skipped: %s", path.stem, exc)
+    return names
 
 
-def route_level_range(route_name: str) -> tuple[int, int] | None:
-    """The levels ``(min, max)`` of ``"Name 20-40"``; None without a trailing `` <min>-<max>``."""
-    found = re.fullmatch(r".* (\d+)-(\d+)", route_name)
-    if found is None:
-        return None
-    low, high = int(found[1]), int(found[2])
-    return (low, high) if low <= high else None
+def pick_profile(
+    level: int,
+    current: str,
+    profiles_dir: Path = PROFILES_DIR,
+    choose: Callable[[list[str]], str] = random.choice,
+) -> str | None:
+    """The profile to run at *level*: *current* while it fits, else one that does.
 
-
-def pick_route(
-    routes_dir: Path, level: int, choose: Callable[[list[str]], str] = random.choice
-) -> str:
-    """A route name in *routes_dir* (chosen by *choose*) whose range holds *level*.
-
-    Raises:
-        CavebotRotateError: When no route fits.
+    None when no profile fits (the running one stays).
     """
-    fitting = []
-    for path in sorted(routes_dir.glob("*.json")):
-        levels = route_level_range(path.stem)
-        if levels is not None and levels[0] <= level <= levels[1]:
-            fitting.append(path.stem)
-    if not fitting:
-        raise CavebotRotateError(f"no route in {routes_dir} fits level {level}")
-    return choose(fitting)
+    fitting = fitting_profiles(level, profiles_dir)
+    if current in fitting:
+        return current
+    return choose(fitting) if fitting else None
 
 
 def _switch(runner: ScriptRunner, choose: Callable[[list[str]], str]) -> None:
-    from moonlight.cavebot.cavebot import RouteError, RouteFileLoader
-
-    if runner.skip_cavebot_rotate:
-        runner.skip_cavebot_rotate = False
-        log.info("cavebot rotate: skipped, the account or the route was just switched")
+    if runner.level is None or runner.profile_name is None or runner.switch_profile is None:
+        log.warning("cavebot rotate: needs a screen capture and the GUI, skipped")
         return
-    if runner.cavebot is None or runner.routes_dir is None or runner.level is None:
-        raise CavebotRotateError("cavebot rotate needs the cavebot and a screen capture")
     level = runner.level()
     if level is None:
-        raise CavebotRotateError("level not read: open the Skills window")
-    name = pick_route(runner.routes_dir, level, choose)
-    if name == runner.cavebot.route.name:
-        log.info("cavebot rotate: level %d -> %s (the current route)", level, name)
+        log.warning("cavebot rotate: level not read (open the Skills window), profile kept")
         return
-    try:
-        route = RouteFileLoader.load(runner.routes_dir / f"{name}.json")
-        runner.cavebot.switch_route(route)
-    except (RouteError, ValueError) as exc:
-        raise CavebotRotateError(f"route {name!r}: {exc}") from exc
-    runner.skip_cavebot_rotate = True
-    log.info("cavebot rotate: level %d -> %s", level, name)
+    current = runner.profile_name()
+    name = pick_profile(level, current, runner.profiles_dir, choose)
+    if name is None:
+        log.warning("cavebot rotate: no profile fits level %d, %s kept", level, current)
+    elif name == current:
+        log.info("cavebot rotate: level %d -> %s (the running profile)", level, name)
+    else:
+        log.info("cavebot rotate: level %d -> profile %s", level, name)
+        runner.switch_profile(name)
 
 
 def run(
     runner: ScriptRunner, choose: Callable[[list[str]], str] = random.choice
 ) -> Generator[object, None, None]:
     """The ``cavebot_rotate`` script (a generator without waits, like every script)."""
-    try:
-        _switch(runner, choose)
-    except CavebotRotateError as exc:
-        log.error("cavebot rotate: %s", exc)
-        if runner.cavebot is not None:
-            runner.cavebot.stop_with_alarm(f"cavebot rotate: {exc}")
+    _switch(runner, choose)
     yield from ()
