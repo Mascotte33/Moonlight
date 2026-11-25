@@ -37,7 +37,7 @@ AREA_NAMES: Mapping[str, str] = {
     "game_grid": "Game view",
     "chase_buttons": "Chase buttons",
     "player_list": "Players window",
-    "potions": "Potion counts on the action bar",
+    "potions": "Potions on the action bar",
     "cap": "Cap box",
     "level": "Skills window (level)",
 }

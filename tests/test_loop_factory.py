@@ -429,7 +429,7 @@ def test_optional_areas_never_stop_the_start(tmp_path: Path) -> None:
     [
         (None, 25, 3, "Cap box not found: open it in Tibia"),
         (100, None, 3, r"Skills window \(level\) not found"),
-        (100, 25, None, "Potion counts on the action bar not found"),
+        (100, 25, None, "Potions on the action bar not found"),
     ],
 )
 def test_the_side_panel_readers_are_required(
@@ -447,9 +447,36 @@ def test_the_side_panel_readers_are_required(
             return_value={"health": 1, "mana": mana},
         ),
         mock.patch("moonlight.perception.potions.PotionCounter.__init__", return_value=None),
+        mock.patch(
+            "moonlight.perception.potions.PotionCounter.crops",
+            {"health": 1} if mana is None else {"health": 1, "mana": 1},
+            create=True,
+        ),
         pytest.raises(ValueError, match=message),
     ):
         _real_require_side_panel(lambda: np.zeros((6, 8, 3), np.uint8), cfg)
 
 
 _real_require_side_panel = loop_factory.require_side_panel
+
+
+def test_a_potion_on_the_bar_whose_count_does_not_read_still_starts() -> None:
+    from moonlight.refill.refill import RefillConfig
+
+    cfg = replace(BotConfig.default(), refill=RefillConfig(mana_potions_below=10))
+    with (
+        mock.patch("moonlight.perception.cap.CapReader.__init__", return_value=None),
+        mock.patch("moonlight.perception.cap.CapReader.cap", return_value=100),
+        mock.patch("moonlight.perception.stamina.LevelReader.level", return_value=25),
+        mock.patch("moonlight.perception.potions.PotionCounter.__init__", return_value=None),
+        mock.patch(
+            "moonlight.perception.potions.PotionCounter.counts",
+            return_value={"health": 1, "mana": None},
+        ),
+        mock.patch(
+            "moonlight.perception.potions.PotionCounter.crops",
+            {"health": 1, "mana": 1},
+            create=True,
+        ),
+    ):
+        _real_require_side_panel(lambda: np.zeros((6, 8, 3), np.uint8), cfg)
