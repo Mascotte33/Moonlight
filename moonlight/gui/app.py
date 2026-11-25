@@ -486,7 +486,10 @@ class GuiApp:
             self._start_error = repr(exc)
             return
         self._start_error = ""
-        if resume and loop.modules.cavebot is not None:
+        if loop.modules.cavebot is not None:
+            # doc: docs/prs/profiles.md#resume-place
+            # Every start goes on where the bot was; a fresh one began at
+            # waypoint 0 and skipped the lap's refill check.
             loop.modules.cavebot.start(nearest=True)
         # doc: docs/prs/profiles.md#level-pick
         scripts = loop.modules.scripts

@@ -48,7 +48,6 @@ def write_profile(d: Path, name: str = "default") -> None:
     make_profile().save(d / f"{name}.json")
 
 
-
 def test_check_module_regions_reports_missing() -> None:
     """F-11: check_module_regions names the missing region(s) per enabled module."""
     profile = make_profile()
@@ -76,7 +75,6 @@ def test_check_module_regions_all_present() -> None:
     report = wiring.check_module_regions(profile, cfg)
     assert report["cavebot"] == []
     assert all(missing == [] for missing in report.values())
-
 
 
 # -- headless smoke ---------------------------------------------------------------
@@ -112,8 +110,13 @@ def test_headless_smoke_all_modules(tmp_path: Path) -> None:
         now[0] += max(0.0, dt)
 
     loop = wiring.build_loop(
-        cfg, make_profile(), inp, frame_provider=frame_provider, state=state,
-        clock=lambda: now[0], sleep_fn=sleep,
+        cfg,
+        make_profile(),
+        inp,
+        frame_provider=frame_provider,
+        state=state,
+        clock=lambda: now[0],
+        sleep_fn=sleep,
     )
     for _ in range(5):
         loop.tick()
@@ -155,9 +158,7 @@ def test_capture_regions_lists_tick_regions_or_falls_back_to_full() -> None:
         "mp_bar",
         "status_icons",
     )
-    assert wiring.capture_regions(profile, cfg) == [
-        profile.get_region(n).to_tuple for n in names
-    ]
+    assert wiring.capture_regions(profile, cfg) == [profile.get_region(n).to_tuple for n in names]
     walking = replace(cfg, cavebot=object(), walk_keys=True)  # type: ignore[arg-type]
     grid = profile.get_region("game_grid").to_tuple
     assert grid in (wiring.capture_regions(profile, walking) or [])
@@ -228,7 +229,6 @@ def test_lost_minimap_clears_state_position(monkeypatch: pytest.MonkeyPatch) -> 
     assert state.position == Position(0, 0, 0)
 
 
-
 def test_perceive_fails_closed_on_a_covered_hp_bar(caplog: pytest.LogCaptureFixture) -> None:
     """A window over the HP bar pauses the bot instead of healing on a made-up HP."""
     profile = make_profile()
@@ -270,12 +270,19 @@ def test_tick_grabber_folds_the_cursor_read_into_one_grab_per_tick() -> None:
     tick_regions = [(0, 0, 10, 10)]
     grabber = wiring.TickGrabber(
         Capture(),  # type: ignore[arg-type]
-        tick_regions, 20.0, clock=lambda: now[0], sleep_fn=sleeps.append,
+        tick_regions,
+        20.0,
+        clock=lambda: now[0],
+        sleep_fn=sleeps.append,
     )
     reader = CursorReader(cursor_region=(0, 0, 320, 200), cursor_templates=[tpl])
     clicker = ClickController(
-        fake, reader, lambda: pytest.fail("full frame used"), roi_provider=grabber.roi,
-        clock=lambda: now[0], sleep_fn=lambda s: None,
+        fake,
+        reader,
+        lambda: pytest.fail("full frame used"),
+        roi_provider=grabber.roi,
+        clock=lambda: now[0],
+        sleep_fn=lambda s: None,
     )
     grabber.attach(clicker)
     clicker.request((150, 90))
@@ -331,7 +338,9 @@ def test_stuck_targeting_attacks_every_monster_even_with_targeting_off(targeting
         off={} if targeting_on else {"targeting": rows},
     )
     loop = wiring.build_loop(
-        cfg.validate(), make_profile(), FakeInput(),
+        cfg.validate(),
+        make_profile(),
+        FakeInput(),
         frame_provider=lambda: blank_screen(),
     )
     stuck = loop.modules.stuck_targeting
@@ -516,3 +525,24 @@ def test_sync_client_map_copies_new_tiles_once(tmp_path: Path) -> None:
 
 def test_sync_client_map_without_a_client_copies_nothing(tmp_path: Path) -> None:
     assert wiring.sync_client_map(tmp_path / "missing", tmp_path / "tibia") == 0
+
+
+# doc: docs/prs/profiles.md#resume-place
+@pytest.mark.parametrize(("saved", "start_at"), [(None, 0), (2, 2), (1, 0)])
+def test_a_restart_goes_on_from_the_last_waypoint_reached(saved: int | None, start_at: int) -> None:
+    from moonlight.cavebot import cavebot as cavebot_module
+
+    # 0: Hunt at the camp entrance; 2: the lap's check one tile from it; 1: far away.
+    route = Route("lap", waypoints=[Waypoint(10, 10, 7), Waypoint(90, 90, 7), Waypoint(10, 11, 7)])
+    if saved is not None:
+        cavebot_module._save_progress("lap", saved)
+    cfg = replace(
+        BotConfig.default(), loop=LoopConfig(enable_f12_monitor=False), cavebot=CavebotConfig(route)
+    )
+    state = WorldState()
+    loop = _live_loop(cfg, state)
+    with state.lock():
+        state.position = Position(10, 10, 7)
+    assert loop.modules.cavebot is not None
+    loop.modules.cavebot.start(nearest=True)
+    assert loop.modules.cavebot.route.current == start_at
