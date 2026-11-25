@@ -107,8 +107,8 @@ def test_load_accounts(tmp_path: Path) -> None:
     [
         ("a1 p1\nb2\n", "line 2"),  # a bad line
         ("a1 p1 extra\nb2 p2\n", "line 1"),
-        ("a1 p1\nb2 p!2\n", "password must be letters, digits and @"),  # a symbol
-        ("a!1 p1\nb2 p2\n", "login must be letters, digits and @"),
+        ("a1 p1\nb2 pż2\n", "password must be letters, digits and symbols"),  # not on the keyboard
+        ("aż1 p1\nb2 p2\n", "login must be letters, digits and symbols"),
         ("a1 p1\n# only one\n", "at least 2 accounts"),
     ],
 )
@@ -117,7 +117,7 @@ def test_a_bad_accounts_file_is_refused_without_the_password(
 ) -> None:
     with pytest.raises(ValueError, match=message) as error:
         load_accounts(accounts_file(tmp_path, text))
-    assert "p!2" not in str(error.value)
+    assert "pż2" not in str(error.value)
 
 
 def test_a_missing_accounts_file_is_refused(tmp_path: Path) -> None:

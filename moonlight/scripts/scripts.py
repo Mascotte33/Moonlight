@@ -194,7 +194,7 @@ class Bot:
     def type(self, text: str, *, secret: bool = False) -> list[Command]:
         """Type *text* (an email or a name, no Enter); *secret* keeps it out of the command log."""
         if not re.fullmatch(TYPEABLE, text):
-            raise ValueError("type text is letters, digits and @ . - _")
+            raise ValueError("type text is letters, digits and symbols, no spaces")
         keys = [
             _SYMBOL_KEYS.get(ch) or (f"shift+{ch.lower()}" if ch.isupper() else ch) for ch in text
         ]
@@ -308,9 +308,20 @@ def _press(runner: ScriptRunner, key: str) -> None:
     runner.wait_typing_gap()
 
 
-TYPEABLE = r"[A-Za-z0-9@.\-_]*"
-"""What :meth:`Bot.type` can type: the Arduino's keys on a US layout."""
-_SYMBOL_KEYS = {"@": "shift+2", ".": "period", "-": "minus", "_": "shift+minus"}
+# doc: docs/prs/stamina-switch.md#symbols
+#: Each printable symbol -> the Arduino key (US layout) that types it.
+_SYMBOL_KEYS = {
+    ".": "period", "-": "minus", "/": "slash", ";": "semicolon", "=": "equals",
+    ",": "comma", "'": "quote", "`": "backtick", "\\": "backslash",
+    "[": "lbracket", "]": "rbracket",
+    "!": "shift+1", "@": "shift+2", "#": "shift+3", "$": "shift+4", "%": "shift+5",
+    "^": "shift+6", "&": "shift+7", "*": "shift+8", "(": "shift+9", ")": "shift+0",
+    "_": "shift+minus", "+": "shift+equals", "?": "shift+slash", ":": "shift+semicolon",
+    "<": "shift+comma", ">": "shift+period", '"': "shift+quote", "~": "shift+backtick",
+    "|": "shift+backslash", "{": "shift+lbracket", "}": "shift+rbracket",
+}  # fmt: skip
+TYPEABLE = "[A-Za-z0-9" + re.escape("".join(_SYMBOL_KEYS)) + "]*"
+"""What :meth:`Bot.type` can type: letters, digits and every US-layout symbol."""
 
 
 def _secret_press(runner: ScriptRunner, key: str) -> None:

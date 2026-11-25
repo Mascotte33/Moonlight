@@ -102,7 +102,7 @@ def load_accounts(path: Path) -> tuple[Account, ...]:
             if not word or not re.fullmatch(TYPEABLE, word):
                 raise ValueError(
                     f"rotation accounts file line {number}: "
-                    f"{name} must be letters, digits and @ . - _"
+                    f"{name} must be letters, digits and symbols (no spaces)"
                 )
         accounts.append(Account(*words))
     if len(accounts) < 2:
