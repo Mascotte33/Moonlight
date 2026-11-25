@@ -109,7 +109,7 @@ def test_load_accounts(tmp_path: Path) -> None:
         ("a1 p1 extra\nb2 p2\n", "line 1"),
         ("a1 p1\nb2 pż2\n", "password must be letters, digits and symbols"),  # not on the keyboard
         ("aż1 p1\nb2 p2\n", "login must be letters, digits and symbols"),
-        ("a1 p1\n# only one\n", "at least 2 accounts"),
+        ("a1 p1\n# only one\n", "at least 2 account"),
     ],
 )
 def test_a_bad_accounts_file_is_refused_without_the_password(

@@ -24,6 +24,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
@@ -49,9 +50,11 @@ LOGIN_SCREEN_WAIT = 5.0  # s for the login screen to be ready after the window s
 LOGIN_WAIT = 30.0  # s for the game to show after Enter on the character
 GONE_FOR = 2.0  # s the game must stay gone: one bad frame is not a logout
 LIST_TOP = 20  # ponytail: "up" presses to reach the list top (= the first character)
-#: The official client install; ``client.exe`` is next to it.
+#: The official client install: the Windows launcher, or the Linux one in ~/Tibia.
 DEFAULT_CLIENT_EXE = (
-    Path(os.environ.get("LOCALAPPDATA", "")) / "Tibia" / "packages" / "Tibia" / "bin"
+    Path.home() / "Tibia" / "Tibia"
+    if sys.platform == "linux"
+    else Path(os.environ.get("LOCALAPPDATA", "")) / "Tibia" / "packages" / "Tibia" / "bin"
     / "client_launcher.exe"
 )
 
@@ -79,7 +82,7 @@ def stamina_is_low(minutes: int | None) -> bool:
     return minutes is not None and minutes < LOW_STAMINA_MINUTES
 
 
-def load_accounts(path: Path) -> tuple[Account, ...]:
+def load_accounts(path: Path, at_least: int = 2) -> tuple[Account, ...]:
     """The accounts in *path*; the password is never put into an error.
 
     Raises:
@@ -105,8 +108,8 @@ def load_accounts(path: Path) -> tuple[Account, ...]:
                     f"{name} must be letters, digits and symbols (no spaces)"
                 )
         accounts.append(Account(*words))
-    if len(accounts) < 2:
-        raise ValueError("rotation needs at least 2 accounts in the accounts file")
+    if len(accounts) < at_least:
+        raise ValueError(f"the accounts file needs at least {at_least} account(s)")
     return tuple(accounts)
 
 
@@ -221,3 +224,72 @@ class Rotation:
                 since = None
             yield 0.2
         return False
+
+
+# doc: docs/prs/stamina-switch.md#login-on-start
+def login_on_start(
+    config: RotationConfig,
+    *,
+    window_open: Callable[[], bool],
+    start_client: Callable[[Path], object],
+    focus_client: Callable[[], bool],
+    in_game: Callable[[], bool],
+    press: Callable[[str], None],
+    quiet: Callable[[bool], None],
+    log_info: Callable[[str], None],
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> None:
+    """Before Start calibrates: open Tibia and log the first account in.
+
+    Does nothing while the game already shows. Without a client window it
+    starts ``client_exe``; on the login screen it types the first account's
+    login and password (the command log muted) and enters its first
+    character, then waits for the game.
+
+    Raises:
+        RuntimeError: When the client does not start or the game does not show.
+    """
+    from moonlight.core.random_delay import typing_gap
+    from moonlight.scripts.scripts import type_keys
+
+    if window_open() and in_game():
+        return
+    if config.accounts_file is None:
+        return
+    account = load_accounts(config.accounts_file, at_least=1)[0]
+    if not window_open():
+        log_info("login: starting Tibia")
+        start_client(config.client_exe)
+        end = clock() + START_WAIT
+        while not window_open():
+            if clock() > end:
+                raise RuntimeError("login: the Tibia window did not show")
+            sleep(0.5)
+        sleep(LOGIN_SCREEN_WAIT)
+    focus_client()
+    sleep(1.0)
+    if in_game():
+        return
+    log_info("login: logging account 1 in")
+
+    def keys(combos: list[str]) -> None:
+        for combo in combos:
+            press(combo)
+            sleep(typing_gap())
+
+    quiet(True)
+    try:
+        keys(["ctrl+a", *type_keys(account.login), "tab"])
+        keys(["ctrl+a", *type_keys(account.password), "enter"])
+    finally:
+        quiet(False)
+    sleep(3.0)  # the character list opens
+    keys(["up"] * LIST_TOP + ["enter"])  # the first character
+    end = clock() + LOGIN_WAIT
+    while not in_game():
+        if clock() > end:
+            raise RuntimeError("login: the game did not show after logging in")
+        sleep(0.5)
+    log_info("login: in game")
+    sleep(2.0)  # the side panel draws

@@ -193,11 +193,7 @@ class Bot:
 
     def type(self, text: str, *, secret: bool = False) -> list[Command]:
         """Type *text* (an email or a name, no Enter); *secret* keeps it out of the command log."""
-        if not re.fullmatch(TYPEABLE, text):
-            raise ValueError("type text is letters, digits and symbols, no spaces")
-        keys = [
-            _SYMBOL_KEYS.get(ch) or (f"shift+{ch.lower()}" if ch.isupper() else ch) for ch in text
-        ]
+        keys = type_keys(text)
         press = _secret_press if secret else _press
         return [functools.partial(press, self._runner, k) for k in keys]
 
@@ -322,6 +318,17 @@ _SYMBOL_KEYS = {
 }  # fmt: skip
 TYPEABLE = "[A-Za-z0-9" + re.escape("".join(_SYMBOL_KEYS)) + "]*"
 """What :meth:`Bot.type` can type: letters, digits and every US-layout symbol."""
+
+
+def type_keys(text: str) -> list[str]:
+    """The Arduino key presses that type *text* on a US layout.
+
+    Raises:
+        ValueError: For a space or a letter the keyboard has no key for.
+    """
+    if not re.fullmatch(TYPEABLE, text):
+        raise ValueError("type text is letters, digits and symbols, no spaces")
+    return [_SYMBOL_KEYS.get(ch) or (f"shift+{ch.lower()}" if ch.isupper() else ch) for ch in text]
 
 
 def _secret_press(runner: ScriptRunner, key: str) -> None:

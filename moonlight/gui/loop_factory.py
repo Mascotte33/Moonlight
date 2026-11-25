@@ -469,18 +469,69 @@ def build_gui_loop(
     # clicked) would cover the client and fail the layout check.
     if raise_client and focus_window(real_config.window_title):
         time.sleep(RAISE_WAIT)
+    backend = None
+    if real_config.rotation is not None and real_config.rotation.accounts_file is not None:
+        # doc: docs/prs/stamina-switch.md#login-on-start
+        backend = make_backend(real_config, hardware)
+        _login_first(real_config, capture, backend, log)
     # doc: docs/prs/auto-calibration.md#on-start
     profile = start_calibration(
         calibration_file or data_dir() / CALIBRATION_FILE, capture.get_frame, log
     )  # before the Arduino opens
     require_side_panel(capture.get_frame, real_config)
-    backend = make_backend(real_config, hardware)
+    backend = backend or make_backend(real_config, hardware)
     providers = capture_providers(capture, profile, real_config)
     providers["focus_check"] = watch_layout(profile, capture.get_frame, log)
     return build_loop(
         real_config, profile, backend, state=state, client_is_foreground=capture.is_focused,
         **providers,
     )
+
+
+def _quiet(backend: Any, on: bool) -> None:
+    """Mute (or unmute) every command log in the wrapped *backend* chain."""
+    while backend is not None:  # the wire wrappers keep the next one in .backend / .inner
+        if "quiet" in vars(type(backend)):
+            backend.quiet = on
+        backend = vars(backend).get("backend") or vars(backend).get("inner")
+
+
+def _login_first(cfg: BotConfig, capture: Any, backend: Any, log: Callable[[str], None]) -> None:
+    """Open Tibia and log the first account in when the game does not show yet."""
+    import subprocess
+
+    from moonlight.perception.capture import TIBIA_WINDOW_TITLE, focus_window
+    from moonlight.scripts.rotation import login_on_start
+
+    def window_open() -> bool:
+        return x11.find_window(TIBIA_WINDOW_TITLE) is not None if sys.platform == "linux" else True
+
+    def in_game() -> bool:
+        try:
+            return autofind.find_hp_bar(capture.get_frame()[..., ::-1]) is not None
+        except Exception:  # noqa: BLE001 - no window yet / mid-redraw
+            return False
+
+    global _login_failed
+    if _login_failed:
+        raise RuntimeError("login failed before: log in by hand, then Start")
+    assert cfg.rotation is not None
+    _login_failed = True  # a failed login is never retried by itself (a wrong password)
+    login_on_start(
+        cfg.rotation,
+        window_open=window_open,
+        start_client=lambda exe: subprocess.Popen([str(exe)], cwd=Path(exe).parent),
+        focus_client=lambda: focus_window(TIBIA_WINDOW_TITLE),
+        in_game=in_game,
+        press=backend.press_combo,
+        quiet=lambda on: _quiet(backend, on),
+        log_info=log,
+    )
+    _login_failed = False
+
+
+#: A Start login that failed; the retries do not type the password again.
+_login_failed = False
 
 
 def build_position_reader(
