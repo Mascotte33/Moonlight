@@ -387,6 +387,8 @@ class ScriptRunner:
         from moonlight.core.config import PROFILES_DIR  # config imports the scripts
 
         self.profiles_dir = PROFILES_DIR
+        #: The Scripts tab's Cavebot rotation switch.
+        self.cavebot_rotate_on = True
         #: The running profile's name; set by the GUI.
         self.profile_name: Callable[[], str] | None = None
         #: Switch the whole bot to profile *name*; set by the GUI.
@@ -443,6 +445,9 @@ class ScriptRunner:
                     return False
                 self._script = self.rotation.run(Bot(self))  # built in, no file
             elif name == "cavebot_rotate":
+                if not self.cavebot_rotate_on:  # switched off (Scripts tab)
+                    log.info("script cavebot_rotate: cavebot rotation is off, skipped")
+                    return False
                 from moonlight.scripts import cavebot_rotate
 
                 self._script = cavebot_rotate.run(self)  # built in, no file

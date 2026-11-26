@@ -99,6 +99,7 @@ MACHINE_KEYS = (
     "simulation",
     "log_commands",
     "walk_keys",
+    "cavebot_rotate",
     "templates_dir",
     "routes_dir",
     "loop",
@@ -137,6 +138,7 @@ _TOP_KEYS = {
     "simulation",
     "log_commands",
     "walk_keys",
+    "cavebot_rotate",
     "templates_dir",
     "routes_dir",
     "min_level",
@@ -188,6 +190,8 @@ class BotConfig:
     log_commands: bool = False
     #: The cavebot walks with arrow keys along a path instead of clicking the minimap.
     walk_keys: bool = False
+    #: The cavebot_rotate waypoint picks the hunt by level (Scripts tab switch).
+    cavebot_rotate: bool = True
     #: Same as ``perception.capture.TIBIA_WINDOW_TITLE``; not imported, that pulls in mss.
     window_title: str = "Tibia"
     templates_dir: Path = Path("data/templates")
@@ -283,6 +287,7 @@ class BotConfig:
             "simulation",
             "log_commands",
             "walk_keys",
+    "cavebot_rotate",
             "templates_dir",
             "routes_dir",
             "min_level",

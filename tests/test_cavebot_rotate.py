@@ -65,3 +65,16 @@ def test_the_script_keeps_the_profile(profiles: Path, level: int | None, current
     runner, switched = _runner(profiles, level, current)
     list(cavebot_rotate.run(runner))
     assert switched == []
+
+
+def test_switched_off_the_waypoint_does_nothing(profiles: Path) -> None:
+    runner, switched = _runner(profiles, 70, "Trolls")
+    runner.cavebot_rotate_on = False
+    assert runner.start("cavebot_rotate") is False
+    assert switched == []
+
+
+def test_the_switch_is_a_setting_of_this_pc() -> None:
+    from moonlight.core.config import MACHINE_KEYS
+
+    assert "cavebot_rotate" in MACHINE_KEYS and BotConfig.default().cavebot_rotate
