@@ -119,3 +119,48 @@ def test_a_confirmed_floor_change_only_goes_the_confirmed_way(tmp_path: Path) ->
     assert [c.to[2] for c in FloorMap(cost, {}).changes_at(10, 10, 7)] == [8]
     up = FloorMap(cost, {(10, 10, 7): "stairs"}, known_to={(10, 10, 7): 6})
     assert up.changes_at(10, 10, 7) == ()  # confirmed up: never paired down
+
+
+# -- depot floors ---------------------------------------------------------------
+
+
+class _FakeBot:
+    def __init__(self, position: tuple[int, int, int], labels: set[str]) -> None:
+        self.position, self._labels, self.went = position, labels, ""
+
+    def has_label(self, label: str) -> bool:
+        return label in self._labels
+
+    def goto(self, label: str) -> list[object]:
+        self.went = label
+        return []
+
+
+def _go_to_city(bot: _FakeBot) -> str:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "go_to_city", Path(__file__).parents[1] / "scripts" / "go_to_city.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    list(module.run(bot))
+    return bot.went
+
+
+def test_go_to_city_takes_the_block_of_the_depot_floor_the_character_is_on() -> None:
+    labels = {"FromThais", "FromThaisFloor8"}
+    assert _go_to_city(_FakeBot((32346, 32220, 7), labels)) == "FromThais"
+    assert _go_to_city(_FakeBot((32346, 32222, 8), labels)) == "FromThaisFloor8"
+    assert _go_to_city(_FakeBot((32346, 32222, 8), {"FromThais"})) == "FromThais"  # no such block
+
+
+def test_bot_has_label_reads_the_running_route() -> None:
+    from moonlight.scripts.scripts import Bot, ScriptRunner
+
+    runner = ScriptRunner()
+    assert not Bot(runner).has_label("FromThais")  # no cavebot
+    sim = Sim([Waypoint(0, 0, 0, "label", "FromThais"), walk(100, 95, 7)], Position(100, 100, 7))
+    runner.cavebot = sim.bot
+    assert Bot(runner).has_label("FromThais") and not Bot(runner).has_label("FromCarlin")
