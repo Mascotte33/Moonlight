@@ -193,7 +193,6 @@ class LoopConfig:
     5 ticks = 250 ms: rides out a one-off glitch, not a dead device."""
 
 
-
 class BotState(StrEnum):
     """Priority states, declared from highest to lowest priority."""
 
@@ -590,8 +589,7 @@ class GameLoop:
         elif now - self._paused_since > self.config.pause_timeout and not self._pause_alerted:
             self._pause_alerted = True
             self._alert(
-                f"paused for more than {self.config.pause_timeout:.0f}s ({reason}),"
-                " still waiting"
+                f"paused for more than {self.config.pause_timeout:.0f}s ({reason}), still waiting"
             )
 
     def _on_tick_error(self) -> None:
@@ -684,6 +682,9 @@ class GameLoop:
             self._target = None
         if m.cavebot is not None:
             m.cavebot.targeting_paused = self._targeting_paused(now)
+            # doc: docs/prs/near-targeting.md#targeting-script
+            scripts = self.all_modules.scripts
+            m.cavebot.walk_past_monsters = scripts is not None and scripts.targeting_turned_off
             # doc: docs/prs/near-targeting.md#fight-in-range
             judge = targeting or m.stuck_targeting
             m.cavebot.fight_in_range = (
@@ -740,8 +741,8 @@ class GameLoop:
         if m.looting is not None and m.looting.loot_first(snap):
             return BotState.LOOT  # loot each ringed corpse before the next target
         targeting = self._targeting()
-        if m.cavebot is not None and m.cavebot.luring():
-            pass  # a lure waypoint walks past monsters
+        if m.cavebot is not None and m.cavebot.holds_attacks():
+            pass  # a lure waypoint, or targeting off by a script: walk past monsters
         elif self._targeting_paused(self._clock()):
             pass  # a lone unreachable target: walk on
         elif targeting is not None:
@@ -1166,8 +1167,10 @@ class GameLoop:
         drop, m = self.modules.drop_items, self.modules
         if drop is None or not drop.due(snap):
             return False
-        if not drop.in_round and m.looting is not None and (
-            m.looting.should_loot(snap) or m.looting.loot_first(snap)
+        if (
+            not drop.in_round
+            and m.looting is not None
+            and (m.looting.should_loot(snap) or m.looting.loot_first(snap))
         ):
             # A ring still to loot: items dropped next to the player covered the
             # corpse's ring and it was never looted (2026-11-21).
@@ -1192,9 +1195,7 @@ class GameLoop:
         wire limiter like every other command (F-20).
         """
         cavebot = self.modules.cavebot
-        self._task = (
-            f"Walking to waypoint {cavebot.route.current + 1}" if cavebot else "Walking"
-        )
+        self._task = f"Walking to waypoint {cavebot.route.current + 1}" if cavebot else "Walking"
         if self._move_action is None:
             return
         if self._send(snap, self._move_action):

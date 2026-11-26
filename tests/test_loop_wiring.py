@@ -66,7 +66,7 @@ def idle_module(**overrides: object) -> mock.Mock:
     m.ring_due.return_value = False
     m.loot_first.return_value = False
     m.is_active.return_value = False
-    m.luring.return_value = False
+    m.holds_attacks.return_value = False
     m.send.return_value = True
     m.alarm = None
     m.route.current = 0
@@ -105,7 +105,7 @@ def test_stuck_cavebot_hands_over_to_stuck_targeting_until_a_kill() -> None:
     cavebot = idle_module(
         stuck_on_creatures=True,
         creature_in_the_way_clicked_until=float("-inf"),
-        **{"luring.return_value": False},
+        **{"holds_attacks.return_value": False},
     )
     cavebot.on_target_killed.side_effect = lambda: setattr(cavebot, "stuck_on_creatures", False)
     clicker = mock.Mock(busy=False, **{"step.return_value": None})

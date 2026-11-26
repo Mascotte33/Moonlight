@@ -335,7 +335,7 @@ class TestGameLoopStates:
             is_active=lambda: True,
             step=lambda: steps.append(1),
             resume=lambda after_fight=False: None,
-            luring=lambda: False,
+            holds_attacks=lambda: False,
             route=SimpleNamespace(current=0),
             release_walk_key=lambda: released.append(1),
         )
@@ -456,7 +456,6 @@ class TestGameLoopStates:
         assert inp.sent_lines == ["K F2"]
         assert steps == []  # the heal skipped the step
 
-
     # doc: docs/prs/scripts.md#script-priority
     def test_script_pauses_walking_never_healing(self, tmp_path: Path) -> None:
         (tmp_path / "s.py").write_text("def run(bot):\n    yield bot.press('f9')\n")
@@ -467,8 +466,12 @@ class TestGameLoopStates:
         scripts = ScriptRunner(tmp_path, timers=[("s", 60.0)], clock=c)
         modules = DecisionModules(healing=HealingDecision(clock=c), scripts=scripts)
         gl, _ = make_loop(
-            ws, inp, clock=c, modules=modules,
-            move_provider=lambda s: True, move_action=lambda: steps.append(1),
+            ws,
+            inp,
+            clock=c,
+            modules=modules,
+            move_provider=lambda s: True,
+            move_action=lambda: steps.append(1),
         )
         gl.tick()
         assert inp.sent_lines == ["K F2"]  # the heal first
@@ -809,7 +812,6 @@ class TestSelectClick:
         ticks(gl, clock, 4 * 20 + 6)  # 4 s more, then the click on the next row
         assert inp.sent_lines == ["K w", "A 189 244", "C L"]
 
-
     def test_lone_stuck_target_pauses_targeting_with_a_countdown(self) -> None:
         ws = make_state()
         wolf = Monster("Wolf", name_hash="w")
@@ -818,7 +820,7 @@ class TestSelectClick:
             ws.selected_target = wolf
         cavebot = SimpleNamespace(
             is_active=lambda: False,
-            luring=lambda: False,
+            holds_attacks=lambda: False,
             route=SimpleNamespace(current=0),
             release_walk_key=lambda: None,
             alarm=None,
@@ -841,7 +843,7 @@ class TestSelectClick:
         cavebot = SimpleNamespace(
             is_active=lambda: True,
             step=lambda: None,
-            luring=lambda: False,
+            holds_attacks=lambda: False,
             route=SimpleNamespace(current=0),
             release_walk_key=lambda: None,
             alarm=None,
@@ -957,7 +959,7 @@ class TestAttackHotkeys:
     def test_no_key_while_luring(self) -> None:
         cavebot = SimpleNamespace(
             is_active=lambda: False,
-            luring=lambda: True,
+            holds_attacks=lambda: True,
             route=SimpleNamespace(current=0),
             release_walk_key=lambda: None,
             alarm=None,
@@ -967,11 +969,10 @@ class TestAttackHotkeys:
         ticks(gl, clock, 20)
         assert inp.sent_lines == []
 
-
     def test_stuck_cavebot_alerts_once_and_attack_goes_on(self) -> None:
         cavebot = SimpleNamespace(
             is_active=lambda: False,
-            luring=lambda: False,
+            holds_attacks=lambda: False,
             route=SimpleNamespace(current=0),
             release_walk_key=lambda: None,
             alarm="stuck",
@@ -1146,7 +1147,7 @@ IDLE_CAVEBOT = SimpleNamespace(
     route=SimpleNamespace(current=0),
     release_walk_key=lambda: None,
     is_active=lambda: False,
-    luring=lambda: False,
+    holds_attacks=lambda: False,
     stuck_on_creatures=False,
     on_target_killed=lambda: None,
     alarm=None,
@@ -1187,14 +1188,13 @@ class TestCurrentTask:
             route=SimpleNamespace(current=2),
             release_walk_key=lambda: None,
             is_active=lambda: True,
-            luring=lambda: False,
+            holds_attacks=lambda: False,
             step=lambda: None,
             resume=lambda after_fight=False: None,
             alarm=None,
         )
         modules = DecisionModules(cavebot=cast(Cavebot, cavebot))
         assert self._task(make_state(), modules=modules) == "Walking to waypoint 3"
-
 
 
 def test_loot_ring_reach_is_two_tiles() -> None:
@@ -1221,6 +1221,7 @@ def test_loot_ring_reach_is_two_tiles() -> None:
         ws.monsters, ws.selected_target = [], None  # the target died
     gl.tick()
     assert checks == [range(0, 2), range(0, 2)]  # 3x3, mid-fight or not
+
 
 # doc: docs/prs/extras.md#extras
 class TestExtras:
@@ -1319,7 +1320,7 @@ class TestExtras:
         config = ExtrasConfig(player_minutes=1.0, player_alarm=True, player_refill=True)
         cavebot = SimpleNamespace(
             is_active=lambda: False,
-            luring=lambda: False,
+            holds_attacks=lambda: False,
             resume=lambda after_fight=False: None,
             release_walk_key=lambda: None,
             alarm=None,
@@ -1337,7 +1338,6 @@ class TestExtras:
         gl.tick()
         assert cavebot.refill_now
         assert alerts == ["ALARM: player in sight over 1 min"]
-
 
 
 # doc: docs/prs/stamina-switch.md#stamina-switch

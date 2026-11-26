@@ -235,6 +235,14 @@ class Bot:
     def goto(self, label: str) -> list[Command]:
         return [functools.partial(self._runner.goto, label)]
 
+    # doc: docs/prs/city-travel.md#depot-floor
+    def has_label(self, label: str) -> bool:
+        """True when the running route has ``label`` *label* (a script can pick a block)."""
+        cavebot = self._runner.cavebot
+        return cavebot is not None and any(
+            wp.action == "label" and wp.label == label for wp in cavebot.route.waypoints
+        )
+
     # doc: docs/prs/near-targeting.md#range-script
     def only_monsters_within_range(self, on: bool | None) -> list[Command]:
         """Turn Targeting's "Ignore monsters more than N tiles away" on, off, or (None) flip it."""
@@ -436,9 +444,7 @@ class ScriptRunner:
 
                 self._script = cavebot_rotate.run(self)  # built in, no file
             else:
-                spec = importlib.util.spec_from_file_location(
-                    f"moonlight_user_script_{name}", path
-                )
+                spec = importlib.util.spec_from_file_location(f"moonlight_user_script_{name}", path)
                 if spec is None or spec.loader is None:
                     raise ImportError(f"cannot load {path}")
                 module = importlib.util.module_from_spec(spec)

@@ -2113,3 +2113,18 @@ def test_a_turning_echo_raid_is_marked_once_its_sprite_changes() -> None:
     assert bot._echo_raids_moving == {(5, 5)}
     bot._watch_echo_raid_motion(turned, set(), 0, 0)
     assert bot._echo_raids_moving == set()  # gone: forgotten
+
+
+def test_step_waits_until_the_player_stands_still_on_its_tile() -> None:
+    """Tainted Caves 2026-11-26: the key went out the tick the player arrived and
+    the step landed one sqm off the hole."""
+    wps = [Waypoint(100, 101, 7, "step", "s"), walk(110, 100, 8)]
+    sim = Sim(wps, Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    sim.pos = Position(100, 101, 7)
+    sim.step(0.01)  # just arrived: no key yet
+    assert "K s" not in sim.fake.sent_lines
+    for _ in range(10):
+        sim.step()  # 0.5 s still on the tile
+    assert sim.fake.sent_lines.count("K s") == 1

@@ -29,6 +29,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from moonlight.cavebot.floor_changes import load_confirmed
+
 __all__ = ["DIAGONAL_STEP_COST", "WALK_STEPS", "CostMap", "next_step"]
 
 _TILE = 256
@@ -55,6 +57,8 @@ class CostMap:
         self._tiles: dict[tuple[int, int, int], np.ndarray | None] = {}
         self._colour_dir = directory.parent
         self._colours: dict[tuple[int, int, int], np.ndarray | None] = {}
+        #: Holes the map does not show, recorded by the owner (kind ``hole``).
+        self._holes = {spot for spot, kind in load_confirmed() if kind == "hole"}
 
     @property
     def empty(self) -> bool:
@@ -75,7 +79,10 @@ class CostMap:
 
     # doc: docs/prs/avoid-holes.md#floor-change-tiles
     def floor_change(self, x: int, y: int, z: int) -> bool:
-        """True on a hole, stairs, ladder or other floor change (yellow on the colour map)."""
+        """True on a hole, stairs, ladder or other floor change (yellow on the
+        colour map), or a hole listed in ``data/floor_changes.csv``."""
+        if (x, y, z) in self._holes:
+            return True
         colour = self._colour(x, y, z)
         return colour is not None and bool(np.all(colour == _YELLOW))
 

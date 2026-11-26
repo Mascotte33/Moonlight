@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from moonlight.cavebot.cavebot import Route, RouteError, RouteFileLoader, Waypoint, has_tile
+from moonlight.cavebot.floor_changes import FLOOR_KIND_ACTIONS, load_confirmed
 from moonlight.cavebot.pathing import WALK_STEPS, CostMap
 
 __all__ = [
@@ -60,8 +61,9 @@ class FloorChange:
     known: bool  # True: a route already uses *at* with *kind*
 
 
-#: Hand actions that can take you elsewhere: a door script, a boat captain's ``say``.
-LINK_ACTIONS = ("script", "say", "key", "wait")
+#: Hand actions that can take you elsewhere: a door script, a boat captain's ``say``,
+#: a ``boat`` waypoint.
+LINK_ACTIONS = ("script", "say", "key", "wait", "boat")
 #: A hand action followed by a waypoint farther than this (or on another floor) is a link.
 LINK_SQM = 30
 
@@ -291,14 +293,17 @@ def _saved_routes(routes_dir: Path) -> Iterator[Route]:
             continue  # not a route (or a broken one): nothing to learn
 
 
-def known_floor_kinds(routes_dir: Path) -> dict[Spot, str]:
-    """The floor-change kind of every sqm the saved routes use one on."""
-    kinds: dict[Spot, str] = {}
-    for route in _saved_routes(routes_dir):
-        for wp in route.waypoints:
-            if wp.action in FLOOR_KINDS:
-                kinds[wp.x, wp.y, wp.z] = wp.action
-    return kinds
+# doc: docs/prs/floor-rules.md#confirmed
+def known_floor_kinds(routes_dir: Path | None = None) -> dict[Spot, str]:
+    """The floor-change kind of every sqm the bot has taken one on in the game
+    (``data/floor_changes.csv``). A route's own guess is never known: one took
+    a sewer grate for stairs up. *routes_dir* is no longer read."""
+    return {spot: kind for (spot, kind) in load_confirmed() if kind in FLOOR_KINDS}
+
+
+def known_floor_targets() -> dict[Spot, int]:
+    """The floor each confirmed floor change leads to."""
+    return {spot: to_z for (spot, kind), to_z in load_confirmed().items() if kind in FLOOR_KINDS}
 
 
 # doc: docs/prs/city-travel.md#links
@@ -336,7 +341,7 @@ def load_floor_map(map_dir: Path, routes_dir: Path) -> FloorMap:
         for link in route_links(route.waypoints):
             if link not in links.setdefault(link.at, []):
                 links[link.at].append(link)
-    return FloorMap(cost, known_floor_kinds(routes_dir), links)
+    return FloorMap(cost, known_floor_kinds(), links, known_floor_targets())
 
 
 def parse_spot(text: str) -> Spot:
@@ -349,11 +354,17 @@ class FloorMap:
     """The walk map with its floor changes paired across floors."""
 
     def __init__(
-        self, cost: CostMap, known: dict[Spot, str], links: dict[Spot, list[Link]] | None = None
+        self,
+        cost: CostMap,
+        known: dict[Spot, str],
+        links: dict[Spot, list[Link]] | None = None,
+        known_to: dict[Spot, int] | None = None,
     ) -> None:
         self.cost = cost
         self.known = known
         self.links = links or {}
+        #: The floor a confirmed floor change leads to (data/floor_changes.csv).
+        self.known_to = known_to or {}
         self.changes_at = cache(self._changes_at)
 
     def walkable(self, x: int, y: int, z: int) -> bool:
@@ -365,9 +376,11 @@ class FloorMap:
         kind = self.known.get((x, y, z))
         out = []
         for dz in (-1, 1):
-            if kind is not None and kind != "stairs" and _FLOOR_DELTA[kind] != dz:
+            if kind is not None and kind != "stairs" and _FLOOR_DELTA.get(kind, dz) != dz:
                 continue  # a rope or ladder only goes up, a shovel hole down
-            to = self._arrival(x, y, z + dz)
+            if (x, y, z) in self.known_to and self.known_to[x, y, z] != z + dz:
+                continue  # confirmed in the game to go the other way
+            to = self._arrival(x, y, z + dz, z)
             if to is None and kind is not None:
                 to = self._nearest_walkable(x, y, z + dz)  # a hole is yellow only once dug
             if to is None:
@@ -376,16 +389,34 @@ class FloorMap:
             out.append(FloorChange((x, y, z), to, kind or guess, kind is not None))
         return tuple(out)
 
+    def _nearer_owner(self, fx: int, fy: int, z: int, me: tuple[int, int], dist: int) -> bool:
+        """True when a yellow sqm of floor z other than *me* is nearer than *dist* to (fx, fy)."""
+        return (
+            any(
+                (ox, oy) != me and self.cost.floor_change(ox, oy, z)
+                for d, ox, oy in _ring(fx, fy, dist - 1)
+            )
+            if dist > 0
+            else False
+        )
+
     def _nearest_walkable(self, x: int, y: int, z: int) -> Spot | None:
         for _, nx, ny in _ring(x, y, PAIR_SQM):
             if self.walkable(nx, ny, z):
                 return nx, ny, z
         return None
 
-    def _arrival(self, x: int, y: int, z: int) -> Spot | None:
-        """The walkable sqm next to the yellow sqm nearest (x, y) on floor z."""
-        for _, fx, fy in _ring(x, y, PAIR_SQM):
+    def _arrival(self, x: int, y: int, z: int, from_z: int) -> Spot | None:
+        """The walkable sqm next to the yellow sqm nearest (x, y) on floor z.
+
+        A yellow sqm on floor z that another yellow sqm of *from_z* is nearer
+        to belongs to that one, not to (x, y): a sewer grate 2 sqm from stairs
+        was once paired with the stairs' top (docs/prs/floor-rules.md#pairing).
+        """
+        for dist, fx, fy in _ring(x, y, PAIR_SQM):
             if not self.cost.floor_change(fx, fy, z):
+                continue
+            if self._nearer_owner(fx, fy, from_z, (x, y), dist):
                 continue
             beside = sorted(
                 (max(abs(fx + dx - x), abs(fy + dy - y)), fx + dx, fy + dy)
@@ -423,9 +454,22 @@ class FloorMap:
 
 
 # doc: docs/prs/route-tools.md#route-lint
-def route_warnings(route: Route, cost: CostMap) -> list[str]:
-    """What a hand-built route gets wrong beyond the legs (the loader checks labels)."""
+def route_warnings(
+    route: Route, cost: CostMap, confirmed: dict[tuple[Spot, str], int] | None = None
+) -> list[str]:
+    """What a hand-built route gets wrong beyond the legs (the loader checks labels).
+
+    With *confirmed* (``data/floor_changes.csv``) every floor change the bot has
+    not taken in the game yet is named: watch it on the route's first run.
+    """
     out = []
+    if confirmed is not None:
+        for i, wp in enumerate(route.waypoints):
+            if wp.action in FLOOR_KIND_ACTIONS and ((wp.x, wp.y, wp.z), wp.action) not in confirmed:
+                out.append(
+                    f"waypoint {i + 1}: {wp.action} at ({wp.x}, {wp.y}, {wp.z}) not confirmed "
+                    "in the game yet: watch it on the first run"
+                )
     for i, wp in enumerate(route.waypoints):
         if wp.action in ("stairs", "ladder", "rope") and not cost.floor_change(wp.x, wp.y, wp.z):
             where = f"({wp.x}, {wp.y}, {wp.z})"
