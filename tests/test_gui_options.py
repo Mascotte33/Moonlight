@@ -212,13 +212,17 @@ def test_rotation_logout_hotkey_is_kept_while_it_has_no_accounts_file() -> None:
     from moonlight.gui.settings_tab import MODULE_SWITCHES, ROTATION_OPTIONS
 
     assert all(not option.field.startswith("rotation") for option in MODULE_SWITCHES)
-    hotkey, *_ = ROTATION_OPTIONS
+    switch, hotkey, accounts_file, client_exe = ROTATION_OPTIONS
+    assert switch.field == "rotation.enabled" and switch.control == "switch"
     cfg = write_option(BotConfig.default(), hotkey, "ctrl+q")
     assert cfg.rotation is None  # off: no accounts file
     assert cfg.off["rotation"].logout_hotkey == "ctrl+q"
-    _, accounts_file, client_exe = ROTATION_OPTIONS
     cfg = write_option(cfg, client_exe, "tibia/client.exe")
     assert cfg.rotation is None and cfg.off["rotation"].client_exe == Path("tibia/client.exe")
     cfg = write_option(cfg, accounts_file, "accounts.txt")  # picking the file turns it on
     assert cfg.rotation is not None and cfg.rotation.accounts_file == Path("accounts.txt")
     assert write_option(cfg, accounts_file, "").rotation is None
+    off = write_option(cfg, switch, False)  # the switch turns it off, the file is kept
+    assert off.rotation is None and off.off["rotation"].accounts_file == Path("accounts.txt")
+    assert read_option(off, "rotation.enabled") is False
+    assert write_option(off, switch, True).rotation is not None

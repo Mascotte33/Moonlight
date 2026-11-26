@@ -437,7 +437,10 @@ class ScriptRunner:
         """Start script *name* (read fresh from disk); False when it cannot run."""
         path = self.scripts_dir / f"{name}.py"
         try:
-            if name == "account_rotate" and self.rotation is not None:
+            if name == "account_rotate":
+                if self.rotation is None:  # switched off (Scripts tab): the waypoint does nothing
+                    log.info("script account_rotate: account rotation is off, skipped")
+                    return False
                 self._script = self.rotation.run(Bot(self))  # built in, no file
             elif name == "cavebot_rotate":
                 from moonlight.scripts import cavebot_rotate

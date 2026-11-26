@@ -201,3 +201,13 @@ def test_the_login_and_password_never_reach_the_command_log(tmp_path: Path) -> N
     play(r, LoggedInput(FakeInput(), lines.append), clock, False, 25, client)
     assert "input: press d" not in lines and "input: press shift+x" not in lines
     assert lines.count("input: press (hidden)") == 12  # 10 login keys, 2 password keys
+
+
+def test_rotate_switched_off_does_nothing_and_is_not_broken(tmp_path: Path) -> None:
+    r, _, clock, client = setup(tmp_path, 100)  # low stamina
+    r.rotation = None  # the Scripts tab switch is off
+    inp = FakeInput()
+    assert not r.start("account_rotate")
+    play(r, inp, clock, True, 1, client)
+    assert inp.sent_lines == [] and r.running is None and not client.started
+    assert "account_rotate" not in r.failed

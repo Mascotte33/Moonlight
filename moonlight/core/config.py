@@ -313,10 +313,12 @@ class BotConfig:
                 section.update(_old_script_timers(section.pop("timers"), enabled is True))
             if name in ALWAYS_ON:  # old files: the switch is gone
                 enabled = True
-            elif name == "rotation":  # no switch: on when it has an accounts file
+            elif name == "rotation":  # on when switched on and it has an accounts file
                 if section.get("accounts") == []:  # old files: the empty accounts list
                     del section["accounts"]
-                enabled = bool(section.get("accounts_file"))
+                has_file = bool(section.get("accounts_file"))
+                # files saved before the switch: on when it has an accounts file
+                enabled = has_file and enabled is not False
             elif not isinstance(enabled, bool):
                 raise ConfigError(f"modules.{name}.enabled must be true or false")
             if name == "refill":  # no switch: on with the cavebot, its 0s turn it off
@@ -374,9 +376,12 @@ class BotConfig:
             kept = self.off.get(name)
             if name in ALWAYS_ON:
                 modules[name] = _section(cfg)
-            elif name == "rotation":  # no switch: the accounts file turns it on
+            elif name == "rotation":  # the switch, and the accounts file it needs
                 held = cfg if cfg is not None else kept
-                modules[name] = _section(held) if held is not None else {}
+                section = _section(held) if held is not None else {}
+                # no file yet: no switch saved, so picking one turns rotation on
+                switch = {"enabled": cfg is not None} if section.get("accounts_file") else {}
+                modules[name] = {**switch, **section}
             elif cfg is not None:
                 modules[name] = {"enabled": True, **_section(cfg)}
             elif kept is not None:
