@@ -861,6 +861,8 @@ class Cavebot:
         self._floor_changed_at: float | None = None
         self._floor_change_wp: Waypoint | None = None
         self._step_retries = 0
+        #: ``start(nearest=True)`` read no position: pick the waypoint on the first tick that does.
+        self._resume_pending = False
         #: ``boat``: the trip under way; how names are read (tests swap it).
         self._boat: _BoatTrip | None = None
         self._read_names = _read_names_later
@@ -902,11 +904,16 @@ class Cavebot:
                 within ``RESUME_TILES``, else the nearest positional
                 waypoint (e.g. after a refill trip, F-25), instead of 0.
         """
-        self.route.current = self._resume_waypoint() if nearest else 0
+        # No position yet (Tibia not in front at start): choose on the first
+        # tick that reads one. Waypoint 0 once ran targeting_off and go_to_city
+        # in the middle of the cave (2026-11-26).
+        self._resume_pending = nearest and self._read_position() is None
+        self.route.current = self._resume_waypoint() if nearest and not self._resume_pending else 0
         self.alarm = None
         self._active = True
         self._reset_tracking()
-        self._replay_targeting_switch()
+        if not self._resume_pending:
+            self._replay_targeting_switch()
 
     # doc: docs/prs/near-targeting.md#targeting-script
     def _replay_targeting_switch(self) -> None:
@@ -1092,6 +1099,12 @@ class Cavebot:
             return
         now = self._clock()
         pos = self._read_position()
+        if self._resume_pending:
+            if pos is None:
+                return
+            self._resume_pending = False
+            self.route.current = self._resume_waypoint()
+            self._replay_targeting_switch()
         moved_aside = False
         if pos is not None and pos != self._last_pos:
             moved_aside = self._sidesteps > 0

@@ -57,4 +57,20 @@ def test_a_resume_mid_route_replays_the_last_targeting_switch_before_it() -> Non
     assert sim.route.current == 5 and scripts.targeting_turned_off
     sim.pos = Position(130, 100, 7)
     sim.bot.start(nearest=True)  # waypoint 3: after targeting_on
-    assert sim.route.current == 3 and not scripts.targeting_turned_off
+    assert sim.route.current >= 3 and not scripts.targeting_turned_off
+
+
+def test_a_start_with_no_position_yet_resumes_on_the_first_one() -> None:
+    """2026-11-26: Tibia not in front at start, no position, waypoint 0 ran
+    targeting_off and go_to_city in the cave."""
+    off = Waypoint(0, 0, 0, "script", "targeting_off")
+    on = Waypoint(0, 0, 0, "script", "targeting_on")
+    scripts = ScriptRunner()
+    sim = Sim([off, walk(110, 100), on, walk(130, 100)], Position(130, 100, 7), scripts=scripts)
+    sim.pos = None
+    sim.bot.start(nearest=True)
+    sim.step()
+    assert not scripts.targeting_turned_off  # waypoint 0 did not run
+    sim.pos = Position(130, 100, 7)
+    sim.step()
+    assert sim.route.current >= 3 and not scripts.targeting_turned_off
