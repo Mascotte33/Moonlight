@@ -6,6 +6,7 @@ only what leaves it no way past (owner 2026-11-26: off the hunt, like the rings)
 
 from __future__ import annotations
 
+from moonlight.cavebot.cavebot import Waypoint
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.state import Monster, Position
 from moonlight.scripts.scripts import ScriptRunner
@@ -44,3 +45,16 @@ def test_with_targeting_off_the_loop_walks_on_past_a_selected_monster() -> None:
 
 def _state(loop: GameLoop) -> BotState:
     return loop.current_state
+
+
+def test_a_resume_mid_route_replays_the_last_targeting_switch_before_it() -> None:
+    off = Waypoint(0, 0, 0, "script", "targeting_off")
+    on = Waypoint(0, 0, 0, "script", "targeting_on")
+    scripts = ScriptRunner()
+    sim = Sim([off, walk(110, 100), on, walk(130, 100), off, walk(150, 100)],
+              Position(150, 100, 7), scripts=scripts)  # fmt: skip
+    sim.bot.start(nearest=True)  # resumes at waypoint 5: after the second targeting_off
+    assert sim.route.current == 5 and scripts.targeting_turned_off
+    sim.pos = Position(130, 100, 7)
+    sim.bot.start(nearest=True)  # waypoint 3: after targeting_on
+    assert sim.route.current == 3 and not scripts.targeting_turned_off

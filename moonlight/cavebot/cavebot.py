@@ -902,6 +902,25 @@ class Cavebot:
         self.alarm = None
         self._active = True
         self._reset_tracking()
+        self._replay_targeting_switch()
+
+    # doc: docs/prs/near-targeting.md#targeting-script
+    def _replay_targeting_switch(self) -> None:
+        """Resumed mid-route: set targeting as the last ``targeting_off`` /
+        ``targeting_on`` before the current waypoint left it (a restart once
+        skipped the route's first ``targeting_off`` and fought in town)."""
+        scripts = self._scripts
+        if scripts is None:
+            return
+        wps = self.route.waypoints
+        for wp in reversed(wps[: self.route.current]):
+            if wp.action == "script" and wp.label in ("targeting_off", "targeting_on"):
+                scripts.targeting_turned_off = wp.label == "targeting_off"
+                logger.info(
+                    "cavebot: resumed at waypoint %d after %s: targeting %s",
+                    self.route.current, wp.label, "off" if scripts.targeting_turned_off else "on",
+                )  # fmt: skip
+                return
 
     # doc: docs/prs/cavebot-rotate.md#cavebot-rotate
     def switch_route(self, route: Route) -> None:
