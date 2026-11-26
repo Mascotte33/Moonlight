@@ -2,7 +2,9 @@
 
 The accounts are lines ``login password`` of a text file the owner picks
 (blank lines and ``#`` lines are ignored); the bot assumes the first line is
-the account playing when it starts. When the last stamina read is under
+the account playing at the very first start; after that the account
+playing is saved (:data:`PLAYING_FILE`) and the queue goes on from it,
+the last account followed by the first again. When the last stamina read is under
 :data:`~moonlight.perception.stamina.LOW_STAMINA_MINUTES` the cavebot's
 refill flag is set once, so the next ``check`` waypoint goes to town; the
 ``script`` waypoint ``account_rotate`` at the depot reads the stamina again and, when
@@ -20,6 +22,7 @@ every account fails the bot alarms and stops.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -45,6 +48,25 @@ log = logging.getLogger(__name__)
 
 LOGOUT_WAIT = 10.0  # s for the game to go after the logout key; still there = stay
 CLOSE_WAIT = 15.0  # s for the client window to go after alt+f4
+#: The account playing (its line number, from 0), kept across restarts so the
+#: queue goes on: the one logged out goes to the back (owner 2026-11-26).
+PLAYING_FILE = Path("data") / "rotation_playing.json"
+
+
+def load_playing(n: int) -> int:
+    """The saved playing account's index among *n* (0 when none is saved)."""
+    try:
+        index = json.loads(PLAYING_FILE.read_text(encoding="utf-8"))["playing"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0
+    return index % n if isinstance(index, int) and n else 0
+
+
+def save_playing(index: int) -> None:
+    PLAYING_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PLAYING_FILE.write_text(json.dumps({"playing": index}), encoding="utf-8")
+
+
 START_WAIT = 90.0  # s for the client window to show after starting the program
 LOGIN_SCREEN_WAIT = 5.0  # s for the login screen to be ready after the window shows
 LOGIN_WAIT = 30.0  # s for the game to show after Enter on the character
@@ -134,7 +156,7 @@ class Rotation:
         self._start_client = start_client or (lambda exe: subprocess.Popen([str(exe)]))
         self._window_open = window_open or (lambda: _find_window_hwnd(window_title) is not None)
         self._focus_client = focus_client or (lambda: focus_window(window_title))
-        self.index = 0
+        self.index = load_playing(len(self.accounts))
         self._asked = False
         #: No client window while the switch restarts Tibia: the loop steps the
         #: script without the focus gate then (nothing is typed meanwhile).
@@ -192,6 +214,7 @@ class Rotation:
 
     def _logged_in(self, index: int) -> None:
         self.index, self._asked = index, False
+        save_playing(index)
         log.info("rotation: account %d playing", index + 1)
 
     def _login(self, bot: Bot, acc: Account) -> Generator[object, None, None]:
@@ -240,11 +263,12 @@ def login_on_start(
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
 ) -> None:
-    """Before Start calibrates: open Tibia and log the first account in.
+    """Before Start calibrates: open Tibia and log the playing account in.
 
     Does nothing while the game already shows. Without a client window it
     starts ``client_exe``; on the login screen it types the first account's
-    login and password (the command log muted) and enters its first
+    login and password (the command log muted; the account the rotation
+    left playing, the first at the very start) and enters its first
     character, then waits for the game.
 
     Raises:
@@ -257,7 +281,9 @@ def login_on_start(
         return
     if config.accounts_file is None:
         return
-    account = load_accounts(config.accounts_file, at_least=1)[0]
+    accounts = load_accounts(config.accounts_file, at_least=1)
+    playing = load_playing(len(accounts))
+    account = accounts[playing]
     if not window_open():
         log_info("login: starting Tibia")
         start_client(config.client_exe)
@@ -271,7 +297,7 @@ def login_on_start(
     sleep(1.0)
     if in_game():
         return
-    log_info("login: logging account 1 in")
+    log_info(f"login: logging account {playing + 1} in")
 
     def keys(combos: list[str]) -> None:
         for combo in combos:

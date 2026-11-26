@@ -211,3 +211,20 @@ def test_rotate_switched_off_does_nothing_and_is_not_broken(tmp_path: Path) -> N
     play(r, inp, clock, True, 1, client)
     assert inp.sent_lines == [] and r.running is None and not client.started
     assert "account_rotate" not in r.failed
+
+
+def test_the_queue_goes_on_after_a_restart_and_wraps_to_the_first(tmp_path: Path) -> None:
+    from moonlight.scripts.rotation import load_playing
+
+    r, rot, clock, client = setup(tmp_path, 100)
+    assert rot.index == 0  # nothing saved: the first account
+    inp = FakeInput()
+    r.start("account_rotate")
+    play(r, inp, clock, True, 0.5, client)
+    play(r, inp, clock, False, 15, client)
+    play(r, inp, clock, True, 1, client)
+    assert rot.index == 1 and load_playing(2) == 1  # saved: the logged-out one is at the back
+    _, again, _, _ = setup(tmp_path, 100)
+    assert again.index == 1  # a restart goes on from it
+    again._logged_in(0)  # the last account rotated: the first again
+    assert load_playing(2) == 0
