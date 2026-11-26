@@ -327,7 +327,7 @@ def test_extras_have_no_switch() -> None:
         BotConfig.from_dict(raw(extras={"food": True}))
 
 
-def test_rotation_is_on_when_it_has_an_accounts_file_and_has_no_switch(tmp_path: Path) -> None:
+def test_rotation_is_on_when_it_has_an_accounts_file(tmp_path: Path) -> None:
     route_file(tmp_path / "routes")
     section = {"accounts_file": "accounts.txt", "client_exe": "tibia/client.exe"}
     data = raw(cavebot={"enabled": True, "route": "hunt"}, rotation=section)
@@ -335,9 +335,7 @@ def test_rotation_is_on_when_it_has_an_accounts_file_and_has_no_switch(tmp_path:
     cfg = BotConfig.from_dict(data)
     assert cfg.rotation is not None and cfg.rotation.accounts_file == Path("accounts.txt")
     assert cfg.rotation.client_exe == Path("tibia/client.exe")
-    assert "enabled" not in cfg.to_dict()["modules"]["rotation"]
-    old_switch = {"enabled": False, "accounts_file": "accounts.txt"}  # an old flag is ignored
-    assert BotConfig.from_dict(raw(rotation=old_switch)).rotation is not None
+    assert cfg.to_dict()["modules"]["rotation"]["enabled"] is True
     assert BotConfig.from_dict(cfg.to_dict()) == cfg
     old = raw()
     del old["modules"]["rotation"]
@@ -349,6 +347,19 @@ def test_rotation_is_on_when_it_has_an_accounts_file_and_has_no_switch(tmp_path:
     assert off.off["rotation"].accounts_file is None  # no file: off, values kept
     saved = off.to_dict()["modules"]["rotation"]
     assert off.rotation is None and saved["logout_hotkey"] == "ctrl+l"
+
+
+def test_rotation_switched_off_keeps_its_accounts_file() -> None:
+    switched_off = {"enabled": False, "accounts_file": "accounts.txt"}
+    cfg = BotConfig.from_dict(raw(rotation=switched_off))
+    assert cfg.rotation is None
+    assert cfg.off["rotation"].accounts_file == Path("accounts.txt")
+    saved = cfg.to_dict()["modules"]["rotation"]
+    assert saved["enabled"] is False and saved["accounts_file"] == "accounts.txt"
+    on = BotConfig.from_dict(raw(rotation={**switched_off, "enabled": True}))
+    assert on.rotation is not None
+    no_file = BotConfig.from_dict(raw(rotation={"enabled": True}))
+    assert no_file.rotation is None  # on needs an accounts file
 
 
 def test_echo_raid_setting_loads_and_rejects_others(tmp_path: Path) -> None:
