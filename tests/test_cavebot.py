@@ -2128,3 +2128,21 @@ def test_step_waits_until_the_player_stands_still_on_its_tile() -> None:
     for _ in range(10):
         sim.step()  # 0.5 s still on the tile
     assert sim.fake.sent_lines.count("K s") == 1
+
+
+def test_step_that_left_the_floor_unchanged_is_tried_again_then_stops() -> None:
+    """Tainted Caves 2026-11-26: 'w' from the hole's stand sqm landed one sqm off it."""
+    wps = [Waypoint(100, 101, 7, "step", "s"), walk(110, 100, 8)]
+    sim = Sim(wps, Position(100, 101, 7), walk_keys=True)
+    sim.bot.start()
+    for attempt in range(4):
+        sim.pos = Position(100, 101, 7)
+        for _ in range(10):
+            sim.step()  # stands still, presses the key
+        assert sim.fake.sent_lines.count("K s") == attempt + 1
+        sim.pos = Position(101, 102, 7)  # one sqm off, same floor
+        for _ in range(20):
+            sim.step()
+        if attempt < 3:
+            assert sim.bot.alarm is None and sim.route.current == 0
+    assert sim.bot.alarm == "wrong_floor"

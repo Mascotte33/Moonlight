@@ -394,6 +394,9 @@ _DEPOT_ALARM = 300.0
 #: Seconds after the route's own floor change in which landing on a floor the
 #: route does not expect stops it (later: a fight or a misread, resynced).
 _WRONG_FLOOR_WINDOW = 5.0
+#: A ``step`` that left the player on its own floor (one sqm off the hole) is
+#: walked back to and pressed again this many times before ``wrong_floor``.
+_STEP_RETRIES = 3
 #: Seconds a boat waypoint looks for its captain, walks next to him, or waits to land.
 _BOAT_TIMEOUT = 15.0
 # doc: docs/prs/boat.md#boat-waypoint
@@ -857,6 +860,7 @@ class Cavebot:
         #: moved the player to another floor; None once on the floor the route expects.
         self._floor_changed_at: float | None = None
         self._floor_change_wp: Waypoint | None = None
+        self._step_retries = 0
         #: ``boat``: the trip under way; how names are read (tests swap it).
         self._boat: _BoatTrip | None = None
         self._read_names = _read_names_later
@@ -2050,6 +2054,7 @@ class Cavebot:
         """The route's floor change landed on the floor it expects: list it as confirmed."""
         wp = self._floor_change_wp
         self._floor_changed_at = self._floor_change_wp = None
+        self._step_retries = 0
         if wp is not None and wp.z != pos.z:
             record_confirmed((wp.x, wp.y, wp.z), wp.action, pos.z)
 
@@ -2066,6 +2071,25 @@ class Cavebot:
         pending = self._expected_z is not None  # a rope/shovel/ladder went the other way
         if not pending and (changed is None or now - changed > _WRONG_FLOOR_WINDOW):
             return False
+        step = self._floor_change_wp
+        if (
+            not pending
+            and step is not None
+            and step.action == "step"
+            and pos.z == step.z
+            and self._step_retries < _STEP_RETRIES
+        ):
+            # The floor did not change: the key moved the player one sqm off the
+            # hole (Tainted Caves 32718,31847 'w' -> 32719,31846, 2026-11-26).
+            index = next(i for i, w in enumerate(self.route.waypoints) if w is step)
+            self._step_retries += 1
+            logger.info(
+                "cavebot: step %d left the player on floor %d at %d,%d: back to it (try %d of %d)",
+                index, pos.z, pos.x, pos.y, self._step_retries, _STEP_RETRIES,
+            )  # fmt: skip
+            self._floor_changed_at = self._floor_change_wp = None
+            self.route.current = index
+            return True
         logger.warning(
             "cavebot: [stuck: wrong_floor] the floor change before waypoint %d led to "
             "floor %d at %d,%d; the route expects floor %d: stopped",
