@@ -36,6 +36,8 @@ __all__ = [
 ]
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
+
+
 class StandTracker:
     """The tile the character stood on, not the one it is walking to.
 
@@ -78,14 +80,15 @@ def make_waypoint(action: str, label: str, live: Position) -> Waypoint:
         return Waypoint(0, 0, 0, action)
     if action in ("bank", "trade"):
         label = ""
-    elif action in NO_TILE:
+    elif action in (*NO_TILE, "boat"):
         if not label:
             raise RouteError(f"{action} needs a label")
         if bad := label_error(action, label):
             raise RouteError(bad)
     if (live.x, live.y, live.z) == (0, 0, 0):
         raise RouteError("Position unknown. Start the bot first.")
-    return Waypoint(live.x, live.y, live.z, action, label if action in NO_TILE else "")
+    keep = action in (*NO_TILE, "boat")
+    return Waypoint(live.x, live.y, live.z, action, label if keep else "")
 
 
 def _last_positioned(waypoints: list[Waypoint]) -> Waypoint | None:
@@ -135,9 +138,7 @@ def position_line(pos: Position, status: str = "") -> str:
     return f"Position {pos.x}, {pos.y}, {pos.z}{tail}"
 
 
-def cursor_line(
-    cursor: tuple[int, int] | None, window: tuple[int, int, int, int] | None
-) -> str:
+def cursor_line(cursor: tuple[int, int] | None, window: tuple[int, int, int, int] | None) -> str:
     """The mouse in client-window pixels (what a ``drag`` label takes)."""
     if cursor is None or window is None:
         return "Cursor: client not found"
@@ -163,7 +164,7 @@ def waypoint_json(wp: Waypoint) -> dict[str, object]:
     """*wp* as a route file stores it."""
     if not has_tile(wp):
         return {"action": wp.action, "label": wp.label}
-    if wp.action in (*NO_TILE, "step"):
+    if wp.action in (*NO_TILE, "step", "boat"):
         return {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action, "label": wp.label}
     return {"x": wp.x, "y": wp.y, "z": wp.z, "action": wp.action}
 

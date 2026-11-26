@@ -1,0 +1,87 @@
+# Travel NPCs: ship captains, steamships, minor ferrymen and magic carpets.
+# Source: list given by the owner on 2026-11-25 (from TibiaWiki). x,y,z is the NPC's home sqm; NPCs wander around it.
+kind,place,npc,x,y,z
+ship,Ab'Dendriel,Captain Seagull,32732,31669,6
+ship,Ankrahmun,Captain Sinbeard,33090,32884,6
+ship,Calassa,Captain Max,31921,32710,7
+ship,Carlin,Captain Greyhound,32388,31821,6
+ship,Carlin (West / Reokon's Tundra),Dalbrect,32204,31756,6
+ship,Cormaya (Surface North),Pemaret,33288,31956,6
+ship,Cormaya (Surface East),Hawkhurst,33355,31986,7
+steamship,Cormaya (Underground),Gurbasch,33309,31989,15
+ship,Darashia,Petros,33290,32481,6
+ship,Dawnport (Legacy),Captain Dreadnought,32033,31872,6
+ship,Edron,Captain Seahorse,33175,31765,6
+steamship,Farmine (Underground),Thorgrin,33025,31553,10
+ship,Fenrock,Maris,32562,31312,7
+ship,Gnomprona (Primal Gnome Hub),Urks The Mute,33517,32856,14
+ship,Goroma,Jack Fate,32161,32556,6
+ship,Ingol,Hawkhurst,33710,32602,6
+ship,Isle of Destiny,Captain Kurt,32098,31965,6
+ship,Isle of the Kings,Captain Jack,32190,31958,6
+ship,Issavi / Kilmaresh,Captain Harava,33902,31462,6
+steamship,Kazordoon (Underground),Brodrosch,32659,31959,15
+ship,Krailos,Captain Pelagia,33491,31712,6
+ship,Liberty Bay (West Dock),Jack Fate,32286,32892,6
+ship,Liberty Bay (East Dock),Captain Max,32298,32896,6
+ship,Mistrock,Maris,32638,31437,7
+ship,Newhaven,Anna,32553,32497,7
+ship,Northport,Graubart,32489,31622,7
+ship,Oramond / Rathleton,Captain Gulliver,33479,31986,7
+ship,Port Hope,Charles,32529,32785,6
+ship,Rascacoon,Captain Jack Rat,33791,31385,6
+steamship,Robson's Isle,Junkar,32526,32036,14
+ship,Roshamuul (Lower),Captain Chelop,33494,32567,7
+steamship,Sunken Mines (Kazordoon),Junkar,32555,32068,10
+ship,Svargrond (North Dock),Captain Breezelda,32341,31107,6
+ship,Svargrond (South Dock),Captain Haba,32348,31124,6
+ship,Targuna,Captain Indigo,31973,31892,6
+ship,Thais,Captain Bluebear,32310,32210,6
+steamship,Thais (Ancient Temple),Junkar,32368,32181,13
+ship,Thais (Ghostship below Lighthouse),Ghost Captain,32215,32311,11
+ship,Travora,Captain Tiberius,32057,32368,6
+ship,Venore,Captain Fearless,32953,32021,6
+ship,Yalahar (Central Upper Deck),Karith,32815,31278,5
+ship,Yalahar (Central West Ship),Captain Cookie,32803,31272,6
+ship,Yalahar (Foreigner Quarter),Maris,32648,31293,6
+ferry,Banor's Eye,Rascalio,32232,31582,7
+ferry,Carlin (Northwest / Reokon's Tundra),Nielson,32235,31675,7
+ferry,Carlin (Northwest / Event Boat),Rascalio,32259,31643,7
+ferry,Chazorai,Zurak,33103,31055,7
+ferry,Edron (North of Stonehome),Cornell,33304,31720,7
+ferry,Fibula (South),Ferryman Kamil,32152,32457,7
+ferry,Folda,Svenson,32046,31579,7
+ferry,Fryclops Island,Rascalio,32378,31592,7
+ferry,Grimvale (South),Cornell,33341,31691,7
+ferry,Helheim,Buddel,32462,31173,7
+ferry,Krimhorn (Barbarian Camp),Buddel,32020,31294,7
+ferry,Liberty Bay (Southeast),Captain Waverider,32347,32859,7
+ferry,Meluna,Ferryman Kamil,32088,32469,7
+ferry,Meriana (South of Sabrehaven),Sebastian,32345,32620,7
+ferry,Meriana (North Event Dock),Rascalio,32302,32538,7
+ferry,Monument Tower (Yalahar),Tarak,32940,31182,7
+ferry,Muggy Plains (Zao),Zurak,33158,31226,7
+ferry,Nargor,Sebastian,32029,32815,7
+ferry,Okolnir,Buddel,32224,31381,7
+ferry,Port Hope (West),Imbul,32558,32780,7
+ferry,Port Hope (Center / South of Depot),Old Adall,32632,32769,7
+ferry,Port Hope (East),Lorek,32679,32776,7
+ferry,Senja (West),Anderson,32128,31660,7
+ferry,Svargrond (South),Buddel,32255,31197,7
+ferry,Thais (South of Open-Air Theatre),Kendra,32262,32264,7
+ferry,Treasure Hunt Island,Captain Waverider,32043,32933,7
+ferry,Treasure Island,Captain Waverider,32132,32917,7
+ferry,Tyrsung,Buddel,32332,31227,7
+ferry,Vega (East),Carlson,32022,31693,7
+ferry,Vengoth (West),Harlow,32857,31549,7
+ferry,Vigintia,Kendra,33495,31054,7
+ferry,Yalahar (Trade Quarter),Harlow,32837,31362,7
+ferry,Yalahar (Sunken Quarter),Tarak,32917,31199,7
+carpet,Darashia,Chemar,33268,32440,6
+carpet,Edron (Castle Roof),Pino,33192,31783,3
+carpet,Farmine (Zao Mountains),Melian,32986,31538,1
+carpet,Femor Hills,Uzon,32536,31837,4
+carpet,Issavi,Tanyt,33957,31514,0
+carpet,Kazordoon (Mountain Peak),Gewen,32588,31942,0
+carpet,Marapur (Moonfall),Ziyad,33805,32768,2
+carpet,Svargrond (Formorgar Glacier),Iyad,32252,31097,4

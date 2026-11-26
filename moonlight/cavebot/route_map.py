@@ -90,10 +90,22 @@ class MapTiles:
 
 
 def legs(waypoints: list[Waypoint]) -> list[tuple[int, int]]:
-    """Index pairs of positional waypoints in a row, last back to first (routes loop)."""
+    """Index pairs of positional waypoints in a row, last back to first (routes loop).
+
+    A ``goto`` between two of them, or a ``boat`` as the first, is a jump, not a
+    walk: no leg (docs/prs/boat.md#route-check).
+    """
     spots = [i for i, wp in enumerate(waypoints) if has_tile(wp)]
-    pairs = list(zip(spots, spots[1:], strict=False))
-    if len(spots) > 2:
+    pairs: list[tuple[int, int]] = []
+    prev: int | None = None
+    for i, wp in enumerate(waypoints):
+        if wp.action == "goto":
+            prev = None
+        elif has_tile(wp):
+            if prev is not None:
+                pairs.append((prev, i))
+            prev = None if wp.action == "boat" else i
+    if len(spots) > 2 and prev is not None:
         pairs.append((spots[-1], spots[0]))
     return pairs
 

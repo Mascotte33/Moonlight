@@ -116,6 +116,16 @@ wired into ``loop.py`` as ``move_provider=lambda _s: bot.is_active()`` and
   the amount slider to the row's percent, Buy. A health or mana potion whose
   action-bar total did not go up is bought once more, then the trade moves on.
   Alarm ``"trade"`` after 3 min.
+* **boat** (docs/prs/boat.md#boat-waypoint): its tile is a travel NPC's
+  home sqm from ``data/travel_npcs.csv``, its label the destination said to
+  him (``venore``). Once that sqm is in view it reads the names above the
+  health bars (:mod:`moonlight.perception.npc_names`, off the tick on a
+  worker thread), ring by ring outward from the player, walks next to the
+  captain (again each look: he wanders), talks ``hi``, the destination,
+  ``yes`` like ``bank``, and is done once the player is within 10 sqm of a
+  travel NPC of the destination. No captain in ``_BOAT_TIMEOUT`` s, not next
+  to him that long after, or no landing that long after the talk: the route
+  stops with alarm ``"boat"`` and a screenshot in ``logs/boat``.
 * **script**: runs the user script named by its label
   (:mod:`moonlight.scripts.scripts`); the route holds until it ends.
 * **End of route**: a hunting route starts over at waypoint 0; a route
@@ -148,6 +158,7 @@ import random
 import re
 import time
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -166,6 +177,7 @@ from moonlight.cavebot.town import (
     item_picture,
     pick_locker,
 )
+from moonlight.cavebot.travel import TravelNpc, captain_at, landed
 from moonlight.core.random_delay import random_delay, typing_gap
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.clicker import ClickController
@@ -174,6 +186,7 @@ from moonlight.perception.creatures import PLAYER_SLOT, find_creatures
 from moonlight.perception.echo_raid import find_echo_raids
 from moonlight.perception.floor import MAX_FLOOR, MIN_FLOOR
 from moonlight.perception.minimap import Rect
+from moonlight.perception.npc_names import find_named
 
 if TYPE_CHECKING:
     from moonlight.scripts.scripts import ScriptRunner
@@ -197,7 +210,7 @@ logger = logging.getLogger(__name__)
 #: Valid waypoint actions.
 ACTIONS = (
     "walk", "node", "stand", "lure", "rope", "shovel", "ladder", "stairs", "label", "goto", "check",
-    "say", "key", "drag", "script", "wait", "step", "finddepo",
+    "say", "key", "drag", "script", "wait", "step", "finddepo", "boat",
     "deposit", "bank", "trade",
 )  # fmt: skip
 
@@ -298,6 +311,8 @@ _FLOOR_DELTA = {"rope": -1, "ladder": -1, "shovel": +1}
 # (doc: docs/prs/depot.md#finddepo-waypoint); its own tile is never reached.
 _REACH = {
     "node": 3, "stand": 0, "stairs": 0, "step": 0, "rope": 0, "finddepo": 0,
+    # boat -1: never reached by walking; _boat_step decides when it is done.
+    "boat": -1,
     **dict.fromkeys(NO_TILE, 0),
 }  # fmt: skip
 # doc: docs/prs/steps.md#rope-settle
@@ -372,6 +387,16 @@ _TRADE_WAIT = (1.0, 3.0)
 #: Seconds between looks for a free locker, and before the alarm when all are taken.
 _DEPOT_RELOOK = 3.0
 _DEPOT_ALARM = 300.0
+
+# doc: docs/prs/boat.md#boat-waypoint
+#: Seconds a boat waypoint looks for its captain, walks next to him, or waits to land.
+_BOAT_TIMEOUT = 15.0
+#: Seconds between two reads of the names on screen while a boat waypoint runs.
+_BOAT_RELOOK = 0.5
+#: Screenshots of a failed boat trip (bot.log names each).
+BOAT_SHOTS_DIR = Path("logs") / "boat"
+#: Pause after an NPC line not in _NPC_PAUSE (a boat destination).
+_NPC_PAUSE_OTHER = (0.7, 1.0)
 
 #: Game grid layout (docs/ui_layout.md #10): 15x11 tiles, player at (7, 5).
 GAME_GRID_COLS = 15
@@ -505,7 +530,9 @@ class RouteFileLoader:
             coords.append(value)
         if not MIN_FLOOR <= coords[2] <= MAX_FLOOR:
             raise RouteError(f"waypoint {index}: z must be {MIN_FLOOR}..{MAX_FLOOR}")
-        if action not in (*NO_TILE, "step"):
+        if action == "boat" and (bad := label_error(action, label)):
+            raise RouteError(f"waypoint {index}: {bad}")
+        if action not in (*NO_TILE, "step", "boat"):
             label = ""
         elif action == "step" and label not in WALK_KEYS.values():
             keys = list(WALK_KEYS.values())
@@ -523,6 +550,8 @@ def label_error(action: str, label: str) -> str | None:
         return f"key {label!r} has a space"
     if action == "wait" and not re.fullmatch(r"\d+(\.\d+)?", label):
         return "wait label is seconds"
+    if action == "boat" and not re.fullmatch(r"[A-Za-z][A-Za-z ]*", label):
+        return "boat label is the destination said to the captain: letters and spaces"
     if action == "script" and not re.fullmatch(r"\w+", label):
         return "script label is a file name in scripts/ without .py"
     return None
@@ -552,7 +581,7 @@ def talk_steps(npc_tab_hotkey: str, lines: tuple[str, ...]) -> list[TalkStep]:
     steps: list[TalkStep] = [False, npc_tab_hotkey, True]
     for line in lines:
         steps += say_keys(line)[1:]  # the chat is on: no Enter to open it
-        steps.append(random.uniform(*_NPC_PAUSE[line]))
+        steps.append(random.uniform(*_NPC_PAUSE.get(line, _NPC_PAUSE_OTHER)))
     return [*steps, False]
 
 
@@ -587,13 +616,46 @@ def _check_route_can_run(
     route: Route, input_backend: InputBackend | None, clicker: ClickController
 ) -> None:
     """Raise ValueError when *route* needs an input backend or clicker the cavebot lacks."""
-    keyed = ("rope", "shovel", "say", "key", "drag", "step", "deposit", "bank", "trade")
+    keyed = ("rope", "shovel", "say", "key", "drag", "step", "deposit", "bank", "trade", "boat")
     needs_keys = any(wp.action in keyed for wp in route.waypoints)
     if needs_keys and input_backend is None:
         raise ValueError("rope/shovel/say/key/drag/step waypoints need an input_backend")
     hand_drags = ("drag", "deposit", "trade")
     if any(wp.action in hand_drags for wp in route.waypoints) and not clicker.absolute:
         raise ValueError("drag, deposit and trade waypoints need the absolute clicker")
+
+
+# doc: docs/prs/boat.md#boat-waypoint
+@dataclass
+class _BoatTrip:
+    """A ``boat`` waypoint under way."""
+
+    captain: TravelNpc
+    #: When the captain's sqm came in view (the search timeout runs from it).
+    since: float | None = None
+    #: When the captain was found (the walk-next-to-him timeout runs from it).
+    found_at: float | None = None
+    looked: float = float("-inf")
+    #: The name read in progress and the position it was grabbed at.
+    scan: Future[tuple[tuple[int, int], str, float] | None] | None = None
+    scan_pos: Position | None = None
+    #: The captain's sqm as last read.
+    captain_tile: tuple[int, int, int] | None = None
+    #: After the talk: give up waiting to land at this time.
+    sail_until: float | None = None
+
+
+_name_reader: ThreadPoolExecutor | None = None
+
+
+def _read_names_later(
+    frame: np.ndarray, grid: Rect, name: str
+) -> Future[tuple[tuple[int, int], str, float] | None]:
+    """:func:`find_named` on a worker thread: Tesseract takes ~0.1 s a name."""
+    global _name_reader
+    if _name_reader is None:
+        _name_reader = ThreadPoolExecutor(max_workers=1, thread_name_prefix="npc-names")
+    return _name_reader.submit(find_named, frame, grid, name)
 
 
 class Cavebot:
@@ -774,6 +836,9 @@ class Cavebot:
         #: ``trade``: buy rows already bought again (each gets one more try).
         self._rebought_rows: set[int] = set()
         self._potion_counts = potion_counts
+        #: ``boat``: the trip under way; how names are read (tests swap it).
+        self._boat: _BoatTrip | None = None
+        self._read_names = _read_names_later
 
         #: Why the route stopped on its own ("stuck", "lost", "goto_loop"),
         #: or None.
@@ -1014,6 +1079,12 @@ class Cavebot:
                 self.release_walk_key()
                 return
             wp = stand
+        elif wp.action == "boat":
+            boat_target = self._boat_step(wp, pos, now)
+            if boat_target is None:
+                self.release_walk_key()
+                return
+            wp = boat_target
         if (wp.action in _HAND_ACTIONS and not has_tile(wp)) or (
             wp.action in (*_HAND_ACTIONS, "step") and self._stepped(wp, pos, now)
         ):
@@ -1283,6 +1354,7 @@ class Cavebot:
         self._sends_done, self._hand_done_at = 0, None
         self._talk = None
         self._blocked_wait = False
+        self._boat = None
 
     def _halt(self, alarm: str) -> None:
         logger.warning("cavebot: [stuck: %s] route %r stopped", alarm, self.route.name)
@@ -1484,6 +1556,11 @@ class Cavebot:
         if self._sends_done == len(self._talk):
             if self.alarm == wp.action:
                 self.alarm = None
+            if wp.action == "boat" and self._boat is not None:
+                self._talk, self._sends_done = None, 0
+                self._boat.sail_until = now + _BOAT_TIMEOUT
+                logger.info("cavebot: boat: asked %s for %r", self._boat.captain.name, wp.label)
+                return
             self._advance()
             return
         step = self._talk[self._sends_done]
@@ -1548,7 +1625,8 @@ class Cavebot:
             item = self._trade_item(a)
             if not item_picture(item).exists():  # no icon to tell it by: the first row
                 spot: tuple[int, int] | None = (
-                    self._trade_at[0] + _FIRST_ROW[0], self._trade_at[1] + _FIRST_ROW[1]
+                    self._trade_at[0] + _FIRST_ROW[0],
+                    self._trade_at[1] + _FIRST_ROW[1],
                 )
             else:
                 spot = None if frame is None else find_item_row(frame, self._trade_at, item)
@@ -1600,7 +1678,11 @@ class Cavebot:
         """Remember the key's target tile when walking onto it moved the player elsewhere."""
         old, target = self._previous_pos, self._target
         wp = self.route.waypoints[self.route.current]
-        if old is None or target is None or wp.action in ("step", *_DANGER_ACTIONS, *_FLOOR_DELTA):
+        if (
+            old is None
+            or target is None
+            or wp.action in ("step", "boat", *_DANGER_ACTIONS, *_FLOOR_DELTA)
+        ):
             return
         if pos.z != old.z or max(abs(pos.x - old.x), abs(pos.y - old.y)) > _JUMP_TILES:
             logger.info("cavebot: tile %s,%s,%s moved the player, avoiding it", *target)
@@ -1691,6 +1773,7 @@ class Cavebot:
         self._talk, self._sends_done = None, 0
         self._trade_at = self._trade_wait_until = None
         self._rebought_rows = set()
+        self._boat = None
         self._expected_z = None
         self._last_cmd = float("-inf")
         self._clicker.cancel()  # the pending click targeted the old waypoint
@@ -1748,6 +1831,117 @@ class Cavebot:
         self.depot_locker = (lx, ly, pos.z)
         self._depot_stand = Waypoint(sx, sy, pos.z, "stand")
         return self._depot_stand
+
+    # doc: docs/prs/boat.md#boat-waypoint
+    def _boat_step(self, wp: Waypoint, pos: Position, now: float) -> Waypoint | None:
+        """Where a ``boat`` waypoint walks (its own sqm, then next to the
+        captain), or None while it looks, talks or sails."""
+        trip = self._boat
+        if trip is None:
+            captain = captain_at(wp.x, wp.y, wp.z)
+            if captain is None:
+                logger.warning(
+                    "cavebot: boat: no travel NPC at %s,%s,%s in travel_npcs.csv", wp.x, wp.y, wp.z
+                )
+                self._halt("boat")
+                return None
+            trip = self._boat = _BoatTrip(captain)
+        if trip.sail_until is not None:
+            self._last_move = now  # waiting for the boat is not being stuck
+            if landed(wp.label, pos.x, pos.y, pos.z):
+                logger.info("cavebot: boat: landed in %s at %s", wp.label, self._where())
+                self._advance()
+            elif now >= trip.sail_until:
+                self._boat_failed(f"talked to {trip.captain.name} but did not land in {wp.label!r}")
+            return None
+        if self._talk is not None:
+            self._last_move = now  # talking is not being stuck
+            self._talk_step(wp, now)
+            return None
+        dx, dy = wp.x - pos.x, wp.y - pos.y
+        if pos.z != wp.z or abs(dx) > PLAYER_SLOT[0] or abs(dy) > PLAYER_SLOT[1]:
+            return wp  # walk until the captain's sqm is in view
+        if trip.since is None:
+            trip.since = now
+            logger.info("cavebot: boat: looking for %s", trip.captain.name)
+        self._boat_read(trip, pos, now)
+        if trip.captain_tile is None:
+            self._last_move = now  # looking around is not being stuck
+            if now - trip.since >= _BOAT_TIMEOUT:
+                self._boat_failed(f"{trip.captain.name} not found on screen")
+            return None
+        cx, cy, cz = trip.captain_tile
+        if cz == pos.z and max(abs(cx - pos.x), abs(cy - pos.y)) <= 1:
+            self.release_walk_key()
+            self._talk = talk_steps(self._npc_tab_hotkey, ("hi", wp.label, "yes"))
+            self._talk_since, self._talk_wait, self._sends_done = now, float("-inf"), 0
+            logger.info("cavebot: boat: next to %s at %s,%s, talking", trip.captain.name, cx, cy)
+            return None
+        assert trip.found_at is not None
+        if now - trip.found_at >= _BOAT_TIMEOUT:
+            self._boat_failed(f"could not get next to {trip.captain.name}")
+            return None
+        stand = self._boat_stand(trip.captain_tile, pos)
+        if stand is None:
+            return None  # every sqm around him taken: look again
+        return Waypoint(*stand, "boat", wp.label)
+
+    def _boat_read(self, trip: _BoatTrip, pos: Position, now: float) -> None:
+        """Take a finished name read, and start the next one every ``_BOAT_RELOOK`` s."""
+        if trip.scan is not None and trip.scan.done():
+            scan, base = trip.scan, trip.scan_pos
+            trip.scan = None
+            try:
+                found = scan.result()
+            except Exception as exc:  # the reader must not kill the tick
+                logger.warning("cavebot: boat: reading names failed: %s", exc)
+                found = None
+            if found is not None and base is not None:
+                (col, row), name, likeness = found
+                tile = (base.x + col - PLAYER_SLOT[0], base.y + row - PLAYER_SLOT[1], base.z)
+                if tile != trip.captain_tile:
+                    logger.info(
+                        "cavebot: boat: %s at %s,%s (read %r, %.0f%% alike)",
+                        trip.captain.name, tile[0], tile[1], name, likeness * 100,
+                    )  # fmt: skip
+                if trip.found_at is None:
+                    trip.found_at = now
+                trip.captain_tile = tile
+        settled = now - self._moved_at >= _VIEW_SETTLE  # mid-step names are a tile off
+        if trip.scan is None and settled and now - trip.looked >= _BOAT_RELOOK:
+            frame = self._screen()
+            if frame is not None:
+                trip.looked, trip.scan_pos = now, pos
+                trip.scan = self._read_names(frame.copy(), self._game_region, trip.captain.name)
+
+    def _boat_stand(
+        self, captain: tuple[int, int, int], pos: Position
+    ) -> tuple[int, int, int] | None:
+        """The free sqm next to the captain nearest to the player."""
+        cx, cy, cz = captain
+        cost = self._cost_map if self._cost_map is not None and not self._cost_map.empty else None
+        spots = [
+            (cx + dx, cy + dy, cz)
+            for dx in (-1, 0, 1)
+            for dy in (-1, 0, 1)
+            if (dx, dy) != (0, 0)
+            and (cost is None or self._map_walkable(cx + dx, cy + dy, cz))
+            and self._blocked.get((cx + dx, cy + dy, cz), 0.0) <= self._clock()
+        ]
+        if not spots:
+            return None
+        return min(spots, key=lambda s: (max(abs(s[0] - pos.x), abs(s[1] - pos.y)), s))
+
+    def _boat_failed(self, why: str) -> None:
+        """Stop the route with alarm ``"boat"``, keeping a screenshot of what the bot saw."""
+        logger.warning("cavebot: boat: %s", why)
+        frame = self._screen()
+        if frame is not None:
+            BOAT_SHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            shot = BOAT_SHOTS_DIR / time.strftime("boat_%Y%m%d_%H%M%S.png")
+            if cv2.imwrite(str(shot), frame):
+                logger.warning("cavebot: boat: screenshot %s", shot)
+        self._halt("boat")
 
     # doc: docs/prs/depot.md#deposit-waypoint
     def _open_locker(self, now: float) -> None:
@@ -2024,9 +2218,7 @@ class Cavebot:
             "cavebot: [stuck: creatures] attacking the creature in the way at %s,%s", *creature
         )
         self._clicker.request(self._tile_pixel(creature, pos), side=ClickSide.RIGHT)
-        self.creature_in_the_way_clicked_until = now + random_delay(
-            _CREATURE_IN_THE_WAY_CLICK_WAIT
-        )
+        self.creature_in_the_way_clicked_until = now + random_delay(_CREATURE_IN_THE_WAY_CLICK_WAIT)
 
     def _tile_pixel(self, tile: tuple[int, int], pos: Position) -> tuple[int, int]:
         """Frame pixel at the middle of world *tile* on the game grid."""

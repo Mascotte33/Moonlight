@@ -60,8 +60,9 @@ class FloorChange:
     known: bool  # True: a route already uses *at* with *kind*
 
 
-#: Hand actions that can take you elsewhere: a door script, a boat captain's ``say``.
-LINK_ACTIONS = ("script", "say", "key", "wait")
+#: Hand actions that can take you elsewhere: a door script, a boat captain's ``say``,
+#: a ``boat`` waypoint.
+LINK_ACTIONS = ("script", "say", "key", "wait", "boat")
 #: A hand action followed by a waypoint farther than this (or on another floor) is a link.
 LINK_SQM = 30
 

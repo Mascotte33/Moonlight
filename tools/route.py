@@ -76,7 +76,8 @@ FREE_TALK = ("hi", "yes", "thais", "carlin", "ab'dendriel", "venore")
 def _free_action(action: str) -> bool:
     """True for a link action a free account can do: a door, a wait, a free boat talk."""
     kind, _, word = action.partition(" ")
-    return kind in ("script", "wait") or (kind == "say" and word.lower() in FREE_TALK)
+    free_word = word.lower() in FREE_TALK
+    return kind in ("script", "wait") or (kind in ("say", "boat") and free_word)
 
 
 def _range(text: str) -> tuple[int, int]:
