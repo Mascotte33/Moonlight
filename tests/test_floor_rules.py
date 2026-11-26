@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from moonlight.cavebot.cavebot import Route, Waypoint
 from moonlight.cavebot.floor_changes import load_confirmed, record_confirmed
 from moonlight.cavebot.route_plan import FloorMap, known_floor_kinds, route_warnings
@@ -166,7 +168,9 @@ def test_bot_has_label_reads_the_running_route() -> None:
     assert Bot(runner).has_label("FromThais") and not Bot(runner).has_label("FromCarlin")
 
 
-def test_recorded_hole_is_never_walked(tmp_path, monkeypatch):
+def test_recorded_hole_is_never_walked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A hole the map does not show, listed as kind ``hole``, counts as a floor change."""
     from moonlight.cavebot import floor_changes
     from moonlight.cavebot.pathing import CostMap

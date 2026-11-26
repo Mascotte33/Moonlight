@@ -33,7 +33,7 @@ def _run(
 
     login_on_start(
         RotationConfig(accounts_file=accounts, client_exe=Path("/t/Tibia")),
-        window_open=lambda: state["window"],
+        window_open=lambda: bool(state["window"]),
         start_client=start,
         focus_client=lambda: True,
         in_game=in_game,
