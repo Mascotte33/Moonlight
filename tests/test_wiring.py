@@ -546,3 +546,30 @@ def test_a_restart_goes_on_from_the_last_waypoint_reached(saved: int | None, sta
     assert loop.modules.cavebot is not None
     loop.modules.cavebot.start(nearest=True)
     assert loop.modules.cavebot.route.current == start_at
+
+
+def test_a_restart_just_after_a_floor_change_goes_on_past_it() -> None:
+    """2026-11-26: restarted just after a step 6->7, the nearest waypoint on
+    floor 7 was a ladder of another leg, climbed for 18 minutes."""
+    from moonlight.cavebot import cavebot as cavebot_module
+
+    route = Route(
+        "lap",
+        waypoints=[
+            Waypoint(99, 100, 7, "ladder"),  # another leg's ladder, one tile away
+            Waypoint(100, 100, 6),
+            Waypoint(100, 100, 6, "step"),  # saved: the step down
+            Waypoint(101, 101, 7),  # the way on
+        ],
+    )
+    cavebot_module._save_progress("lap", 2)
+    cfg = replace(
+        BotConfig.default(), loop=LoopConfig(enable_f12_monitor=False), cavebot=CavebotConfig(route)
+    )
+    state = WorldState()
+    loop = _live_loop(cfg, state)
+    with state.lock():
+        state.position = Position(100, 101, 7)
+    assert loop.modules.cavebot is not None
+    loop.modules.cavebot.start(nearest=True)
+    assert loop.modules.cavebot.route.current == 3

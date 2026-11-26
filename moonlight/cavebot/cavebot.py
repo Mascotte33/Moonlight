@@ -300,6 +300,8 @@ def walked_tiles(waypoints: list[Waypoint], loop: bool) -> set[tuple[int, int, i
 #: After a detour the route goes on to the waypoint it was walking to when
 #: that one is at most this many tiles away (else from the nearest one).
 RESUME_TILES = 50
+#: Waypoints after the saved one a resume may go on from (past its floor change).
+_RESUME_AHEAD = 6
 #: Seconds the route holds after a hand action (a wait: its label).
 _HAND_HOLD = {"say": 1.0, "key": 1.0, "drag": 1.0, "script": 0.0, "step": 0.5, "deposit": 1.0}
 
@@ -1472,14 +1474,21 @@ class Cavebot:
         pos = self._read_position()
         wps = self.route.waypoints
         if isinstance(saved, int) and 0 <= saved < len(wps) and pos is not None:
-            wp = wps[saved]
-            if (
-                has_tile(wp)
-                and wp.z == pos.z
-                and max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= RESUME_TILES
-            ):
-                logger.info("cavebot: going on from waypoint %d, where the bot was", saved)
-                return saved
+            # the saved one, or (just after its floor change) the next few on our floor:
+            # 2026-11-26 a restart after a step 6->7 took the nearest, a ladder of
+            # another leg one tile away, and climbed it for 18 minutes
+            last = wps[saved]
+            changed_floor = has_tile(last) and last.z != pos.z
+            ahead = _RESUME_AHEAD if changed_floor else 1
+            for index in range(saved, min(saved + ahead, len(wps))):
+                wp = wps[index]
+                if (
+                    has_tile(wp)
+                    and wp.z == pos.z
+                    and max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= RESUME_TILES
+                ):
+                    logger.info("cavebot: going on from waypoint %d, where the bot was", index)
+                    return index
         return self._nearest_waypoint()
 
     def _after_detour(self) -> int:
