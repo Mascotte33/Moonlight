@@ -396,6 +396,9 @@ _DEPOT_ALARM = 300.0
 _WRONG_FLOOR_WINDOW = 5.0
 #: Seconds a boat waypoint looks for its captain, walks next to him, or waits to land.
 _BOAT_TIMEOUT = 15.0
+#: The search for the captain waits within this many sqm of his home sqm (he
+#: wanders: at the view's edge he can be out of it, Thais 2026-11-26).
+_BOAT_NEAR_HOME = 2
 #: Seconds between two reads of the names on screen while a boat waypoint runs.
 _BOAT_RELOOK = 0.5
 #: Screenshots of a failed boat trip (bot.log names each).
@@ -638,6 +641,8 @@ class _BoatTrip:
     captain: TravelNpc
     #: When the captain's sqm came in view (the search timeout runs from it).
     since: float | None = None
+    #: When the player stood near his sqm (the search timeout runs from it).
+    near_since: float | None = None
     #: When the captain was found (the walk-next-to-him timeout runs from it).
     found_at: float | None = None
     looked: float = float("-inf")
@@ -1886,8 +1891,13 @@ class Cavebot:
             logger.info("cavebot: boat: looking for %s", trip.captain.name)
         self._boat_read(trip, pos, now)
         if trip.captain_tile is None:
+            near = max(abs(dx), abs(dy)) <= _BOAT_NEAR_HOME
+            if not near and now - trip.since < 2 * _BOAT_TIMEOUT:
+                return wp  # his sqm at the view's edge: he may stand off it, walk on
+            if trip.near_since is None:
+                trip.near_since = now
             self._last_move = now  # looking around is not being stuck
-            if now - trip.since >= _BOAT_TIMEOUT:
+            if now - trip.near_since >= _BOAT_TIMEOUT:
                 self._boat_failed(f"{trip.captain.name} not found on screen")
             return None
         cx, cy, cz = trip.captain_tile
@@ -1959,7 +1969,8 @@ class Cavebot:
         if frame is not None:
             BOAT_SHOTS_DIR.mkdir(parents=True, exist_ok=True)
             shot = BOAT_SHOTS_DIR / time.strftime("boat_%Y%m%d_%H%M%S.png")
-            if cv2.imwrite(str(shot), frame):
+            picture = cv2.cvtColor(np.ascontiguousarray(frame), cv2.COLOR_RGB2BGR)
+            if cv2.imwrite(str(shot), picture):
                 logger.warning("cavebot: boat: screenshot %s", shot)
         self._halt("boat")
 

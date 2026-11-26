@@ -102,12 +102,26 @@ def test_boat_follows_the_captain_when_he_wanders(
 def test_boat_alarms_when_the_captain_is_not_on_screen(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    sim, _, _ = _boat_sim(monkeypatch, tmp_path, Position(95, 100, 7))
+    sim, _, _ = _boat_sim(monkeypatch, tmp_path, Position(99, 100, 7))
     run_until(sim, 14.5)
     assert sim.bot.is_active() and sim.bot.alarm is None
     run_until(sim, 16)
     assert sim.bot.alarm == "boat" and not sim.bot.is_active()
     assert list((tmp_path / "boat").glob("boat_*.png"))  # what the bot saw
+
+
+def test_boat_walks_on_to_the_captains_sqm_before_it_gives_up(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Thais 2026-11-26: his sqm at the view's edge, he out of the view: no alarm there.
+    sim, _, clicker = _boat_sim(monkeypatch, tmp_path, Position(94, 100, 7))
+    run_until(sim, 20)
+    assert sim.bot.alarm is None and clicker.clicks  # still walking to his sqm
+    sim.pos = Position(98, 100, 7)  # 2 sqm off it: looks from here
+    run_until(sim, 34)
+    assert sim.bot.alarm is None
+    run_until(sim, 36)
+    assert sim.bot.alarm == "boat"
 
 
 def test_boat_alarms_when_the_trip_does_not_land(
