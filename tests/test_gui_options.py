@@ -212,7 +212,9 @@ def test_rotation_logout_hotkey_is_kept_while_it_has_no_accounts_file() -> None:
     from moonlight.gui.settings_tab import MODULE_SWITCHES, ROTATION_OPTIONS
 
     assert all(not option.field.startswith("rotation") for option in MODULE_SWITCHES)
-    switch, hotkey, accounts_file, client_exe = ROTATION_OPTIONS
+    switch, cavebot_switch, hotkey, accounts_file, client_exe = ROTATION_OPTIONS
+    assert cavebot_switch.field == "cavebot_rotate" and cavebot_switch.control == "switch"
+    assert not write_option(BotConfig.default(), cavebot_switch, False).cavebot_rotate
     assert switch.field == "rotation.enabled" and switch.control == "switch"
     cfg = write_option(BotConfig.default(), hotkey, "ctrl+q")
     assert cfg.rotation is None  # off: no accounts file

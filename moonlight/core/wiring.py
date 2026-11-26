@@ -719,8 +719,10 @@ def build_modules(
 
     if prev is not None and prev.scripts is not None:
         m.scripts = prev.scripts
+        m.scripts.cavebot_rotate_on = config.cavebot_rotate
     else:
         m.scripts = ScriptRunner(grab=screen_grab, clock=clock or time.monotonic)
+        m.scripts.cavebot_rotate_on = config.cavebot_rotate
         if screen_grab is not None:
             from moonlight.perception.potions import PotionCounter
 

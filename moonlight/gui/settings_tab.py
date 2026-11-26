@@ -94,6 +94,7 @@ ALARMS_OPTIONS = [
 #: Rotation has no switch: picking an accounts file turns it on (docs/prs/stamina-switch.md).
 ROTATION_OPTIONS = [
     Option("Account rotation on", "rotation.enabled", "switch"),
+    Option("Cavebot rotation on", "cavebot_rotate", "switch"),
     Option("Logout hotkey", "rotation.logout_hotkey", "hotkey"),
     Option("Accounts file", "rotation.accounts_file", "entry"),
     Option("Tibia program", "rotation.client_exe", "entry"),
