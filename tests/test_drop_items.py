@@ -96,14 +96,14 @@ def test_item_names_become_file_names(tmp_path: Path) -> None:
             drop_picture_path(tmp_path, bad)
 
 
-def test_free_slots_are_within_2_and_skip_me_creatures_and_walls() -> None:
+def test_free_slots_are_within_2_with_mine_and_skip_creatures_and_walls() -> None:
     state = snap()
     state.creature_slots = ((8, 5),)
     slots = free_drop_slots(state, lambda x, y, z: x != 98)  # a wall 2 west
-    assert (7, 5) not in slots and (8, 5) not in slots
+    assert (7, 5) in slots and (8, 5) not in slots  # my own sqm: items drop while walking
     assert all(abs(c - 7) <= 2 and abs(r - 5) <= 2 for c, r in slots)
     assert not any(c == 5 for c, _ in slots)
-    assert len(slots) == 25 - 1 - 1 - 5
+    assert len(slots) == 25 - 1 - 5
 
 
 def test_waits_1_to_3_minutes_and_for_a_clear_battle_list(tmp_path: Path) -> None:
@@ -142,15 +142,10 @@ def test_an_item_that_stays_gets_3_sqm_then_is_left(tmp_path: Path) -> None:
     assert len(targets) == 3 and len(set(targets)) == 3
 
 
-def test_no_free_sqm_ends_the_round_without_a_drag(tmp_path: Path) -> None:
-    picture = boots(tmp_path)
-    clock, inp = Clock(), Input()
-    drop = dropper(tmp_path, [frame_with(picture)], clock, inp)
+def test_with_every_sqm_around_taken_my_own_is_left() -> None:
     state = snap()
     state.creature_slots = tuple((7 + dx, 5 + dy) for dx in range(-2, 3) for dy in range(-2, 3))
-    clock.now = 180.0
-    run_round(drop, clock, state)
-    assert inp.sent == [] and not drop.in_round
+    assert free_drop_slots(state, None) == [(7, 5)]
 
 
 def test_a_monster_mid_round_stops_it_until_the_screen_is_clear(tmp_path: Path) -> None:

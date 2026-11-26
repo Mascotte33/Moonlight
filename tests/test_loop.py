@@ -727,17 +727,16 @@ class TestSelectClick:
         ticks(gl, clock, 3)
         assert inp.sent_lines == ["K space"]
 
-    def test_the_next_target_key_is_pressed_again_until_the_pick_shows(self) -> None:
+    def test_a_pick_below_another_monster_is_clicked_not_keyed(self) -> None:
+        # The key would attack row 0 first (owner 2026-11-26: wasteful hits).
         ws = make_state()
         with ws.lock():
             ws.monsters = [Monster("Wolf", 90.0), Monster("Wolf", 10.0, battle_list_row=1)]
         inp = FakeInput()
         config = TargetingConfig(next_target_hotkey="space")
         gl, clock = make_targeting_loop(ws, inp, targeting_config=config)
-        ticks(gl, clock, 1)
-        clock.advance(1.0)  # no outline on row 1: press again
-        ticks(gl, clock, 1)
-        assert inp.sent_lines == ["K space", "K space"]
+        ticks(gl, clock, 3)
+        assert "K space" not in inp.sent_lines and "C L" in inp.sent_lines
 
     def test_the_row_is_clicked_once_the_key_never_reaches_it(self) -> None:
         ws = make_state()

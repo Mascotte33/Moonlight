@@ -18,6 +18,7 @@ import logging
 import random
 import time
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 import cv2
@@ -109,10 +110,22 @@ _ITEM_BRIGHT = 150
 _ITEM_MIN_PIXELS = 30
 
 
-def _scores(frame: np.ndarray, path: Path) -> tuple[np.ndarray, int, int] | None:
-    """Per-pixel match of the item at *path* in *frame* (mean squared difference), w, h."""
+#: Per picture file: (mtime, mask, mask * picture, sum of mask * picture², kept count).
+_PICTURES: dict[Path, tuple[float, np.ndarray, np.ndarray, float, int]] = {}
+
+
+def _picture(path: Path) -> tuple[np.ndarray, np.ndarray, float, int] | None:
+    """The item at *path* as a float mask, the masked picture, Σ mask·pic² and the
+    masked value count, cached until the file changes."""
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    cached = _PICTURES.get(path)
+    if cached is not None and cached[0] == mtime:
+        return cached[1:]
     pic = cv2.imread(str(path))  # the file holds the frame's RGB as is
-    if pic is None or pic.shape[0] > frame.shape[0] or pic.shape[1] > frame.shape[1]:
+    if pic is None:
         return None
     h, w = pic.shape[:2]
     # Only the item's own pixels: the slot behind it is lighter or darker by
@@ -124,9 +137,32 @@ def _scores(frame: np.ndarray, path: Path) -> tuple[np.ndarray, int, int] | None
     if keep.sum() < _ITEM_MIN_PIXELS:  # a plain gray item: the whole picture
         keep[:] = True
         keep[int(h * _COUNT_TOP) :, int(w * _COUNT_LEFT) :] = False
-    mask = np.repeat(np.where(keep, 255, 0).astype(np.uint8)[:, :, None], 3, axis=2)
-    scores = cv2.matchTemplate(np.ascontiguousarray(frame), pic, cv2.TM_SQDIFF, mask=mask)
-    return scores / float((mask > 0).sum()), w, h
+    mask = np.repeat(keep[:, :, None], 3, axis=2).astype(np.float32)
+    masked = mask * pic.astype(np.float32)
+    entry = (mtime, mask, masked, float((masked * pic).sum()), int(mask.sum()))
+    _PICTURES[path] = entry
+    return entry[1:]
+
+
+def _scores(frame: np.ndarray, path: Path) -> tuple[np.ndarray, int, int] | None:
+    """Per-pixel match of the item at *path* in *frame* (mean squared difference), w, h.
+
+    Σ m(I-T)² = Σ m·I² - 2 Σ (m·T)·I + Σ m·T²: two plain correlations, far
+    faster than OpenCV's masked match (a look over 44 items froze the bot for
+    up to 2.7 s, 2026-11-26).
+    """
+    picture = _picture(path)
+    if picture is None:
+        return None
+    mask, masked, sum_t2, count = picture
+    h, w = mask.shape[:2]
+    if h > frame.shape[0] or w > frame.shape[1]:
+        return None
+    image = frame.astype(np.float32)
+    i2 = cv2.matchTemplate(image * image, mask, cv2.TM_CCORR)
+    it = cv2.matchTemplate(image, masked, cv2.TM_CCORR)
+    scores = np.maximum(i2 - 2.0 * it + sum_t2, 0.0)
+    return scores / float(count), w, h
 
 
 def find_item(frame: np.ndarray, path: Path) -> Point | None:
@@ -159,8 +195,8 @@ def free_drop_slots(
 ) -> list[Point]:
     """Screen slots within ``DROP_REACH`` of the character an item can land on.
 
-    Not the character's own sqm, not one a creature stands on, and (with the
-    walk map and a known position) not a wall or a floor change.
+    The character's own sqm too (items dropped while walking), not one a
+    creature stands on, and (with the walk map and a known position) not a wall or a floor change.
     """
     pc, pr = PLAYER_SLOT
     pos = snap.position
@@ -169,7 +205,7 @@ def free_drop_slots(
     for dx in range(-DROP_REACH, DROP_REACH + 1):
         for dy in range(-DROP_REACH, DROP_REACH + 1):
             slot = (pc + dx, pr + dy)
-            if (dx, dy) == (0, 0) or slot in taken:
+            if slot in taken and (dx, dy) != (0, 0):
                 continue
             if walkable is not None and pos.x and not walkable(pos.x + dx, pos.y + dy, pos.z):
                 continue
@@ -191,7 +227,12 @@ class DropItems:
         *,
         clock: Callable[[], float] = time.monotonic,
         rng: random.Random | None = None,
+        background: bool = False,
     ) -> None:
+        #: *background*: the backpack look runs on a worker thread (a look over
+        #: every picture takes about a second; the loop walks on meanwhile).
+        self._pool = ThreadPoolExecutor(1, "drop-look") if background else None
+        self._look: Future[tuple[Path, Point] | None] | None = None
         self._input = input
         self._to_wire = to_wire
         self._grab = grab
@@ -245,7 +286,15 @@ class DropItems:
         if snap.monsters:
             self._end_round(now, wait=False)  # start again once the screen is clear
             return
-        found = self._find()
+        if self._pool is not None:
+            if self._look is None:
+                self._look = self._pool.submit(self._find_in, self._grab())
+            if not self._look.done():
+                return  # the look runs on: walking goes on
+            found = self._look.result()
+            self._look = None
+        else:
+            found = self._find()
         if (
             found is not None
             and self._dragged is not None
@@ -259,7 +308,9 @@ class DropItems:
             if len(self._tried) >= TRIES_PER_ITEM:
                 log.warning("drop: %s stayed after %d tries, left", found[0].stem, len(self._tried))
                 self._left.append(found)
-                found = self._find()
+                found = self._find() if self._pool is None else None
+                if found is None and self._pool is not None:
+                    return  # the next tick looks again, without the left item
         if found is None:
             self._end_round(now)
             return
@@ -320,7 +371,10 @@ class DropItems:
         # ponytail: the best match per picture only; a second stack of a left
         # item waits for the next round.
         """
-        frame = self._grab()
+        return self._find_in(self._grab())
+
+    def _find_in(self, frame: np.ndarray) -> tuple[Path, Point] | None:
+        """:meth:`_find` on *frame* (also run on the worker thread)."""
         right = self._game_region[0] + self._game_region[2]
         side = self._side = np.ascontiguousarray(frame[:, right:])
         for path in drop_pictures(self.pictures_dir):

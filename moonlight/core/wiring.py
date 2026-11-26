@@ -818,6 +818,7 @@ def build_modules(
                     data_dir() / DROP_ITEMS_DIR,
                     walkable,
                     clock=clock or time.monotonic,
+                    background=True,
                 )
     return m
 

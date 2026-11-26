@@ -66,13 +66,13 @@ KILL_HP = 100.0
 #: ... and its corpse's ring shows a moment later: no new attack before this many
 #: seconds (random) pass or a ring by the player is seen (owner 2026-11-21: the bot
 #: attacked the next monster before the ring showed and walked off the corpse).
-KILL_RING_WAIT = 1.5
+KILL_RING_WAIT = 0.8
 #: Seconds (random) after a kill's first loot press to press again: the target can
 #: leave the battle list a moment before its corpse lies there to loot.
 SECOND_PRESS_SECONDS = 0.6
 #: Presses for a kill next to the player (the first, then one every
 #: ``SECOND_PRESS_SECONDS``): a corpse that lands late is still looted.
-KILL_PRESSES = 3
+KILL_PRESSES = 2
 #: A screenshot of each loot press, the ring circled.
 # ponytail: a diagnosis aid (owner 2026-11-04: "it didnt loot"); delete it
 # once ring looting is trusted.

@@ -1052,6 +1052,12 @@ class Cavebot:
 
     # doc: docs/prs/drop-items.md#drop-items
     @property
+    def walking_waypoint(self) -> bool:
+        """True while heading to a plain ``walk`` / ``node`` waypoint (keys only, no mouse)."""
+        wps = self.route.waypoints
+        return bool(wps) and wps[self.route.current].action in ("walk", "node")
+
+    @property
     def hand_busy(self) -> bool:
         """True mid hand action (a drag, typing, an NPC talk, a deposit): the mouse is taken."""
         return (
