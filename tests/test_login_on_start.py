@@ -10,10 +10,10 @@ from moonlight.scripts.rotation import RotationConfig, login_on_start
 
 
 def _run(
-    tmp_path: Path, *, window: bool, game_after: int
+    tmp_path: Path, *, window: bool, game_after: int, text: str = "me@x.io ?T5]#\n"
 ) -> tuple[list[str], list[bool], list[str]]:
     accounts = tmp_path / "accounts.txt"
-    accounts.write_text("me@x.io ?T5]#\n", encoding="utf-8")
+    accounts.write_text(text, encoding="utf-8")
     pressed: list[str] = []
     muted: list[bool] = []
     started: list[str] = []
@@ -62,3 +62,11 @@ def test_tibia_is_started_and_the_first_account_typed(tmp_path: Path) -> None:
 def test_a_login_that_never_shows_the_game_raises(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="did not show"):
         _run(tmp_path, window=True, game_after=10_000)
+
+
+def test_the_account_the_rotation_left_playing_is_typed(tmp_path: Path) -> None:
+    from moonlight.scripts.rotation import save_playing
+
+    save_playing(1)
+    pressed, _, _ = _run(tmp_path, window=False, game_after=3, text="aa pw1\nbb pw2\n")
+    assert pressed[:3] == ["ctrl+a", "b", "b"]
