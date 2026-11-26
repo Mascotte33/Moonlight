@@ -278,7 +278,7 @@ def test_a_kill_next_to_the_player_presses_loot_at_once(
         assert inp.sent_lines == ["K alt+q"]
 
 
-def test_a_kill_next_to_the_player_is_looted_three_times() -> None:
+def test_a_kill_next_to_the_player_is_looted_twice() -> None:
     # The target can leave the battle list before its corpse lies there: the first
     # press found nothing; a second one a moment later loots it.
     from moonlight.core.state import Monster
@@ -300,11 +300,8 @@ def test_a_kill_next_to_the_player_is_looted_three_times() -> None:
     clock.t += SECOND_PRESS_SECONDS
     assert looting.ring_due(NEAR, WS)
     looting.press_ring()
-    clock.t += SECOND_PRESS_SECONDS * 1.5
-    assert looting.ring_due(NEAR, WS)
-    looting.press_ring()
-    assert inp.sent_lines == ["K alt+q"] * 3
-    for _ in range(40):  # 5 s of ticks: no fourth press, and the fight may go on
+    assert inp.sent_lines == ["K alt+q"] * 2
+    for _ in range(40):  # 5 s of ticks: no third press, the fight goes on
         clock.t += 0.125
         assert not looting.ring_due(NEAR, WS)
-    assert inp.sent_lines == ["K alt+q"] * 3 and not looting.loot_first(WS)
+    assert inp.sent_lines == ["K alt+q"] * 2 and not looting.loot_first(WS)

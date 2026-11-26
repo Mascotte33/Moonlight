@@ -1017,6 +1017,11 @@ class GameLoop:
         if not key or self._next_target_presses > len(snap.monsters) + _NEXT_TARGET_EXTRA_PRESSES:
             return False
         row = self._target.battle_list_row
+        selected = snap.selected_target
+        if row != (0 if selected is None else selected.battle_list_row + 1):
+            # The key would first attack a monster above it (owner 2026-11-26:
+            # unwanted monsters were hit on the way): click the row instead.
+            return False
         if not self._send(snap, lambda: self.input.press_combo(key)):
             return True
         self._next_target_presses += 1
@@ -1184,11 +1189,22 @@ class GameLoop:
         ):
             return False
         self._task = "Dropping items"
-        if m.cavebot is not None:
-            m.cavebot.release_walk_key()
+        cavebot = m.cavebot
+        # Plain walking goes on while the items drop (owner 2026-11-26); a
+        # waypoint that needs the mouse or a stop waits for the round's end.
+        walking = (
+            cavebot is not None
+            and self._state is BotState.MOVE
+            and not cavebot.hand_busy
+            and cavebot.walking_waypoint
+        )
+        if cavebot is not None and not walking:
+            cavebot.release_walk_key()
         self._send(snap, lambda: drop.step(snap))
-        if not drop.in_round and m.cavebot is not None:
-            m.cavebot.resume()  # drop time is not "stuck"
+        if walking:
+            self._act_move(snap)
+        elif not drop.in_round and cavebot is not None:
+            cavebot.resume()  # drop time is not "stuck"
         return True
 
     def _act_move(self, snap: WorldState) -> None:
