@@ -850,6 +850,9 @@ class Cavebot:
         #: ``trade``: buy rows already bought again (each gets one more try).
         self._rebought_rows: set[int] = set()
         self._potion_counts = potion_counts
+        #: Targeting turned off by a script (``targeting_off``), set by the loop each
+        #: tick: walk past monsters, fight only what leaves no way past.
+        self.walk_past_monsters = False
         #: When the route's own floor change (stairs, ladder, rope, shovel, step) last
         #: moved the player to another floor; None once on the floor the route expects.
         self._floor_changed_at: float | None = None
@@ -1026,6 +1029,15 @@ class Cavebot:
             or self._deposit_drag is not None
         )
 
+    # doc: docs/prs/near-targeting.md#targeting-script
+    def holds_attacks(self) -> bool:
+        """True while the loop must not attack: walking to a ``lure`` waypoint, or
+        with targeting turned off by a script (:attr:`walk_past_monsters`) unless
+        creatures block the only way (:attr:`stuck_on_creatures`)."""
+        if not self._active:
+            return False
+        return self.luring() or (self.walk_past_monsters and not self.stuck_on_creatures)
+
     def luring(self) -> bool:
         """True while walking to a ``lure`` waypoint: the loop holds attacks."""
         wps = self.route.waypoints
@@ -1186,7 +1198,7 @@ class Cavebot:
             self._clicker.step()  # the chat button
         elif (
             self._state.selected_target is not None
-            and not self.luring()
+            and not self.holds_attacks()
             and not self.targeting_paused
         ):
             self._target = None  # stand still while a target is selected
@@ -2212,7 +2224,10 @@ class Cavebot:
         creature_on_goal = (
             goal in self._blocked and (wp.x, wp.y) in self._creatures and bool(self._state.monsters)
         )
-        stuck = path is None or detour_too_long or creature_on_goal
+        # doc: docs/prs/near-targeting.md#targeting-script
+        # With targeting off only a blocked way is fought: a long way round is walked.
+        long_way_fought = detour_too_long and not self.walk_past_monsters
+        stuck = path is None or long_way_fought or creature_on_goal
         fight = (self._fight() or creature_on_goal) and not self.targeting_paused
         if stuck and fight and now < self._stuck_allowed_until:
             if not self.stuck_on_creatures:
