@@ -103,3 +103,8 @@ def test_three_joined_digits_read_as_one_listed_shape() -> None:
     # Linux client 2026-11-26: cap 484 drawn as one shape; the bot would not start.
     shape = {d: g for g, d in CAP_DIGITS.items()}
     assert read_number(draw(shape["484"])) == 484
+
+
+def test_a_zero_seen_on_2026_11_26_reads() -> None:
+    zero = ".####./.#####/##..##/##..##/##..##/##..##/.#####/.####."
+    assert read_number(draw(zero)) == 0
