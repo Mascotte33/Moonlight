@@ -1134,6 +1134,17 @@ class Cavebot:
                 self.release_walk_key()
                 return
             wp = boat_target
+        if (
+            wp.action == "step"
+            and (pos.x, pos.y, pos.z) == (wp.x, wp.y, wp.z)
+            and now - self._moved_at < self._rope_settle
+            and not self._sends_done
+            and self._hand_done_at is None
+        ):
+            # A step key pressed while the last walk is still going lands one sqm
+            # off (Tainted Caves hole 32718,31846, 2026-11-26): stand still first.
+            self.release_walk_key()
+            return
         if (wp.action in _HAND_ACTIONS and not has_tile(wp)) or (
             wp.action in (*_HAND_ACTIONS, "step") and self._stepped(wp, pos, now)
         ):
