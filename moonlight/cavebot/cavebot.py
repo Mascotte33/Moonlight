@@ -166,6 +166,7 @@ from typing import TYPE_CHECKING
 import cv2
 import numpy as np
 
+from moonlight.cavebot.floor_changes import record_confirmed
 from moonlight.cavebot.pathing import CostMap, next_step
 from moonlight.cavebot.town import (
     STASH,
@@ -389,6 +390,10 @@ _DEPOT_RELOOK = 3.0
 _DEPOT_ALARM = 300.0
 
 # doc: docs/prs/boat.md#boat-waypoint
+# doc: docs/prs/floor-rules.md#wrong-floor
+#: Seconds after the route's own floor change in which landing on a floor the
+#: route does not expect stops it (later: a fight or a misread, resynced).
+_WRONG_FLOOR_WINDOW = 5.0
 #: Seconds a boat waypoint looks for its captain, walks next to him, or waits to land.
 _BOAT_TIMEOUT = 15.0
 #: Seconds between two reads of the names on screen while a boat waypoint runs.
@@ -836,6 +841,10 @@ class Cavebot:
         #: ``trade``: buy rows already bought again (each gets one more try).
         self._rebought_rows: set[int] = set()
         self._potion_counts = potion_counts
+        #: When the route's own floor change (stairs, ladder, rope, shovel, step) last
+        #: moved the player to another floor; None once on the floor the route expects.
+        self._floor_changed_at: float | None = None
+        self._floor_change_wp: Waypoint | None = None
         #: ``boat``: the trip under way; how names are read (tests swap it).
         self._boat: _BoatTrip | None = None
         self._read_names = _read_names_later
@@ -1116,15 +1125,23 @@ class Cavebot:
                 self.route.current, self._script_floor_wait = script_index, None
                 return
         if self._expected_z is not None and pos.z == self._expected_z:
+            self._floor_changed_at, self._floor_change_wp = now, wp
             self._advance()  # the rope/shovel/ladder action worked
             return
         if pos.z != wp.z and wp.action in ("stairs", "ladder"):
+            if exit_ is None and self._left_by is None:
+                # the route's own floor change, not a way out
+                self._floor_changed_at, self._floor_change_wp = now, wp
             self._advance()  # the stairs, ladder or sewer grate changed the floor
             return
         if pos.z != wp.z:
             self.release_walk_key()
+            if self._wrong_floor(pos, wp, now):
+                return
             self._resync_floor(pos)
             return
+        if self._floor_changed_at is not None:  # on the floor the route expects
+            self._confirm_floor_change(pos)
         if self.alarm == "lost":
             logger.info("cavebot: back on floor %d, route goes on", pos.z)
             self.alarm = None
@@ -1344,6 +1361,7 @@ class Cavebot:
         return True
 
     def _reset_tracking(self) -> None:
+        self._floor_changed_at = self._floor_change_wp = None
         self._last_pos = None
         self._last_move = self._clock()
         self._last_cmd = float("-inf")
@@ -1525,6 +1543,8 @@ class Cavebot:
         if now - self._hand_done_at >= hold:
             self._sends_done, self._hand_done_at = 0, None
             script_index = self.route.current
+            if wp.action == "step":  # a step may lead down a hole or stairs
+                self._floor_changed_at, self._floor_change_wp = now, wp
             self._advance()
             following = [
                 w for w in self.route.waypoints[self.route.current :]
@@ -1967,6 +1987,36 @@ class Cavebot:
         locker, pos = self.depot_locker, self._last_pos
         if locker is not None and pos is not None and locker[2] == pos.z:
             self._clicker.request(self._tile_pixel(locker[:2], pos), side=ClickSide.RIGHT)
+
+    # doc: docs/prs/floor-rules.md#confirmed
+    def _confirm_floor_change(self, pos: Position) -> None:
+        """The route's floor change landed on the floor it expects: list it as confirmed."""
+        wp = self._floor_change_wp
+        self._floor_changed_at = self._floor_change_wp = None
+        if wp is not None and wp.z != pos.z:
+            record_confirmed((wp.x, wp.y, wp.z), wp.action, pos.z)
+
+    # doc: docs/prs/floor-rules.md#wrong-floor
+    def _wrong_floor(self, pos: Position, wp: Waypoint, now: float) -> bool:
+        """Stop with alarm ``"wrong_floor"`` when the route's own floor change
+        just led to a floor the route does not expect next. True when stopped.
+
+        A wrongly marked floor change (a sewer grate taken for stairs up) once
+        led into the sewers and the resync then walked other waypoints there.
+        A floor left during a fight is still resynced (:meth:`_resync_floor`).
+        """
+        changed = self._floor_changed_at
+        pending = self._expected_z is not None  # a rope/shovel/ladder went the other way
+        if not pending and (changed is None or now - changed > _WRONG_FLOOR_WINDOW):
+            return False
+        logger.warning(
+            "cavebot: [stuck: wrong_floor] the floor change before waypoint %d led to "
+            "floor %d at %d,%d; the route expects floor %d: stopped",
+            self.route.current, pos.z, pos.x, pos.y, wp.z,
+        )  # fmt: skip
+        self._floor_changed_at = self._floor_change_wp = None
+        self._halt("wrong_floor")
+        return True
 
     def _resync_floor(self, pos: Position) -> None:
         """Jump to the next waypoint on the new floor the map can reach (wrapping).

@@ -39,3 +39,6 @@ def _echo_raid_duds_in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(cavebot, "ECHO_RAID_DUDS_FILE", tmp_path / "echo_raid_duds.txt")
     monkeypatch.setattr(cavebot, "ROUTE_PROGRESS_FILE", tmp_path / "route_progress.json")
+    monkeypatch.setattr(
+        "moonlight.cavebot.floor_changes.FLOOR_CHANGES_FILE", tmp_path / "floor_changes.csv"
+    )

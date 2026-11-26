@@ -28,6 +28,7 @@ from pathlib import Path
 import cv2
 
 from moonlight.cavebot.cavebot import Route, RouteFileLoader, Waypoint, has_tile
+from moonlight.cavebot.floor_changes import load_confirmed
 from moonlight.cavebot.pathing import CostMap
 from moonlight.cavebot.route_map import (
     LegPath,
@@ -38,8 +39,8 @@ from moonlight.cavebot.route_map import (
     leg_path,
 )
 from moonlight.cavebot.route_plan import (
-    SPAWNS_FILE,
     PICTURES_DIR,
+    SPAWNS_FILE,
     download_pictures,
     download_spawns,
     load_floor_map,
@@ -169,7 +170,7 @@ def main() -> None:
         for i, j in bad:
             a, b = waypoints[i], waypoints[j]
             print(f"leg {i + 1} -> {j + 1}: ({a.x}, {a.y}, {a.z}) -> ({b.x}, {b.y}, {b.z}) no path")
-        warnings = route_warnings(route, CostMap(MAP_DIR / "cost"))
+        warnings = route_warnings(route, CostMap(MAP_DIR / "cost"), load_confirmed())
         for warning in warnings:
             print(warning)
         print(f"{len(bad)} bad legs, {len(warnings)} warnings, one round {loop_sqm(route)} sqm")
