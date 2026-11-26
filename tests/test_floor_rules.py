@@ -164,3 +164,16 @@ def test_bot_has_label_reads_the_running_route() -> None:
     sim = Sim([Waypoint(0, 0, 0, "label", "FromThais"), walk(100, 95, 7)], Position(100, 100, 7))
     runner.cavebot = sim.bot
     assert Bot(runner).has_label("FromThais") and not Bot(runner).has_label("FromCarlin")
+
+
+def test_recorded_hole_is_never_walked(tmp_path, monkeypatch):
+    """A hole the map does not show, listed as kind ``hole``, counts as a floor change."""
+    from moonlight.cavebot import floor_changes
+    from moonlight.cavebot.pathing import CostMap
+
+    csv = tmp_path / "floor_changes.csv"
+    csv.write_text("x,y,z,kind,to_z\n32697,31950,7,hole,8\n", encoding="utf-8")
+    monkeypatch.setattr(floor_changes, "FLOOR_CHANGES_FILE", csv)
+    cost = CostMap(tmp_path / "cost")
+    assert cost.floor_change(32697, 31950, 7)
+    assert not cost.floor_change(32698, 31950, 7)

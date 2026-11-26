@@ -9,6 +9,9 @@ adds ``x,y,z,kind,to_z`` here. ``map.py check`` warns about any floor change
 of a route that is not listed (watch it on its first run), and the path
 finder takes only listed ones as known.
 
+Kind ``hole`` is a hole the map does not show (the owner names it): the
+walker never steps on it (Tainted Caves entrance 32697,31950,7, 2026-11-26).
+
 # doc: docs/prs/floor-rules.md#confirmed
 """
 
