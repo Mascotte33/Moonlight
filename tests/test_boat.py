@@ -20,7 +20,7 @@ from moonlight.cavebot.recorder import waypoint_json
 from moonlight.cavebot.route_map import legs
 from moonlight.cavebot.travel import TravelNpc
 from moonlight.core.state import Position
-from moonlight.perception.npc_names import find_named, name_likeness
+from moonlight.perception.npc_names import find_named, name_likeness, name_lines
 from tests.test_cavebot import Sim, SteppedClicker, run_until, walk
 
 BLUEBEAR = TravelNpc("ship", "Thais", "Captain Bluebear", 100, 100, 7)
@@ -103,9 +103,9 @@ def test_boat_alarms_when_the_captain_is_not_on_screen(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     sim, _, _ = _boat_sim(monkeypatch, tmp_path, Position(99, 100, 7))
-    run_until(sim, 14.5)
+    run_until(sim, 29.5)
     assert sim.bot.is_active() and sim.bot.alarm is None
-    run_until(sim, 16)
+    run_until(sim, 31)
     assert sim.bot.alarm == "boat" and not sim.bot.is_active()
     assert list((tmp_path / "boat").glob("boat_*.png"))  # what the bot saw
 
@@ -118,9 +118,9 @@ def test_boat_walks_on_to_the_captains_sqm_before_it_gives_up(
     run_until(sim, 20)
     assert sim.bot.alarm is None and clicker.clicks  # still walking to his sqm
     sim.pos = Position(98, 100, 7)  # 2 sqm off it: looks from here
-    run_until(sim, 34)
+    run_until(sim, 49)
     assert sim.bot.alarm is None
-    run_until(sim, 36)
+    run_until(sim, 51)
     assert sim.bot.alarm == "boat"
 
 
@@ -213,17 +213,19 @@ def test_name_likeness_ignores_case_and_spaces() -> None:
 
 
 GRID = (0, 0, 15 * 96, 11 * 96)
+GREEN = (0, 192, 0)  # NAME_GREEN: a creature at full health
 
 
-def _named_frame(names: dict[tuple[int, int], str]) -> np.ndarray:
+def _named_frame(names: dict[tuple[int, int], str], speech: str = "") -> np.ndarray:
+    """Names in the client's green over their tiles; NPCs have no health bar."""
     frame = np.full((GRID[3], GRID[2], 3), 90, np.uint8)
     for (col, row), name in names.items():
-        x, y = col * 96 + 33, row * 96 - 9  # the bar over that tile, like the client
-        frame[y : y + 4, x : x + 31] = 0
-        frame[y + 1 : y + 3, x + 1 : x + 30] = (0, 192, 0)
-        org = (x + 15 - len(name) * 4, y - 4)
-        cv2.putText(frame, name, org, cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 0, 0), 3, cv2.LINE_AA)
-        cv2.putText(frame, name, org, cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 200, 0), 1, cv2.LINE_AA)
+        bottom = row * 96 - 28  # the name's bottom, 28 px over its tile like the client
+        org = (col * 96 + 48 - len(name) * 4, bottom)
+        cv2.putText(frame, name, org, cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 0, 0), 3, cv2.LINE_8)
+        cv2.putText(frame, name, org, cv2.FONT_HERSHEY_SIMPLEX, 0.42, GREEN, 1, cv2.LINE_8)
+    if speech:
+        cv2.putText(frame, speech, (300, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 0), 1)
     return frame
 
 
@@ -231,13 +233,20 @@ needs_tesseract = pytest.mark.skipif(shutil.which("tesseract") is None, reason="
 
 
 @needs_tesseract
-def test_find_named_picks_the_captain_among_other_creatures() -> None:
+def test_find_named_picks_the_captain_among_other_names() -> None:
     frame = _named_frame({(8, 5): "Rat", (10, 3): "Captain Bluebear", (3, 8): "Captain Fearless"})
     found = find_named(frame, GRID, "Captain Bluebear")
-    assert found is not None and found[0] == (10, 3) and found[2] >= 0.8
+    assert found is not None and found[0] == (10, 3) and found[2] >= 0.7  # a thinner font
 
 
 @needs_tesseract
 def test_find_named_finds_nobody_when_no_name_is_close() -> None:
-    frame = _named_frame({(8, 5): "Rat", (3, 8): "Captain Fearless"})
-    assert find_named(frame, GRID, "Captain Bluebear") is None
+    frame = _named_frame(
+        {(8, 5): "Rat", (3, 8): "Captain Fearless"}, speech="Captain Bluebear says"
+    )
+    assert find_named(frame, GRID, "Captain Bluebear") is None  # yellow speech is no name
+
+
+def test_name_lines_put_a_name_on_the_tile_below_it() -> None:
+    frame = _named_frame({(4, 2): "Benjamin", (11, 9): "Yuzuki Ruka"})
+    assert sorted(slot for slot, _ in name_lines(frame, GRID)) == [(4, 2), (11, 9)]

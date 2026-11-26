@@ -25,7 +25,6 @@ __all__ = [
     "GRID_ROWS",
     "PLAYER_SLOT",
     "CreatureTracker",
-    "bar_spots",
     "creature_bars",
     "find_creatures",
 ]
@@ -61,21 +60,6 @@ def creature_bars(
 ) -> dict[tuple[int, int], float]:
     """HP percent of each creature slot ``(col, row)``, read off its bar's fill."""
     return _slots(_bar_tops(frame, grid), grid, [])
-
-
-def bar_spots(
-    frame: np.ndarray, grid: tuple[int, int, int, int]
-) -> dict[tuple[int, int], tuple[int, int]]:
-    """Frame pixel ``(x, y)`` of the bar's top-left for each creature slot ``(col, row)``.
-
-    The creature's name is drawn just above that pixel (the boat waypoint reads it).
-    """
-    gx, gy = grid[0], grid[1]
-    spots = {}
-    for x, y, hp in _bar_tops(frame, grid):
-        for slot in _slots([(x, y, hp)], grid, []):
-            spots[slot] = (gx + x, gy + y)
-    return spots
 
 
 class CreatureTracker:

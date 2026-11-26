@@ -396,6 +396,10 @@ _DEPOT_ALARM = 300.0
 _WRONG_FLOOR_WINDOW = 5.0
 #: Seconds a boat waypoint looks for its captain, walks next to him, or waits to land.
 _BOAT_TIMEOUT = 15.0
+# doc: docs/prs/boat.md#boat-waypoint
+#: Seconds the search for the captain goes on near his sqm: his speech to other
+#: players covers his name while he answers them (Thais 2026-11-26).
+_BOAT_SEARCH_TIMEOUT = 30.0
 #: The search for the captain waits within this many sqm of his home sqm (he
 #: wanders: at the view's edge he can be out of it, Thais 2026-11-26).
 _BOAT_NEAR_HOME = 2
@@ -1892,12 +1896,12 @@ class Cavebot:
         self._boat_read(trip, pos, now)
         if trip.captain_tile is None:
             near = max(abs(dx), abs(dy)) <= _BOAT_NEAR_HOME
-            if not near and now - trip.since < 2 * _BOAT_TIMEOUT:
+            if not near and now - trip.since < _BOAT_SEARCH_TIMEOUT:
                 return wp  # his sqm at the view's edge: he may stand off it, walk on
             if trip.near_since is None:
                 trip.near_since = now
             self._last_move = now  # looking around is not being stuck
-            if now - trip.near_since >= _BOAT_TIMEOUT:
+            if now - trip.near_since >= _BOAT_SEARCH_TIMEOUT:
                 self._boat_failed(f"{trip.captain.name} not found on screen")
             return None
         cx, cy, cz = trip.captain_tile
