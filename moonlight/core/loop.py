@@ -137,6 +137,9 @@ logger = logging.getLogger("moonlight.core.loop")
 #: How long a pressed chase toggle takes to show on the side panel.
 CHASE_TOGGLE_SETTLE_SECONDS = 0.5
 
+#: A tick at least this long is logged on its own line.
+SLOW_TICK_SECONDS = 0.3
+
 #: How often the tick timing line goes to the log.
 TIMING_LOG_SECONDS = 10.0
 
@@ -1208,6 +1211,13 @@ class GameLoop:
         self._tick_time_total += elapsed
         if elapsed > self._tick_time_max:
             self._tick_time_max = elapsed
+        if elapsed >= SLOW_TICK_SECONDS:
+            logger.info(
+                "slow tick: %.0f ms (screen reading %.0f ms) in %s",
+                elapsed * 1000.0,
+                self._perceive_time * 1000.0,
+                self._state.name.lower(),
+            )
         start, ticks, total, perceive, longest = self._timing_window
         ticks, total = ticks + 1, total + elapsed
         perceive, longest = perceive + self._perceive_time, max(longest, elapsed)
