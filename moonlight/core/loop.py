@@ -106,6 +106,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from moonlight.cavebot.cavebot import WALK_KEYS
+from moonlight.core.hand import Claim, Hand, Send
 from moonlight.core.random_delay import random_delay, random_reaction
 from moonlight.core.safety import F12Monitor, RateLimitedInput
 from moonlight.core.state import Monster, WorldState
@@ -296,7 +297,12 @@ class GameLoop:
         self.config = cfg
         self._clock = clock if clock is not None else time.monotonic
         self._sleep_fn = sleep_fn if sleep_fn is not None else time.sleep
-        self.all_modules = modules if modules is not None else DecisionModules()
+        #: Who holds the mouse and the walk; the claims read it, the cavebot
+        #: reads its per-tick inputs from it.
+        self.hand = Hand(lambda: self.modules)
+        self.hand.walk = self._act_move
+        self.all_modules = DecisionModules()
+        self.modules = modules if modules is not None else DecisionModules()
         #: GUI Pause: cavebot and targeting sit out, the rest keeps running.
         self.paused = False
         self._perceive = perceive
@@ -407,6 +413,12 @@ class GameLoop:
         if old is not None and old is not value.cavebot:
             old.release_walk_key()  # nothing ticks a replaced cavebot again
         self.all_modules = value
+        if value.cavebot is not None:
+            value.cavebot.inputs = self.hand.inputs
+        if value.drop_items is not None:
+            value.drop_items.hand = self.hand
+        if value.scripts is not None:
+            value.scripts.hand = self.hand
 
     def _cavebot_active(self, _snap: WorldState) -> bool:
         return self.modules.cavebot is not None and self.modules.cavebot.is_active()
@@ -550,20 +562,13 @@ class GameLoop:
     def _switching_account(self, snap: WorldState) -> bool:
         """The account switch, alone: True while it runs (the login screen is not a pause)."""
         scripts = self.modules.scripts
-        if scripts is None or scripts.rotation is None or scripts.running != "account_rotate":
+        if scripts is None or not scripts.switching_account:
             return False
         self._task = "Switching account"
-        if scripts.rotation.client_closed:
-            scripts.step(snap, self.input)  # no window to focus: only waits, nothing is typed
-        elif not snap.client_focused:
-            scripts.rotation.refocus()  # nothing typed until the client has the focus
-        else:
-            self._send(snap, lambda: scripts.step(snap, self.input), login_screen=True)
-        if scripts.rotation.failed:
-            scripts.rotation.failed = False
+        if not scripts.switch_account(
+            snap, lambda action: self._send(snap, action, login_screen=True), self.input
+        ):
             self._fail_stop("the account switch failed")
-        elif scripts.running is None and self.modules.cavebot is not None:
-            self.modules.cavebot.resume()  # the switch is not "stuck"
         self._paused_since = None
         return True
 
@@ -674,9 +679,8 @@ class GameLoop:
         clicked_creature_in_the_way = (
             targeting is not None
             and targeting is m.stuck_targeting  # stuck: the cavebot right-clicks the one in the way
-            and m.cavebot is not None
             and selected is None
-            and now < m.cavebot.creature_in_the_way_clicked_until
+            and self.hand.creature_click_pending(now)
         )
         if targeting is not None and not self._targeting_paused(now):
             if not clicked_creature_in_the_way:  # else its click may still select it
@@ -686,13 +690,14 @@ class GameLoop:
             self._targeting_paused_until = now + PAUSE_SECONDS
             self._target = None
         if m.cavebot is not None:
-            m.cavebot.targeting_paused = self._targeting_paused(now)
+            inputs = self.hand.inputs  # the cavebot walks by these
+            inputs.targeting_paused = self._targeting_paused(now)
             # doc: docs/prs/near-targeting.md#targeting-script
             scripts = self.all_modules.scripts
-            m.cavebot.walk_past_monsters = scripts is not None and scripts.targeting_turned_off
+            inputs.walk_past_monsters = scripts is not None and scripts.targeting_turned_off
             # doc: docs/prs/near-targeting.md#fight-in-range
             judge = targeting or m.stuck_targeting
-            m.cavebot.fight_in_range = (
+            inputs.fight_in_range = (
                 judge.fight_in_range(snap, now) if judge is not None else bool(snap.monsters)
             )
         names = Counter(mon.name for mon in snap.monsters)
@@ -719,12 +724,11 @@ class GameLoop:
         self._last_names = names
         if m.extras is not None:
             m.extras.observe(snap)
-            if m.extras.refill_due and m.cavebot is not None:
-                m.cavebot.refill_now = True  # a player stays: the next check goes to refill
+            if m.extras.refill_due:
+                self.hand.request_refill()  # a player stays: the next check goes to refill
         scripts = m.scripts
-        if scripts is not None and scripts.rotation is not None and m.cavebot is not None:
-            if scripts.rotation.refill_due(scripts.last_stamina_minutes):
-                m.cavebot.refill_now = True  # the stamina is low: to the depot's rotate
+        if scripts is not None and scripts.refill_due():
+            self.hand.request_refill()  # the stamina is low: to the depot's rotate
 
     def _targeting_paused(self, now: float) -> bool:
         return now < self._targeting_paused_until
@@ -732,42 +736,65 @@ class GameLoop:
     def _targeting(self) -> TargetingDecision | None:
         """``stuck_targeting`` while the cavebot is stuck on creatures, else ``targeting``."""
         m = self.modules
-        if m.stuck_targeting and m.cavebot is not None and m.cavebot.stuck_on_creatures:
+        if m.stuck_targeting and self.hand.stuck_on_creatures:
             return m.stuck_targeting
         return m.targeting
 
+    # doc: docs/prs/pause-stop.md#action-order
+    def _claims(self) -> list[Claim]:
+        """Who may have the tick, highest first: the first that wants it wins.
+
+        Kill, pause and the account switch are decided before these (they win
+        over a stale state); healing and the loot ring ride along every tick.
+        The claims without a state are the walking tier (MOVE or IDLE).
+        """
+        m = self.modules
+        claims: list[Claim] = []
+        if m.looting is not None:
+            # each ringed corpse before the next target
+            claims.append(Claim("loot first", m.looting.loot_first, self._loot, BotState.LOOT))
+        claims.append(Claim("attack", self._wants_attack, self._attack, BotState.ATTACK))
+        if m.looting is not None:
+            claims.append(Claim("loot", m.looting.should_loot, self._loot, BotState.LOOT))
+        if m.scripts is not None:
+            claims.append(Claim("script", m.scripts.wants, self._script))
+        if m.drop_items is not None:
+            claims.append(Claim("drop", m.drop_items.wants, self._drop))
+        if m.extras is not None:
+            claims.append(Claim("extras", lambda _snap: True, self._extras))
+        claims.append(Claim("move", lambda _snap: self._state is BotState.MOVE, self._move))
+        return claims
+
     def _decide_state(self, snap: WorldState) -> BotState:
-        """Priority state machine: the first matching condition wins.
+        """The first claim with a state that wants the tick, else MOVE or IDLE.
 
         KILL is never returned here -- it is handled in :meth:`tick`
         before the snapshot, since it must win even over a stale state.
         """
-        m = self.modules
-        if m.looting is not None and m.looting.loot_first(snap):
-            return BotState.LOOT  # loot each ringed corpse before the next target
-        targeting = self._targeting()
-        if m.cavebot is not None and m.cavebot.holds_attacks():
-            pass  # a lure waypoint, or targeting off by a script: walk past monsters
-        elif self._targeting_paused(self._clock()):
-            pass  # a lone unreachable target: walk on
-        elif targeting is not None:
-            selected = snap.selected_target
-            # doc: docs/prs/near-targeting.md#pick-on-screen
-            if (
-                self._target is not None
-                or self._screen_click_tile is not None  # stand still until the click answers
-                or (selected is not None and not targeting.is_unreachable(selected))
-            ):
-                return BotState.ATTACK
-        elif snap.selected_target is not None and snap.selected_target.name:
-            # Perception only selects targets that are in range and attackable;
-            # a nameless (unresolved) selection may be a player (F-01).
-            return BotState.ATTACK
-        if m.looting is not None and m.looting.should_loot(snap):
-            return BotState.LOOT
+        for claim in self._claims():
+            if claim.state is not None and claim.wants(snap):
+                return claim.state
         if self._move_provider is not None and self._move_provider(snap):
             return BotState.MOVE
         return BotState.IDLE
+
+    def _wants_attack(self, snap: WorldState) -> bool:
+        if self.hand.holds_attacks():
+            return False  # a lure waypoint, or targeting off by a script: walk past monsters
+        if self._targeting_paused(self._clock()):
+            return False  # a lone unreachable target: walk on
+        targeting = self._targeting()
+        if targeting is not None:
+            selected = snap.selected_target
+            # doc: docs/prs/near-targeting.md#pick-on-screen
+            return (
+                self._target is not None
+                or self._screen_click_tile is not None  # stand still until the click answers
+                or (selected is not None and not targeting.is_unreachable(selected))
+            )
+        # Perception only selects targets that are in range and attackable;
+        # a nameless (unresolved) selection may be a player (F-01).
+        return snap.selected_target is not None and bool(snap.selected_target.name)
 
     def _module_alarm(self) -> str | None:
         """A cavebot alarm (``"stuck"``, ``"lost"``, ...), or None."""
@@ -853,6 +880,7 @@ class GameLoop:
             self._send(snap, looting.press_ring)  # then carry on with this tick
         # doc: docs/prs/pause-stop.md#action-order
         # Healing, then the fight and loot, then scripts, extras and walking.
+        self.hand.moving = self._state is BotState.MOVE
         match self._state:
             case BotState.ATTACK:
                 # doc: docs/prs/near-targeting.md#same-tick
@@ -864,14 +892,11 @@ class GameLoop:
             case BotState.LOOT:
                 self._act_loot(snap)
             case BotState.MOVE | BotState.IDLE:
-                if self._act_script(snap):
-                    return
-                if self._act_drop(snap):
-                    return
-                if self.modules.extras is not None and self._extra(snap):
-                    return
-                if self._state is BotState.MOVE:
-                    self._act_move(snap)
+                send: Send = lambda action: self._send(snap, action)  # noqa: E731
+                for claim in self._claims():
+                    if claim.state is None and claim.wants(snap):
+                        if claim.act(snap, send) is not False:
+                            return
 
     def _send(
         self,
@@ -1151,65 +1176,35 @@ class GameLoop:
 
         self._send(snap, lambda: looting.step(snap))
 
-    # doc: docs/prs/scripts.md#script-priority
-    def _act_script(self, snap: WorldState) -> bool:
-        """A user script's step instead of walking; True while one runs."""
+    def _loot(self, snap: WorldState, _send: Send) -> None:
+        self._act_loot(snap)
+
+    def _attack(self, snap: WorldState, _send: Send) -> None:
+        self._act_attack(snap)
+
+    def _script(self, snap: WorldState, send: Send) -> None:
+        """A user script's step instead of walking."""
         scripts = self.modules.scripts
-        if scripts is None or scripts.poll() is None:
-            return False
+        assert scripts is not None
         self._task = f"Script {scripts.running}"
         scripts.cavebot = self.modules.cavebot  # for bot.goto
         scripts.drop_items = self.modules.drop_items  # for bot.drop_items
         scripts.extras = self.modules.extras  # for bot.ring
         scripts.targetings = (self.all_modules.targeting, self.modules.stuck_targeting)
-        self._send(snap, lambda: scripts.step(snap, self.input))
-        if scripts.running is None and self.modules.cavebot is not None:
-            self.modules.cavebot.resume()  # script time is not "stuck"
-        return True
+        scripts.act(snap, send, self.input)
 
-    # doc: docs/prs/drop-items.md#drop-items
-    def _act_drop(self, snap: WorldState) -> bool:
-        """A drop-items round's step instead of walking; True while one runs.
-
-        A round starts only while the mouse is free: no click in flight and
-        no cavebot drag, typing or NPC talk.
-        """
-        drop, m = self.modules.drop_items, self.modules
-        if drop is None or not drop.due(snap):
-            return False
-        if (
-            not drop.in_round
-            and m.looting is not None
-            and (m.looting.should_loot(snap) or m.looting.loot_first(snap))
-        ):
-            # A ring still to loot: items dropped next to the player covered the
-            # corpse's ring and it was never looted (2026-11-21).
-            return False
-        if not drop.in_round and (
-            (m.clicker is not None and m.clicker.busy)
-            or (m.cavebot is not None and m.cavebot.hand_busy)
-        ):
-            return False
-        if not drop.mid_drag and m.cavebot is not None and m.cavebot.near_floor_change:
-            return False  # not next to a rope spot or stairs: the drop waits past it
+    def _drop(self, snap: WorldState, send: Send) -> None:
+        """A drop-items round's step instead of walking."""
+        drop = self.modules.drop_items
+        assert drop is not None
         self._task = "Dropping items"
-        cavebot = m.cavebot
-        # Plain walking goes on while the items drop (owner 2026-11-26); a
-        # waypoint that needs the mouse or a stop waits for the round's end.
-        walking = (
-            cavebot is not None
-            and self._state is BotState.MOVE
-            and not cavebot.hand_busy
-            and cavebot.walking_waypoint
-        )
-        if cavebot is not None and not walking:
-            cavebot.release_walk_key()
-        self._send(snap, lambda: drop.step(snap))
-        if walking:
-            self._act_move(snap)
-        elif not drop.in_round and cavebot is not None:
-            cavebot.resume()  # drop time is not "stuck"
-        return True
+        drop.act(snap, send)
+
+    def _extras(self, snap: WorldState, _send: Send) -> bool:
+        return self._extra(snap)
+
+    def _move(self, snap: WorldState, _send: Send) -> None:
+        self._act_move(snap)
 
     def _act_move(self, snap: WorldState) -> None:
         """MOVE: hand control to the waypoint runner (T22).

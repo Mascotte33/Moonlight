@@ -59,6 +59,7 @@ from moonlight.hardware.input import ClickSide, InputBackend
 
 if TYPE_CHECKING:
     from moonlight.cavebot.cavebot import Cavebot
+    from moonlight.core.hand import Hand, Send
     from moonlight.hardware.clicker import ClickController
     from moonlight.looting.drop_items import DropItems
     from moonlight.scripts.rotation import Rotation
@@ -412,6 +413,8 @@ class ScriptRunner:
         self.test_missed: str | None = None
         #: The client window is in front (the keys go to the window in front).
         self.client_is_foreground: Callable[[], bool] = lambda: True
+        #: The loop's hand (resumes the cavebot after a script); None: no cavebot.
+        self.hand: Hand | None = None
         self.running: str | None = None
         self._script: Generator[Any, Any, None] | None = None
         self._commands: Iterator[Command] = iter(())
@@ -579,6 +582,44 @@ class ScriptRunner:
             log.warning("script %s: goto %r without a cavebot", self.running, label)
         else:
             self.cavebot.goto(label)
+
+    # doc: docs/prs/scripts.md#script-priority
+    def wants(self, snap: WorldState) -> bool:  # noqa: ARG002 - the claim's shape
+        """The loop's claim: a script runs (this starts a due one, as :meth:`poll`)."""
+        return self.poll() is not None
+
+    def act(self, snap: WorldState, send: Send, input: InputBackend) -> None:  # noqa: A002
+        """One script step instead of walking."""
+        send(lambda: self.step(snap, input))
+        if self.running is None and self.hand is not None:
+            self.hand.resume()  # script time is not "stuck"
+
+    def refill_due(self) -> bool:
+        """The stamina is low: the account rotation wants the depot."""
+        return self.rotation is not None and self.rotation.refill_due(self.last_stamina_minutes)
+
+    # doc: docs/prs/stamina-switch.md#stamina-switch
+    @property
+    def switching_account(self) -> bool:
+        """The account switch runs (it runs alone: the login screen is not a pause)."""
+        return self.rotation is not None and self.running == "account_rotate"
+
+    def switch_account(self, snap: WorldState, send_login: Send, input: InputBackend) -> bool:  # noqa: A002
+        """One tick of the account switch; False when it failed."""
+        rotation = self.rotation
+        assert rotation is not None
+        if rotation.client_closed:
+            self.step(snap, input)  # no window to focus: only waits, nothing is typed
+        elif not snap.client_focused:
+            rotation.refocus()  # nothing typed until the client has the focus
+        else:
+            send_login(lambda: self.step(snap, input))
+        if rotation.failed:
+            rotation.failed = False
+            return False
+        if self.running is None and self.hand is not None:
+            self.hand.resume()  # the switch is not "stuck"
+        return True
 
     def log_stamina(self) -> None:
         """Read the stamina every 5 minutes (the reader logs each change)."""
