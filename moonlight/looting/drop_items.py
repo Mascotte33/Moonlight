@@ -24,14 +24,22 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from moonlight.core.hand import Hand, Send
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import ClickSide, InputBackend
 from moonlight.perception.corpses import slot_ring
 from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
-    "DROPPING_FILE", "DROP_ITEMS_DIR", "DropItems", "drop_picture_path", "drop_pictures",
-    "dropping", "free_drop_slots", "saved_pictures", "set_dropping",
+    "DROPPING_FILE",
+    "DROP_ITEMS_DIR",
+    "DropItems",
+    "drop_picture_path",
+    "drop_pictures",
+    "dropping",
+    "free_drop_slots",
+    "saved_pictures",
+    "set_dropping",
 ]
 
 #: The picked item pictures, ``<name>.png``, in the profiles folder.
@@ -254,6 +262,8 @@ class DropItems:
         self._tried: list[Point] = []
         #: Items left alone this round (no sqm took them).
         self._left: list[tuple[Path, Point]] = []
+        #: The loop's hand (who holds the mouse); None: always free.
+        self.hand: Hand | None = None
 
     @property
     def mid_drag(self) -> bool:
@@ -263,6 +273,41 @@ class DropItems:
     def due(self, snap: WorldState) -> bool:
         """True while a round runs, or when its timer is up and no monster is in view."""
         return self.in_round or (not snap.monsters and self._clock() >= self._next_round_at)
+
+    # doc: docs/prs/drop-items.md#drop-items
+    def wants(self, snap: WorldState) -> bool:
+        """The loop's claim: a round is due and may run now.
+
+        A round starts only while the mouse is free (no click in flight and
+        no cavebot drag, typing or NPC talk) and no corpse ring waits: items
+        dropped next to the player covered the corpse's ring and it was never
+        looted (2026-11-21). Never next to a rope spot or stairs, unless a
+        drag is half sent.
+        """
+        if not self.due(snap):
+            return False
+        hand = self.hand
+        if hand is None:
+            return True
+        if not self.in_round and (hand.loot_pending(snap) or hand.busy):
+            return False
+        return self.mid_drag or not hand.near_floor_change
+
+    def act(self, snap: WorldState, send: Send) -> None:
+        """One round step. Plain walking goes on while the items drop (owner
+        2026-11-26); a waypoint that needs the mouse or a stop waits for the
+        round's end."""
+        hand = self.hand
+        walking = hand is not None and hand.walking_on
+        if hand is not None and not walking:
+            hand.release_walk_key()
+        send(lambda: self.step(snap))
+        if hand is None:
+            return
+        if walking:
+            hand.walk(snap)
+        elif not self.in_round:
+            hand.resume()  # drop time is not "stuck"
 
     def step(self, snap: WorldState) -> None:
         """Send one command of the drag, or look at the backpacks and start the next."""

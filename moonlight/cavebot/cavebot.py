@@ -179,6 +179,7 @@ from moonlight.cavebot.town import (
     pick_locker,
 )
 from moonlight.cavebot.travel import TravelNpc, captain_at, landed
+from moonlight.core.hand import TickInputs
 from moonlight.core.random_delay import random_delay, typing_gap
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.clicker import ClickController
@@ -801,12 +802,8 @@ class Cavebot:
         self._screen_grab = screen
         #: Creatures leave no way through: the loop targets them (cleared after each kill).
         self.stuck_on_creatures = False
-        #: Set by the loop while targeting is paused: walk on past a selected target.
-        self.targeting_paused = False
-        # doc: docs/prs/near-targeting.md#fight-in-range
-        #: Set by the loop: a fight holds the walk (monsters out of range do not
-        #: count). None (no loop) = any monster in the battle list.
-        self.fight_in_range: bool | None = None
+        #: The loop's per-tick decisions (the loop's hand shares its own).
+        self.inputs = TickInputs()
         self._stuck_allowed_until = float("-inf")
         self._creatures: set[tuple[int, int]] = set()  # tiles the last scan saw
         # doc: docs/prs/echo-raid.md#avoid
@@ -860,9 +857,6 @@ class Cavebot:
         #: ``trade``: buy rows already bought again (each gets one more try).
         self._rebought_rows: set[int] = set()
         self._potion_counts = potion_counts
-        #: Targeting turned off by a script (``targeting_off``), set by the loop each
-        #: tick: walk past monsters, fight only what leaves no way past.
-        self.walk_past_monsters = False
         #: When the route's own floor change (stairs, ladder, rope, shovel, step) last
         #: moved the player to another floor; None once on the floor the route expects.
         self._floor_changed_at: float | None = None
@@ -1105,6 +1099,36 @@ class Cavebot:
         )
 
     # doc: docs/prs/near-targeting.md#targeting-script
+    @property
+    def targeting_paused(self) -> bool:
+        """Targeting is paused: walk on past a selected target."""
+        return self.inputs.targeting_paused
+
+    @targeting_paused.setter
+    def targeting_paused(self, value: bool) -> None:
+        self.inputs.targeting_paused = value
+
+    # doc: docs/prs/near-targeting.md#fight-in-range
+    @property
+    def fight_in_range(self) -> bool | None:
+        """A fight holds the walk (monsters out of range do not count).
+        None (no loop) = any monster in the battle list."""
+        return self.inputs.fight_in_range
+
+    @fight_in_range.setter
+    def fight_in_range(self, value: bool | None) -> None:
+        self.inputs.fight_in_range = value
+
+    @property
+    def walk_past_monsters(self) -> bool:
+        """Targeting turned off by a script (``targeting_off``): walk past
+        monsters, fight only what leaves no way past."""
+        return self.inputs.walk_past_monsters
+
+    @walk_past_monsters.setter
+    def walk_past_monsters(self, value: bool) -> None:
+        self.inputs.walk_past_monsters = value
+
     def holds_attacks(self) -> bool:
         """True while the loop must not attack: walking to a ``lure`` waypoint, or
         with targeting turned off by a script (:attr:`walk_past_monsters`) unless

@@ -828,10 +828,10 @@ class TestSelectClick:
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp, cavebot=cavebot)
         ticks(gl, clock, 4 * 20 + 3)  # 4 s on a target whose HP never moves
-        assert cavebot.targeting_paused and gl.current_state is not BotState.ATTACK
+        assert gl.hand.inputs.targeting_paused and gl.current_state is not BotState.ATTACK
         assert "(targeting paused 5 s)" in str(gl.get_stats()["current_task"])
         ticks(gl, clock, 5 * 20 + 2)
-        assert not cavebot.targeting_paused
+        assert not gl.hand.inputs.targeting_paused
         assert "targeting paused" not in str(gl.get_stats()["current_task"])
         assert inp.sent_lines == []
 
