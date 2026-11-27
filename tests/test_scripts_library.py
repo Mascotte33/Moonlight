@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.cavebot.cavebot import Route, Waypoint
+from moonlight.cavebot.route import Route, Waypoint
 from moonlight.cavebot.tab import BROKEN_MARK, renamed_script, waypoint_table
 from moonlight.core.config import MODULES, BotConfig, ConfigError
 from moonlight.scripts.library import (

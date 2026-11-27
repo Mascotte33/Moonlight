@@ -27,9 +27,9 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
-from moonlight.cavebot.cavebot import Route, RouteError, RouteFileLoader, Waypoint, has_tile
 from moonlight.cavebot.floor_changes import FLOOR_KIND_ACTIONS, load_confirmed
 from moonlight.cavebot.pathing import WALK_STEPS, CostMap
+from moonlight.cavebot.route import Route, RouteError, RouteFileLoader, Waypoint, has_tile
 
 __all__ = [
     "CITY_DEPOTS", "FLOOR_KINDS", "PICTURES_DIR", "SPAWNS_FILE", "SPAWNS_URL", "FloorChange",

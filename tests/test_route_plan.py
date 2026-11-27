@@ -8,8 +8,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from moonlight.cavebot.cavebot import Route, Waypoint
 from moonlight.cavebot.pathing import CostMap
+from moonlight.cavebot.route import Route, Waypoint
 from moonlight.cavebot.route_plan import (
     CITY_DEPOTS,
     FloorChange,

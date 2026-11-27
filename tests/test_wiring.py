@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from moonlight.calibration.calibrate import REGIONS, CalibrationProfile, Region
-from moonlight.cavebot.cavebot import Route, Waypoint
+from moonlight.cavebot.route import Route, Waypoint
 from moonlight.core import wiring
 from moonlight.core.config import BotConfig, CavebotConfig, ConfigError
 from moonlight.core.loop import GameLoop, LoopConfig

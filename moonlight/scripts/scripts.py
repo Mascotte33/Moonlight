@@ -59,6 +59,9 @@ from moonlight.hardware.input import ClickSide, InputBackend
 
 if TYPE_CHECKING:
     from moonlight.cavebot.cavebot import Cavebot
+    from moonlight.core.config import LiveConfig
+    from moonlight.core.hand import Hand, Send
+    from moonlight.core.loop import DecisionModules
     from moonlight.hardware.clicker import ClickController
     from moonlight.looting.drop_items import DropItems
     from moonlight.scripts.rotation import Rotation
@@ -69,6 +72,7 @@ __all__ = [
     "DEFAULT_SCRIPTS_DIR",
     "MIN_PAUSE_MS",
     "Bot",
+    "ScriptReaders",
     "ScriptRunner",
     "ScriptsConfig",
     "parse_timers",
@@ -201,7 +205,8 @@ class Bot:
         return [functools.partial(self._runner.input.press_combo, key)]
 
     def say(self, text: str) -> list[Command]:
-        from moonlight.cavebot.cavebot import label_error, say_keys
+        from moonlight.cavebot.cavebot import say_keys
+        from moonlight.cavebot.route import label_error
 
         if bad := label_error("say", text):
             raise ValueError(bad)
@@ -357,6 +362,22 @@ def _secret_press(runner: ScriptRunner, key: str) -> None:
     runner.wait_typing_gap()
 
 
+@dataclass(frozen=True)
+class ScriptReaders:
+    """Screen readers and regions scripts use, built once with the bot."""
+
+    #: The action-bar potion totals for ``bot.count``.
+    potion_counts: Callable[[], dict[str, int | None]] | None = None
+    #: Stamina minutes from the Skills window for ``bot.stamina`` and the log.
+    stamina: Callable[[], int | None] | None = None
+    #: The character level from the Skills window for ``bot.level``.
+    level: Callable[[], int | None] | None = None
+    #: The "Cap:" number (free oz) for ``bot.free_cap``.
+    free_cap: Callable[[], int | None] | None = None
+    #: The ``game_grid`` region ``(x, y, w, h)`` for ``bot.use_tile_next_to_player``.
+    game_grid: tuple[int, int, int, int] | None = None
+
+
 class ScriptRunner:
     """Runs one user script at a time, one wire command per tick."""
 
@@ -368,27 +389,27 @@ class ScriptRunner:
         grab: Callable[[], np.ndarray] | None = None,
         timers: list[tuple[str, float]] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        readers: ScriptReaders | None = None,
     ) -> None:
         self.scripts_dir = Path(scripts_dir) if scripts_dir else DEFAULT_SCRIPTS_DIR
-        self.clicker = clicker
+        self._clicker = clicker
+        readers = readers or ScriptReaders()
         self.grab = grab
         #: The ``game_grid`` region ``(x, y, w, h)`` for ``bot.use_tile_next_to_player``.
-        self.game_grid: tuple[int, int, int, int] | None = None
+        self.game_grid = readers.game_grid
         #: The action-bar potion totals for ``bot.count``.
-        self.potion_counts: Callable[[], dict[str, int | None]] | None = None
+        self.potion_counts = readers.potion_counts
         #: Stamina minutes from the Skills window for ``bot.stamina`` and the log.
-        self.stamina: Callable[[], int | None] | None = None
+        self.stamina = readers.stamina
         #: The character level from the Skills window for ``bot.level``.
-        self.level: Callable[[], int | None] | None = None
-        #: Where ``cavebot_rotate`` looks for routes (docs/prs/cavebot-rotate.md#cavebot-rotate).
-        self.routes_dir: Path | None = None
+        self.level = readers.level
         # doc: docs/prs/profiles.md#level-pick
         #: Where ``cavebot_rotate`` looks for profiles.
         from moonlight.core.config import PROFILES_DIR  # config imports the scripts
 
         self.profiles_dir = PROFILES_DIR
-        #: The Scripts tab's Cavebot rotation switch.
-        self.cavebot_rotate_on = True
+        #: The running settings (the Scripts tab's switches); None: defaults.
+        self.settings: LiveConfig | None = None
         #: The running profile's name; set by the GUI.
         self.profile_name: Callable[[], str] | None = None
         #: Switch the whole bot to profile *name*; set by the GUI.
@@ -412,6 +433,8 @@ class ScriptRunner:
         self.test_missed: str | None = None
         #: The client window is in front (the keys go to the window in front).
         self.client_is_foreground: Callable[[], bool] = lambda: True
+        #: The loop's hand (resumes the cavebot after a script); None: no cavebot.
+        self.hand: Hand | None = None
         self.running: str | None = None
         self._script: Generator[Any, Any, None] | None = None
         self._commands: Iterator[Command] = iter(())
@@ -421,15 +444,13 @@ class ScriptRunner:
         self.run_again_in_seconds: float | None = None
         self.snap = WorldState()
         self.input: InputBackend
-        self.cavebot: Cavebot | None = None
-        #: The "Cap:" number (free oz) and the drop items module, for ``bot.free_cap``
-        #: and ``bot.drop_items``.
-        self.free_cap: Callable[[], int | None] | None = None
-        self.drop_items: DropItems | None = None
-        #: Extras, for ``bot.ring``.
-        self.extras: Any = None
-        #: The loop's targeting and stuck targeting, for ``bot.only_monsters_within_range``.
-        self.targetings: tuple[TargetingDecision | None, ...] = ()
+        #: The "Cap:" number (free oz), for ``bot.free_cap``.
+        self.free_cap = readers.free_cap
+        #: The loop's modules this tick, and all of them (targeting turned off by
+        #: a script is missing from the first); set by the loop, so a module a
+        #: settings change rebuilt is the one scripts use.
+        self.modules: Callable[[], DecisionModules] | None = None
+        self.all_modules: Callable[[], DecisionModules] | None = None
         #: ``bot.targeting(False)`` ran: the loop picks no target until ``(True)``.
         self.targeting_turned_off = False
         #: Account rotation: the ``account_rotate`` script is its switch (docs/prs/rotation.md).
@@ -579,6 +600,76 @@ class ScriptRunner:
             log.warning("script %s: goto %r without a cavebot", self.running, label)
         else:
             self.cavebot.goto(label)
+
+    @property
+    def cavebot(self) -> Cavebot | None:
+        """For ``bot.goto``."""
+        return self.modules().cavebot if self.modules is not None else None
+
+    @property
+    def drop_items(self) -> DropItems | None:
+        """For ``bot.drop_items``."""
+        return self.modules().drop_items if self.modules is not None else None
+
+    @property
+    def extras(self) -> Any:
+        """For ``bot.ring``."""
+        return self.modules().extras if self.modules is not None else None
+
+    @property
+    def clicker(self) -> ClickController | None:
+        """The one mouse, for clicks."""
+        return self.modules().clicker if self.modules is not None else self._clicker
+
+    @property
+    def targetings(self) -> tuple[TargetingDecision | None, ...]:
+        """The loop's targeting and stuck targeting, for ``bot.only_monsters_within_range``."""
+        if self.modules is None or self.all_modules is None:
+            return ()
+        return (self.all_modules().targeting, self.modules().stuck_targeting)
+
+    @property
+    def cavebot_rotate_on(self) -> bool:
+        """The Scripts tab's Cavebot rotation switch."""
+        return self.settings is None or self.settings.current.cavebot_rotate
+
+    # doc: docs/prs/scripts.md#script-priority
+    def wants(self, snap: WorldState) -> bool:  # noqa: ARG002 - the claim's shape
+        """The loop's claim: a script runs (this starts a due one, as :meth:`poll`)."""
+        return self.poll() is not None
+
+    def act(self, snap: WorldState, send: Send, input: InputBackend) -> None:  # noqa: A002
+        """One script step instead of walking."""
+        send(lambda: self.step(snap, input))
+        if self.running is None and self.hand is not None:
+            self.hand.resume()  # script time is not "stuck"
+
+    def refill_due(self) -> bool:
+        """The stamina is low: the account rotation wants the depot."""
+        return self.rotation is not None and self.rotation.refill_due(self.last_stamina_minutes)
+
+    # doc: docs/prs/stamina-switch.md#stamina-switch
+    @property
+    def switching_account(self) -> bool:
+        """The account switch runs (it runs alone: the login screen is not a pause)."""
+        return self.rotation is not None and self.running == "account_rotate"
+
+    def switch_account(self, snap: WorldState, send_login: Send, input: InputBackend) -> bool:  # noqa: A002
+        """One tick of the account switch; False when it failed."""
+        rotation = self.rotation
+        assert rotation is not None
+        if rotation.client_closed:
+            self.step(snap, input)  # no window to focus: only waits, nothing is typed
+        elif not snap.client_focused:
+            rotation.refocus()  # nothing typed until the client has the focus
+        else:
+            send_login(lambda: self.step(snap, input))
+        if rotation.failed:
+            rotation.failed = False
+            return False
+        if self.running is None and self.hand is not None:
+            self.hand.resume()  # the switch is not "stuck"
+        return True
 
     def log_stamina(self) -> None:
         """Read the stamina every 5 minutes (the reader logs each change)."""

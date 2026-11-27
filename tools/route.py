@@ -50,7 +50,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from moonlight.cavebot.cavebot import RouteFileLoader, Waypoint
+from moonlight.cavebot.route import RouteFileLoader, Waypoint
 from moonlight.cavebot.recorder import route_path, save_route, waypoint_json
 from moonlight.cavebot.route_plan import (
     CITY_DEPOTS,

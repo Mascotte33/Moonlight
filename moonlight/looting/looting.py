@@ -29,7 +29,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from moonlight.cavebot.cavebot import WALK_KEYS
+from moonlight.cavebot.route import WALK_KEYS
 from moonlight.core.random_delay import random_delay, random_reaction
 from moonlight.core.state import Position, WorldState
 from moonlight.hardware.input import InputBackend

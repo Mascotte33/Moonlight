@@ -16,7 +16,6 @@ imported and unit-tested headlessly.
 
 from __future__ import annotations
 
-import ctypes
 import logging
 import re
 import shutil
@@ -30,11 +29,12 @@ from typing import TYPE_CHECKING, Any
 from moonlight import x11
 from moonlight.calibration import autofind
 from moonlight.calibration.calibrate import CALIBRATION_FILE, REGIONS, data_dir
-from moonlight.cavebot.cavebot import Waypoint
+from moonlight.cavebot.route import Waypoint
 from moonlight.core.config import DEFAULT_CONFIG_FILE, PROFILES_DIR, BotConfig, ConfigError
 from moonlight.core.state import WorldState
 from moonlight.core.wiring import build_loop, capture_providers, make_perceive
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
+from moonlight.window import WINDOWS
 
 if TYPE_CHECKING:  # pragma: no cover
     from moonlight.calibration.calibrate import CalibrationProfile
@@ -69,25 +69,8 @@ _NAME = re.compile(r"[A-Za-z0-9_' -]+")
 
 
 def window_titles() -> list[str]:
-    """Titles of the visible top-level windows, sorted; empty off Windows and X11."""
-    if sys.platform == "linux":
-        return x11.window_titles()
-    if sys.platform != "win32":
-        return []
-    user32 = ctypes.windll.user32
-    titles: set[str] = set()
-
-    def add(hwnd: int, _lparam: int) -> bool:
-        length = user32.GetWindowTextLengthW(hwnd)
-        if length and user32.IsWindowVisible(hwnd):
-            buf = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buf, length + 1)
-            titles.add(buf.value)
-        return True
-
-    proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
-    user32.EnumWindows(proc(add), 0)
-    return sorted(titles)
+    """Titles of the shown windows, sorted."""
+    return WINDOWS.titles()
 
 
 def config_names(configs_dir: str | Path = CONFIGS_DIR) -> list[str]:
@@ -534,16 +517,12 @@ def _login_first(cfg: BotConfig, capture: Any, backend: Any, log: Callable[[str]
     from moonlight.scripts.rotation import login_on_start
 
     def window_open() -> bool:
-        return x11.find_window(TIBIA_WINDOW_TITLE) is not None if sys.platform == "linux" else True
+        return WINDOWS.open(TIBIA_WINDOW_TITLE)
 
     def in_game() -> bool:
-        # doc: docs/prs/stamina-switch.md#login-on-start
-        # The title, not the screen: a window over the client hides the game
-        # but must never pull the client back to the front to "log in".
-        if sys.platform == "linux":
-            wid = x11.find_window(TIBIA_WINDOW_TITLE)
-            title = x11.title_of(wid) if wid is not None else None
-            return title is not None and title.startswith("Tibia - ")
+        by_title = WINDOWS.in_game(TIBIA_WINDOW_TITLE)
+        if by_title is not None:
+            return by_title
         try:
             return autofind.find_hp_bar(capture.get_frame()[..., ::-1]) is not None
         except Exception:  # noqa: BLE001 - no window yet / mid-redraw

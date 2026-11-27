@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.core.config import BotConfig
+from moonlight.core.config import BotConfig, LiveConfig
 from moonlight.gui.settings_tab import PROFILE_OPTIONS
 from moonlight.scripts import cavebot_rotate
 from moonlight.scripts.cavebot_rotate import decide, fitting_profiles, pick_profile
@@ -101,7 +101,7 @@ def test_the_script_keeps_the_profile(profiles: Path, level: int | None, current
 
 def test_switched_off_the_waypoint_does_nothing(profiles: Path) -> None:
     runner, switched = _runner(profiles, 70, "Trolls")
-    runner.cavebot_rotate_on = False
+    runner.settings = LiveConfig(replace(BotConfig(), cavebot_rotate=False))
     assert runner.start("cavebot_rotate") is False
     assert switched == []
 

@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from moonlight.cavebot.cavebot import (
+from moonlight.cavebot.route import (
     NO_TILE,
     RouteError,
     RouteFileLoader,
