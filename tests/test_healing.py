@@ -116,9 +116,10 @@ def test_each_rule_has_its_own_cooldown() -> None:
     assert keys(healer, state(hp=30, mp=20)) == ["F3", "F4"]  # the potions cooled down
 
 
-def test_an_empty_health_potion_does_not_block_the_mana_potion() -> None:
+def test_out_of_health_potions_the_mana_potion_brings_the_heal_spell_back() -> None:
     # 2026-11-27: out of health potions, the bot pressed the empty F3 every second
-    # and never the mana potion on F4; with no mana for the spell, the character died.
+    # and never the mana potion on F4; with 27 mana the heal spell (60) never went,
+    # and the character died. The Yalahar Elves rules, replayed tick by tick.
     clock = FakeClock()
     rules = (
         HealingRule("spell", "F1", hp_below_percent=35.0, minimum_mana=60),
@@ -126,14 +127,22 @@ def test_an_empty_health_potion_does_not_block_the_mana_potion() -> None:
         HealingRule("potion", "F4", mp_below_percent=40.0),
     )
     healer = HealingDecision(HealingConfig(rules=rules), clock=clock)
-    low = state(hp=14, mp=14)
-    low.mp_points = 27
-    for tick in range(4):
-        clock.now = tick * 0.5
-        for action in healer.decide(low):
-            healer.send(action, FakeInput())
-    sent = [hotkey for hotkey in ("F3", "F4") if healer.on_cooldown(hotkey)]
-    assert sent == ["F3", "F4"]
+    backend = FakeInput()
+
+    def tick(now: float, mp: float, mana: int) -> list[str]:
+        clock.now = now
+        s = state(hp=14, mp=mp)
+        s.mp_points = mana
+        before = len(backend.sent_lines)
+        for action in healer.decide(s):
+            healer.send(action, backend)
+        return backend.sent_lines[before:]
+
+    assert tick(0.0, mp=14, mana=27) == ["K F3", "K F4"]  # the empty F3 blocks nothing
+    assert tick(0.5, mp=14, mana=27) == []  # both cooling down
+    assert tick(1.0, mp=14, mana=27) == ["K F3", "K F4"]  # still no mana for the spell
+    # The mana potions bring mana back over the spell's 60:
+    assert tick(2.0, mp=41, mana=80) == ["K F1", "K F3"]  # the heal spell goes
 
 
 def test_cures_go_with_the_heals() -> None:
