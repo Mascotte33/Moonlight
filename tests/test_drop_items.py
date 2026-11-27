@@ -106,12 +106,12 @@ def test_free_slots_are_within_2_with_mine_and_skip_creatures_and_walls() -> Non
     assert len(slots) == 25 - 1 - 5
 
 
-def test_waits_1_to_3_minutes_and_for_a_clear_battle_list(tmp_path: Path) -> None:
+def test_waits_1_to_3_minutes_even_with_monsters_in_view(tmp_path: Path) -> None:
     clock = Clock()
     drop = dropper(tmp_path, [frame_with(None)], clock, Input())
     assert not drop.due(snap())
     clock.now = 180.0
-    assert not drop.due(snap(monsters=1))
+    assert drop.due(snap(monsters=1))  # owner 2026-11-27: no wait for an empty battle list
     assert drop.due(snap())
 
 
@@ -148,18 +148,16 @@ def test_with_every_sqm_around_taken_my_own_is_left() -> None:
     assert free_drop_slots(state, None) == [(7, 5)]
 
 
-def test_a_monster_mid_round_stops_it_until_the_screen_is_clear(tmp_path: Path) -> None:
+def test_a_monster_mid_round_does_not_stop_it(tmp_path: Path) -> None:
     picture = boots(tmp_path)
     clock, inp = Clock(), Input()
-    drop = dropper(tmp_path, [frame_with(picture)], clock, inp)
+    frames = [frame_with(picture), frame_with(picture), frame_with(None)]
+    drop = dropper(tmp_path, frames, clock, inp)
     clock.now = 180.0
     drop.step(snap())  # the first look starts a drag
-    for _ in range(5):  # move, check the item is still there, down, move, up
-        drop.step(snap(monsters=1))  # the drag is finished, never cut
-    clock.now += 1.0
-    drop.step(snap(monsters=1))
-    assert not drop.in_round and len(inp.sent) == 4
-    assert drop.due(snap())  # again at once once clear
+    run_round(drop, clock, snap(monsters=2))
+    assert [s[0] for s in inp.sent] == ["to", "down", "to", "up"]
+    assert not drop.in_round  # ended because the item is gone, not for the monsters
 
 
 def test_the_drop_list_is_apart_from_the_saved_pictures(tmp_path: Path) -> None:
