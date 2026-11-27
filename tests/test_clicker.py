@@ -397,12 +397,11 @@ def _absolute(**kwargs: object) -> tuple[FakeInput, ClickController]:
     return fake, clicker
 
 
-def test_absolute_jumps_then_clicks_without_reading_the_cursor() -> None:
+def test_absolute_jumps_and_clicks_in_one_step_without_reading_the_cursor() -> None:
     fake, clicker = _absolute()
     clicker.request((400, 200))
     assert clicker.next_read() is None
-    assert clicker.step() is None
-    assert clicker.step() is True
+    assert clicker.step() is True  # no tick (and screen read) between jump and click
     # screen point (500, 250) on a 1000x500 screen -> the middle of 0..32767
     assert fake.sent_lines == ["A 16400 16417", "C L"]
     assert not clicker.busy

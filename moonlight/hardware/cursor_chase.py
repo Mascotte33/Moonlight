@@ -21,8 +21,10 @@ __all__ = ["CursorChaseInput"]
 
 logger = logging.getLogger(__name__)
 
-#: Seconds for X to show a relative step before the cursor is read again.
+#: Longest wait for X to show a relative step before the cursor is read again.
 SETTLE = 0.03
+#: Seconds between cursor reads while waiting for a step to show.
+POLL = 0.002
 #: Steps before giving up on a spot.
 TRIES = 8
 #: px the cursor may stay off the spot.
@@ -59,6 +61,7 @@ class CursorChaseInput(InputBackend):
         left, top, w, h = self._screen
         tx = left + x * w // (ABS_MAX + 1)
         ty = top + y * h // (ABS_MAX + 1)
+        since_step = SETTLE
         for _ in range(TRIES):
             at = self._cursor()
             if at is None:
@@ -66,9 +69,27 @@ class CursorChaseInput(InputBackend):
             dx, dy = tx - at[0], ty - at[1]
             if abs(dx) <= TOLERANCE and abs(dy) <= TOLERANCE:
                 return
+            if max(abs(dx), abs(dy)) <= FULL_STEP and since_step < SETTLE:
+                # A small step right after another reads as a fast motion and
+                # libinput accelerates it past the spot: keep them SETTLE apart.
+                self._sleep(SETTLE - since_step)
             self.inner.mouse_move(_step(dx), _step(dy))
-            self._sleep(SETTLE)
+            since_step = self._wait_moved(at)
         logger.warning("mouse: still %d,%d px off %d,%d after %d steps", dx, dy, tx, ty, TRIES)
+
+    def _wait_moved(self, start: tuple[int, int]) -> float:
+        """Wait until the cursor leaves *start* (at most ``SETTLE``); seconds waited.
+
+        A step shows in a few ms; a fixed 30 ms per step made each aim 60-90 ms.
+        """
+        waited = 0.0
+        while waited < SETTLE:
+            self._sleep(POLL)
+            waited += POLL
+            if self._cursor() != start:
+                self._sleep(POLL)  # a long step may come as two reports
+                return waited + POLL
+        return waited
 
     def press_combo(self, combo: str) -> None:
         self.inner.press_combo(combo)
