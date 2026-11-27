@@ -102,17 +102,38 @@ def test_heal_waits_a_reaction_unless_hp_is_critical(monkeypatch: pytest.MonkeyP
     assert keys(HealingDecision(clock=clock), state(hp=40)) == ["F2", "F3"]  # 40%: at once
 
 
-def test_each_slot_has_its_own_cooldown() -> None:
+def test_each_rule_has_its_own_cooldown() -> None:
     clock = FakeClock()
     healer = HealingDecision(HealingConfig(potion_cooldown_ms=500), clock=clock)
-    for action in healer.decide(state(hp=30)):
-        healer.send(action, FakeInput())
+    for action in healer.decide(state(hp=30, mp=20)):
+        healer.send(action, FakeInput())  # F2 and F3
     clock.now = 0.4
-    assert keys(healer, state(hp=30)) == []  # no weaker rule takes a cooling slot
+    actions = healer.decide(state(hp=30, mp=20))
+    assert [a.hotkey for a in actions] == ["F1", "F4"]  # the next rules, not cooling
+    for action in actions:
+        healer.send(action, FakeInput())
     clock.now = 0.5
-    assert keys(healer, state(hp=30)) == ["F3"]
-    clock.now = 1.0
-    assert keys(healer, state(hp=30)) == ["F2", "F3"]
+    assert keys(healer, state(hp=30, mp=20)) == ["F3"]  # F3 cooled down; F4 still cooling
+
+
+def test_an_empty_health_potion_does_not_block_the_mana_potion() -> None:
+    # 2026-11-27: out of health potions, the bot pressed the empty F3 every second
+    # and never the mana potion on F4; with no mana for the spell, the character died.
+    clock = FakeClock()
+    rules = (
+        HealingRule("spell", "F1", hp_below_percent=35.0, minimum_mana=60),
+        HealingRule("potion", "F3", hp_below_percent=50.0),
+        HealingRule("potion", "F4", mp_below_percent=40.0),
+    )
+    healer = HealingDecision(HealingConfig(rules=rules), clock=clock)
+    low = state(hp=14, mp=14)
+    low.mp_points = 27
+    for tick in range(4):
+        clock.now = tick * 0.5
+        for action in healer.decide(low):
+            healer.send(action, FakeInput())
+    sent = [hotkey for hotkey in ("F3", "F4") if healer.on_cooldown(hotkey)]
+    assert sent == ["F3", "F4"]
 
 
 def test_cure_only_when_no_spell_rule_is_due() -> None:
@@ -124,12 +145,12 @@ def test_cure_only_when_no_spell_rule_is_due() -> None:
     assert keys(healer, state(icons=("burn",))) == []  # burn cure is off
 
 
-def test_cure_waits_for_a_spell_rule_on_cooldown() -> None:
+def test_cure_goes_while_the_spell_rule_cools_down() -> None:
     clock = FakeClock()
     healer = HealingDecision(HealingConfig(cures=cures_on("poison")), clock=clock)
     (heal,) = healer.decide(state(hp=80))
     healer.send(heal, FakeInput())
-    assert keys(healer, state(hp=80, icons=("poison",))) == []
+    assert keys(healer, state(hp=80, icons=("poison",))) == ["shift+F1"]
 
 
 @pytest.mark.parametrize(
