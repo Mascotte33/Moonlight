@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.cavebot.cavebot import RouteError, RouteFileLoader, Waypoint
 from moonlight.cavebot.recorder import (
     StandTracker,
     cursor_line,
@@ -18,6 +17,7 @@ from moonlight.cavebot.recorder import (
     should_stop_recording,
     stairs_waypoint,
 )
+from moonlight.cavebot.route import RouteError, RouteFileLoader, Waypoint
 from moonlight.core.state import Position
 
 

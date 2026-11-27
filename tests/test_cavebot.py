@@ -12,22 +12,17 @@ import json
 import logging
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import cv2
 import numpy as np
 import pytest
 
-import moonlight.cavebot.cavebot as cavebot_module
-from moonlight.cavebot.cavebot import (
-    Cavebot,
-    Route,
-    RouteError,
-    RouteFileLoader,
-    Waypoint,
-    walked_tiles,
-)
+import moonlight.cavebot.echo_raids as echo_raids_module
+from moonlight.cavebot.cavebot import Cavebot
 from moonlight.cavebot.pathing import CostMap, next_step
+from moonlight.cavebot.route import Route, RouteError, RouteFileLoader, Waypoint, walked_tiles
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import RateLimitedInput, RateLimiter
 from moonlight.core.state import Monster, Position, WorldState
@@ -1188,7 +1183,7 @@ def test_route_lines_only_where_the_map_shows_no_way(tmp_path: Path) -> None:
 
 
 def test_walked_tiles_are_the_lines_between_waypoints_on_one_floor() -> None:
-    from moonlight.cavebot.cavebot import walked_tiles
+    from moonlight.cavebot.route import walked_tiles
 
     wps = [walk(0, 0), walk(3, 0), walk(3, 0, z=6), walk(3, 2)]
     # The floor-6 waypoint breaks the line: (3, 0, 7) to (3, 2, 7) are not neighbours.
@@ -1883,14 +1878,12 @@ def _echo_sim(
 ) -> Sim:
     """Keys mode at 100,100,7 (slot (7, 5)); the scan sees triggers on *echo_slots*."""
     monkeypatch.setattr("moonlight.cavebot.cavebot.find_creatures", lambda _f, _g: [])
-    monkeypatch.setattr("moonlight.cavebot.cavebot.find_echo_raids", lambda _f, _g: echo_slots)
+    monkeypatch.setattr("moonlight.cavebot.echo_raids.find_echo_raids", lambda _f, _g: echo_slots)
     shots = Path(tempfile.mkdtemp()) / "echo_raids"
-    monkeypatch.setattr("moonlight.cavebot.cavebot.ECHO_RAID_SHOTS_DIR", shots)
+    monkeypatch.setattr("moonlight.cavebot.echo_raids.ECHO_RAID_SHOTS_DIR", shots)
     # The swirl turns: every scan sees it changed (the motion check has its own tests).
     monkeypatch.setattr(
-        Cavebot,
-        "_watch_echo_raid_motion",
-        lambda self, _f, raids, _px, _py: self._echo_raids_moving.update(raids),
+        "moonlight.cavebot.echo_raids.turned", lambda _before, after: dict.fromkeys(after, 1.0)
     )
     sim = Sim(
         waypoints,
@@ -1907,7 +1900,7 @@ def _echo_sim(
 def test_avoid_walks_around_an_echo_raid(monkeypatch: pytest.MonkeyPatch) -> None:
     sim = _echo_sim(monkeypatch, [walk(100, 104)], [(7, 6)])  # the trigger right below
     sim.step()
-    assert sim.bot.echo_raids == {(100, 101)}
+    assert sim.bot.echo_raids.tiles == {(100, 101)}
     assert pressed(sim)[0] in ("a", "d", "z", "c")  # around, never down onto it
 
 
@@ -1954,7 +1947,7 @@ def test_use_saves_a_screenshot_one_second_after_each_echo_raid_click(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sim, _echo = _next_to_echo_raid(monkeypatch)
-    shots = cavebot_module.ECHO_RAID_SHOTS_DIR
+    shots = echo_raids_module.ECHO_RAID_SHOTS_DIR
     assert not shots.exists()  # the right-click was just sent
     sim.step(1.1)
     (shot,) = shots.iterdir()
@@ -1966,10 +1959,10 @@ def test_use_goes_back_to_the_route_once_the_echo_raid_is_gone(
 ) -> None:
     sim, echo = _next_to_echo_raid(monkeypatch, [walk(100, 104), walk(102, 101)])
     echo.clear()  # the right-click triggered it
-    with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
+    with caplog.at_level("INFO", logger="moonlight.cavebot"):
         sim.step(1.1)
     assert "echo raid at 102,100,7 triggered" in caplog.text
-    assert sim.bot._echo_raid_goal is None and sim.route.current == 0  # the one it walked to
+    assert sim.bot.echo_raids.goal is None and sim.route.current == 0  # the one it walked to
 
 
 # doc: docs/prs/near-targeting.md#echo-wait
@@ -1991,26 +1984,24 @@ def test_use_never_clicks_an_echo_raid_again_after_three_tries(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     sim, echo = _next_to_echo_raid(monkeypatch)
-    with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
+    with caplog.at_level("INFO", logger="moonlight.cavebot"):
         for _ in range(6):
             sim.step(1.1)
     R, L = ClickSide.RIGHT, ClickSide.LEFT
     assert _sides(sim) == [R, L, R, L, R, L]
     assert "did not trigger after 3 tries, ignoring it" in caplog.text
-    assert sim.bot._echo_raid_goal is None
+    assert sim.bot.echo_raids.goal is None
     for _ in range(40):
         sim.step(1.0)  # seen all along: still ignored
-    assert len(sim.clicker.clicks) == 6 and sim.bot._echo_raid_goal is None
+    assert len(sim.clicker.clicks) == 6 and sim.bot.echo_raids.goal is None
     echo.clear()
     for _ in range(31):
         sim.step(1.0)  # off the screen for 30 s
     echo[:] = [(8, 5)]
     sim.step(1.0)  # the scan sees it
     sim.step(1.0)
-    assert sim.bot._echo_raid_goal is None  # a coffin, not an echo raid: never again
-    from moonlight.cavebot.cavebot import _load_echo_raid_duds
-
-    assert (102, 100, 7) in _load_echo_raid_duds()  # kept after a restart
+    assert sim.bot.echo_raids.goal is None  # a coffin, not an echo raid: never again
+    assert (102, 100, 7) in echo_raids_module.load_duds()  # kept after a restart
 
 
 def test_use_never_reads_echo_raids_mid_step(
@@ -2021,13 +2012,13 @@ def test_use_never_reads_echo_raids_mid_step(
     sim = _echo_sim(monkeypatch, [walk(100, 104)], echo, trigger_echo_raids=True)
     sim.step()  # the scan sees it
     sim.step()
-    assert sim.bot._echo_raid_goal == (103, 100, 7)
+    assert sim.bot.echo_raids.goal == (103, 100, 7)
     sim.pos = Position(101, 100, 7)  # the frame already scrolled on this tick
     echo[:] = [(9, 5)]
-    with caplog.at_level("INFO", logger="moonlight.cavebot.cavebot"):
+    with caplog.at_level("INFO", logger="moonlight.cavebot"):
         for _ in range(3):
             sim.step(0.1)
-    assert "triggered" not in caplog.text and sim.bot._echo_raid_goal == (103, 100, 7)
+    assert "triggered" not in caplog.text and sim.bot.echo_raids.goal == (103, 100, 7)
 
 
 @pytest.mark.parametrize("unsafe", ["monster", "low_hp"])
@@ -2088,33 +2079,55 @@ def test_find_item_row_tells_a_potion_from_the_stronger_ones_by_its_icon() -> No
     assert find_item_row(frame, trade_at, "health potion") is None
 
 
-def _motion_bot() -> Cavebot:
-    bot = Cavebot.__new__(Cavebot)
-    bot._game_region = (0, 0, 150, 110)  # 10 px tiles
-    bot._echo_raid_looks, bot._echo_raids_moving = {}, set()
-    return bot
+MOTION_REGION = (0, 0, 150, 110)  # 10 px tiles
 
 
 def test_a_still_echo_raid_lookalike_is_never_marked_turning() -> None:
-    bot = _motion_bot()
     frame = np.random.default_rng(1).integers(0, 255, (110, 150, 3), dtype=np.uint8)
+    look = echo_raids_module.sprite_looks(frame, MOTION_REGION, {(5, 5)}, 0, 0)
+    assert set(look) == {(5, 5)}
     for _ in range(5):  # a coffin: the same pixels every look
-        bot._watch_echo_raid_motion(frame, {(5, 5)}, 0, 0)
-    assert bot._echo_raids_moving == set()
+        again = echo_raids_module.sprite_looks(frame, MOTION_REGION, {(5, 5)}, 0, 0)
+        assert echo_raids_module.turned(look, again) == {}
+        look = again
 
 
 def test_a_turning_echo_raid_is_marked_once_its_sprite_changes() -> None:
-    bot = _motion_bot()
     rng = np.random.default_rng(2)
     frame = rng.integers(0, 255, (110, 150, 3), dtype=np.uint8)
-    bot._watch_echo_raid_motion(frame, {(5, 5)}, 0, 0)
-    assert bot._echo_raids_moving == set()  # one look: not yet
-    turned = frame.copy()
-    turned[40:60, 40:60] = rng.integers(0, 255, (20, 20, 3), dtype=np.uint8)  # its arms
-    bot._watch_echo_raid_motion(turned, {(5, 5)}, 0, 0)
-    assert bot._echo_raids_moving == {(5, 5)}
-    bot._watch_echo_raid_motion(turned, set(), 0, 0)
-    assert bot._echo_raids_moving == set()  # gone: forgotten
+    looks = echo_raids_module.sprite_looks(frame, MOTION_REGION, {(5, 5)}, 0, 0)
+    assert echo_raids_module.turned({}, looks) == {}  # one look: not yet
+    changed = frame.copy()
+    changed[40:60, 40:60] = rng.integers(0, 255, (20, 20, 3), dtype=np.uint8)  # its arms
+    after = echo_raids_module.sprite_looks(changed, MOTION_REGION, {(5, 5)}, 0, 0)
+    assert set(echo_raids_module.turned(looks, after)) == {(5, 5)}
+
+
+def test_only_a_turning_echo_raid_becomes_the_goal(monkeypatch: pytest.MonkeyPatch) -> None:
+    slots = [(5, 5), (9, 5)]  # world tiles 5,5 and 9,5 with the grid's corner at 0,0
+    monkeypatch.setattr("moonlight.cavebot.echo_raids.find_echo_raids", lambda _f, _g: slots)
+    raids = echo_raids_module.EchoRaids(
+        True, SimpleNamespace(busy=False), lambda: None, lambda: None, lambda _t, _p: (0, 0)
+    )  # type: ignore[arg-type]
+    rng = np.random.default_rng(3)
+    frame = rng.integers(0, 255, (110, 150, 3), dtype=np.uint8)
+    pos = Position(7, 5, 7)
+    raids.see(frame, MOTION_REGION, 0, 0, pos, 0.0)
+    frame = frame.copy()
+    frame[40:60, 80:100] = rng.integers(0, 255, (20, 20, 3), dtype=np.uint8)  # 9,5 turns
+    raids.see(frame, MOTION_REGION, 0, 0, pos, 1.0)
+
+    def step() -> echo_raids_module.EchoStep:
+        return raids.step(
+            walk(20, 20), pos, 1.0,
+            fight=lambda: False, hp=100.0, settled=False, rescan=lambda: True, index=0,
+        )  # fmt: skip
+
+    assert step().replan and raids.goal == (9, 5, 7)
+    slots[:] = [(5, 5)]
+    raids.see(frame, MOTION_REGION, 0, 0, pos, 2.0)  # 9,5 gone (someone triggered it)
+    assert step().resume and raids.goal is None
+    assert step().walk == walk(20, 20)  # the still one is never picked
 
 
 def test_step_waits_until_the_player_stands_still_on_its_tile() -> None:

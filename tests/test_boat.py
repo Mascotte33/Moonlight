@@ -13,10 +13,11 @@ import cv2
 import numpy as np
 import pytest
 
+import moonlight.cavebot.boat as boat
 import moonlight.cavebot.cavebot as cb
 from moonlight.cavebot import travel
-from moonlight.cavebot.cavebot import RouteError, RouteFileLoader, Waypoint
 from moonlight.cavebot.recorder import waypoint_json
+from moonlight.cavebot.route import RouteError, RouteFileLoader, Waypoint
 from moonlight.cavebot.route_map import legs
 from moonlight.cavebot.travel import TravelNpc
 from moonlight.core.state import Position
@@ -36,8 +37,8 @@ def _boat_sim(
     monkeypatch.setattr(cb, "find_chat", lambda frame: (len(
         [c for c in clicker.clicks if c[0] == (500, 600)]) % 2 == 0, (500, 600)))  # fmt: skip
     monkeypatch.setattr(cb, "captain_at", lambda x, y, z: travel.captain_at(x, y, z, NPCS))
-    monkeypatch.setattr(cb, "landed", lambda d, x, y, z: travel.landed(d, x, y, z, NPCS))
-    monkeypatch.setattr(cb, "BOAT_SHOTS_DIR", tmp_path / "boat")
+    monkeypatch.setattr(boat, "landed", lambda d, x, y, z: travel.landed(d, x, y, z, NPCS))
+    monkeypatch.setattr(boat, "BOAT_SHOTS_DIR", tmp_path / "boat")
     frame = np.zeros((10, 10, 3), np.uint8)
     sim = Sim([Waypoint(100, 100, 7, "boat", "venore"), walk(510, 500)], start,
               frames=lambda: frame, clicker=clicker)  # fmt: skip
@@ -53,7 +54,7 @@ def _boat_sim(
         done.set_result(found)
         return done
 
-    sim.bot._read_names = read  # type: ignore[assignment]
+    monkeypatch.setattr(boat, "read_names_later", read)
     sim.bot.start()
     return sim, seen, clicker
 
@@ -64,7 +65,7 @@ def test_boat_walks_next_to_the_captain_talks_and_lands(
     sim, seen, clicker = _boat_sim(monkeypatch, tmp_path, Position(95, 100, 7))
     seen["captain"] = (98, 101, 7)  # wandered off his home sqm
     run_until(sim, 1.0)
-    assert sim.bot._boat is not None and sim.bot._boat.captain_tile == (98, 101, 7)
+    assert sim.bot.boat is not None and sim.bot.boat.captain_tile == (98, 101, 7)
     assert clicker.clicks  # walking next to him
     sim.pos = Position(97, 100, 7)
     run_until(sim, 12)
@@ -95,8 +96,8 @@ def test_boat_follows_the_captain_when_he_wanders(
     run_until(sim, 1.0)
     seen["captain"] = (101, 103, 7)
     run_until(sim, 2.0)
-    assert sim.bot._boat is not None and sim.bot._boat.captain_tile == (101, 103, 7)
-    assert sim.bot._talk is None  # not next to him yet
+    assert sim.bot.boat is not None and sim.bot.boat.captain_tile == (101, 103, 7)
+    assert not [line for line in sim.fake.sent_lines if line == "K h"]  # not next to him yet
 
 
 def test_boat_alarms_when_the_captain_is_not_on_screen(
@@ -130,8 +131,8 @@ def test_boat_alarms_when_the_trip_does_not_land(
     sim, seen, _ = _boat_sim(monkeypatch, tmp_path, Position(99, 100, 7))
     seen["captain"] = (100, 100, 7)  # next to the player already
     run_until(sim, 12)
-    assert sim.bot.is_active() and sim.bot._boat is not None
-    assert sim.bot._boat.sail_until is not None  # talked
+    assert sim.bot.is_active() and sim.bot.boat is not None
+    assert sim.bot.boat.sailing  # talked
     run_until(sim, 30)
     assert sim.bot.alarm == "boat" and not sim.bot.is_active()
 
@@ -153,7 +154,7 @@ def test_boat_far_from_the_harbour_walks_there_first(
     sim, _, clicker = _boat_sim(monkeypatch, tmp_path, Position(60, 100, 7))
     run_until(sim, 30)
     assert sim.bot.alarm is None and clicker.clicks  # out of view: no search, no timeout
-    assert sim.bot._boat is not None and sim.bot._boat.since is None
+    assert sim.bot.boat is not None and not sim.bot.boat.searching
 
 
 # -- route file, legs, travel data -------------------------------------------

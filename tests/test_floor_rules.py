@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.cavebot.cavebot import Route, Waypoint
 from moonlight.cavebot.floor_changes import load_confirmed, record_confirmed
+from moonlight.cavebot.route import Route, Waypoint
 from moonlight.cavebot.route_plan import FloorMap, known_floor_kinds, route_warnings
 from moonlight.core.state import Position
 from tests.script_modules import attach
