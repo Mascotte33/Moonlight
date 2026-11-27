@@ -34,6 +34,7 @@ from moonlight.core.state import Monster, Position, WorldState
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput
 from moonlight.scripts.scripts import ScriptRunner
+from tests.script_modules import attach
 
 MINIMAP = (10, 10, 120, 120)
 GAME = (200, 0, 480, 352)  # 32 px tiles; player tile center = (440, 176)
@@ -470,7 +471,7 @@ def test_script_waypoint_starts_the_script_then_moves_on(tmp_path: Path) -> None
     sim.bot.start()
     sim.step()
     assert runner.running == "s"
-    runner.cavebot = sim.bot
+    attach(runner, cavebot=sim.bot)
     while runner.running:
         runner.step(sim.state, sim.fake)
     assert sim.route.current == 2  # bot.goto jumped the route

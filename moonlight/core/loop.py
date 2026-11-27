@@ -419,6 +419,8 @@ class GameLoop:
             value.drop_items.hand = self.hand
         if value.scripts is not None:
             value.scripts.hand = self.hand
+            value.scripts.modules = lambda: self.modules
+            value.scripts.all_modules = lambda: self.all_modules
 
     def _cavebot_active(self, _snap: WorldState) -> bool:
         return self.modules.cavebot is not None and self.modules.cavebot.is_active()
@@ -1187,10 +1189,6 @@ class GameLoop:
         scripts = self.modules.scripts
         assert scripts is not None
         self._task = f"Script {scripts.running}"
-        scripts.cavebot = self.modules.cavebot  # for bot.goto
-        scripts.drop_items = self.modules.drop_items  # for bot.drop_items
-        scripts.extras = self.modules.extras  # for bot.ring
-        scripts.targetings = (self.all_modules.targeting, self.modules.stuck_targeting)
         scripts.act(snap, send, self.input)
 
     def _drop(self, snap: WorldState, send: Send) -> None:

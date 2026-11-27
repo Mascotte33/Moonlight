@@ -14,6 +14,7 @@ from moonlight.cavebot.cavebot import Route, Waypoint
 from moonlight.cavebot.floor_changes import load_confirmed, record_confirmed
 from moonlight.cavebot.route_plan import FloorMap, known_floor_kinds, route_warnings
 from moonlight.core.state import Position
+from tests.script_modules import attach
 from tests.test_cavebot import Sim, walk
 from tests.test_route_plan import _map
 
@@ -164,7 +165,7 @@ def test_bot_has_label_reads_the_running_route() -> None:
     runner = ScriptRunner()
     assert not Bot(runner).has_label("FromThais")  # no cavebot
     sim = Sim([Waypoint(0, 0, 0, "label", "FromThais"), walk(100, 95, 7)], Position(100, 100, 7))
-    runner.cavebot = sim.bot
+    attach(runner, cavebot=sim.bot)
     assert Bot(runner).has_label("FromThais") and not Bot(runner).has_label("FromCarlin")
 
 
