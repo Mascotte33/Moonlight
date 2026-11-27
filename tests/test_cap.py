@@ -119,3 +119,11 @@ def test_three_joined_digits_read_as_one_listed_shape() -> None:
 def test_a_zero_seen_on_2026_11_26_reads() -> None:
     zero = ".####./.#####/##..##/##..##/##..##/##..##/.#####/.####."
     assert read_number(draw(zero)) == 0
+
+
+def test_sixes_seen_on_2026_11_27_read() -> None:
+    for six in (
+        ".####./.####./##..../#####./##.###/##..##/#####./.####.",
+        "..###./.####./##..../#####./##.###/##..##/#####./.####.",
+    ):
+        assert read_number(draw(six)) == 6
