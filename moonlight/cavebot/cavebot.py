@@ -735,6 +735,23 @@ class Cavebot:
             self._input.release_combo(self._held_walk_key)
             self._held_walk_key = None
 
+    # doc: docs/prs/idle-log.md#idle-log
+    def describe(self) -> str:
+        """The idle log's words: running or not, the waypoint it heads to, where it is."""
+        if not self._active:
+            return "cavebot not running"
+        wps = self.route.waypoints
+        if not wps:
+            return "cavebot running, empty route"
+        i = self.route.current
+        wp = wps[i]
+        target = f"{wp.action} {wp.label}".strip()
+        if has_tile(wp):
+            target += f" at {wp.x},{wp.y},{wp.z}"
+        pos = self._read_position()
+        here = "position unknown" if pos is None else f"standing at {pos.x},{pos.y},{pos.z}"
+        return f"cavebot on waypoint {i} ({target}), {here}"
+
     def is_active(self) -> bool:
         """True while the route is running."""
         return self._active

@@ -2187,3 +2187,12 @@ def test_walk_keys_tap_the_last_step_onto_a_rope_spot() -> None:
     sim.pos = Position(100, 101, 7)
     sim.step()
     assert sim.fake.sent_lines[-2:] == ["U s", "K s"]  # tapped onto the spot
+
+
+def test_describe_names_the_waypoint_and_where_the_bot_stands() -> None:
+    sim = Sim([walk(105, 98)], Position(100, 100, 7))
+    assert sim.bot.describe() == "cavebot not running"
+    sim.bot.start()
+    assert sim.bot.describe() == "cavebot on waypoint 0 (walk at 105,98,7), standing at 100,100,7"
+    sim.pos = None
+    assert sim.bot.describe().endswith("position unknown")

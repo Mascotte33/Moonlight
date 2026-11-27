@@ -6,6 +6,7 @@ Usage:
     python tools/map.py show MountSternumUndeads --floor 8
     python tools/map.py area 32369,32241,7 --size 80        # any area, spot marked
     python tools/map.py check MountSternumUndeads           # legs with no walkable path
+    python tools/map.py check --all                         # every route in data/waypoints
     python tools/map.py stairs 32369,32241,7 --size 20      # floor changes near a sqm
     python tools/map.py find depot --near 32369,32241,7     # client markers + route town spots
     python tools/map.py monsters Troll                      # where a monster spawns
@@ -14,7 +15,9 @@ Usage:
 The PNG goes to ``logs/map_<name>.png`` (``--out`` to change), 1 sqm =
 ``--scale`` px. Dots are waypoints (numbers as in the GUI, 1-based), lines
 join them in order, red lines are legs the walk map finds no path for, blue
-triangles point to the next waypoint's floor. ``check`` exits 1 on a bad leg.
+triangles point to the next waypoint's floor. ``check`` exits 1 on a bad leg
+or a warning: a walk on a wall, a floor change the map lacks, ring and
+targeting not switched on only in the hunt, a refill missing a part.
 
 # doc: docs/prs/map.md#map-tool
 """
@@ -125,6 +128,21 @@ def _monsters(name: str) -> None:
     print(f"{len(spots)} places with {name}")
 
 
+def _check(name: str) -> bool:
+    """Print the route's bad legs and warnings; True when it has none."""
+    route = _route(name)
+    bad = bad_legs(route.waypoints, _leg_path())
+    print(f"== {name}")
+    for i, j in bad:
+        a, b = route.waypoints[i], route.waypoints[j]
+        print(f"leg {i + 1} -> {j + 1}: ({a.x}, {a.y}, {a.z}) -> ({b.x}, {b.y}, {b.z}) no path")
+    warnings = route_warnings(route, CostMap(MAP_DIR / "cost"), load_confirmed())
+    for warning in warnings:
+        print(warning)
+    print(f"{len(bad)} bad legs, {len(warnings)} warnings, one round {loop_sqm(route)} sqm")
+    return not bad and not warnings
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -140,11 +158,17 @@ def main() -> None:
     parser.add_argument("--size", type=int, default=60, help="area: sqm across; stairs: radius")
     parser.add_argument("--scale", type=int, default=8, help="px per sqm")
     parser.add_argument("--out", help="the PNG path")
+    parser.add_argument("--all", action="store_true", help="check: every route")
     args = parser.parse_args()
     if args.command == "refresh":
         print(f"{SPAWNS_FILE}: {download_spawns(SPAWNS_FILE)} monsters")
         print(f"{PICTURES_DIR}: {download_pictures(SPAWNS_FILE, PICTURES_DIR)} new pictures")
         return
+    if args.command == "check" and args.all:
+        names = sorted(p.stem for p in load_real_config().routes_dir.glob("*.json"))
+        failed = [name for name in names if not _check(name)]
+        print(f"{len(names) - len(failed)} of {len(names)} routes clean; check again: {failed}")
+        sys.exit(1 if failed else 0)
     if args.target is None:
         parser.error(f"{args.command} needs a target")
     if args.command == "find":
@@ -162,19 +186,12 @@ def main() -> None:
         name = f"{x}_{y}_{z}"
         _save(name, x - half, y - half, z, args.size, args.size, args, [], [], me=(x, y, z))
         return
+    if args.command == "check":
+        sys.exit(0 if _check(args.target) else 1)
     route = _route(args.target)
     waypoints = route.waypoints
     path = _leg_path()
     bad = bad_legs(waypoints, path)
-    if args.command == "check":
-        for i, j in bad:
-            a, b = waypoints[i], waypoints[j]
-            print(f"leg {i + 1} -> {j + 1}: ({a.x}, {a.y}, {a.z}) -> ({b.x}, {b.y}, {b.z}) no path")
-        warnings = route_warnings(route, CostMap(MAP_DIR / "cost"), load_confirmed())
-        for warning in warnings:
-            print(warning)
-        print(f"{len(bad)} bad legs, {len(warnings)} warnings, one round {loop_sqm(route)} sqm")
-        sys.exit(1 if bad or warnings else 0)
     spots = [wp for wp in waypoints if has_tile(wp)]
     z = args.floor if args.floor is not None else spots[0].z
     on_floor = [wp for wp in spots if wp.z == z] or sys.exit(f"no waypoint on floor {z}")

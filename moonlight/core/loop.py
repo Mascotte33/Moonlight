@@ -144,6 +144,9 @@ SLOW_TICK_SECONDS = 0.3
 #: How often the tick timing line goes to the log.
 TIMING_LOG_SECONDS = 10.0
 
+#: With no input sent for this long the log says why, again every this long.
+IDLE_LOG_SECONDS = 30.0
+
 # Seconds a sent select click waits for the row's red outline before a
 # retry (clicking the attacked row again would stop the attack).
 _SELECT_OUTLINE_WAIT = 1.0
@@ -383,6 +386,8 @@ class GameLoop:
         self._perceive_time = 0.0
         self._state_transitions: dict[BotState, int] = {}
         self._start_time: float | None = None
+        # (when the idle check last saw an input go out, actions sent then)
+        self._idle_mark: tuple[float, int] | None = None
 
         self._reported_alarm: str | None = None
         self._reported_module_alarm: str | None = None
@@ -1262,6 +1267,41 @@ class GameLoop:
             self._timing_window = (now, 0, 0.0, 0.0, 0.0)
         else:
             self._timing_window = (start, ticks, total, perceive, longest)
+        self._log_idle(now)
+
+    # doc: docs/prs/idle-log.md#idle-log
+    def _log_idle(self, now: float) -> None:
+        """Every ``IDLE_LOG_SECONDS`` with no input sent, log why the bot stands
+        (a start sat idle with no log line at all, 2026-11-27)."""
+        if self._idle_mark is None or self._actions_sent != self._idle_mark[1]:
+            self._idle_mark = (now, self._actions_sent)
+            return
+        since, sent = self._idle_mark
+        if now - since < IDLE_LOG_SECONDS:
+            return
+        self._idle_mark = (now, sent)
+        try:
+            reason = self.idle_reason()
+        except Exception as exc:  # noqa: BLE001 - a log line must never stop the bot
+            reason = f"unknown ({exc!r})"
+        logger.info("idle %.0f s, no input sent: %s", now - since, reason)
+
+    def idle_reason(self) -> str:
+        """What holds the bot: Stop, Pause, the state, the cavebot and its waypoint."""
+        parts = [f"state {self._state.value}", f"task {self._task_text()!r}"]
+        if self.stopped:
+            parts.append("Stop pressed")
+        if self.paused:
+            parts.append("Pause on (cavebot and targeting off)")
+        cavebot = self.all_modules.cavebot
+        if cavebot is None:
+            parts.append("no cavebot")
+        else:
+            parts.append(cavebot.describe())
+        scripts = self.all_modules.scripts
+        if scripts is not None and scripts.targeting_turned_off:
+            parts.append("targeting off by script")
+        return ", ".join(parts)
 
     def _shutdown(self) -> None:
         if self._f12_monitor is not None:

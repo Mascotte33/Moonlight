@@ -22,7 +22,7 @@ import pytest
 
 from moonlight.alarms.alarms import AlarmDecision
 from moonlight.cavebot.cavebot import Cavebot
-from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
+from moonlight.core.loop import IDLE_LOG_SECONDS, BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import VK_F12, F12Monitor, RateLimiter
 from moonlight.core.state import Monster, WorldState
 from moonlight.extras.extras import Extras, ExtrasConfig
@@ -1395,3 +1395,29 @@ class TestRotation:
             gl.tick()
             clock.advance(0.2)
         assert gl.current_state is not BotState.PAUSED and "K tab" in inp.sent_lines
+
+
+class TestIdleLog:
+    """With no input sent for IDLE_LOG_SECONDS the log says why (a start sat idle, 2026-11-27)."""
+
+    def test_a_paused_bot_logs_why_it_stands(self, caplog: pytest.LogCaptureFixture) -> None:
+        gl, clock = make_loop(make_state(), FakeInput(), modules=DecisionModules())
+        gl.paused = True
+        with caplog.at_level(logging.INFO, logger="moonlight.core.loop"):
+            gl.tick()
+            clock.advance(IDLE_LOG_SECONDS - 1)
+            gl.tick()
+            assert "idle" not in caplog.text
+            clock.advance(2)
+            gl.tick()
+        assert "no input sent: state idle" in caplog.text
+        assert "Pause on" in caplog.text
+        assert "no cavebot" in caplog.text
+
+    def test_a_busy_bot_logs_nothing(self, caplog: pytest.LogCaptureFixture) -> None:
+        gl, clock = make_loop(make_state(hp=20.0), FakeInput())
+        with caplog.at_level(logging.INFO, logger="moonlight.core.loop"):
+            for _ in range(40):
+                clock.advance(1)
+                gl.tick()
+        assert "no input sent" not in caplog.text

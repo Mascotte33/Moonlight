@@ -139,3 +139,48 @@ def test_route_warnings(tmp_path: Path) -> None:
     assert any("waypoint 1: ladder" in w for w in warnings)
     assert any("no check" in w for w in warnings)
     assert any("empty buy list" in w for w in warnings)
+
+
+def test_a_walk_on_a_wall_is_named(tmp_path: Path) -> None:
+    _map(tmp_path, {})
+    wall = cv2.imread(str(tmp_path / "cost" / "0_0_7.png"))
+    assert wall is not None
+    wall[20, 20] = YELLOW  # yellow on the cost map: nobody walks there
+    cv2.imwrite(str(tmp_path / "cost" / "0_0_7.png"), wall)
+    route = Route("hunt", waypoints=[Waypoint(19, 20, 7, "walk"), Waypoint(20, 20, 7, "stand")])
+    warnings = route_warnings(route, CostMap(tmp_path / "cost"))
+    assert warnings == ["waypoint 2: stand on (20, 20, 7), a wall or water on the map"]
+
+
+def _scripts(*labels: str, town: bool = True) -> Route:
+    """A route: the scripts *labels* (``|`` marks the first sqm), then a refill."""
+    waypoints = []
+    for label in labels:
+        if label == "|":
+            waypoints.append(Waypoint(5, 5, 7, "walk"))
+        else:
+            waypoints.append(Waypoint(0, 0, 0, "script", label))
+    if town:
+        waypoints += [Waypoint(6, 6, 7, "finddepo"), Waypoint(0, 0, 0, "check", "x"),
+                      Waypoint(0, 0, 0, "label", "x")]  # fmt: skip
+    return Route("hunt", waypoints=waypoints, buy=[("mana potion", 50)])
+
+
+def test_ring_and_targeting_switches_follow_the_hunt_rule(tmp_path: Path) -> None:
+    cost = _map(tmp_path, {})
+    good = _scripts(
+        "targeting_off", "ring_off", "|", "ring_on", "targeting_on", "targeting_off", "ring_off"
+    )
+    assert route_warnings(good, cost) == []
+    assert route_warnings(_scripts("|"), cost) == []  # no switches at all: nothing to say
+    warnings = route_warnings(_scripts("targeting_off", "|", "targeting_on"), cost)
+    assert warnings == [
+        "targeting_on but no ring_on: both go on together, in the hunt",
+        "targeting_on but no targeting_off on the way to town",
+    ]
+    late_off = _scripts("|", "ring_off", "targeting_off", "ring_on", "targeting_on")
+    late = route_warnings(late_off, cost)
+    assert "no ring_off before the first sqm: a start in town keeps it on" in late
+    # a hunt that never goes to town needs no off on the way out
+    no_town = _scripts("targeting_off", "ring_off", "|", "ring_on", "targeting_on", town=False)
+    assert route_warnings(no_town, cost) == []
