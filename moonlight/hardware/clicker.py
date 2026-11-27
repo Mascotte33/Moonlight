@@ -70,7 +70,7 @@ calibrated ``mouse_scale`` (pixels per count; T33 calibrates it).
 
 **Absolute** (a ``screen`` rect passed to the controller): the firmware's
 absolute HID pointer jumps the cursor straight to the target with one
-``A`` command, then the next step clicks. No cursor reads, no gain, no
+``A`` command and clicks after ``settle_ms`` in the same step. No cursor reads, no gain, no
 homing, and nothing OS-specific. After a click inside one of
 ``park_after_clicks_in`` (the minimap, the battle list) the cursor jumps to
 ``park_point``, so it never hides what the next tick reads.
@@ -383,7 +383,7 @@ class ClickController:
     # -- helpers ------------------------------------------------------------
 
     def _step_absolute(self) -> bool | None:
-        """Jump to the head target, click on the next step, then park."""
+        """Jump to the head target, click after ``settle_ms``, then park."""
         if not self._jobs:
             park = self._park
             if park is not None and self._sent(lambda: self._input.mouse_to(*park)):
@@ -392,10 +392,13 @@ class ClickController:
         job = self._jobs[0]
         if not job.jumped:
             point = self.to_wire(job.target)
-            if self._sent(lambda: self._input.mouse_to(*point)):
-                job.jumped = True
-                self._last_move = self._clock()
-            return None
+            if not self._sent(lambda: self._input.mouse_to(*point)):
+                return None
+            job.jumped = True
+            self._last_move = self._clock()
+            # doc: docs/prs/near-targeting.md#click-latency
+            # Click in the same step: waiting a tick (and its screen read) made
+            # the click ~230 ms older than the frame it aimed from (2026-11-27).
         wait = self._config.settle_ms / 1000.0 - (self._clock() - self._last_move)
         if wait > 0:
             self._sleep(wait)

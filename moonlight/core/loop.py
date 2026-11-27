@@ -339,6 +339,8 @@ class GameLoop:
         # The select click: (battle-list row, when to click again if no outline
         # shows; None while in flight).
         self._select_click: tuple[int, float | None] | None = None
+        self._tick_started = 0.0
+        self._click_frame_at = 0.0  # tick start of the frame a pending click aims from
         #: "Attack Next Target" presses since the last pick showed its outline.
         self._next_target_presses = 0
         # The world tile an on-screen select click right-clicked (row -1 above).
@@ -511,6 +513,7 @@ class GameLoop:
         calls this in a 20 Hz loop.
         """
         t0 = self._clock()
+        self._tick_started = t0  # the frame read this tick is about this old
         self._tick_count += 1
         self._perceive_time = 0.0  # a tick that skips reading must not count the last read
 
@@ -1031,6 +1034,7 @@ class GameLoop:
             clicker.request(point, side=side)
             self._select_click = (row, None)
             self._screen_click_tile = tile
+            self._click_frame_at = self._tick_started
             if self.modules.attack_hotkeys is not None:
                 self.modules.attack_hotkeys.new_target()
             return self._step_click(clicker, now)
@@ -1173,6 +1177,12 @@ class GameLoop:
             # doc: docs/prs/human-timing.md#select-retry
             wait = _SCREEN_OUTLINE_WAIT if self._select_click[0] == -1 else _SELECT_OUTLINE_WAIT
             retry_at = now + random_delay(wait)
+            if self._select_click[0] == -1:
+                logger.info(
+                    "targeting: clicked at %s,%s,%s, %.0f ms after its frame",
+                    *(self._screen_click_tile or (0, 0, 0)),
+                    (self._clock() - self._click_frame_at) * 1000.0,
+                )
             self._select_click = (self._select_click[0], retry_at)
         return result
 

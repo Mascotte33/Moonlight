@@ -47,3 +47,21 @@ def test_other_commands_go_straight_through() -> None:
     pointer = AcceleratedPointer()
     chase(pointer).press_combo("F1")
     assert pointer.sent_lines[-1] == "K F1"
+
+
+def test_each_step_waits_only_until_the_cursor_moves() -> None:
+    # A step shows in a few ms; the old fixed 30 ms per step made each aim slow.
+    pointer = AcceleratedPointer()
+    shown, waited = [pointer.at], [0.0]
+
+    def cursor() -> tuple[int, int]:
+        return shown[0]
+
+    def sleep(seconds: float) -> None:
+        waited[0] += seconds
+        shown[0] = pointer.at  # X shows the step after the first poll
+
+    backend = CursorChaseInput(pointer, cursor, (0, 0, 1680, 1050), sleep=sleep)
+    backend.mouse_to(ABS_MAX // 4, ABS_MAX // 4)
+    assert pointer.steps >= 2
+    assert waited[0] <= 0.004 * pointer.steps + 0.03  # big steps 4 ms, not 30 ms each
