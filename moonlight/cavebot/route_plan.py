@@ -471,9 +471,17 @@ def route_warnings(
                     "in the game yet: watch it on the first run"
                 )
     for i, wp in enumerate(route.waypoints):
+        where = f"({wp.x}, {wp.y}, {wp.z})"
         if wp.action in ("stairs", "ladder", "rope") and not cost.floor_change(wp.x, wp.y, wp.z):
-            where = f"({wp.x}, {wp.y}, {wp.z})"
             out.append(f"waypoint {i + 1}: {wp.action} on {where}, not a floor change on the map")
+        if (
+            wp.action in ("walk", "node", "stand")
+            and cost.known_wall(wp.x, wp.y, wp.z)
+            and not cost.floor_change(wp.x, wp.y, wp.z)
+        ):
+            # 2026-11-27: a stand on a blocked sqm walked into it for minutes
+            out.append(f"waypoint {i + 1}: {wp.action} on {where}, a wall or water on the map")
+    out += _switch_warnings(route)
     actions = {wp.action for wp in route.waypoints}
     town = actions & set(TOWN_ACTIONS)
     if town and "check" not in actions:
@@ -485,6 +493,35 @@ def route_warnings(
     if "deposit" in actions and "finddepo" not in actions:
         out.append("a deposit with no finddepo: no depot is opened")
     return out
+
+
+# doc: docs/prs/route-tools.md#ring-targeting-check
+def _switch_warnings(route: Route) -> list[str]:
+    """Ring and targeting are on only in the hunt: both off before the first
+    sqm, both on together, and off again on the way to town."""
+    scripts = [wp.label for wp in route.waypoints if wp.action == "script"]
+    on = {name for name in ("targeting", "ring") if f"{name}_on" in scripts}
+    if not on:
+        return []
+    out = []
+    if len(on) == 1:
+        (name,) = on
+        other = "ring" if name == "targeting" else "targeting"
+        out.append(f"{name}_on but no {other}_on: both go on together, in the hunt")
+    first = next((i for i, wp in enumerate(route.waypoints) if has_tile(wp)), 0)
+    early = {wp.label for wp in route.waypoints[:first] if wp.action == "script"}
+    later = {wp.label for wp in route.waypoints[first:] if wp.action == "script"}
+    for name in sorted(on):
+        if f"{name}_off" not in early:
+            out.append(f"no {name}_off before the first sqm: a start in town keeps it on")
+        if _has_refill(route) and f"{name}_off" not in later:
+            out.append(f"{name}_on but no {name}_off on the way to town")
+    return out
+
+
+def _has_refill(route: Route) -> bool:
+    """True when the route goes to town (a check or a town action)."""
+    return any(wp.action == "check" or wp.action in TOWN_ACTIONS for wp in route.waypoints)
 
 
 def loop_sqm(route: Route) -> int:
