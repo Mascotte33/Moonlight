@@ -2146,3 +2146,23 @@ def test_step_that_left_the_floor_unchanged_is_tried_again_then_stops() -> None:
         if attempt < 3:
             assert sim.bot.alarm is None and sim.route.current == 0
     assert sim.bot.alarm == "wrong_floor"
+
+
+def test_a_replan_keeps_the_step_under_way_among_ways_as_short() -> None:
+    """2026-11-26: creatures moving re-planned the way to a rope spot, which
+    went left, right and left again among ways as short."""
+    sim = Sim([walk(103, 100)], Position(100, 100, 7), walk_keys=True)
+    wall = {(101, 100), (102, 100)}  # around it above or below: as short
+
+    def open_(x: int, y: int, z: int) -> bool:
+        return (x, y) not in wall
+
+    start, goal = (100, 100, 7), (103, 100, 7)
+    shortest = next_step(start, goal, open_)
+    assert shortest is not None
+    for side in (99, 101):
+        sim.bot._target = (100, side, 7)
+        kept = sim.bot._keep_step(start, goal, shortest[1], open_)
+        assert kept is not None and kept[0] == (0, side - 100)
+    sim.bot._target = (101, 101, 7)  # diagonal: a longer way, re-planned
+    assert sim.bot._keep_step(start, goal, shortest[1], open_) is None

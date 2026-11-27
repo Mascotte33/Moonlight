@@ -167,7 +167,7 @@ import cv2
 import numpy as np
 
 from moonlight.cavebot.floor_changes import record_confirmed
-from moonlight.cavebot.pathing import CostMap, next_step
+from moonlight.cavebot.pathing import WALK_STEPS, CostMap, next_step
 from moonlight.cavebot.town import (
     STASH,
     TRADE,
@@ -2295,6 +2295,7 @@ class Cavebot:
             # can cut over a hole the recording walked around (2026-11-01).
             self._trust_route = False
             self._trust_route = next_step(start, goal, self._map_walkable) is None
+        rule = walkable
         path = next_step(start, goal, walkable)
         detour_too_long = False
         if path is not None and self._creatures:
@@ -2327,9 +2328,11 @@ class Cavebot:
             return
         self.stuck_on_creatures = False
         if stuck and now >= self._stuck_allowed_until:
+            rule = free
             path = next_step(start, goal, free)  # no bump yet: walk into it, then react
         elif stuck:
             # Nothing to fight: the scan can be a tile off, so try every tile not bumped yet.
+            rule = not_bumped
             path = next_step(start, goal, not_bumped)
             if path is None and self._echo_raid_goal is not None:
                 logger.info(
@@ -2350,8 +2353,40 @@ class Cavebot:
         else:
             step = path[0]
             self.planned_path = path[2]
+            kept = self._keep_step(start, goal, path[1], rule)
+            if kept is not None:
+                step, self.planned_path = kept
         self._target = (pos.x + step[0], pos.y + step[1], pos.z)
         self._press_walk_key(step)
+
+    def _keep_step(
+        self,
+        start: tuple[int, int, int],
+        goal: tuple[int, int, int],
+        cost: int,
+        rule: Callable[[int, int, int], bool],
+    ) -> tuple[tuple[int, int], list[tuple[int, int]]] | None:
+        """The step under way, while it is still on a cheapest way to *goal*.
+
+        Creatures moving re-plan the way, and among ways as short the planner
+        could pick another each time: the player went left, right and left
+        again before a rope spot (2026-11-26).
+        """
+        target = self._target
+        if target is None or target[2] != start[2]:
+            return None
+        step = (target[0] - start[0], target[1] - start[1])
+        step_cost = dict(WALK_STEPS).get(step)
+        if step_cost is None:
+            return None
+        if target == goal:
+            return (step, [goal[:2]]) if step_cost <= cost else None
+        if not rule(*target):
+            return None
+        rest = next_step(target, goal, rule)
+        if rest is None or step_cost + rest[1] > cost:
+            return None
+        return step, [target[:2], *rest[2]]
 
     def _creatures_moved(self, pos: Position, now: float) -> bool:
         """The creatures on screen moved since the last scan: the way is planned again.
