@@ -26,6 +26,7 @@ __all__ = [
 _lock = threading.Lock()  # one Display, used from the loop, F12 and GUI threads
 _display: Any = None
 _cached: dict[str, int] = {}  # title -> window id, checked before a full scan
+_stamper: Any = None  # hidden window whose property changes give the server time
 
 
 def _d() -> Any:
@@ -162,6 +163,24 @@ def window_titles() -> list[str]:
         return sorted(t for t in titles if t)
 
 
+def _server_time(d: Any) -> int:
+    """The X server's time now, read from a property change on a hidden window."""
+    global _stamper
+    from Xlib import X
+
+    if _stamper is None:
+        _stamper = d.screen().root.create_window(
+            -10, -10, 1, 1, 0, X.CopyFromParent, event_mask=X.PropertyChangeMask
+        )
+    _stamper.change_property(d.intern_atom("_MOONLIGHT_TIME"), d.intern_atom("STRING"), 8, b"t")
+    d.flush()
+    for _ in range(100):
+        e = d.next_event()
+        if e.type == X.PropertyNotify:
+            return int(e.time)
+    return int(X.CurrentTime)
+
+
 def activate(wid: int) -> bool:
     """Ask the window manager to focus window *wid* (``_NET_ACTIVE_WINDOW``)."""
     from Xlib import X
@@ -176,7 +195,9 @@ def activate(wid: int) -> bool:
             message = event.ClientMessage(
                 window=d.create_resource_object("window", wid),
                 client_type=d.intern_atom("_NET_ACTIVE_WINDOW"),
-                data=(32, [2, X.CurrentTime, 0, 0, 0]),  # 2: asked by a user tool
+                # 2: asked by a user tool. A real time, not CurrentTime: Cinnamon's
+                # focus-stealing guard ignored CurrentTime requests (2026-11-27).
+                data=(32, [2, _server_time(d), 0, 0, 0]),
             )
             root.send_event(
                 message, event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask
