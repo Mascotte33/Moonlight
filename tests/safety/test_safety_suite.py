@@ -113,7 +113,7 @@ def test_2_fail_closed_when_window_unfocused() -> None:
     for _ in range(5):
         gl.tick()
     assert inp.sent_lines == []  # wanted to heal, but sent nothing
-    assert gl.get_stats()["actions_dropped_unfocused"] == 10  # spell and potion per tick
+    assert gl.get_stats()["actions_dropped_unfocused"] == 15  # two spells, a potion per tick
 
 
 def test_3_fail_closed_when_screen_not_ok() -> None:
@@ -188,17 +188,17 @@ def test_6_release_all_on_normal_stop() -> None:
     assert inp2.sent_lines == ["X"]
 
 
-def test_7_low_hp_sends_the_strong_spell_and_a_potion() -> None:
+def test_7_low_hp_sends_every_due_spell_and_potion() -> None:
     healing = HealingDecision()
     low = healing.decide(make_state(hp_percent=25.0))
-    assert [(a.slot, a.hotkey) for a in low] == [("spell", "F2"), ("potion", "F3")]
+    assert [(a.slot, a.hotkey) for a in low] == [("spell", "F2"), ("spell", "F1"), ("potion", "F3")]
     mid = healing.decide(make_state(hp_percent=60.0))
     assert [a.hotkey for a in mid] == ["F1"]
-    # through the loop: both keys go out in one tick
+    # through the loop: every key goes out in one tick
     inp = FakeInput()
     gl, _ = make_loop(make_state(hp_percent=25.0), inp, healing=healing)
     gl.tick()
-    assert inp.sent_lines == ["K F2", "K F3"]
+    assert inp.sent_lines == ["K F2", "K F1", "K F3"]
 
 
 def test_9_rate_limit_never_exceeds_20hz() -> None:

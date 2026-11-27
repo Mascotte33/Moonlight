@@ -54,10 +54,10 @@ def test_defaults() -> None:
     assert (cfg.spell_cooldown_ms, cfg.potion_cooldown_ms) == (1000, 1000)
 
 
-def test_first_due_rule_of_a_kind_wins() -> None:
+def test_every_due_rule_is_pressed() -> None:
     healer = HealingDecision()
     assert keys(healer, state(hp=80)) == ["F1"]
-    assert keys(healer, state(hp=45)) == ["F2"]  # F2 is listed first
+    assert keys(healer, state(hp=45)) == ["F2", "F1"]  # both due: both, in list order
     assert keys(healer, state(hp=100)) == []
 
 
@@ -84,11 +84,13 @@ def test_unknown_readings() -> None:
 def test_spell_and_potion_in_one_tick() -> None:
     healer = HealingDecision(clock=FakeClock())
     actions = healer.decide(state(hp=30, mp=20))
-    assert [(a.slot, a.hotkey) for a in actions] == [("spell", "F2"), ("potion", "F3")]
+    assert [(a.slot, a.hotkey) for a in actions] == [
+        ("spell", "F2"), ("spell", "F1"), ("potion", "F3"), ("potion", "F4"),
+    ]  # fmt: skip
     backend = FakeInput()
     for action in actions:
         healer.send(action, backend)
-    assert backend.sent_lines == ["K F2", "K F3"]
+    assert backend.sent_lines == ["K F2", "K F1", "K F3", "K F4"]
 
 
 # doc: docs/prs/human-timing.md#heal-reaction
@@ -99,21 +101,19 @@ def test_heal_waits_a_reaction_unless_hp_is_critical(monkeypatch: pytest.MonkeyP
     assert keys(healer, state(hp=80)) == []  # F1 just became due
     clock.now = 0.1
     assert keys(healer, state(hp=80)) == ["F1"]
-    assert keys(HealingDecision(clock=clock), state(hp=40)) == ["F2", "F3"]  # 40%: at once
+    assert keys(HealingDecision(clock=clock), state(hp=40)) == ["F2", "F1", "F3"]  # 40%: at once
 
 
 def test_each_rule_has_its_own_cooldown() -> None:
     clock = FakeClock()
     healer = HealingDecision(HealingConfig(potion_cooldown_ms=500), clock=clock)
+    clock.now = 0.0
     for action in healer.decide(state(hp=30, mp=20)):
-        healer.send(action, FakeInput())  # F2 and F3
+        healer.send(action, FakeInput())  # F2, F1, F3, F4
     clock.now = 0.4
-    actions = healer.decide(state(hp=30, mp=20))
-    assert [a.hotkey for a in actions] == ["F1", "F4"]  # the next rules, not cooling
-    for action in actions:
-        healer.send(action, FakeInput())
+    assert keys(healer, state(hp=30, mp=20)) == []  # all cooling
     clock.now = 0.5
-    assert keys(healer, state(hp=30, mp=20)) == ["F3"]  # F3 cooled down; F4 still cooling
+    assert keys(healer, state(hp=30, mp=20)) == ["F3", "F4"]  # the potions cooled down
 
 
 def test_an_empty_health_potion_does_not_block_the_mana_potion() -> None:
@@ -136,12 +136,12 @@ def test_an_empty_health_potion_does_not_block_the_mana_potion() -> None:
     assert sent == ["F3", "F4"]
 
 
-def test_cure_only_when_no_spell_rule_is_due() -> None:
+def test_cures_go_with_the_heals() -> None:
     healer = HealingDecision(HealingConfig(cures=cures_on("poison", "paralyse")))
     poisoned = ("paralyse", "poison")
-    assert keys(healer, state(icons=poisoned)) == ["shift+F1"]  # poison before paralyse
-    assert keys(healer, state(hp=80, icons=poisoned)) == ["F1"]  # a needed heal wins
-    assert keys(healer, state(hp=95, mp=20, icons=poisoned)) == ["shift+F1", "F4"]
+    assert keys(healer, state(icons=poisoned)) == ["shift+F1", "shift+F5"]  # poison first
+    assert keys(healer, state(hp=80, icons=("poison",))) == ["F1", "shift+F1"]  # heal first
+    assert keys(healer, state(hp=95, mp=20, icons=("poison",))) == ["shift+F1", "F4"]
     assert keys(healer, state(icons=("burn",))) == []  # burn cure is off
 
 

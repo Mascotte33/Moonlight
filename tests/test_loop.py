@@ -154,7 +154,7 @@ class TestGameLoopSafety:
         gl.tick()
         assert inp.sent_lines == []
         stats = gl.get_stats()
-        assert stats["actions_dropped_unfocused"] == 2  # spell and potion
+        assert stats["actions_dropped_unfocused"] == 3  # two spells and a potion
 
     def test_no_input_when_screen_not_ok(self) -> None:
         ws = make_state(screen_ok=False, hp=20.0)
@@ -296,7 +296,7 @@ class TestGameLoopStates:
         inp = FakeInput()
         gl, _ = make_loop(ws, inp)
         gl.tick()
-        assert inp.sent_lines == ["K F2", "K F3"]
+        assert inp.sent_lines == ["K F2", "K F1", "K F3"]  # every due rule
 
     def test_mid_hp_sends_the_light_spell(self) -> None:
         ws = make_state(hp=80.0)
@@ -350,7 +350,7 @@ class TestGameLoopStates:
         assert gl.modules.cavebot is None and gl.modules.targeting is None
         gl.all_modules.targeting = None
         gl.tick()
-        assert inp.sent_lines == ["K F2"]
+        assert inp.sent_lines == ["K F2", "K F1"]
         ws.hp_percent = 100.0
         gl.tick()
         assert steps == []
@@ -430,7 +430,7 @@ class TestGameLoopStates:
         inp2 = FakeInput()
         gl2, _ = make_loop(ws2, inp2)
         gl2.tick()
-        assert inp2.sent_lines == ["K F2", "K F3"]
+        assert inp2.sent_lines == ["K F2", "K F1", "K F3"]
 
     # doc: docs/prs/extras.md#alarms
     def test_low_hp_alarm_alerts_once_and_the_bot_keeps_attacking(self) -> None:
@@ -453,7 +453,7 @@ class TestGameLoopStates:
             ws, inp, move_provider=lambda s: True, move_action=lambda: steps.append(1)
         )
         gl.tick()
-        assert inp.sent_lines == ["K F2"]
+        assert inp.sent_lines == ["K F2", "K F1"]
         assert steps == []  # the heal skipped the step
 
     # doc: docs/prs/scripts.md#script-priority
@@ -474,13 +474,13 @@ class TestGameLoopStates:
             move_action=lambda: steps.append(1),
         )
         gl.tick()
-        assert inp.sent_lines == ["K F2"]  # the heal first
+        assert inp.sent_lines == ["K F2", "K F1"]  # the heals first
         with ws.lock():
             ws.hp_percent = 100.0
         for _ in range(3):
             c.advance(1.0)
             gl.tick()
-        assert inp.sent_lines == ["K F2", "K f9"] and steps == []
+        assert inp.sent_lines == ["K F2", "K F1", "K f9"] and steps == []
         c.advance(1.0)
         gl.tick()
         assert steps == [1]  # the script ended: walking again
@@ -540,7 +540,7 @@ class TestGameLoopRateLimit:
             ws.hp_percent = 50.0
         clock.advance(PERIOD)
         gl.tick()
-        assert inp.sent_lines == ["A 189 222", "K F2"]
+        assert inp.sent_lines == ["A 189 222", "K F2", "K F1"]
 
     def test_non_heal_actions_still_paced_at_10_per_second(self) -> None:
         rl = RateLimiter(rate=10.0, capacity=2.0, clock=lambda: 0.0)
@@ -888,22 +888,22 @@ class TestAttackHotkeys:
     # doc: docs/prs/near-targeting.md#same-tick
     def test_a_heal_and_the_attack_go_out_on_one_tick(self) -> None:
         ws = self._wolf_selected()
-        ws.hp_percent = 45.0  # the F2 spell only
+        ws.hp_percent = 80.0  # the F1 spell only
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp, F6_ROWS)
         ticks(gl, clock, 1)
-        assert inp.sent_lines == ["K F2", "K F6"]
+        assert inp.sent_lines == ["K F1", "K F6"]
 
     def test_after_spell_and_potion_the_attack_waits_for_a_token(self) -> None:
         ws = self._wolf_selected()
-        ws.hp_percent = 30.0  # the F2 spell and the F3 potion
+        ws.hp_percent = 30.0  # the F2 and F1 spells and the F3 potion
         inp = FakeInput()
         gl, clock = make_targeting_loop(ws, inp, F6_ROWS)
         ticks(gl, clock, 1)
-        assert inp.sent_lines == ["K F2", "K F3"]  # both tokens spent on heals
+        assert inp.sent_lines == ["K F2", "K F1", "K F3"]  # the tokens spent on heals
         ws.hp_percent = 100.0
         ticks(gl, clock, 4)
-        assert inp.sent_lines == ["K F2", "K F3", "K F6"]
+        assert inp.sent_lines == ["K F2", "K F1", "K F3", "K F6"]
 
     # doc: docs/prs/near-targeting.md#targeting-script
     def test_no_attack_while_a_script_turned_targeting_off(self, tmp_path: Path) -> None:
@@ -1307,14 +1307,12 @@ class TestExtras:
         gl, _ = make_loop(ws, inp, clock=clock, modules=modules)
         gl.tick()
         clock.advance(0.1)
-        gl.tick()  # F2 cooling: the next spell rule, F1
-        clock.advance(0.1)
-        gl.tick()  # every due heal on cooldown, still due: no haste
-        assert inp.sent_lines == ["K F2", "K F3", "K F1"]
+        gl.tick()  # the heals are on cooldown, still due: no haste
+        assert inp.sent_lines == ["K F2", "K F1", "K F3"]
         ws.hp_percent = 100.0
         clock.advance(0.1)
         gl.tick()
-        assert inp.sent_lines == ["K F2", "K F3", "K F1", "K F8"]
+        assert inp.sent_lines == ["K F2", "K F1", "K F3", "K F8"]
 
     def test_a_player_alarms_only_after_staying_and_sends_to_refill(self) -> None:
         clock = FakeClock()

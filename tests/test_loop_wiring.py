@@ -80,7 +80,7 @@ def test_healing_decide_and_send_every_tick() -> None:
     inp = FakeInput()
     gl, _ = make_loop(ws, inp, healing=HealingDecision(HealingConfig()))
     gl.tick()
-    assert inp.sent_lines == ["K F2", "K F3"]
+    assert inp.sent_lines == ["K F2", "K F1", "K F3"]
 
 
 def test_targeting_decide_feeds_attack() -> None:
