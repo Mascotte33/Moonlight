@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 
 from moonlight.core.config import BotConfig, ConfigError
@@ -335,6 +337,79 @@ def test_skipped_tile_is_left_alone_for_10_seconds() -> None:
 def test_fight_without_the_option_is_any_battle_list_monster() -> None:
     s = state([Monster("Troll", 100.0, name_hash="t", battle_list_row=0)])
     assert rows().fight_in_range(s, 0.0)
+
+
+# doc: docs/prs/near-targeting.md#unreachable
+def walled(
+    slots: tuple[tuple[int, int], ...],
+    wall: Callable[[int, int, int], bool],
+    hps: tuple[float, ...] | None = None,
+) -> tuple[TargetingDecision, WorldState]:
+    """Near-targeting at world 100,100,7 (the player's slot) with *wall* tiles."""
+    targeting = TargetingDecision(TargetingConfig(only_attack_within_range=True), wall=wall)
+    s = state([Monster("Elf", 100.0, name_hash="e", battle_list_row=0)])
+    s.position = Position(100, 100, 7)
+    s.creature_slots = slots
+    s.creature_hp_percents = hps or (50.0,) * len(slots)
+    return targeting, s
+
+
+def _x_wall(x: int, y: int, z: int) -> bool:
+    return x == 102  # a wall column two tiles right of the player, top to bottom
+
+
+def test_a_creature_behind_a_wall_is_never_picked() -> None:
+    targeting, s = walled(((10, 5),), _x_wall)  # world 103,100: the far side
+    assert targeting.decide(s, 0.0) is None
+    assert not targeting.fight_in_range(s, 0.0)
+
+
+def test_the_reachable_creature_is_picked_over_one_behind_a_wall() -> None:
+    targeting, s = walled(((10, 5), (6, 5)), _x_wall, hps=(10.0, 90.0))
+    action = targeting.decide(s, 0.0)
+    assert action is not None and action.creature_slot == (6, 5)
+
+
+def test_a_wall_with_a_gap_lets_the_bot_walk_round() -> None:
+    targeting, s = walled(((10, 5),), lambda x, y, z: x == 102 and y != 96)
+    action = targeting.decide(s, 0.0)
+    assert action is not None and action.creature_slot == (10, 5)
+
+
+def test_a_way_round_off_screen_does_not_count() -> None:
+    # The gap is above the screen (rows reach y 95): no way on screen.
+    targeting, s = walled(((10, 5),), lambda x, y, z: x == 102 and y > 94)
+    assert targeting.decide(s, 0.0) is None
+
+
+def test_other_creatures_block_the_way() -> None:
+    # A creature at 9,5 walled in on every other side by creatures and walls.
+    ring = ((8, 4), (8, 5), (8, 6), (9, 4), (9, 6), (10, 4), (10, 6))
+    targeting, s = walled(((9, 5), *ring), lambda x, y, z: x == 103, hps=(5.0,) + (90.0,) * 7)
+    action = targeting.decide(s, 0.0)
+    assert action is not None and action.creature_slot != (9, 5)
+
+
+def test_a_creature_next_to_the_player_is_always_reachable() -> None:
+    boxed = ((6, 4), (6, 5), (6, 6), (7, 4), (7, 6), (8, 4), (8, 6))
+    targeting, s = walled(((8, 5), *boxed), lambda x, y, z: True, hps=(5.0,) + (90.0,) * 7)
+    action = targeting.decide(s, 0.0)
+    assert action is not None and action.creature_slot == (8, 5)
+
+
+def test_unknown_tiles_count_as_floor() -> None:
+    targeting, s = walled(((10, 5),), _x_wall)
+    s.position = Position(0, 0, 0)  # no position: no walls known
+    assert targeting.decide(s, 0.0) is not None
+
+
+def test_unreachable_creature_is_logged_once_per_tile(caplog: pytest.LogCaptureFixture) -> None:
+    targeting, s = walled(((10, 5),), _x_wall)
+    with caplog.at_level("INFO", logger="moonlight.targeting.targeting"):
+        targeting.decide(s, 0.0)
+        targeting.decide(s, 1.0)
+    lines = [r.getMessage() for r in caplog.records if "no way" in r.getMessage()]
+    assert lines == ["targeting: creature at 103,100,7: no way, skipped"]
 
 
 # doc: docs/prs/attack-types.md#keep-distance
