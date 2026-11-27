@@ -60,6 +60,26 @@ def test_a_resume_mid_route_replays_the_last_targeting_switch_before_it() -> Non
     assert sim.route.current >= 3 and not scripts.targeting_turned_off
 
 
+def test_a_resume_in_the_hunt_loop_follows_the_goto_back_into_it() -> None:
+    """2026-11-27 Yalahar elves: targeting_on sits on the walk back, right
+    before the ramp into the hunt; a resume in the loop read waypoint 0's
+    targeting_off and walked the hunt without attacking."""
+    off = Waypoint(0, 0, 0, "script", "targeting_off")
+    on = Waypoint(0, 0, 0, "script", "targeting_on")
+    start = Waypoint(110, 100, 7, "label", "StartHunt")
+    goto = Waypoint(0, 0, 0, "goto", "StartHunt")
+    scripts = ScriptRunner()
+    route = [off, start, walk(110, 100), walk(120, 100), goto,  # 0-4: loop
+             Waypoint(0, 0, 0, "label", "GoToRefill"), off, walk(200, 100),  # 5-7: to town
+             walk(150, 100), on, walk(140, 100), goto]  # 8-11: back, on at the ramp  # fmt: skip
+    sim = Sim(route, Position(120, 100, 7), scripts=scripts)
+    sim.bot.start(nearest=True)  # waypoint 3, in the loop
+    assert sim.route.current == 3 and not scripts.targeting_turned_off
+    sim.pos = Position(200, 100, 7)
+    sim.bot.start(nearest=True)  # waypoint 7, on the way to town
+    assert sim.route.current == 7 and scripts.targeting_turned_off
+
+
 def test_a_start_with_no_position_yet_resumes_on_the_first_one() -> None:
     """2026-11-26: Tibia not in front at start, no position, waypoint 0 ran
     targeting_off and go_to_city in the cave."""
