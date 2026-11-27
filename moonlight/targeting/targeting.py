@@ -94,6 +94,9 @@ Rect = tuple[int, int, int, int]
 
 #: Seconds an unreachable target (or a skipped on-screen tile) is left alone.
 _IGNORE_SECONDS = 10.0
+#: Seconds a missed on-screen click is remembered: a second miss on the same
+#: tile within them skips the tile (something there never selects).
+_MISS_MEMORY_SECONDS = 3.0
 #: Seconds of a still HP before a target is left for a monster next to the player.
 ADJACENT_STUCK_SECONDS = 3.0
 
@@ -437,6 +440,8 @@ class TargetingDecision:
         self._game_grid_region = game_grid_region
         #: World tiles whose on-screen click selected nothing or an ignored monster.
         self._skipped_tiles: dict[tuple[int, int, int], float] = {}
+        #: World tile -> when an on-screen click there last selected nothing.
+        self._missed_tiles: dict[tuple[int, int, int], float] = {}
         self._next_step_away_at = float("-inf")
         #: Screen slots of the last keep-distance walk (goal last), for the
         #: "What the bot sees" view; empty when not keeping distance.
@@ -659,6 +664,24 @@ class TargetingDecision:
         """Leave the creature on world *tile* alone for 10 s (an on-screen click went wrong)."""
         logger.info("targeting: %s at %s,%s,%s, skipping that tile 10 s", why, *tile)
         self._skipped_tiles[tile] = now + _IGNORE_SECONDS
+
+    # doc: docs/prs/near-targeting.md#missed-click
+    def missed_tile(self, tile: tuple[int, int, int], now: float) -> None:
+        """An on-screen click on *tile* selected nothing.
+
+        Most often the creature had just walked off it, so the next pick aims
+        again from a fresh frame. A second miss on the tile within
+        ``_MISS_MEMORY_SECONDS`` skips it for 10 s (a player, an NPC).
+        """
+        self._missed_tiles = {
+            t: at for t, at in self._missed_tiles.items() if now - at < _MISS_MEMORY_SECONDS
+        }
+        if tile in self._missed_tiles:
+            del self._missed_tiles[tile]
+            self.skip_tile(tile, now, "nothing selected twice")
+            return
+        self._missed_tiles[tile] = now
+        logger.info("targeting: nothing selected at %s,%s,%s, aiming again", *tile)
 
     def _pick_on_screen(self, state: WorldState, now: float) -> TargetingAction | None:
         """Right-click the best creature in range: by ``target_order`` on its screen-bar HP."""
