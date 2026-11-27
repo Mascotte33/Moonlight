@@ -7,8 +7,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from moonlight.cavebot.cavebot import Waypoint
 from moonlight.cavebot.map_tab import UndoStack, matching_spawns, tooltip
+from moonlight.cavebot.route import Waypoint
 from moonlight.cavebot.route_map import (
     MapTiles,
     MapView,

@@ -105,7 +105,7 @@ from enum import StrEnum
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from moonlight.cavebot.cavebot import WALK_KEYS
+from moonlight.cavebot.route import WALK_KEYS
 from moonlight.core.hand import Claim, Hand, Send
 from moonlight.core.random_delay import random_delay, random_reaction
 from moonlight.core.safety import F12Monitor, RateLimitedInput

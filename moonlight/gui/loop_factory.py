@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any
 from moonlight import x11
 from moonlight.calibration import autofind
 from moonlight.calibration.calibrate import CALIBRATION_FILE, REGIONS, data_dir
-from moonlight.cavebot.cavebot import Waypoint
+from moonlight.cavebot.route import Waypoint
 from moonlight.core.config import DEFAULT_CONFIG_FILE, PROFILES_DIR, BotConfig, ConfigError
 from moonlight.core.state import WorldState
 from moonlight.core.wiring import build_loop, capture_providers, make_perceive

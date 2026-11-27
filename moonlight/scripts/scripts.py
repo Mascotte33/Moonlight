@@ -205,7 +205,8 @@ class Bot:
         return [functools.partial(self._runner.input.press_combo, key)]
 
     def say(self, text: str) -> list[Command]:
-        from moonlight.cavebot.cavebot import label_error, say_keys
+        from moonlight.cavebot.cavebot import say_keys
+        from moonlight.cavebot.route import label_error
 
         if bad := label_error("say", text):
             raise ValueError(bad)

@@ -22,8 +22,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from moonlight.cavebot.cavebot import Waypoint, has_tile
 from moonlight.cavebot.pathing import next_step
+from moonlight.cavebot.route import Waypoint, has_tile
 
 __all__ = [
     "PICTURE_MIN_SCALE", "SCALES", "MapTiles", "MapView", "bad_legs", "draw_route", "leg_path",
