@@ -330,7 +330,7 @@ class TestGameArea:
         import ctypes
         from types import SimpleNamespace
 
-        from moonlight.perception import capture
+        from moonlight.window import Win32Windows
 
         # Outer window at (100, 50); 8 px borders, 31 px title bar; game area 800x600.
         def get_client_rect(_hwnd: object, ref: object) -> bool:
@@ -344,10 +344,9 @@ class TestGameArea:
             return True
 
         user32 = SimpleNamespace(GetClientRect=get_client_rect, ClientToScreen=client_to_screen)
-        monkeypatch.setattr(sys, "platform", "win32")
         monkeypatch.setattr(ctypes, "windll", SimpleNamespace(user32=user32), raising=False)
 
-        assert capture._window_rect(1) == (108, 81, 800, 600)
+        assert Win32Windows().rect(1) == (108, 81, 800, 600)
 
 
 # doc: docs/prs/scripts-page.md#test-now
