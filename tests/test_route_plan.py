@@ -60,6 +60,18 @@ def test_no_path_without_a_floor_change(tmp_path: Path) -> None:
     assert find_path((5, 5, 7), (15, 15, 8), FloorMap(_map(tmp_path, {}), {}), margin=5) is None
 
 
+def test_a_boat_that_jumps_to_the_harbour_walk_is_a_trip() -> None:
+    """Each city's boat in a route jumps to one harbour walk (YalaharElves, 2026-11-28)."""
+    route = [
+        Waypoint(0, 0, 0, "label", "FromThais"),
+        Waypoint(10, 10, 6, "boat", "yalahar"),
+        Waypoint(0, 0, 0, "goto", "Harbour"),
+        Waypoint(0, 0, 0, "label", "Harbour"),
+        Waypoint(900, 900, 6, "walk"),
+    ]
+    assert route_links(route) == [Link((10, 10, 6), (900, 900, 6), ("boat yalahar",))]
+
+
 def test_route_links_are_door_scripts_and_boat_talks() -> None:
     route = [
         Waypoint(10, 10, 7, "stand"),

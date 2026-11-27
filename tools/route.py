@@ -34,7 +34,8 @@ D's own city just goes to ``Depot``. A city with no path (an island no saved
 route sails to yet) is left out and named on stderr. A path uses the door
 scripts and boat talks the saved routes already make (``route_links``);
 free cities (``FREE_CITIES``) use only doors and the free boats (Thais,
-Carlin, Ab'Dendriel, Venore), so one route serves free and premium accounts.
+Carlin, Ab'Dendriel, Venore, Yalahar), so one route serves free and premium
+accounts.
 
 Numbers are the GUI's (0-based) and ranges include both ends. An edit keeps
 the old file as ``<route>.json.bak``, checks the new route with the bot's own
@@ -68,9 +69,10 @@ from moonlight.gui.loop_factory import load_real_config
 
 
 #: Cities a free account can be in; the rest are premium islands.
-FREE_CITIES = ("Venore", "Thais", "Carlin", "AbDendriel", "Kazordoon")
-#: What a free account may say on a link: boats run only between these four.
-FREE_TALK = ("hi", "yes", "thais", "carlin", "ab'dendriel", "venore")
+FREE_CITIES = ("Venore", "Thais", "Carlin", "AbDendriel", "Kazordoon", "Yalahar")
+#: What a free account may say on a link: boats run only between these five
+#: (Yalahar is free on the owner's server, 2026-11-28).
+FREE_TALK = ("hi", "yes", "thais", "carlin", "ab'dendriel", "venore", "yalahar")
 
 
 def parse_buy(text: str) -> list[tuple[str, int]]:

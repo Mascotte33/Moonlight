@@ -313,6 +313,7 @@ def route_links(waypoints: list[Waypoint]) -> list[Link]:
     links: list[Link] = []
     at: Spot | None = None
     actions: list[str] = []
+    labels = {wp.label: i for i, wp in enumerate(waypoints) if wp.action == "label"}
     for wp in waypoints:
         if wp.action in LINK_ACTIONS:
             actions.append(f"{wp.action} {wp.label}".strip())
@@ -320,6 +321,16 @@ def route_links(waypoints: list[Waypoint]) -> list[Link]:
                 at = (wp.x, wp.y, wp.z)
         elif wp.action == "label":
             continue
+        elif wp.action == "goto" and actions and at is not None and wp.label in labels:
+            # a boat whose landing sits under a label (each city's boat jumps to
+            # the harbour walk): the trip ends on the first sqm after that label
+            after = waypoints[labels[wp.label] + 1 :]
+            landing = next((w for w in after if has_tile(w) and w.action != "label"), None)
+            if landing is not None and landing.action not in LINK_ACTIONS:
+                to = (landing.x, landing.y, landing.z)
+                if to[2] != at[2] or _sqm(at, to) > LINK_SQM:
+                    links.append(Link(at, to, tuple(actions)))
+            actions = []
         elif wp.action in ("goto", "check") or not has_tile(wp):
             actions = []  # a jump or a town action: not a trip
         else:
