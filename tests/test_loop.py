@@ -29,6 +29,7 @@ from moonlight.extras.extras import Extras, ExtrasConfig
 from moonlight.hardware.clicker import ClickController
 from moonlight.hardware.input import ClickSide, FakeInput, InputBackend
 from moonlight.healing.healing import HealingAction, HealingDecision
+from moonlight.looting.drop_items import DropItems
 from moonlight.looting.looting import Looting
 from moonlight.scripts.rotation import Rotation, RotationConfig
 from moonlight.scripts.scripts import ScriptRunner
@@ -704,6 +705,50 @@ class TestScreenClick:
             ws.selected_target = rat  # the click picked the never-attack Rat
         ticks(gl, clock, 20)
         assert inp.sent_lines == ["A 85 55", "C R", "K esc"]
+
+
+class FakeDrop:
+    """A drop-items round: records its steps; ``mid_drag`` holds the mouse."""
+
+    def __init__(self, *, mid_drag: bool = False) -> None:
+        self.mid_drag, self.steps, self.hand = mid_drag, 0, None
+
+    def wants(self, _snap: WorldState) -> bool:
+        return True
+
+    def step(self, _snap: WorldState) -> None:
+        self.steps += 1
+
+
+# doc: docs/prs/drop-items.md#drop-in-fights
+class TestDropInFights:
+    """Owner 2026-11-27: items drop between a fight's clicks, the mouse never idles."""
+
+    def loop(self, drop: FakeDrop) -> tuple[GameLoop, FakeClock, FakeInput, WorldState]:
+        ws = TestScreenClick().near_state()
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(ws, inp, TestScreenClick.NEAR)
+        gl.modules = replace(gl.modules, drop_items=cast("DropItems", drop))
+        return gl, clock, inp, ws
+
+    def test_items_drop_while_the_target_is_attacked(self) -> None:
+        drop = FakeDrop()
+        gl, clock, inp, ws = self.loop(drop)
+        ticks(gl, clock, 3)
+        assert inp.sent_lines == ["A 85 55", "C R"] and drop.steps == 0  # the click first
+        with ws.lock():
+            ws.selected_target = ws.monsters[0]
+        ticks(gl, clock, 5)
+        assert gl.current_state is BotState.ATTACK and drop.steps >= 3
+
+    def test_a_half_sent_drag_finishes_before_the_click(self) -> None:
+        drop = FakeDrop(mid_drag=True)
+        gl, clock, inp, _ws = self.loop(drop)
+        ticks(gl, clock, 3)
+        assert inp.sent_lines == [] and drop.steps == 3  # the button is down: no click
+        drop.mid_drag = False
+        ticks(gl, clock, 3)
+        assert inp.sent_lines == ["A 85 55", "C R"]
 
 
 class TestSelectClick:

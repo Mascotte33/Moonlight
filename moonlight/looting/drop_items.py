@@ -2,8 +2,10 @@
 
 A free account has no loot sorting, so the owner picks the items to throw
 away (Cavebot tab, Settings: "+" cuts each item's picture). Every 1-3 min
-(random), once no monster is in the battle list and no fight or town action
-is on, a round starts. Each round looks right of the game window for every
+(random), once the mouse is free and no town action is on, a round starts:
+also with monsters in view and between a fight's clicks (owner 2026-11-27:
+the mouse sat idle while the items waited for an empty battle list).
+Each round looks right of the game window for every
 picture. Each found item is dragged (a whole stack moves in one drag) to a
 random free walkable sqm within 2 of the character. If the item is still in
 the same place 0.6 s later, another free sqm is tried, 3 tries in all. With
@@ -271,8 +273,8 @@ class DropItems:
         return bool(self._sends)
 
     def due(self, snap: WorldState) -> bool:
-        """True while a round runs, or when its timer is up and no monster is in view."""
-        return self.in_round or (not snap.monsters and self._clock() >= self._next_round_at)
+        """True while a round runs, or when its timer is up."""
+        return self.in_round or self._clock() >= self._next_round_at
 
     # doc: docs/prs/drop-items.md#drop-items
     def wants(self, snap: WorldState) -> bool:
@@ -332,9 +334,6 @@ class DropItems:
                 self._look_again_at = now + LOOK_AGAIN_SECONDS
             return
         if now < self._look_again_at:
-            return
-        if snap.monsters:
-            self._end_round(now, wait=False)  # start again once the screen is clear
             return
         if self._pool is not None:
             if self._look is None:

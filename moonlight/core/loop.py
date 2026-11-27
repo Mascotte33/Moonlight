@@ -990,6 +990,12 @@ class GameLoop:
             return
         if clicker is None:
             raise RuntimeError("targeting is wired without a clicker")
+        drop = self.modules.drop_items
+        if drop is not None and drop.mid_drag:
+            # doc: docs/prs/drop-items.md#drop-in-fights
+            # The button is down or about to be: finish the drag before any click.
+            self._send(snap, lambda: drop.step(snap))
+            return
         if self._target is not None and self._target.kind in ("step_closer", "step_away"):
             key = WALK_KEYS[self._target.step]
             if self._send(snap, lambda: self.input.press_combo(key)):
@@ -1017,6 +1023,9 @@ class GameLoop:
             return
         if self._target is None:
             self._press_attack_hotkey(snap, targeting, now)
+            if drop is not None and drop.wants(snap):
+                # The target is attacked and the mouse is free: drop meanwhile.
+                self._send(snap, lambda: drop.step(snap))
             return
         if self._target.kind == "select" and self._select_by_key(snap, targeting, now):
             return
