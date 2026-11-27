@@ -149,7 +149,8 @@ def _refill_block(args: argparse.Namespace) -> None:
         _print_path(floors, here, stop, args.every)
         x, y, z = parse_spot(stop)
         for action in actions:
-            print(f"{x} {y} {z} {action}")
+            # deposit has no tile: it opens the locker finddepo left the bot at
+            print("deposit" if action == "deposit" else f"{x} {y} {z} {action}")
         here = stop
     _print_path(floors, here, args.waypoints, args.every)
     print(f"goto {args.hunt_label}")
