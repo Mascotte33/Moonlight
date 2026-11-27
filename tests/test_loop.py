@@ -1358,6 +1358,7 @@ class TestRotation:
             start_client=start_client,
             window_open=lambda: window["open"],
             focus_client=lambda: True,
+            restart_client=True,
         )
         ws = make_state()
         inp = FakeInput()
