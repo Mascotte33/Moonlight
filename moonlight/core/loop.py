@@ -555,6 +555,8 @@ class GameLoop:
         self._task = "Switching account"
         if scripts.rotation.client_closed:
             scripts.step(snap, self.input)  # no window to focus: only waits, nothing is typed
+        elif not snap.client_focused:
+            scripts.rotation.refocus()  # nothing typed until the client has the focus
         else:
             self._send(snap, lambda: scripts.step(snap, self.input), login_screen=True)
         if scripts.rotation.failed:
@@ -1188,6 +1190,8 @@ class GameLoop:
             or (m.cavebot is not None and m.cavebot.hand_busy)
         ):
             return False
+        if not drop.mid_drag and m.cavebot is not None and m.cavebot.near_floor_change:
+            return False  # not next to a rope spot or stairs: the drop waits past it
         self._task = "Dropping items"
         cavebot = m.cavebot
         # Plain walking goes on while the items drop (owner 2026-11-26); a

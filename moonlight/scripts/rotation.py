@@ -67,6 +67,7 @@ def save_playing(index: int) -> None:
     PLAYING_FILE.write_text(json.dumps({"playing": index}), encoding="utf-8")
 
 
+REFOCUS_SECONDS = 2.0  # s between two focus tries while the switch waits unfocused
 START_WAIT = 90.0  # s for the client window to show after starting the program
 LOGIN_SCREEN_WAIT = 5.0  # s for the login screen to be ready after the window shows
 LOGIN_WAIT = 30.0  # s for the game to show after Enter on the character
@@ -163,6 +164,7 @@ class Rotation:
             sys.platform == "win32"
         )
         self.index = load_playing(len(self.accounts))
+        self._refocused_at = float("-inf")
         self._asked = False
         #: No client window while the switch restarts Tibia: the loop steps the
         #: script without the focus gate then (nothing is typed meanwhile).
@@ -209,6 +211,16 @@ class Rotation:
             yield bot.press("esc")  # close the error message
             yield 1
         self._fail("no account logged in")
+
+    def refocus(self) -> None:
+        """Focus the client, at most every :data:`REFOCUS_SECONDS` (the loop calls it
+        while the switch waits unfocused: the Linux client's login window takes
+        no focus after the logout, 2026-11-27)."""
+        now = self._clock()
+        if now - self._refocused_at >= REFOCUS_SECONDS and self._window_open():
+            self._refocused_at = now
+            log.info("rotation: focusing the client")
+            self._focus_client()
 
     def _restart(self, bot: Bot) -> Generator[object, None, None]:
         """Windows: close the client and start it again (sets :attr:`failed` when it won't)."""
