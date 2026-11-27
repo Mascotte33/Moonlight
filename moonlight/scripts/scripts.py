@@ -59,6 +59,7 @@ from moonlight.hardware.input import ClickSide, InputBackend
 
 if TYPE_CHECKING:
     from moonlight.cavebot.cavebot import Cavebot
+    from moonlight.core.config import LiveConfig
     from moonlight.core.hand import Hand, Send
     from moonlight.hardware.clicker import ClickController
     from moonlight.looting.drop_items import DropItems
@@ -388,8 +389,8 @@ class ScriptRunner:
         from moonlight.core.config import PROFILES_DIR  # config imports the scripts
 
         self.profiles_dir = PROFILES_DIR
-        #: The Scripts tab's Cavebot rotation switch.
-        self.cavebot_rotate_on = True
+        #: The running settings (the Scripts tab's switches); None: defaults.
+        self.settings: LiveConfig | None = None
         #: The running profile's name; set by the GUI.
         self.profile_name: Callable[[], str] | None = None
         #: Switch the whole bot to profile *name*; set by the GUI.
@@ -582,6 +583,11 @@ class ScriptRunner:
             log.warning("script %s: goto %r without a cavebot", self.running, label)
         else:
             self.cavebot.goto(label)
+
+    @property
+    def cavebot_rotate_on(self) -> bool:
+        """The Scripts tab's Cavebot rotation switch."""
+        return self.settings is None or self.settings.current.cavebot_rotate
 
     # doc: docs/prs/scripts.md#script-priority
     def wants(self, snap: WorldState) -> bool:  # noqa: ARG002 - the claim's shape

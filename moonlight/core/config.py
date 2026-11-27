@@ -92,23 +92,8 @@ PROFILES_DIR = Path("profiles")
 #: This PC's settings, shared by every profile: Arduino port, clicks, client
 #: hotkeys, account rotation. A profile file never holds them.
 MACHINE_FILE = Path("data/machine.json")
-#: Top-level keys kept in :data:`MACHINE_FILE`.
-MACHINE_KEYS = (
-    "serial_port",
-    "serial_baudrate",
-    "simulation",
-    "log_commands",
-    "walk_keys",
-    "cavebot_rotate",
-    "templates_dir",
-    "routes_dir",
-    "loop",
-    "clicker",
-    "monster_name_source",
-    "capacity_source",
-    "client_options_file",
-    "client_hotkeys",
-)
+#: A :class:`BotConfig` field kept in :data:`MACHINE_FILE` (this PC's, not the profile's).
+_MACHINE = {"machine": True}
 #: Module sections kept in :data:`MACHINE_FILE`.
 MACHINE_MODULES = ("rotation",)
 
@@ -132,26 +117,6 @@ MODULES = (
     "rotation",
 )
 
-_TOP_KEYS = {
-    "serial_port",
-    "serial_baudrate",
-    "simulation",
-    "log_commands",
-    "walk_keys",
-    "cavebot_rotate",
-    "templates_dir",
-    "routes_dir",
-    "min_level",
-    "max_level",
-    "rotate",
-    "monster_name_source",
-    "capacity_source",
-    "client_options_file",
-    "client_hotkeys",
-    "loop",
-    "clicker",
-    "modules",
-}
 
 
 #: What the cavebot does with an echo raid trigger (docs/prs/echo-raid.md#setting).
@@ -183,20 +148,20 @@ class CavebotConfig:
 class BotConfig:
     """Everything needed to build and run the bot (see the module docstring)."""
 
-    serial_port: str | None = None
-    serial_baudrate: int = 115200
+    serial_port: str | None = field(default=None, metadata=_MACHINE)
+    serial_baudrate: int = field(default=115200, metadata=_MACHINE)
     #: F-13: true runs on a FakeInput instead of the Arduino. A missing
     #: Arduino with this off is a hard error, never a silent fallback.
-    simulation: bool = False
-    log_commands: bool = False
+    simulation: bool = field(default=False, metadata=_MACHINE)
+    log_commands: bool = field(default=False, metadata=_MACHINE)
     #: The cavebot walks with arrow keys along a path instead of clicking the minimap.
-    walk_keys: bool = False
+    walk_keys: bool = field(default=False, metadata=_MACHINE)
     #: The cavebot_rotate waypoint picks the hunt by level (Scripts tab switch).
-    cavebot_rotate: bool = True
+    cavebot_rotate: bool = field(default=True, metadata=_MACHINE)
     #: Same as ``perception.capture.TIBIA_WINDOW_TITLE``; not imported, that pulls in mss.
     window_title: str = "Tibia"
-    templates_dir: Path = Path("data/templates")
-    routes_dir: Path = Path("data/waypoints")
+    templates_dir: Path = field(default=Path("data/templates"), metadata=_MACHINE)
+    routes_dir: Path = field(default=Path("data/waypoints"), metadata=_MACHINE)
     # doc: docs/prs/profiles.md#level-range
     #: Levels this profile's hunt fits, both included; 0 and 0: never picked
     #: by level (``cavebot_rotate`` and each login pick among the others).
@@ -204,10 +169,10 @@ class BotConfig:
     max_level: int = 0
     #: Ticked ("Cavebot Rotate"): ``cavebot_rotate`` may pick this profile.
     rotate: bool = False
-    loop: LoopConfig = LoopConfig()
+    loop: LoopConfig = field(default=LoopConfig(), metadata=_MACHINE)
     #: Clicker mode (F-14): closed loop by default; open loop if T33 HIL
     #: shows the rendered cursor cannot be captured.
-    clicker: ClickerConfig = ClickerConfig()
+    clicker: ClickerConfig = field(default=ClickerConfig(), metadata=_MACHINE)
     healing: HealingConfig | None = None
     targeting: TargetingConfig | None = None
     #: HP alarms; always built.
@@ -223,13 +188,13 @@ class BotConfig:
     rotation: RotationConfig | None = None
     #: Unused; kept so saved configs still load (refill without a capacity
     #: reader triggers on Refill now only).
-    monster_name_source: bool = False
-    capacity_source: bool = False
+    monster_name_source: bool = field(default=False, metadata=_MACHINE)
+    capacity_source: bool = field(default=False, metadata=_MACHINE)
     #: The client's ``conf/clientoptions.json`` for the Client hotkeys button
     #: (docs/prs/client-hotkeys.md#moonlight-set); None = the official client's.
-    client_options_file: Path | None = None
+    client_options_file: Path | None = field(default=None, metadata=_MACHINE)
     #: Spell words or item typed per bot combo for that button.
-    client_hotkeys: dict[str, str] = field(default_factory=dict)
+    client_hotkeys: dict[str, str] = field(default_factory=dict, metadata=_MACHINE)
     #: Kept values of modules that are off, by module name (T0.F1.K4).
     off: dict[str, Any] = field(default_factory=dict)
 
@@ -284,23 +249,7 @@ class BotConfig:
         _reject_unknown(data, _TOP_KEYS, "config")
         hints = get_type_hints(cls)
         kwargs: dict[str, Any] = {}
-        for key in (
-            "serial_port",
-            "serial_baudrate",
-            "simulation",
-            "log_commands",
-            "walk_keys",
-    "cavebot_rotate",
-            "templates_dir",
-            "routes_dir",
-            "min_level",
-            "max_level",
-            "rotate",
-            "monster_name_source",
-            "capacity_source",
-            "client_options_file",
-            "client_hotkeys",
-        ):
+        for key in _SCALAR_KEYS:
             if key in data:
                 kwargs[key] = _coerce(data[key], hints[key], key)
         if "loop" in data:
@@ -462,6 +411,28 @@ class BotConfig:
 
 
 # -- parsing helpers ----------------------------------------------------------
+
+
+class LiveConfig:
+    """The running :class:`BotConfig`, one object for the bot's life.
+
+    A settings change replaces :attr:`current`; a module that holds this
+    reads the new values on its next tick (no copies to keep in sync).
+    """
+
+    def __init__(self, current: BotConfig) -> None:
+        self.current = current
+
+
+#: Top-level keys kept in :data:`MACHINE_FILE`: the fields tagged ``_MACHINE``.
+MACHINE_KEYS = tuple(f.name for f in fields(BotConfig) if f.metadata.get("machine"))
+#: Plain top-level values; the loader coerces each by its type hint.
+_SCALAR_KEYS = tuple(
+    f.name
+    for f in fields(BotConfig)
+    if f.name not in (*MODULES, "loop", "clicker", "window_title", "off")
+)
+_TOP_KEYS = {*_SCALAR_KEYS, "loop", "clicker", "modules"}
 
 
 def _require_dict(value: object, where: str) -> dict[str, Any]:

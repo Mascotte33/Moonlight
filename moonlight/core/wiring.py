@@ -22,7 +22,7 @@ import numpy as np
 
 from moonlight.calibration.calibrate import OPTIONAL_REGIONS, CalibrationProfile
 from moonlight.core.client_hotkeys import OFFICIAL_CLIENT_FILE
-from moonlight.core.config import MODULES, BotConfig
+from moonlight.core.config import MODULES, BotConfig, LiveConfig
 from moonlight.core.loop import DecisionModules, GameLoop
 from moonlight.core.safety import RateLimitedInput, beep_alert
 from moonlight.core.state import Position, WorldState
@@ -514,9 +514,10 @@ def build_loop(
         return build_modules(
             cfg, profile, backend, state, frames, old=old, clock=clock,
             roi_provider=roi_provider, window_origin=window_origin, on_clicker=on_clicker,
-            screen_grab=screen_grab,
+            screen_grab=screen_grab, live=live,
         )
 
+    live = LiveConfig(config)
     from moonlight.calibration.calibrate import SEEN_MONSTERS_FILE, data_dir
     from moonlight.targeting.seen_monsters import SeenMonsters
 
@@ -553,6 +554,7 @@ def build_loop(
         nonlocal current
         if needs_restart(current, new):
             return False
+        live.current = new
         loop.modules = modules(new, (current, loop.all_modules))
         current = new
         return True
@@ -616,8 +618,11 @@ def build_modules(
     window_origin: Callable[[], tuple[int, int]] | None = None,
     on_clicker: Callable[[ClickController], None] | None = None,
     screen_grab: Callable[[], np.ndarray] | None = None,
+    live: LiveConfig | None = None,
 ) -> DecisionModules:
     """The enabled decision modules for *config*.
+
+    *live* is the running settings the kept modules read (None: *config* alone).
 
     With *old* (the running config and its modules) a module whose settings
     did not change is kept as is, so its cooldowns and route position
@@ -719,10 +724,9 @@ def build_modules(
 
     if prev is not None and prev.scripts is not None:
         m.scripts = prev.scripts
-        m.scripts.cavebot_rotate_on = config.cavebot_rotate
     else:
         m.scripts = ScriptRunner(grab=screen_grab, clock=clock or time.monotonic)
-        m.scripts.cavebot_rotate_on = config.cavebot_rotate
+        m.scripts.settings = live
         if screen_grab is not None:
             from moonlight.perception.potions import PotionCounter
 
