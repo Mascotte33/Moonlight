@@ -251,3 +251,9 @@ def test_find_named_finds_nobody_when_no_name_is_close() -> None:
 def test_name_lines_put_a_name_on_the_tile_below_it() -> None:
     frame = _named_frame({(4, 2): "Benjamin", (11, 9): "Yuzuki Ruka"})
     assert sorted(slot for slot, _ in name_lines(frame, GRID)) == [(4, 2), (11, 9)]
+
+
+def test_the_ship_from_ab_dendriel_lands_next_to_karith_in_yalahar() -> None:
+    """2026-11-27: the ship landed at 32816,31272,6; Karith was listed on
+    floor 5, so the landing did not count and the route stopped."""
+    assert travel.landed("yalahar", 32816, 31272, 6)
