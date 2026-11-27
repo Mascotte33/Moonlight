@@ -300,6 +300,11 @@ def walked_tiles(waypoints: list[Waypoint], loop: bool) -> set[tuple[int, int, i
 #: After a detour the route goes on to the waypoint it was walking to when
 #: that one is at most this many tiles away (else from the nearest one).
 RESUME_TILES = 50
+#: No items dropped this close to the route's next floor change ...
+_NO_DROP_TILES = 6
+#: ... among this many waypoints from the current one (stands before a rope).
+_NO_DROP_LOOKAHEAD = 4
+_FLOOR_CHANGE_ACTIONS = ("rope", "ladder", "stairs", "shovel", "step")
 #: Waypoints after the saved one a resume may go on from (past its floor change).
 _RESUME_AHEAD = 6
 #: Seconds the route holds after a hand action (a wait: its label).
@@ -1056,6 +1061,23 @@ class Cavebot:
         """True while heading to a plain ``walk`` / ``node`` waypoint (keys only, no mouse)."""
         wps = self.route.waypoints
         return bool(wps) and wps[self.route.current].action in ("walk", "node")
+
+    @property
+    def near_floor_change(self) -> bool:
+        """True a few tiles from the route's next rope, ladder, stairs, shovel or
+        step: no items are dropped there (the bot stood 6 s next to a rope
+        spot dropping, "Sorry, not possible", 2026-11-26)."""
+        pos = self._read_position()
+        if pos is None:
+            return False
+        start = self.route.current
+        return any(
+            wp.action in _FLOOR_CHANGE_ACTIONS
+            and has_tile(wp)
+            and wp.z == pos.z
+            and max(abs(wp.x - pos.x), abs(wp.y - pos.y)) <= _NO_DROP_TILES
+            for wp in self.route.waypoints[start : start + _NO_DROP_LOOKAHEAD]
+        )
 
     @property
     def hand_busy(self) -> bool:
@@ -2502,10 +2524,30 @@ class Cavebot:
         """
         assert self._input is not None  # checked in __init__
         key = WALK_KEYS[step]
+        if self._onto_exact_tile():
+            # A held key walked one tile past a rope spot and back, and the
+            # rope used mid-walk failed (2026-11-26): a tap stops on the tile.
+            # A tap mid-step is dropped: the key retry taps again.
+            self.release_walk_key()
+            self._input.press_combo(key)
+            return
         if again or key != self._held_walk_key:
             self.release_walk_key()
         self._input.hold_combo(key)
         self._held_walk_key = key
+
+    def _onto_exact_tile(self) -> bool:
+        """The step under way ends on a waypoint to stop exactly on (stand, rope, stairs...)."""
+        wps = self.route.waypoints
+        if not wps or self._target is None:
+            return False
+        wp = wps[self.route.current]
+        return (
+            has_tile(wp)
+            and wp.action != "step"  # its own wait to stand still, then its key
+            and _REACH.get(wp.action, 1) == 0
+            and self._target == (wp.x, wp.y, wp.z)
+        )
 
     def _sidestep(self, wp: Waypoint, pos: Position) -> None:
         """Step to the tile beside the walking direction: left first, then right."""

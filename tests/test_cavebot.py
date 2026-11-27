@@ -2061,7 +2061,8 @@ def test_walk_keys_fight_an_ignored_creature_on_the_exact_tile(
     sim.bot.start()
     for _ in range(_BLOCK_STEPS):
         sim.step()
-    assert pressed(sim) == ["s", "s"]  # into it, then the bump
+    taps = [line[2:] for line in sim.fake.sent_lines if line.startswith("K ")]
+    assert taps == ["s", "s"]  # into it (tapped: a stand), then the bump
     assert sim.bot.stuck_on_creatures
     assert sim.clicker.clicks == [((440, 176 + 32), ClickSide.RIGHT)]  # the ghost on the stand tile
 
@@ -2146,3 +2147,29 @@ def test_step_that_left_the_floor_unchanged_is_tried_again_then_stops() -> None:
         if attempt < 3:
             assert sim.bot.alarm is None and sim.route.current == 0
     assert sim.bot.alarm == "wrong_floor"
+
+
+def test_near_floor_change_holds_drops_before_a_rope_spot() -> None:
+    """2026-11-26: items dropped next to a rope spot held the bot there 6 s."""
+    rope = Waypoint(100, 105, 7, "rope")
+    stand = Waypoint(100, 105, 7, "stand")
+    sim = Sim([walk(100, 101), stand, stand, rope, walk(100, 120)], Position(100, 90, 7))
+    sim.bot.start()
+    assert not sim.bot.near_floor_change  # the rope is far off
+    sim.pos = Position(100, 101, 7)
+    sim.bot.route.current = 1
+    assert sim.bot.near_floor_change
+    sim.bot.route.current = 4  # past the rope
+    assert not sim.bot.near_floor_change
+
+
+def test_walk_keys_tap_the_last_step_onto_a_rope_spot() -> None:
+    """2026-11-26: a held key walked one tile past the rope spot and back."""
+    stand = Waypoint(100, 102, 7, "stand")
+    sim = Sim([stand, Waypoint(100, 102, 7, "rope")], Position(100, 100, 7), walk_keys=True)
+    sim.bot.start()
+    sim.step()
+    assert sim.fake.sent_lines[-1] == "D s"  # held on the way
+    sim.pos = Position(100, 101, 7)
+    sim.step()
+    assert sim.fake.sent_lines[-2:] == ["U s", "K s"]  # tapped onto the spot
