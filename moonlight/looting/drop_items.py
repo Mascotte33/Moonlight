@@ -255,6 +255,11 @@ class DropItems:
         #: Items left alone this round (no sqm took them).
         self._left: list[tuple[Path, Point]] = []
 
+    @property
+    def mid_drag(self) -> bool:
+        """True while a drag's commands are still to send: it must not be cut off."""
+        return bool(self._sends)
+
     def due(self, snap: WorldState) -> bool:
         """True while a round runs, or when its timer is up and no monster is in view."""
         return self.in_round or (not snap.monsters and self._clock() >= self._next_round_at)
