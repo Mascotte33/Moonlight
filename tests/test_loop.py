@@ -673,13 +673,24 @@ class TestScreenClick:
         assert gl.current_state is BotState.ATTACK  # no walk takes the click over
         assert inp.sent_lines == ["A 85 55", "C R"]
 
-    def test_nothing_selected_skips_the_tile(self, caplog: pytest.LogCaptureFixture) -> None:
+    # doc: docs/prs/near-targeting.md#missed-click
+    def test_a_miss_is_noticed_fast_and_aimed_again(self, caplog: pytest.LogCaptureFixture) -> None:
+        # 2026-11-27: 1 in 4 clicks hit a tile the elf had just left; each miss
+        # waited 1 s for the outline and then skipped the tile for 10 s.
         inp = FakeInput()
         gl, clock = make_targeting_loop(self.near_state(), inp, self.NEAR)
         with caplog.at_level(logging.INFO):
-            ticks(gl, clock, 3 + 18 + 4 + 40)  # no outline after the click (a player)
-        assert inp.sent_lines == ["A 85 55", "C R"]
-        assert "nothing selected at 1,0,0, skipping that tile 10 s" in caplog.text
+            ticks(gl, clock, 3 + 7 + 3)  # click, 0.3 s without an outline, aim again
+        assert inp.sent_lines == ["A 85 55", "C R", "A 85 55", "C R"]
+        assert "nothing selected at 1,0,0, aiming again" in caplog.text
+
+    def test_a_second_miss_on_the_tile_skips_it(self, caplog: pytest.LogCaptureFixture) -> None:
+        inp = FakeInput()
+        gl, clock = make_targeting_loop(self.near_state(), inp, self.NEAR)
+        with caplog.at_level(logging.INFO):
+            ticks(gl, clock, 2 * (3 + 7 + 3) + 40)  # no outline ever (a player)
+        assert inp.sent_lines == ["A 85 55", "C R", "A 85 55", "C R"]
+        assert "nothing selected twice at 1,0,0, skipping that tile 10 s" in caplog.text
 
     def test_a_selected_ignored_monster_is_dropped_with_esc(self) -> None:
         ws = self.near_state()

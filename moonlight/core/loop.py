@@ -147,6 +147,10 @@ TIMING_LOG_SECONDS = 10.0
 # Seconds a sent select click waits for the row's red outline before a
 # retry (clicking the attacked row again would stop the attack).
 _SELECT_OUTLINE_WAIT = 1.0
+# doc: docs/prs/near-targeting.md#missed-click
+# The same wait after an on-screen right-click: a miss (the creature walked
+# off the tile) is noticed fast and aimed again from a fresh frame.
+_SCREEN_OUTLINE_WAIT = 0.3
 
 # doc: docs/prs/targeting.md#next-target-key
 # Seconds an "Attack Next Target" press waits for the outline before the
@@ -1072,7 +1076,7 @@ class GameLoop:
         if tile is None:
             return False
         if selected is None:
-            targeting.skip_tile(tile, now, "nothing selected")
+            targeting.missed_tile(tile, now)
             return True
         if targeting.row_for(selected).ignore:
             if self._send(snap, lambda: self.input.press_combo("esc")):
@@ -1167,7 +1171,8 @@ class GameLoop:
         result = clicker.step()
         if result is True and self._select_click is not None:
             # doc: docs/prs/human-timing.md#select-retry
-            retry_at = now + random_delay(_SELECT_OUTLINE_WAIT)
+            wait = _SCREEN_OUTLINE_WAIT if self._select_click[0] == -1 else _SELECT_OUTLINE_WAIT
+            retry_at = now + random_delay(wait)
             self._select_click = (self._select_click[0], retry_at)
         return result
 
