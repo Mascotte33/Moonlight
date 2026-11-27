@@ -931,7 +931,9 @@ class Cavebot:
         if scripts is None:
             return
         wps = self.route.waypoints
-        for wp in reversed(wps[: self.route.current]):
+        i, jumped = self.route.current - 1, set()
+        while i >= 0:
+            wp = wps[i]
             if wp.action == "script" and wp.label in ("targeting_off", "targeting_on"):
                 scripts.targeting_turned_off = wp.label == "targeting_off"
                 logger.info(
@@ -939,6 +941,19 @@ class Cavebot:
                     self.route.current, wp.label, "off" if scripts.targeting_turned_off else "on",
                 )  # fmt: skip
                 return
+            # A loop's label is entered from the route's last goto to it
+            # (the walk back from town), not from the line above it: the hunt
+            # loop starts after the walk back's targeting_on (2026-11-27).
+            back = [
+                j
+                for j, w in enumerate(wps)
+                if j >= self.route.current and w.action == "goto" and w.label == wp.label
+            ]
+            if wp.action == "label" and back and wp.label not in jumped:
+                jumped.add(wp.label)
+                i = back[-1] - 1
+                continue
+            i -= 1
 
     # doc: docs/prs/cavebot-rotate.md#cavebot-rotate
     def switch_route(self, route: Route) -> None:
