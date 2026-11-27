@@ -147,6 +147,7 @@ class Rotation:
         start_client: Callable[[Path], object] | None = None,
         window_open: Callable[[], bool] | None = None,
         focus_client: Callable[[], bool] | None = None,
+        restart_client: bool | None = None,
     ) -> None:
         if config.accounts_file is None:
             raise ValueError("rotation needs an accounts file")
@@ -156,6 +157,11 @@ class Rotation:
         self._start_client = start_client or (lambda exe: subprocess.Popen([str(exe)]))
         self._window_open = window_open or (lambda: _find_window_hwnd(window_title) is not None)
         self._focus_client = focus_client or (lambda: focus_window(window_title))
+        #: Close and restart the client between accounts (Windows); on Linux
+        #: the next account logs in on the login screen the logout leaves.
+        self._restart_client = restart_client if restart_client is not None else (
+            sys.platform == "win32"
+        )
         self.index = load_playing(len(self.accounts))
         self._asked = False
         #: No client window while the switch restarts Tibia: the loop steps the
@@ -181,18 +187,15 @@ class Rotation:
             log.warning("rotation: still in game after logout, staying on this account")
             self._logged_in(self.index)
             return
-        yield bot.press("alt+f4")
-        self.client_closed = True
-        if not (yield from self._wait_for_window(present=False, limit=CLOSE_WAIT)):
-            self._fail("the client did not close after alt+f4")
-            return
-        self._start_client(self.config.client_exe)
-        if not (yield from self._wait_for_window(present=True, limit=START_WAIT)):
-            self._fail("the client window did not show after starting it")
-            return
-        self._focus_client()
-        self.client_closed = False
-        yield LOGIN_SCREEN_WAIT
+        if self._restart_client:
+            yield from self._restart(bot)
+            if self.failed:
+                return
+        else:
+            # Linux: the logout leaves the client on its login screen and Alt+F4
+            # does not close it (2026-11-26: the switch waited on it forever).
+            self._focus_client()
+            yield LOGIN_SCREEN_WAIT
         n = len(self.accounts)
         for step in range(1, n + 1):
             nxt = (self.index + step) % n
@@ -206,6 +209,21 @@ class Rotation:
             yield bot.press("esc")  # close the error message
             yield 1
         self._fail("no account logged in")
+
+    def _restart(self, bot: Bot) -> Generator[object, None, None]:
+        """Windows: close the client and start it again (sets :attr:`failed` when it won't)."""
+        yield bot.press("alt+f4")
+        self.client_closed = True
+        if not (yield from self._wait_for_window(present=False, limit=CLOSE_WAIT)):
+            self._fail("the client did not close after alt+f4")
+            return
+        self._start_client(self.config.client_exe)
+        if not (yield from self._wait_for_window(present=True, limit=START_WAIT)):
+            self._fail("the client window did not show after starting it")
+            return
+        self._focus_client()
+        self.client_closed = False
+        yield LOGIN_SCREEN_WAIT
 
     def _fail(self, reason: str) -> None:
         log.error("rotation: %s", reason)

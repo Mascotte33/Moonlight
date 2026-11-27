@@ -60,7 +60,9 @@ def accounts_file(tmp_path: Path, text: str = "Abc1 Pw9\n\n# note\nd_e-f@x.io XY
     return path
 
 
-def setup(tmp_path: Path, stamina: int | None) -> tuple[ScriptRunner, Rotation, Clock, Client]:
+def setup(
+    tmp_path: Path, stamina: int | None, restart: bool = True
+) -> tuple[ScriptRunner, Rotation, Clock, Client]:
     clock, client = Clock(), Client()
     r = ScriptRunner(tmp_path, clock=clock)
     r.stamina = lambda: stamina
@@ -71,6 +73,7 @@ def setup(tmp_path: Path, stamina: int | None) -> tuple[ScriptRunner, Rotation, 
         start_client=client.start,
         window_open=lambda: client.window,
         focus_client=client.focus,
+        restart_client=restart,
     )
     return r, r.rotation, clock, client
 
@@ -228,3 +231,16 @@ def test_the_queue_goes_on_after_a_restart_and_wraps_to_the_first(tmp_path: Path
     assert again.index == 1  # a restart goes on from it
     again._logged_in(0)  # the last account rotated: the first again
     assert load_playing(2) == 0
+
+
+def test_on_linux_the_next_account_logs_in_on_the_login_screen(tmp_path: Path) -> None:
+    # The logout leaves the client on its login screen; Alt+F4 never closed it.
+    r, rot, clock, client = setup(tmp_path, 100, restart=False)
+    inp = FakeInput()
+    r.start("account_rotate")
+    play(r, inp, clock, True, 0.5, client)
+    play(r, inp, clock, False, 15, client)
+    assert client.started == [] and client.focused == 1
+    assert inp.sent_lines == ["K ctrl+l", *LOGIN_B, *PICK_1]
+    play(r, inp, clock, True, 1, client)
+    assert r.running is None and rot.index == 1 and not rot.failed
