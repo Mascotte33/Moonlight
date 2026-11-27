@@ -1190,8 +1190,6 @@ class GameLoop:
             or (m.cavebot is not None and m.cavebot.hand_busy)
         ):
             return False
-        if not drop.mid_drag and m.cavebot is not None and m.cavebot.near_floor_change:
-            return False  # not next to a rope spot or stairs: the drop waits past it
         self._task = "Dropping items"
         cavebot = m.cavebot
         # Plain walking goes on while the items drop (owner 2026-11-26); a
