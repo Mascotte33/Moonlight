@@ -15,9 +15,8 @@ Design notes (from T02, ``docs/hw_budget.md``):
   yields *new* frames when the desktop presents them: on a static/paused
   desktop ``grab()`` returns ``None``. We handle that by reusing the last frame.
 
-Window detection uses the Win32 ``user32`` API through ``ctypes`` (equivalent
-to ``win32gui``/``pygetwindow`` but stdlib-only, so it stays importable and
-type-checkable everywhere). Frames are returned as **RGB** ``(H, W, 3)``
+Finding, focusing and measuring the window go through :mod:`moonlight.window`
+(one adapter per OS). Frames are returned as **RGB** ``(H, W, 3)``
 ``uint8`` arrays (OpenCV prefers BGR, but we store RGB consistently).
 """
 
@@ -33,13 +32,14 @@ from typing import Any
 import mss
 import numpy as np
 
-from moonlight import x11
+from moonlight.window import WINDOWS, focus_window
 
 __all__ = [
     "TIBIA_WINDOW_TITLE",
     "ScreenCapture",
     "CaptureError",
     "WindowNotFoundError",
+    "focus_window",
 ]
 
 #: Classic Tibia client window title. OTS servers may append text; matching is
@@ -72,17 +72,6 @@ class WindowNotFoundError(CaptureError):
     """The client window could not be located on screen."""
 
 
-class _RECT(ctypes.Structure):
-    """Win32 RECT structure (pixel coordinates)."""
-
-    _fields_ = [
-        ("left", ctypes.c_long),
-        ("top", ctypes.c_long),
-        ("right", ctypes.c_long),
-        ("bottom", ctypes.c_long),
-    ]
-
-
 def _set_dpi_aware() -> None:
     """Make the process DPI-aware so all geometry is in physical pixels.
 
@@ -102,61 +91,8 @@ def _set_dpi_aware() -> None:
 
 
 def _find_window_hwnd(title: str) -> int | None:
-    """Find a visible top-level window by title and return its handle.
-
-    Tries an exact match (``FindWindowW``) first, then enumerates visible
-    top-level windows and returns the first whose title equals *title* or
-    starts with it (to cover "Tibia - <ServerName>"). Returns ``None`` if no
-    match. On Linux the window is found through X11.
-    """
-    if sys.platform == "linux":
-        return x11.find_window(title)
-    if sys.platform != "win32":
-        return None
-    user32 = ctypes.windll.user32
-    user32.FindWindowW.restype = ctypes.c_void_p
-
-    hwnd = user32.FindWindowW(None, title)
-    if hwnd:
-        return int(hwnd)
-
-    found: list[int] = []
-
-    def _enum_cb(h: int, _lparam: int) -> bool:
-        if not user32.IsWindowVisible(h):
-            return True
-        length = user32.GetWindowTextLengthW(h)
-        if length > 0:
-            buf = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(h, buf, length + 1)
-            wtitle = buf.value
-            if wtitle == title or wtitle.startswith(title):
-                found.append(int(h))
-        return True
-
-    # Keep a strong reference so the callback survives the EnumWindows call.
-    EnumWindowsProc = ctypes.WINFUNCTYPE(
-        ctypes.c_bool, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)
-    )
-    proc = EnumWindowsProc(_enum_cb)
-    user32.EnumWindows(proc, None)
-
-    return found[0] if found else None
-
-
-# doc: docs/prs/scripts-page.md#test-now
-def focus_window(title: str) -> bool:
-    """Bring the window *title* (as :func:`_find_window_hwnd` finds it) to the
-    front, restoring it when minimized; False when it is not found."""
-    hwnd = _find_window_hwnd(title)
-    if hwnd is None:
-        return False
-    if sys.platform == "linux":
-        return x11.activate(hwnd)
-    user32 = ctypes.windll.user32
-    if user32.IsIconic(hwnd):
-        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-    return bool(user32.SetForegroundWindow(hwnd))
+    """The shown window titled *title* (or starting with it), or None."""
+    return WINDOWS.find(title)
 
 
 # doc: docs/prs/dxcam-crash.md#double-release
@@ -190,30 +126,11 @@ def _stop_dxcam_double_release() -> None:
     DXGIDuplicator.release = release_duplicator
 
 
-class _POINT(ctypes.Structure):
-    """Win32 POINT structure."""
-
-    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-
-
 # doc: docs/prs/gui-calibration.md#game-area-coordinates
 def _window_rect(hwnd: int) -> tuple[int, int, int, int] | None:
-    """Return the game area (client area, no title bar or borders) of *hwnd*
-    as screen ``(left, top, width, height)``, or ``None``."""
-    if sys.platform == "linux":
-        return x11.window_rect(hwnd)
-    if sys.platform != "win32":
-        return None
-    user32 = ctypes.windll.user32
-    rect = _RECT()
-    if not user32.GetClientRect(ctypes.c_void_p(hwnd), ctypes.byref(rect)):
-        return None
-    origin = _POINT(0, 0)
-    if not user32.ClientToScreen(ctypes.c_void_p(hwnd), ctypes.byref(origin)):
-        return None
-    if rect.right <= 0 or rect.bottom <= 0:
-        return None
-    return (origin.x, origin.y, rect.right, rect.bottom)
+    """The game area (client area, no title bar or borders) of *hwnd* as
+    screen ``(left, top, width, height)``, or ``None``."""
+    return WINDOWS.rect(hwnd)
 
 
 class ScreenCapture:
@@ -329,9 +246,8 @@ class ScreenCapture:
         Finding it enumerates every top-level window (about 0.5 ms), so it is
         not done every tick.
         """
-        if sys.platform == "win32" and self._hwnd is not None:
-            if ctypes.windll.user32.IsWindow(ctypes.c_void_p(self._hwnd)):
-                return self._hwnd
+        if self._hwnd is not None and WINDOWS.alive(self._hwnd):
+            return self._hwnd
         self._hwnd = _find_window_hwnd(self.window_title)
         return self._hwnd
 
@@ -342,21 +258,7 @@ class ScreenCapture:
         On Linux the focused window's title is matched instead. Elsewhere (or
         if the window is not found) this returns ``False``.
         """
-        if sys.platform == "linux":
-            active = x11.active_title()
-            return active is not None and (
-                active == self.window_title or active.startswith(self.window_title)
-            )
-        if sys.platform != "win32":
-            return False
-        hwnd = self._window_handle()
-        if hwnd is None:
-            return False
-        user32 = ctypes.windll.user32
-        user32.GetForegroundWindow.restype = ctypes.c_void_p
-        if not user32.IsWindowVisible(hwnd):
-            return False
-        return int(hwnd) == int(user32.GetForegroundWindow() or 0)
+        return WINDOWS.focused(self.window_title, self._window_handle)
 
     # -- capture ------------------------------------------------------------
 

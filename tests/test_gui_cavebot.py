@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from moonlight.cavebot.cavebot import RouteFileLoader, Waypoint
+from moonlight.cavebot.route import RouteFileLoader, Waypoint
 from moonlight.cavebot.tab import (
     apply_cavebot,
     delete_waypoint,
@@ -127,7 +127,7 @@ def test_switch_on_without_route_refused(tmp_path: Path) -> None:
 
 
 def test_every_waypoint_type_has_a_button() -> None:
-    from moonlight.cavebot.cavebot import ACTIONS
+    from moonlight.cavebot.route import ACTIONS
     from moonlight.cavebot.tab import KIND_SECTIONS
 
     buttons = tuple(a for _, rows in KIND_SECTIONS for row in rows for a in row)

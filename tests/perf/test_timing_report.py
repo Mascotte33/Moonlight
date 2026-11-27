@@ -22,7 +22,8 @@ import pytest
 
 from moonlight.alarms.alarms import AlarmDecision
 from moonlight.calibration.calibrate import CalibrationProfile
-from moonlight.cavebot.cavebot import Cavebot, Route, Waypoint
+from moonlight.cavebot.cavebot import Cavebot
+from moonlight.cavebot.route import Route, Waypoint
 from moonlight.core.loop import DecisionModules, GameLoop, LoopConfig
 from moonlight.core.state import Capacity, Monster, Position, WorldState
 from moonlight.core.wiring import make_perceive

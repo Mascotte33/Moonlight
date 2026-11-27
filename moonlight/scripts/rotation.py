@@ -24,10 +24,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import subprocess
-import sys
 import time
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
@@ -35,9 +33,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from moonlight.healing.healing import check_hotkey
-from moonlight.perception.capture import _find_window_hwnd, focus_window
 from moonlight.perception.stamina import LOW_STAMINA_MINUTES
 from moonlight.scripts.scripts import TYPEABLE
+from moonlight.window import WINDOWS, focus_window
 
 if TYPE_CHECKING:
     from moonlight.scripts.scripts import Bot
@@ -74,12 +72,7 @@ LOGIN_WAIT = 30.0  # s for the game to show after Enter on the character
 GONE_FOR = 2.0  # s the game must stay gone: one bad frame is not a logout
 LIST_TOP = 20  # ponytail: "up" presses to reach the list top (= the first character)
 #: The official client install: the Windows launcher, or the Linux one in ~/Tibia.
-DEFAULT_CLIENT_EXE = (
-    Path.home() / "Tibia" / "Tibia"
-    if sys.platform == "linux"
-    else Path(os.environ.get("LOCALAPPDATA", "")) / "Tibia" / "packages" / "Tibia" / "bin"
-    / "client_launcher.exe"
-)
+DEFAULT_CLIENT_EXE = WINDOWS.client_exe
 
 
 @dataclass(frozen=True)
@@ -156,12 +149,12 @@ class Rotation:
         self.accounts = load_accounts(config.accounts_file)
         self._clock = clock
         self._start_client = start_client or (lambda exe: subprocess.Popen([str(exe)]))
-        self._window_open = window_open or (lambda: _find_window_hwnd(window_title) is not None)
+        self._window_open = window_open or (lambda: WINDOWS.find(window_title) is not None)
         self._focus_client = focus_client or (lambda: focus_window(window_title))
         #: Close and restart the client between accounts (Windows); on Linux
         #: the next account logs in on the login screen the logout leaves.
-        self._restart_client = restart_client if restart_client is not None else (
-            sys.platform == "win32"
+        self._restart_client = (
+            restart_client if restart_client is not None else WINDOWS.restarts_client
         )
         self.index = load_playing(len(self.accounts))
         self._refocused_at = float("-inf")

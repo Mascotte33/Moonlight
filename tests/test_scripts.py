@@ -13,6 +13,7 @@ from moonlight.core.safety import RateLimitedInput, RateLimiter
 from moonlight.core.state import WorldState
 from moonlight.hardware.input import FakeInput
 from moonlight.scripts.scripts import ScriptRunner, ScriptsConfig, parse_timers, script_error
+from tests.script_modules import attach
 
 
 class Clock:
@@ -244,7 +245,7 @@ def test_the_range_script_flips_both_targetings(tmp_path: Path) -> None:
     src = (Path(__file__).parents[1] / "scripts" / "range_toggle.py").read_text()
     r, inp = runner(tmp_path, range_toggle=src), FakeInput()
     targeting, stuck = TargetingDecision(TargetingConfig()), TargetingDecision(TargetingConfig())
-    r.targetings = (targeting, stuck)
+    attach(r, targeting=targeting, stuck_targeting=stuck)
     for expected in (True, False):
         assert r.start("range_toggle")
         ticks(r, inp, 3)
@@ -267,7 +268,7 @@ def test_the_targeting_scripts_turn_targeting_off_and_on(tmp_path: Path) -> None
     folder = Path(__file__).parents[1] / "scripts"
     off, on = ((folder / f"{n}.py").read_text() for n in ("targeting_off", "targeting_on"))
     r, inp = runner(tmp_path, targeting_off=off, targeting_on=on), FakeInput()
-    r.targetings = (TargetingDecision(TargetingConfig()), None)
+    attach(r, targeting=TargetingDecision(TargetingConfig()))
     for name, turned_off in (("targeting_off", True), ("targeting_on", False)):
         assert r.start(name)
         ticks(r, inp, 3)
@@ -277,7 +278,7 @@ def test_the_targeting_scripts_turn_targeting_off_and_on(tmp_path: Path) -> None
 
 def test_the_targeting_script_fails_with_targeting_switched_off(tmp_path: Path) -> None:
     r = runner(tmp_path, s="def run(bot):\n    yield bot.targeting(True)\n")
-    r.targetings = (None, None)
+    attach(r)
     assert r.start("s")
     ticks(r, FakeInput(), 3)
     assert "needs Targeting switched on" in r.failed["s"]
@@ -301,7 +302,7 @@ def test_the_door_scripts_right_click_the_tile_next_to_the_player(
     clock = Clock()
     source = (Path(__file__).parents[1] / "scripts" / f"door_{direction}.py").read_text()
     r, inp = runner(tmp_path, clock, door=source), FakeInput()
-    r.clicker = AbsoluteClicker()  # type: ignore[assignment]
+    attach(r, clicker=AbsoluteClicker())
     r.game_grid = (0, 0, 150, 110)  # 15 x 11 tiles of 10 px, the player on (7, 5)
     assert r.start("door")
     ticks(r, inp, 4)  # jump, click, then the wait starts
@@ -332,7 +333,7 @@ def test_drop_when_cap_low_drops_only_under_the_cap() -> None:
     for cap, dropped in ((module.CAP_BELOW - 1, True), (module.CAP_BELOW, False), (None, False)):
         runner = ScriptRunner()
         runner.free_cap = lambda cap=cap: cap
-        runner.drop_items = Drops()  # type: ignore[assignment]
+        attach(runner, drop_items=Drops())
         started.clear()
         for step in module.run(Bot(runner)):
             for command in step if isinstance(step, list) else []:
@@ -349,10 +350,23 @@ def test_ring_scripts_toggle_extras_ring(tmp_path: Path) -> None:
     folder = Path(__file__).resolve().parents[1] / "scripts"
     on, off = ((folder / f"ring_{n}.py").read_text() for n in ("on", "off"))
     r, inp = runner(tmp_path, ring_on=on, ring_off=off), FakeInput()
-    r.extras = SimpleNamespace(config=ExtrasConfig(ring=False, ring_hotkey="f9"))
+    attach(r, extras=SimpleNamespace(config=ExtrasConfig(ring=False, ring_hotkey="f9")))
     for name, want in (("ring_on", True), ("ring_off", False)):
         assert r.start(name)
         for _ in range(5):
             r.step(WorldState(), inp)
         assert r.extras.config.ring is want
     assert "f9" in str(inp.__dict__)
+
+
+def test_the_runner_sees_the_modules_the_loop_rebuilt(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from moonlight.core.loop import DecisionModules
+
+    r = runner(tmp_path)
+    current = DecisionModules(cavebot=SimpleNamespace(name="old"))  # type: ignore[arg-type]
+    r.modules = lambda: current
+    assert r.cavebot is current.cavebot
+    current = DecisionModules(cavebot=SimpleNamespace(name="new"))  # type: ignore[arg-type]
+    assert r.cavebot is current.cavebot  # no re-attach after a reconfigure
