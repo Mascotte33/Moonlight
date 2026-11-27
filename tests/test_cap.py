@@ -99,6 +99,16 @@ def test_an_unlisted_touching_pair_is_split_where_both_halves_read() -> None:
     assert read_number(draw(three, seventy_five)) == 375
 
 
+def test_three_unlisted_joined_digits_are_split() -> None:
+    # Linux client 2026-11-27: cap 480 as one shape on a newly logged-in character.
+    four_eighty = (
+        "..###..####..####./..###.#####..#####/.####.##.##.##..##/##.##..####.##..##/"
+        "#####.#####.##..##/########..####..##/...##.##.###.#####/...##..####..####."
+    )
+    assert four_eighty not in CAP_DIGITS
+    assert read_number(draw(four_eighty)) == 480
+
+
 def test_three_joined_digits_read_as_one_listed_shape() -> None:
     # Linux client 2026-11-26: cap 484 drawn as one shape; the bot would not start.
     shape = {d: g for g, d in CAP_DIGITS.items()}

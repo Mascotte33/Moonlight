@@ -175,7 +175,8 @@ def _one(shape: np.ndarray) -> str | None:
 
 
 def _split(shape: np.ndarray) -> str | None:
-    """Two touching digits: the one cut where both halves read, or None.
+    """Touching digits: the one cut where both halves read (the right one may
+    itself be touching digits: "480" on Linux, 2026-11-27), or None.
 
     On Linux the client's font joins other pairs than on Windows (a 7 and a 5
     touched by one pixel in "375"), so they cannot all be listed.
@@ -183,7 +184,8 @@ def _split(shape: np.ndarray) -> str | None:
     reads = {
         a + b
         for cut in range(3, shape.shape[1] - 2)
-        if (a := _one(shape[:, :cut])) is not None and (b := _one(shape[:, cut:])) is not None
+        if (a := _one(shape[:, :cut])) is not None
+        and (b := _one(shape[:, cut:]) or _split(shape[:, cut:])) is not None
     }
     return reads.pop() if len(reads) == 1 else None
 
