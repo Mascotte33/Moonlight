@@ -3,10 +3,10 @@
 # doc: docs/prs/healing.md#healing-rules
 
 :class:`HealingDecision` checks the owner's ordered :class:`HealingRule` list
-and the :class:`CureRule` per condition, and returns at most two
-:class:`HealingAction` per tick: one spell, one potion. Each rule and cure
-has its own cooldown (its hotkey's), so a rule that is cooling down, or
-whose key does nothing (an empty potion), never blocks the next one.
+and the :class:`CureRule` per condition, and returns a
+:class:`HealingAction` for every one due now. Each rule and cure has its
+own cooldown (its hotkey's), so a rule that is cooling down, or whose key
+does nothing (an empty potion), never blocks another.
 It never names a spell or a potion, only hotkeys.
 
 ``hp_percent`` / ``mp_percent`` of 0.0 mean "unknown": an unknown bar never
@@ -180,46 +180,41 @@ class HealingDecision:
         self._critical_hp = min(hp_triggers, default=0.0)
 
     def decide(self, state: WorldState) -> list[HealingAction]:
-        """The keys to press now: 0 to 2 actions, the spell slot first.
+        """The keys to press now: every due rule and cure not cooling down.
 
-        The first due spell rule not cooling down, or else the first such cure,
-        takes the spell slot; the first due potion rule not cooling down takes
-        the potion slot. A due heal waits a random ``HEAL_REACTION_SECONDS``
-        first, unless HP is critical.
+        Spell rules first (in list order), then cures, then potion rules. A
+        kind's due heals wait a random ``HEAL_REACTION_SECONDS`` first, unless
+        HP is critical.
         """
         hp, mp = state.hp_percent, state.mp_percent
-        due = {
-            slot: self._first_due_rule(slot, hp, mp, state.mp_points, ready=True)
-            for slot in _SLOTS
-        }
-        if due["spell"] is None:
-            due["spell"] = self._first_due_cure(state, ready=True)
+        due = {slot: self._due_rules(slot, hp, mp, state.mp_points, ready=True) for slot in _SLOTS}
+        due["spell"] += self._due_cures(state, ready=True)
         critical = 0.0 < hp <= self._critical_hp
         now = self._clock()
         actions = []
         for slot in _SLOTS:
-            action = due[slot]
-            if action is None:
+            if not due[slot]:
                 self._react_at.pop(slot, None)
                 continue
             react_at = self._react_at.setdefault(slot, now + heal_reaction())
             if not critical and now < react_at:
                 continue
-            actions.append(action)
+            actions += due[slot]
         return actions
 
     # doc: docs/prs/near-targeting.md#same-tick
     def heal_needed(self, state: WorldState) -> bool:
         """A rule or cure is due now, even one on cooldown."""
         hp, mp = state.hp_percent, state.mp_percent
-        return any(self._first_due_rule(slot, hp, mp) for slot in _SLOTS) or bool(
-            self._first_due_cure(state)
+        return any(self._due_rules(slot, hp, mp) for slot in _SLOTS) or bool(
+            self._due_cures(state)
         )
 
-    def _first_due_rule(
+    def _due_rules(
         self, slot: str, hp: float, mp: float, mana: int = 0, *, ready: bool = False
-    ) -> HealingAction | None:
-        """The first rule of *slot* due now; with *ready*, only one not cooling down."""
+    ) -> list[HealingAction]:
+        """The rules of *slot* due now; with *ready*, only those not cooling down."""
+        due = []
         for rule in self.config.rules:
             if rule.kind != slot or mana < rule.minimum_mana:
                 continue
@@ -227,18 +222,19 @@ class HealingDecision:
                 continue
             reason = _rule_reason(rule, hp, mp)
             if reason is not None:
-                return HealingAction(slot, rule.hotkey, reason)
-        return None
+                due.append(HealingAction(slot, rule.hotkey, reason))
+        return due
 
-    def _first_due_cure(self, state: WorldState, *, ready: bool = False) -> HealingAction | None:
+    def _due_cures(self, state: WorldState, *, ready: bool = False) -> list[HealingAction]:
+        """The enabled cures for active conditions; with *ready*, only those not cooling down."""
         active = state.active_status_icons
-        for condition in CONDITIONS:
-            for cure in self.config.cures:
-                if ready and self.on_cooldown(cure.hotkey):
-                    continue
-                if cure.condition == condition and cure.enabled and condition in active:
-                    return HealingAction("spell", cure.hotkey, f"cure {condition}")
-        return None
+        return [
+            HealingAction("spell", cure.hotkey, f"cure {condition}")
+            for condition in CONDITIONS
+            for cure in self.config.cures
+            if cure.condition == condition and cure.enabled and condition in active
+            and not (ready and self.on_cooldown(cure.hotkey))
+        ]
 
     def on_cooldown(self, hotkey: str) -> bool:
         """True while *hotkey* was sent less than its cooldown ago."""
