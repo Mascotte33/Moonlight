@@ -244,3 +244,13 @@ def test_on_linux_the_next_account_logs_in_on_the_login_screen(tmp_path: Path) -
     assert inp.sent_lines == ["K ctrl+l", *LOGIN_B, *PICK_1]
     play(r, inp, clock, True, 1, client)
     assert r.running is None and rot.index == 1 and not rot.failed
+
+
+def test_refocus_focuses_the_open_client_every_2_s(tmp_path: Path) -> None:
+    _, rot, clock, client = setup(tmp_path, 100)
+    client.window = True
+    rot.refocus()
+    rot.refocus()  # too soon
+    clock.now += 2.0
+    rot.refocus()
+    assert client.focused == 2
