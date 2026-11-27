@@ -59,7 +59,7 @@ from pathlib import Path
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from moonlight.alarms.alarms import AlarmConfig
-from moonlight.cavebot.cavebot import Route, RouteError, RouteFileLoader
+from moonlight.cavebot.route import Route, RouteError, RouteFileLoader
 from moonlight.core.loop import GameLoop, LoopConfig
 from moonlight.extras.extras import ExtrasConfig
 from moonlight.hardware.clicker import ClickerConfig

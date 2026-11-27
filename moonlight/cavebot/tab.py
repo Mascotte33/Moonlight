@@ -23,15 +23,6 @@ import customtkinter as ctk
 import numpy as np
 from PIL import Image
 
-from moonlight.cavebot.cavebot import (
-    ACTIONS,
-    WALK_KEYS,
-    Route,
-    RouteError,
-    RouteFileLoader,
-    Waypoint,
-    has_tile,
-)
 from moonlight.cavebot.recorder import (
     StandTracker,
     cursor_line,
@@ -42,6 +33,15 @@ from moonlight.cavebot.recorder import (
     should_add,
     should_stop_recording,
     stairs_waypoint,
+)
+from moonlight.cavebot.route import (
+    ACTIONS,
+    WALK_KEYS,
+    Route,
+    RouteError,
+    RouteFileLoader,
+    Waypoint,
+    has_tile,
 )
 from moonlight.cavebot.town import item_names, item_picture
 from moonlight.core.config import ECHO_RAID_CHOICES, BotConfig, ConfigError

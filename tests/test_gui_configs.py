@@ -127,8 +127,8 @@ def test_config_changed_reaches_the_app() -> None:
 
 
 def test_bot_runs_the_cavebot_tabs_waypoint_list(monkeypatch: pytest.MonkeyPatch) -> None:
-    from moonlight.cavebot.cavebot import RouteFileLoader, Waypoint
     from moonlight.cavebot.recorder import save_route
+    from moonlight.cavebot.route import RouteFileLoader, Waypoint
     from moonlight.core.config import CavebotConfig
     from moonlight.gui import loop_factory
 

@@ -36,8 +36,9 @@ def _no_random_delay(monkeypatch: pytest.MonkeyPatch) -> None:
 def _echo_raid_duds_in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Tests never read or write the real list of tiles whose echo raid never triggered."""
     import moonlight.cavebot.cavebot as cavebot
+    import moonlight.cavebot.echo_raids as echo_raids
 
-    monkeypatch.setattr(cavebot, "ECHO_RAID_DUDS_FILE", tmp_path / "echo_raid_duds.txt")
+    monkeypatch.setattr(echo_raids, "ECHO_RAID_DUDS_FILE", tmp_path / "echo_raid_duds.txt")
     monkeypatch.setattr(cavebot, "ROUTE_PROGRESS_FILE", tmp_path / "route_progress.json")
     monkeypatch.setattr(
         "moonlight.scripts.rotation.PLAYING_FILE", tmp_path / "rotation_playing.json"

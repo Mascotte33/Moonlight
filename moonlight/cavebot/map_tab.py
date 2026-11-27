@@ -25,8 +25,8 @@ import customtkinter as ctk
 import numpy as np
 from PIL import Image, ImageTk
 
-from moonlight.cavebot.cavebot import ACTIONS, RouteError, Waypoint, has_tile
 from moonlight.cavebot.recorder import make_waypoint
+from moonlight.cavebot.route import ACTIONS, RouteError, Waypoint, has_tile
 from moonlight.cavebot.route_map import MapTiles, MapView, Spot, bad_legs, leg_path, waypoint_at
 from moonlight.cavebot.route_plan import PICTURES_DIR, SPAWNS_FILE, picture_files, spawn_points
 from moonlight.core.state import Position

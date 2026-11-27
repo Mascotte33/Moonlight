@@ -6,7 +6,7 @@ only what leaves it no way past (owner 2026-11-26: off the hunt, like the rings)
 
 from __future__ import annotations
 
-from moonlight.cavebot.cavebot import Waypoint
+from moonlight.cavebot.route import Waypoint
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.state import Monster, Position
 from moonlight.scripts.scripts import ScriptRunner

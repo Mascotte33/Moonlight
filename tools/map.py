@@ -27,7 +27,7 @@ from pathlib import Path
 
 import cv2
 
-from moonlight.cavebot.cavebot import Route, RouteFileLoader, Waypoint, has_tile
+from moonlight.cavebot.route import Route, RouteFileLoader, Waypoint, has_tile
 from moonlight.cavebot.floor_changes import load_confirmed
 from moonlight.cavebot.pathing import CostMap
 from moonlight.cavebot.route_map import (

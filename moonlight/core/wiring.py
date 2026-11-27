@@ -720,31 +720,31 @@ def build_modules(
         if on_clicker is not None:
             on_clicker(m.clicker)
     # One runner for the bot's life: a kept cavebot starts its scripts in it.
-    from moonlight.scripts.scripts import ScriptRunner
+    from moonlight.scripts.scripts import ScriptReaders, ScriptRunner
 
     if prev is not None and prev.scripts is not None:
         m.scripts = prev.scripts
     else:
-        m.scripts = ScriptRunner(grab=screen_grab, clock=clock or time.monotonic)
-        m.scripts.settings = live
+        game_grid = (
+            profile.regions["game_grid"].to_tuple if "game_grid" in profile.regions else None
+        )
+        readers = ScriptReaders(game_grid=game_grid)
         if screen_grab is not None:
-            from moonlight.perception.potions import PotionCounter
-
-            m.scripts.potion_counts = PotionCounter(screen_grab).counts
-            from moonlight.perception.stamina import StaminaReader
-
-            m.scripts.stamina = StaminaReader(screen_grab).minutes
-            from moonlight.perception.stamina import LevelReader
-
-            m.scripts.level = LevelReader(screen_grab).level
             from moonlight.perception.cap import CapReader
+            from moonlight.perception.potions import PotionCounter
+            from moonlight.perception.stamina import LevelReader, StaminaReader
 
-            m.scripts.free_cap = CapReader(screen_grab).cap
-    m.scripts.routes_dir = config.routes_dir
-    m.scripts.clicker = m.clicker
-    m.scripts.game_grid = (
-        profile.regions["game_grid"].to_tuple if "game_grid" in profile.regions else None
-    )
+            readers = ScriptReaders(
+                potion_counts=PotionCounter(screen_grab).counts,
+                stamina=StaminaReader(screen_grab).minutes,
+                level=LevelReader(screen_grab).level,
+                free_cap=CapReader(screen_grab).cap,
+                game_grid=game_grid,
+            )
+        m.scripts = ScriptRunner(
+            grab=screen_grab, clock=clock or time.monotonic, readers=readers, clicker=m.clicker
+        )
+        m.scripts.settings = live
     m.scripts.timers = config.scripts.timers()
     if config.rotation is None:
         m.scripts.rotation = None

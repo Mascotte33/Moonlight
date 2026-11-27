@@ -20,7 +20,8 @@ import numpy as np
 import pytest
 
 from moonlight.calibration.calibrate import CalibrationProfile
-from moonlight.cavebot.cavebot import Cavebot, Route, Waypoint
+from moonlight.cavebot.cavebot import Cavebot
+from moonlight.cavebot.route import Route, Waypoint
 from moonlight.core.config import BotConfig
 from moonlight.core.loop import BotState, DecisionModules, GameLoop, LoopConfig
 from moonlight.core.safety import F12Monitor
