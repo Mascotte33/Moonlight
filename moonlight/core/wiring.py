@@ -605,6 +605,16 @@ def walk_map_walkable(map_dir: Path) -> Callable[[int, int, int], bool] | None:
     return lambda x, y, z: cost_map.walkable(x, y, z) and not cost_map.floor_change(x, y, z)
 
 
+def walk_map_wall(map_dir: Path) -> Callable[[int, int, int], bool] | None:
+    """Walk-map tiles known to be walls, water or floor changes; None without a walk map."""
+    from moonlight.cavebot.pathing import CostMap
+
+    cost_map = CostMap(map_dir / "cost")
+    if cost_map.empty:
+        return None
+    return cost_map.known_wall
+
+
 def build_modules(
     config: BotConfig,
     profile: CalibrationProfile,
@@ -663,6 +673,7 @@ def build_modules(
             profile.ui_scale,
             game_grid_region=profile.get_region("game_grid").to_tuple,
             walkable=walkable,
+            wall=walk_map_wall(MAP_DIR),
             alarms=config.alarms,
         )
     # doc: docs/prs/targeting.md#stuck-targeting

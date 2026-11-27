@@ -320,6 +320,26 @@ def wall_slots(state: WorldState, walkable: Walkable | None) -> set[tuple[int, i
     return {slot for slot in screen_slots() if not walkable(*_world_tile(state, slot))}
 
 
+# doc: docs/prs/near-targeting.md#unreachable
+def _reachable_slots(blocked: set[tuple[int, int]]) -> set[tuple[int, int]]:
+    """Screen slots the player can walk to without leaving the screen or crossing *blocked*."""
+    seen = {PLAYER_SLOT}
+    todo = [PLAYER_SLOT]
+    while todo:
+        x, y = todo.pop()
+        for (dx, dy), _ in WALK_STEPS:
+            nxt = (x + dx, y + dy)
+            if (
+                0 <= nxt[0] < GRID_COLUMNS
+                and 0 <= nxt[1] < GRID_ROWS
+                and nxt not in blocked
+                and nxt not in seen
+            ):
+                seen.add(nxt)
+                todo.append(nxt)
+    return seen
+
+
 # doc: docs/prs/attack-types.md#keep-distance
 def _keep_distance_goal(
     creature_slots: tuple[tuple[int, int], ...],
@@ -383,6 +403,7 @@ class TargetingDecision:
         attack_top_row_first: bool = False,
         game_grid_region: Rect | None = None,
         walkable: Walkable | None = None,
+        wall: Walkable | None = None,
         alarms: AlarmConfig | None = None,
     ) -> None:
         self.config = config if config is not None else TargetingConfig()
@@ -394,6 +415,11 @@ class TargetingDecision:
         self.kiting = False
         #: The walk map, for keep distance; None: no walls known.
         self._walkable = walkable
+        #: Tiles the walk map knows are blocked (unknown tiles are floor), for
+        #: telling which creatures on screen have a way to them; None: none known.
+        self._wall = wall
+        #: World tiles already logged as having no way to them.
+        self._no_way_logged: set[tuple[int, int, int]] = set()
         # Stuck in a corridor: the top row is the nearest creature (the battle
         # list sorted by distance), most often the one in the way.
         self._attack_top_row_first = attack_top_row_first
@@ -582,16 +608,42 @@ class TargetingDecision:
         return TargetingAction("step_away", selected.battle_list_row, step, reason)
 
     def _near_creatures(self, state: WorldState, now: float) -> list[tuple[tuple[int, int], float]]:
-        """``(slot, hp)`` of the creatures within range whose tile is not skipped."""
+        """``(slot, hp)`` of the creatures in range with a way to them, tile not skipped."""
         self._skipped_tiles = {t: end for t, end in self._skipped_tiles.items() if end > now}
         reach = self.config.attack_range_tiles
-        px, py = PLAYER_SLOT
-        return [
+        near = [
             (slot, hp)
             for slot, hp in zip(state.creature_slots, state.creature_hp_percents, strict=True)
-            if max(abs(slot[0] - px), abs(slot[1] - py)) <= reach
+            if _distance(PLAYER_SLOT, slot) <= reach
             and _world_tile(state, slot) not in self._skipped_tiles
         ]
+        if all(_distance(PLAYER_SLOT, slot) <= 1 for slot, _ in near):
+            return near
+        blocked = set(state.creature_slots)
+        if self._wall is not None and state.position.x != 0:
+            wall = self._wall
+            blocked |= {s for s in screen_slots() if wall(*_world_tile(state, s))}
+        reached = _reachable_slots(blocked)
+        return [(slot, hp) for slot, hp in near if self._has_way(state, slot, reached)]
+
+    # doc: docs/prs/near-targeting.md#unreachable
+    def _has_way(
+        self, state: WorldState, slot: tuple[int, int], reached: set[tuple[int, int]]
+    ) -> bool:
+        """True when the player is next to *slot* or can walk to a free tile next to it.
+
+        *reached* are the slots walkable to on screen: walls come from the walk
+        map (unknown tiles are floor) and every creature, players included, blocks.
+        """
+        if any(_distance(slot, free) <= 1 for free in reached):
+            return True
+        tile = _world_tile(state, slot)
+        if tile not in self._no_way_logged:
+            if len(self._no_way_logged) > 1000:
+                self._no_way_logged.clear()
+            self._no_way_logged.add(tile)
+            logger.info("targeting: creature at %s,%s,%s: no way, skipped", *tile)
+        return False
 
     # doc: docs/prs/near-targeting.md#fight-in-range
     def fight_in_range(self, state: WorldState, now: float) -> bool:

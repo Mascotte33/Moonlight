@@ -86,6 +86,15 @@ class CostMap:
         colour = self._colour(x, y, z)
         return colour is not None and bool(np.all(colour == _YELLOW))
 
+    # doc: docs/prs/near-targeting.md#unreachable
+    def known_wall(self, x: int, y: int, z: int) -> bool:
+        """True on a tile the map knows nobody walks on: a wall, water or floor
+        change. Unexplored (black or missing) tiles are not known walls."""
+        colour = self._colour(x, y, z)
+        if colour is None or not np.any(colour != 0):
+            return False
+        return not self.walkable(x, y, z) or self.floor_change(x, y, z)
+
     def _colour(self, x: int, y: int, z: int) -> np.ndarray | None:
         """The colour map's BGR pixel at the tile, or None without a colour tile."""
         key = (x - x % _TILE, y - y % _TILE, z)
