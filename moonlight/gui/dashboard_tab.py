@@ -14,6 +14,7 @@ import threading
 import time
 import urllib.request
 import uuid
+from dataclasses import replace
 from tkinter import messagebox
 
 import customtkinter as ctk
@@ -267,7 +268,7 @@ class DashboardTab(Tab):
         if not name:
             return
         name = name.strip()
-        cfg = load_real_config()
+        cfg = replace(load_real_config(), rotate=False)  # a copy never joins the rotation unasked
         try:
             try:
                 save_config_as(cfg, name)

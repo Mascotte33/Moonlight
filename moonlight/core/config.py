@@ -143,6 +143,7 @@ _TOP_KEYS = {
     "routes_dir",
     "min_level",
     "max_level",
+    "rotate",
     "monster_name_source",
     "capacity_source",
     "client_options_file",
@@ -201,6 +202,8 @@ class BotConfig:
     #: by level (``cavebot_rotate`` and each login pick among the others).
     min_level: int = 0
     max_level: int = 0
+    #: Ticked ("Cavebot Rotate"): ``cavebot_rotate`` may pick this profile.
+    rotate: bool = False
     loop: LoopConfig = LoopConfig()
     #: Clicker mode (F-14): closed loop by default; open loop if T33 HIL
     #: shows the rendered cursor cannot be captured.
@@ -292,6 +295,7 @@ class BotConfig:
             "routes_dir",
             "min_level",
             "max_level",
+            "rotate",
             "monster_name_source",
             "capacity_source",
             "client_options_file",

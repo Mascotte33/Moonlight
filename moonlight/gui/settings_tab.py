@@ -49,6 +49,7 @@ __all__ = [
 PROFILE_OPTIONS = [
     Option("Min level", "min_level", "entry"),
     Option("Max level", "max_level", "entry"),
+    Option("Cavebot Rotate", "rotate", "checkbox"),
 ]
 OPTIONS = [
     Option("Tick rate (Hz)", "loop.tick_rate", "slider", min=1, max=60),
