@@ -4,8 +4,10 @@
 
 :class:`HealingDecision` checks the owner's ordered :class:`HealingRule` list
 and the :class:`CureRule` per condition, and returns at most two
-:class:`HealingAction` per tick: one for the spell slot, one for the potion
-slot. It never names a spell or a potion, only hotkeys.
+:class:`HealingAction` per tick: one spell, one potion. Each rule and cure
+has its own cooldown (its hotkey's), so a rule that is cooling down, or
+whose key does nothing (an empty potion), never blocks the next one.
+It never names a spell or a potion, only hotkeys.
 
 ``hp_percent`` / ``mp_percent`` of 0.0 mean "unknown": an unknown bar never
 triggers a rule, and an unknown MP reading passes the mana floor. The
@@ -87,7 +89,7 @@ def check_hotkey(hotkey: str, where: str) -> None:
 
 @dataclass(frozen=True)
 class HealingConfig:
-    """Healing rules (checked top to bottom), cures and the two slot cooldowns."""
+    """Healing rules (checked top to bottom), cures and the cooldown of each kind's keys."""
 
     rules: tuple[HealingRule, ...] = _DEFAULT_RULES
     cures: tuple[CureRule, ...] = _DEFAULT_CURES
@@ -145,7 +147,7 @@ def _rule_reason(rule: HealingRule, hp: float, mp: float) -> str | None:
 
 
 class HealingDecision:
-    """Decides the heal keys for a tick and tracks each slot's cooldown.
+    """Decides the heal keys for a tick and tracks each hotkey's cooldown.
 
     Typical usage (the loop)::
 
@@ -168,7 +170,7 @@ class HealingDecision:
         """
         self.config = (config if config is not None else HealingConfig()).validate()
         self._clock = clock if clock is not None else time.monotonic
-        #: Slot -> when its cooldown (randomly longer, picked at each press) ends.
+        #: Hotkey -> when its cooldown (randomly longer, picked at each press) ends.
         self._ready_at: dict[str, float] = {}
         # doc: docs/prs/human-timing.md#heal-reaction
         #: Slot -> when its due heal may be pressed (a short random reaction).
@@ -180,15 +182,18 @@ class HealingDecision:
     def decide(self, state: WorldState) -> list[HealingAction]:
         """The keys to press now: 0 to 2 actions, the spell slot first.
 
-        The first due spell rule, or else the first due cure, takes the spell
-        slot; the first due potion rule takes the potion slot. A slot on
-        cooldown sends nothing, and no later rule takes its place. A due heal
-        waits a random ``HEAL_REACTION_SECONDS`` first, unless HP is critical.
+        The first due spell rule not cooling down, or else the first such cure,
+        takes the spell slot; the first due potion rule not cooling down takes
+        the potion slot. A due heal waits a random ``HEAL_REACTION_SECONDS``
+        first, unless HP is critical.
         """
         hp, mp = state.hp_percent, state.mp_percent
-        due = {slot: self._first_due_rule(slot, hp, mp, state.mp_points) for slot in _SLOTS}
+        due = {
+            slot: self._first_due_rule(slot, hp, mp, state.mp_points, ready=True)
+            for slot in _SLOTS
+        }
         if due["spell"] is None:
-            due["spell"] = self._first_due_cure(state)
+            due["spell"] = self._first_due_cure(state, ready=True)
         critical = 0.0 < hp <= self._critical_hp
         now = self._clock()
         actions = []
@@ -196,9 +201,6 @@ class HealingDecision:
             action = due[slot]
             if action is None:
                 self._react_at.pop(slot, None)
-                continue
-            if self.on_cooldown(slot):
-                logger.debug("%s slot on cooldown: %s skipped", slot, action.hotkey)
                 continue
             react_at = self._react_at.setdefault(slot, now + heal_reaction())
             if not critical and now < react_at:
@@ -208,37 +210,42 @@ class HealingDecision:
 
     # doc: docs/prs/near-targeting.md#same-tick
     def heal_needed(self, state: WorldState) -> bool:
-        """A rule or cure is due now, even one whose slot is on cooldown."""
+        """A rule or cure is due now, even one on cooldown."""
         hp, mp = state.hp_percent, state.mp_percent
         return any(self._first_due_rule(slot, hp, mp) for slot in _SLOTS) or bool(
             self._first_due_cure(state)
         )
 
     def _first_due_rule(
-        self, slot: str, hp: float, mp: float, mana: int = 0
+        self, slot: str, hp: float, mp: float, mana: int = 0, *, ready: bool = False
     ) -> HealingAction | None:
+        """The first rule of *slot* due now; with *ready*, only one not cooling down."""
         for rule in self.config.rules:
             if rule.kind != slot or mana < rule.minimum_mana:
+                continue
+            if ready and self.on_cooldown(rule.hotkey):
                 continue
             reason = _rule_reason(rule, hp, mp)
             if reason is not None:
                 return HealingAction(slot, rule.hotkey, reason)
         return None
 
-    def _first_due_cure(self, state: WorldState) -> HealingAction | None:
+    def _first_due_cure(self, state: WorldState, *, ready: bool = False) -> HealingAction | None:
         active = state.active_status_icons
         for condition in CONDITIONS:
             for cure in self.config.cures:
+                if ready and self.on_cooldown(cure.hotkey):
+                    continue
                 if cure.condition == condition and cure.enabled and condition in active:
                     return HealingAction("spell", cure.hotkey, f"cure {condition}")
         return None
 
-    def on_cooldown(self, slot: str) -> bool:
-        """True while *slot* was sent less than its cooldown ago."""
-        return self._clock() < self._ready_at.get(slot, float("-inf"))
+    def on_cooldown(self, hotkey: str) -> bool:
+        """True while *hotkey* was sent less than its cooldown ago."""
+        return self._clock() < self._ready_at.get(hotkey, float("-inf"))
 
     def send(self, action: HealingAction, backend: InputBackend) -> None:
-        """Press *action*'s hotkey and start its slot's cooldown."""
+        """Press *action*'s hotkey and start that hotkey's cooldown."""
         backend.press_combo(action.hotkey)
         self._react_at.pop(action.slot, None)
         cooldown_ms = (
@@ -247,7 +254,7 @@ class HealingDecision:
             else self.config.potion_cooldown_ms
         )
         # doc: docs/prs/random-delays.md#spread
-        self._ready_at[action.slot] = (
+        self._ready_at[action.hotkey] = (
             self._clock() + random_delay(cooldown_ms, only_longer=True) / 1000.0
         )
         logger.info("heal sent: %s %s -- %s", action.slot, action.hotkey, action.reason)

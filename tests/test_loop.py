@@ -1120,11 +1120,11 @@ class TestGameLoopStats:
         inp = FakeInput()
         gl, clock = make_loop(ws, inp)
         for _ in range(3):
-            gl.tick()  # no time passes: spell and potion once, then both on cooldown
+            gl.tick()  # no time passes: F2 + F3, then F1 (F2 cooling), then all cooling
         stats = gl.get_stats()
         assert stats["state"] == "attack"
         assert stats["tick_count"] == 3
-        assert stats["actions_sent"] == 2
+        assert stats["actions_sent"] == 3
         assert stats["actions_dropped_rate_limit"] == 0  # attacking sends nothing
         assert stats["kill_switch_active"] is False
         assert stats["stop_requested"] is False
@@ -1307,12 +1307,14 @@ class TestExtras:
         gl, _ = make_loop(ws, inp, clock=clock, modules=modules)
         gl.tick()
         clock.advance(0.1)
-        gl.tick()  # the heals are on cooldown, still due
-        assert inp.sent_lines == ["K F2", "K F3"]
+        gl.tick()  # F2 cooling: the next spell rule, F1
+        clock.advance(0.1)
+        gl.tick()  # every due heal on cooldown, still due: no haste
+        assert inp.sent_lines == ["K F2", "K F3", "K F1"]
         ws.hp_percent = 100.0
         clock.advance(0.1)
         gl.tick()
-        assert inp.sent_lines == ["K F2", "K F3", "K F8"]
+        assert inp.sent_lines == ["K F2", "K F3", "K F1", "K F8"]
 
     def test_a_player_alarms_only_after_staying_and_sends_to_refill(self) -> None:
         clock = FakeClock()
