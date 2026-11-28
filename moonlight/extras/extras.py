@@ -206,6 +206,12 @@ class Extras:
         self.players: dict[str, tuple[float, float]] = {}
         #: True on the tick a player starts staying, with player_refill on.
         self.refill_due = False
+        #: The ring hotkey to press once: the ring was switched off while worn.
+        self._ring_off_key = ""
+
+    def take_ring_off(self, hotkey: str) -> None:
+        """Press *hotkey* once at the next :meth:`due`: the worn ring comes off."""
+        self._ring_off_key = hotkey
 
     def observe(self, snap: WorldState) -> None:
         """Scan the pictures (once a second) and time the players."""
@@ -299,6 +305,10 @@ class Extras:
         player chases. *only_haste*: in a fight, between heals and attacks.
         *mana*: mana points now (0 when unknown, under any haste minimum)."""
         c, icons, seen = self.config, self.icons, self._pictures
+        if self._ring_off_key and not only_haste:
+            key, self._ring_off_key = self._ring_off_key, ""
+            logger.info("extras: ring switched off, taken off (%s)", key)
+            return key
         if "hungry" not in icons:
             self._food_presses = 0
         wanted = (

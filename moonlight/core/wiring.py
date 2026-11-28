@@ -771,6 +771,16 @@ def build_modules(
         m.extras = prev.extras  # keeps the player timers
     else:
         m.extras = Extras(config.extras, grab=screen_grab, clock=clock or time.monotonic)
+        was = prev.extras if prev is not None else None
+        if (
+            was is not None
+            and was.config.ring
+            and not config.extras.ring
+            and "ring_empty" not in was.icons
+        ):
+            # Switched off in Extras: take the worn ring off, as ring_off does
+            # (owner 2026-11-28: off, but the ring stayed on).
+            m.extras.take_ring_off(was.config.ring_hotkey)
     walkers = config.cavebot is not None or config.looting is not None
     if walkers and m.cavebot is None and m.looting is None:
         assert m.clicker is not None
