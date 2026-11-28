@@ -280,6 +280,15 @@ class DropItems:
         """True while a drag's commands are still to send: it must not be cut off."""
         return bool(self._sends)
 
+    @property
+    def releasing(self) -> bool:
+        """True when the drag's next command lets the button up: the walk stops
+        for it (owner 2026-11-28: items dropped mid-step stayed in the backpack)."""
+        return bool(self._sends) and self._sends[0] == self._release
+
+    def _release(self) -> None:
+        self._input.mouse_up(ClickSide.LEFT)
+
     def due(self, snap: WorldState) -> bool:
         """True while a round runs, when its timer is up, or in a fight a while
         after the last round."""
@@ -320,7 +329,7 @@ class DropItems:
         2026-11-26); a waypoint that needs the mouse or a stop waits for the
         round's end."""
         hand = self.hand
-        walking = hand is not None and hand.walking_on
+        walking = hand is not None and hand.walking_on and not self.releasing
         if hand is not None and not walking:
             hand.release_walk_key()
         send(lambda: self.step(snap))
@@ -402,7 +411,7 @@ class DropItems:
             self._check,  # the backpack may have changed since the look: same item still there?
             lambda: send.mouse_down(ClickSide.LEFT),
             lambda: send.mouse_to(*b),
-            lambda: send.mouse_up(ClickSide.LEFT),
+            self._release,
         ]
         dx, dy = slot[0] - PLAYER_SLOT[0], slot[1] - PLAYER_SLOT[1]
         log.info("drop: %s -> (%d, %d)", path.stem, snap.position.x + dx, snap.position.y + dy)
