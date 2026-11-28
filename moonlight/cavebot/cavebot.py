@@ -229,6 +229,8 @@ RESUME_TILES = 50
 _NO_DROP_TILES = 6
 #: ... among this many waypoints from the current one (stands before a rope).
 _NO_DROP_LOOKAHEAD = 4
+#: Drops walk on to a ``stand`` waypoint until this many tiles from it.
+_STAND_DROP_TILES = 1
 _FLOOR_CHANGE_ACTIONS = ("rope", "ladder", "stairs", "shovel", "step")
 #: Waypoints after the saved one a resume may go on from (past its floor change).
 _RESUME_AHEAD = 6
@@ -759,9 +761,22 @@ class Cavebot:
     # doc: docs/prs/drop-items.md#drop-items
     @property
     def walking_waypoint(self) -> bool:
-        """True while heading to a plain ``walk`` / ``node`` waypoint (keys only, no mouse)."""
+        """True while heading to a plain ``walk`` / ``node`` waypoint, or to a
+        ``stand`` one still more than a tile away (keys only, no mouse)."""
         wps = self.route.waypoints
-        return bool(wps) and wps[self.route.current].action in ("walk", "node")
+        if not wps:
+            return False
+        wp = wps[self.route.current]
+        if wp.action in ("walk", "node"):
+            return True
+        if wp.action != "stand" or not has_tile(wp):
+            return False
+        pos = self._read_position()
+        return (
+            pos is not None
+            and pos.z == wp.z
+            and max(abs(wp.x - pos.x), abs(wp.y - pos.y)) > _STAND_DROP_TILES
+        )
 
     @property
     def near_floor_change(self) -> bool:
