@@ -284,7 +284,10 @@ class DropItems:
         no cavebot drag, typing or NPC talk) and no corpse ring waits: items
         dropped next to the player covered the corpse's ring and it was never
         looted (2026-11-21). Never next to a rope spot or stairs, unless a
-        drag is half sent.
+        drag is half sent. A drop never stops the walk (owner 2026-11-28): while
+        the route walks to a waypoint that is not plain walking, the round waits
+        (the drag half sent is finished first); in fights and while the
+        character stands anyway it runs.
         """
         if not self.due(snap):
             return False
@@ -293,7 +296,11 @@ class DropItems:
             return True
         if not self.in_round and (hand.loot_pending(snap) or hand.busy):
             return False
-        return self.mid_drag or not hand.near_floor_change
+        if self.mid_drag:
+            return True
+        if hand.moving and not hand.walking_on:
+            return False  # the walk would stop: the round waits
+        return not hand.near_floor_change
 
     def act(self, snap: WorldState, send: Send) -> None:
         """One round step. Plain walking goes on while the items drop (owner

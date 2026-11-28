@@ -15,6 +15,7 @@ class FakeHand:
         self.busy = kw.get("busy", False)
         self.near_floor_change = kw.get("near_floor_change", False)
         self.walking_on = kw.get("walking_on", False)
+        self.moving = kw.get("moving", False)
         self._loot = kw.get("loot", False)
         self.calls: list[str] = []
 
@@ -59,6 +60,16 @@ def test_drop_waits_past_a_rope_spot_unless_mid_drag() -> None:
     d = drop(FakeHand(near_floor_change=True), in_round=True)
     d._sends = [lambda: None]
     assert d.wants(SNAP)
+
+
+def test_drop_waits_instead_of_stopping_the_walk() -> None:
+    assert not drop(FakeHand(moving=True)).wants(SNAP)
+    assert not drop(FakeHand(moving=True), in_round=True).wants(SNAP)  # round on hold
+    assert drop(FakeHand(moving=True, walking_on=True)).wants(SNAP)
+    d = drop(FakeHand(moving=True), in_round=True)
+    d._sends = [lambda: None]
+    assert d.wants(SNAP)  # the half-sent drag is finished
+    assert drop(FakeHand(moving=False)).wants(SNAP)  # fight or standing anyway
 
 
 def test_drop_walks_on_during_plain_walking_else_holds_the_walk() -> None:

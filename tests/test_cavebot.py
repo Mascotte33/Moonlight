@@ -2196,3 +2196,16 @@ def test_describe_names_the_waypoint_and_where_the_bot_stands() -> None:
     assert sim.bot.describe() == "cavebot on waypoint 0 (walk at 105,98,7), standing at 100,100,7"
     sim.pos = None
     assert sim.bot.describe().endswith("position unknown")
+
+
+def test_walking_waypoint_keeps_drops_walking_to_a_stand_until_a_tile_off() -> None:
+    """2026-11-28: a drop round on a stand waypoint stopped the walk."""
+    route = [Waypoint(100, 105, 7, "stand"), Waypoint(100, 110, 7, "step")]
+    sim = Sim(route, Position(100, 100, 7))
+    sim.bot.start()
+    assert sim.bot.walking_waypoint
+    sim.pos = Position(100, 104, 7)
+    assert not sim.bot.walking_waypoint  # a tile off: the round waits
+    sim.bot.route.current = 1
+    sim.pos = Position(100, 100, 7)
+    assert not sim.bot.walking_waypoint  # a step needs the exact tile
