@@ -12,7 +12,6 @@ from moonlight.looting.looting import (
     RING_CONFIRM_SECONDS,
     RING_GONE_SECONDS,
     RING_GONE_TIMEOUT,
-    RING_STEP_SECONDS,
     Looting,
     LootingConfig,
 )
@@ -169,62 +168,14 @@ def test_no_ring_loot_while_the_client_is_unfocused() -> None:
     assert inp.sent_lines == []
 
 
-def test_a_ring_2_tiles_away_is_walked_to_with_no_fight_on() -> None:
+def test_a_ring_2_tiles_away_is_left_to_pass_by() -> None:
+    # owner 2026-11-28: loot rings only in passing, never walk to one.
     inp, clock = FakeInput(), Clock()
     looting = make_ring(clock, inp=inp, x=912)  # 2 tiles east
     for _ in range(8):
-        assert not looting.ring_due(NEAR, WS)  # out of the hotkey's reach
-        clock.t += 0.125
-    assert not looting.loot_first(WS)  # a fight goes first
-    assert looting.should_loot(WS) and looting.step(WS) is True
-    assert looting.step(WS) is True  # one step at a time
-    assert inp.sent_lines == ["K d"]
-    clock.t += RING_STEP_SECONDS
-    looting.ring_due(NEAR, WS)
-    looting.step(WS)
-    assert inp.sent_lines == ["K d", "K d"]
-
-
-def test_a_ring_2_tiles_away_that_is_never_reached_is_left() -> None:
-    inp, clock = FakeInput(), Clock()
-    looting = make_ring(clock, inp=inp, x=912)  # a wall in the way: the steps do nothing
-    for _ in range(40):
-        looting.ring_due(NEAR, WS)
-        if looting.should_loot(WS):
-            looting.step(WS)
-        clock.t += 0.125
-    assert inp.sent_lines == ["K d"] * 3 and not looting.should_loot(WS)
-
-
-def test_a_ring_4_tiles_away_is_walked_to_then_left_if_never_reached() -> None:
-    # 2026-11-28: a ranged kill's corpse 4 tiles away was never looted.
-    inp, clock = FakeInput(), Clock()
-    looting = make_ring(clock, inp=inp, x=672 + 4 * 96 + 48)  # 4 tiles east, a wall between
-    for _ in range(80):
-        looting.ring_due(NEAR, WS)
-        if looting.should_loot(WS):
-            looting.step(WS)
-        clock.t += 0.125
-    assert inp.sent_lines == ["K d"] * 5 and not looting.should_loot(WS)  # 4 - 1 + 2 steps
-
-
-def test_a_far_ring_that_blinks_off_keeps_the_route_waiting() -> None:
-    # 2026-11-28: a ring's dots hid for a moment and the route walked off from it.
-    clock = Clock()
-    looting = make_ring(clock, x=672 + 3 * 96 + 48)  # 3 tiles east
-    for _ in range(8):
         looting.ring_due(NEAR, WS)
         clock.t += 0.125
-    assert looting.should_loot(WS)
-    hide_ring(looting)  # the dots hide
-    for _ in range(5):  # 0.625 s
-        looting.ring_due(NEAR, WS)
-        assert looting.should_loot(WS)
-        clock.t += 0.125
-    for _ in range(3):
-        looting.ring_due(NEAR, WS)
-        clock.t += 0.125
-    assert not looting.should_loot(WS)  # really gone: the route goes on
+    assert not looting.should_loot(WS) and inp.sent_lines == []
 
 
 def test_a_ring_beyond_5_tiles_is_not_walked_to() -> None:
