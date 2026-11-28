@@ -340,9 +340,9 @@ def test_a_skipped_creature_that_steps_stays_skipped() -> None:
     action = targeting.decide(s, 0.0)
     assert action is not None
     targeting.skip_tile(action.creature_tile, 0.0, "tainted soul is ignored")
-    s.creature_slots = ((9, 5),)  # it stepped east
+    s.creature_slots = ((8, 6),)  # it stepped south
     assert targeting.decide(s, 1.0) is None
-    s.creature_slots = ((10, 6),)  # and on
+    s.creature_slots = ((8, 8),)  # two steps between looks
     assert targeting.decide(s, 2.0) is None
 
 
