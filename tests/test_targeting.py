@@ -334,6 +334,18 @@ def test_skipped_tile_is_left_alone_for_10_seconds() -> None:
     assert targeting.decide(s, 10.5) is not None
 
 
+def test_a_skipped_creature_that_steps_stays_skipped() -> None:
+    # owner 2026-11-28: an ignored tainted soul was clicked again after each step.
+    targeting, s = near(((8, 5),), (50.0,))
+    action = targeting.decide(s, 0.0)
+    assert action is not None
+    targeting.skip_tile(action.creature_tile, 0.0, "tainted soul is ignored")
+    s.creature_slots = ((9, 5),)  # it stepped east
+    assert targeting.decide(s, 1.0) is None
+    s.creature_slots = ((10, 6),)  # and on
+    assert targeting.decide(s, 2.0) is None
+
+
 def test_fight_without_the_option_is_any_battle_list_monster() -> None:
     s = state([Monster("Troll", 100.0, name_hash="t", battle_list_row=0)])
     assert rows().fight_in_range(s, 0.0)

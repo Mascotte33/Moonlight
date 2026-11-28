@@ -615,6 +615,7 @@ class TargetingDecision:
     def _near_creatures(self, state: WorldState, now: float) -> list[tuple[tuple[int, int], float]]:
         """``(slot, hp)`` of the creatures in range with a way to them, tile not skipped."""
         self._skipped_tiles = {t: end for t, end in self._skipped_tiles.items() if end > now}
+        self._follow_skipped(state)
         reach = self.config.attack_range_tiles
         near = [
             (slot, hp)
@@ -659,6 +660,24 @@ class TargetingDecision:
         if not self.config.only_attack_within_range:
             return bool(state.monsters)
         return state.selected_target is not None or bool(self._near_creatures(state, now))
+
+    def _follow_skipped(self, state: WorldState) -> None:
+        """A skipped creature that stepped to a next tile stays skipped there:
+        an ignored tainted soul walking off its tile was clicked again every
+        second (owner 2026-11-28)."""
+        if not self._skipped_tiles:
+            return
+        for slot in state.creature_slots:
+            tile = _world_tile(state, slot)
+            if tile in self._skipped_tiles:
+                continue
+            ends = [
+                end
+                for (x, y, z), end in self._skipped_tiles.items()
+                if z == tile[2] and max(abs(x - tile[0]), abs(y - tile[1])) == 1
+            ]
+            if ends:
+                self._skipped_tiles[tile] = max(ends)
 
     def skip_tile(self, tile: tuple[int, int, int], now: float, why: str) -> None:
         """Leave the creature on world *tile* alone for 10 s (an on-screen click went wrong)."""
