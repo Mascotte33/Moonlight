@@ -11,8 +11,9 @@ Then the bot stands ``wait_ms`` and until no ring shows around it for
 ``RING_GONE_SECONDS`` (owner 2026-11-04: the rings go away once looted,
 then the next target). Rings still there ``RING_GONE_TIMEOUT`` after a
 press get one more press; then they are left (a full backpack) until the
-character moves. With no fight on, a ring 2 tiles away is walked to, a
-step at a time. Below ``min_hp_to_loot`` it holds still and heals instead.
+character moves. With no fight on, a ring 2 to ``RING_WALK_TILES`` tiles away is
+walked to, a step at a time (ranged kills leave corpses 3-5 tiles off: one was
+left behind 4 tiles away, 2026-11-28). Below ``min_hp_to_loot`` it holds still and heals instead.
 """
 
 # doc: docs/prs/looting.md#loot-hotkey
@@ -38,7 +39,7 @@ from moonlight.perception.creatures import PLAYER_SLOT
 
 __all__ = [
     "LootingConfig", "Looting", "RING_CONFIRM_LOOKS", "RING_CONFIRM_SECONDS",
-    "RING_GONE_SECONDS", "RING_GONE_TIMEOUT", "RING_STEP_SECONDS",
+    "RING_GONE_SECONDS", "RING_GONE_TIMEOUT", "RING_STEP_SECONDS", "RING_WALK_TILES",
 ]
 
 #: A ring is looted only once seen this many times, up to a tile off ...
@@ -55,10 +56,13 @@ RING_GONE_SECONDS = 0.8
 RING_GONE_TIMEOUT = 1.5
 #: Presses for the same rings before they are left until the character moves.
 RING_PRESSES = 3
-#: Seconds between two steps toward a ring 2 tiles away (one step takes about 0.3 s).
+#: Farthest ring walked to (tiles); the hotkey loots up to 1 tile away.
+RING_WALK_TILES = 5
+#: Seconds between two steps toward a ring 2+ tiles away (one step takes about 0.3 s).
 RING_STEP_SECONDS = 0.5
-#: Steps toward it before a ring 2 tiles away is left (a wall or a player in the way).
-RING_STEPS = 3
+#: Steps beyond its distance before a ring is left (a wall or a player in the way):
+#: 3 for a ring 2 tiles away, as before.
+RING_EXTRA_STEPS = 2
 #: A selected target that leaves the battle list was killed (or walked off: then the
 #: wait below only costs a moment). Any HP: one hit from 40 % killed trolls the 25 %
 #: floor missed, and the cavebot walked off the corpse (2026-11-21) ...
@@ -125,7 +129,7 @@ class Looting:
         self._second_press_at: float | None = None
         self._kill_presses = 0
         self._kill_wait_until = float("-inf")
-        #: A ring 2 tiles away seen this tick: walked to when no fight is on.
+        #: The nearest ring 2+ tiles away seen this tick: walked to when no fight is on.
         self._far_ring: Ring | None = None
         #: Where and when rings were seen lately.
         self._ring_sightings: list[tuple[tuple[int, int], float]] = []
@@ -140,8 +144,11 @@ class Looting:
         #: Rings around this position were pressed for and stayed: left alone here.
         self._given_up_at: Position | None = None
         self._next_step_at = float("-inf")
-        #: Steps toward a ring 2 tiles away since the last press.
+        #: Steps toward a far ring since the last press, and the steps it may take.
         self._steps = 0
+        self._step_budget = 0
+        #: The last far ring seen, when, and where the character stood.
+        self._last_far: tuple[Ring, float, Position] | None = None
 
     def _hp_too_low(self, snap: WorldState) -> bool:
         return 0 < snap.hp_percent < self._config.min_hp_to_loot
@@ -189,9 +196,22 @@ class Looting:
             self._near(point, player) and point not in creatures
             for point, _ in self._ring_sightings
         )
-        self._far_ring = next((r for r in rings if r.tiles_away == reach.stop), None)
+        walk = range(reach.stop, RING_WALK_TILES + 1)
+        self._far_ring = next((r for r in rings if r.tiles_away in walk), None)  # the nearest
+        if self._far_ring is not None:
+            self._last_far = (self._far_ring, now, snap.position)
+        elif self._last_far is not None:
+            # A ring's dots hide up to 0.6 s of each turn: keep it that long while the
+            # character stands, or the route walked off from it (2026-11-28).
+            ring, seen_at, at = self._last_far
+            if now - seen_at < RING_GONE_SECONDS and snap.position == at:
+                self._far_ring = ring
+            else:
+                self._last_far = None
         if self._far_ring is None:
             self._steps = 0
+        elif self._steps == 0:
+            self._step_budget = self._far_ring.tiles_away - 1 + RING_EXTRA_STEPS
         self._ring = next((r for r in rings if r.tiles_away in reach), None)  # the nearest
         return self._ring is not None and not self._hp_too_low(snap)
 
@@ -284,7 +304,7 @@ class Looting:
             old.unlink()
 
     def should_loot(self, snap: WorldState) -> bool:
-        """True while a ring waits for HP, a press's loot lands, or a ring 2 tiles away waits."""
+        """True while a ring waits for HP, a press's loot lands, or a far ring waits."""
         return self.loot_first(snap) or self._ring is not None or self._far_ring is not None
 
     def loot_first(self, snap: WorldState) -> bool:
@@ -317,12 +337,12 @@ class Looting:
         return busy and not self._hp_too_low(snap)
 
     def step(self, snap: WorldState) -> bool:
-        """Stand still while the loot lands, else step toward a ring 2 tiles away."""
+        """Stand still while the loot lands, else step toward the nearest far ring."""
         if not (snap.client_focused and snap.screen_ok):
             return False
         now = self._clock()
         if self._ring is None and not self._holding(now, snap.position) and self._far_ring:
-            if self._steps >= RING_STEPS:
+            if self._steps >= self._step_budget:
                 log.warning("looting: ring at %s not reached, left here", self._far_ring.point)
                 self._given_up_at, self._far_ring, self._steps = snap.position, None, 0
                 return False
@@ -332,7 +352,12 @@ class Looting:
                     self._game_region, PLAYER_SLOT
                 ).point
                 key = WALK_KEYS[((rx > px) - (rx < px), (ry > py) - (ry < py))]
-                log.info("looting: ring at %s 2 tiles away: step %s", self._far_ring.point, key)
+                log.info(
+                    "looting: ring at %s %d tiles away: step %s",
+                    self._far_ring.point,
+                    self._far_ring.tiles_away,
+                    key,
+                )
                 self._input.press_combo(key)
                 self._next_step_at = now + random_delay(RING_STEP_SECONDS)
                 self._steps += 1
