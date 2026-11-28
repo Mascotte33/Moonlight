@@ -48,9 +48,6 @@ __all__ = [
 DROP_ITEMS_DIR = "drop_items"
 #: A round starts this many seconds (random in between) after the last one.
 ROUND_EVERY_SECONDS = (60.0, 180.0)
-#: In a fight a round starts this many seconds after the last one ended: the
-#: mouse waits there anyway (owner 2026-11-28: throw while killing).
-FIGHT_ROUND_AFTER_SECONDS = 20.0
 #: Items land at most this many sqm from the character.
 DROP_REACH = 2
 #: Sqm tried for one item before it is left for this round.
@@ -258,8 +255,8 @@ class DropItems:
         self._clock = clock
         self._rng = rng or random.Random()
         self._next_round_at = clock() + self._rng.uniform(*ROUND_EVERY_SECONDS)
-        #: When the last round ended (the start counts as one).
-        self._ended_at = clock()
+        #: This fight already had its round.
+        self._fight_round_done = False
         self.in_round = False
         #: The drag's wire commands still to send.
         self._sends: list[Callable[[], None]] = []
@@ -290,13 +287,14 @@ class DropItems:
         self._input.mouse_up(ClickSide.LEFT)
 
     def due(self, snap: WorldState) -> bool:
-        """True while a round runs, when its timer is up, or in a fight a while
-        after the last round."""
-        now = self._clock()
-        if self.in_round or now >= self._next_round_at:
+        """True while a round runs, when its timer is up, or once as a fight
+        starts (owner 2026-11-28: drop at once when a fight starts)."""
+        if self.in_round or self._clock() >= self._next_round_at:
             return True
         fighting = self.hand is not None and not self.hand.moving and bool(snap.monsters)
-        return fighting and now >= self._ended_at + FIGHT_ROUND_AFTER_SECONDS
+        if not fighting:
+            self._fight_round_done = False
+        return fighting and not self._fight_round_done
 
     # doc: docs/prs/drop-items.md#drop-items
     def wants(self, snap: WorldState) -> bool:
@@ -450,7 +448,7 @@ class DropItems:
 
     def _end_round(self, now: float, wait: bool = True) -> None:
         self.in_round = False
-        self._ended_at = now
+        self._fight_round_done = True
         self._next_round_at = now + (self._rng.uniform(*ROUND_EVERY_SECONDS) if wait else 0.0)
 
     def _find_all_in(self, frame: np.ndarray) -> list[tuple[Path, Point]]:

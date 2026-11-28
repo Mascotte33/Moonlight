@@ -234,17 +234,20 @@ def test_one_look_drags_every_item_last_slot_first(tmp_path: Path) -> None:
     assert not drop.in_round
 
 
-def test_a_fight_starts_a_round_20_s_after_the_last(tmp_path: Path) -> None:
-    # owner 2026-11-28: throw while killing, not only every 1-3 min.
+def test_a_fight_start_starts_a_round_once(tmp_path: Path) -> None:
+    # owner 2026-11-28: drop at once when a fight starts.
     from types import SimpleNamespace
 
     clock = Clock()
     drop = dropper(tmp_path, [frame_with(None)], clock, Input())
     drop.hand = SimpleNamespace(moving=False)  # type: ignore[assignment]
-    clock.now = 19.0
-    assert not drop.due(snap(monsters=1))
-    clock.now = 21.0
-    assert drop.due(snap(monsters=1))
+    clock.now = 1.0
     assert not drop.due(snap())  # no fight
+    assert drop.due(snap(monsters=1))
+    run_round(drop, clock, snap(monsters=1))  # nothing to drop: the round ends
+    assert not drop.due(snap(monsters=1))  # once per fight
+    assert not drop.due(snap())
+    assert drop.due(snap(monsters=1))  # the next fight
+    drop.in_round = False
     drop.hand = SimpleNamespace(moving=True)  # type: ignore[assignment]
-    assert not drop.due(snap(monsters=1))  # walking past monsters
+    assert not drop.due(snap())
