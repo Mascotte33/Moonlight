@@ -242,7 +242,7 @@ class DropItems:
         #: *background*: the backpack look runs on a worker thread (a look over
         #: every picture takes about a second; the loop walks on meanwhile).
         self._pool = ThreadPoolExecutor(1, "drop-look") if background else None
-        self._look: Future[tuple[Path, Point] | None] | None = None
+        self._look: Future[list[tuple[Path, Point]]] | None = None
         self._input = input
         self._to_wire = to_wire
         self._grab = grab
@@ -256,12 +256,12 @@ class DropItems:
         #: The drag's wire commands still to send.
         self._sends: list[Callable[[], None]] = []
         self._look_again_at = float("-inf")
-        #: The item dragged last and where it was, checked at the next look.
+        #: The item being dragged and where it was, checked before the button goes down.
         self._dragged: tuple[Path, Point] | None = None
-        self._dragged_count = 0
-        self._side: np.ndarray | None = None
-        #: Slots tried for ``_dragged``.
-        self._tried: list[Point] = []
+        #: Items from the last look still to drag, the last backpack slot first.
+        self._queue: list[tuple[Path, Point]] = []
+        #: Per item (and spot) this round: the sqm tried.
+        self._tries: dict[tuple[Path, Point], list[Point]] = {}
         #: Items left alone this round (no sqm took them).
         self._left: list[tuple[Path, Point]] = []
         #: The loop's hand (who holds the mouse); None: always free.
@@ -319,17 +319,24 @@ class DropItems:
             hand.resume()  # drop time is not "stuck"
 
     def step(self, snap: WorldState) -> None:
-        """Send one command of the drag, or look at the backpacks and start the next."""
+        """Send one command of the drag, start the next queued item, or look again.
+
+        One look finds every picked item; they are dragged one after another,
+        the last backpack slot first, so a drop never shifts an item still to
+        drag (owner 2026-11-28: one drop per 2-3 s was too slow). Before each
+        drag a quick check makes sure the item is still there; the next look
+        (after the queue) retries what stayed.
+        """
         now = self._clock()
         if not self.in_round:
-            self.in_round, self._left, self._dragged, self._tried = True, [], None, []
-            self._dragged_count = 0
+            self.in_round, self._left, self._dragged, self._queue = True, [], None, []
+            self._tries = {}
         if self._sends and self._sends[0] == self._check:
             self._sends.pop(0)
             if not self._still_there():
                 path, item = self._dragged if self._dragged else (Path("?"), (0, 0))
                 log.warning("drop: %s moved before the drag, not dragged; looking again", path.stem)
-                self._sends, self._dragged, self._tried = [], None, []
+                self._sends, self._dragged, self._queue = [], None, []
                 self._look_again_at = now + LOOK_AGAIN_SECONDS
             return
         if self._sends:
@@ -337,50 +344,42 @@ class DropItems:
             self._sends[0]()
             if getattr(self._input, "dropped", 0) == dropped:  # the rate limit kept it
                 self._sends.pop(0)
-            if not self._sends:
+            if not self._sends and not self._queue:
                 self._look_again_at = now + LOOK_AGAIN_SECONDS
             return
-        if now < self._look_again_at:
-            return
-        if self._pool is not None:
-            if self._look is None:
-                self._look = self._pool.submit(self._find_in, self._grab())
-            if not self._look.done():
-                return  # the look runs on: walking goes on
-            found = self._look.result()
-            self._look = None
-        else:
-            found = self._find()
-        if (
-            found is not None
-            and self._dragged is not None
-            and self._same(found, self._dragged)
-            and self._count(found[0]) < self._dragged_count
-        ):
-            # One fewer: the drop worked, the next one slid into its slot
-            # (2026-11-22: a bag of torches left after 3 "tries").
-            self._dragged = None
-        if found is not None and self._dragged is not None and self._same(found, self._dragged):
-            if len(self._tried) >= TRIES_PER_ITEM:
-                log.warning("drop: %s stayed after %d tries, left", found[0].stem, len(self._tried))
-                self._left.append(found)
-                found = self._find() if self._pool is None else None
-                if found is None and self._pool is not None:
-                    return  # the next tick looks again, without the left item
-        if found is None:
-            self._end_round(now)
-            return
-        if self._dragged is None or not self._same(found, self._dragged):
-            self._tried = []  # a new item (the last one moved)
-        slots = [s for s in free_drop_slots(snap, self._walkable) if s not in self._tried]
+        if not self._queue:
+            if now < self._look_again_at:
+                return
+            if self._pool is not None:
+                if self._look is None:
+                    self._look = self._pool.submit(self._find_all_in, self._grab())
+                if not self._look.done():
+                    return  # the look runs on: walking goes on
+                found_all = self._look.result()
+                self._look = None
+            else:
+                found_all = self._find_all_in(self._grab())
+            for found in found_all:
+                tried = self._tries.get(self._key(found), [])
+                if len(tried) >= TRIES_PER_ITEM:
+                    log.warning("drop: %s stayed after %d tries, left", found[0].stem, len(tried))
+                    self._left.append(found)
+                else:
+                    self._queue.append(found)
+            self._queue.sort(key=lambda f: (f[1][1], f[1][0]), reverse=True)
+            if not self._queue:
+                self._end_round(now)
+                return
+        found = self._queue.pop(0)
+        tried = self._tries.setdefault(self._key(found), [])
+        slots = [s for s in free_drop_slots(snap, self._walkable) if s not in tried]
         if not slots:
             log.info("drop: no free sqm within %d, next round", DROP_REACH)
             self._end_round(now)
             return
         slot = self._rng.choice(slots)
-        self._tried.append(slot)
+        tried.append(slot)
         self._dragged = found
-        self._dragged_count = self._count(found[0])
         path, item = found
         a, b = self._to_wire(item), self._to_wire(slot_ring(self._game_region, slot).point)
         send = self._input
@@ -393,6 +392,13 @@ class DropItems:
         ]
         dx, dy = slot[0] - PLAYER_SLOT[0], slot[1] - PLAYER_SLOT[1]
         log.info("drop: %s -> (%d, %d)", path.stem, snap.position.x + dx, snap.position.y + dy)
+
+    def _key(self, found: tuple[Path, Point]) -> tuple[Path, Point]:
+        """The tries key of *found*: an earlier key at the same spot, else its own."""
+        for key in self._tries:
+            if self._same(found, key):
+                return key
+        return found
 
     def _check(self) -> None:
         """A marker in the drag: :meth:`step` checks the item before the button goes down."""
@@ -421,30 +427,24 @@ class DropItems:
         self.in_round = False
         self._next_round_at = now + (self._rng.uniform(*ROUND_EVERY_SECONDS) if wait else 0.0)
 
-    def _find(self) -> tuple[Path, Point] | None:
-        """The first picked item seen right of the game window, not left this round.
+    def _find_all_in(self, frame: np.ndarray) -> list[tuple[Path, Point]]:
+        """Every picked item seen right of the game window in *frame*, not left
+        this round (also run on the worker thread).
 
-        # ponytail: the best match per picture only; a second stack of a left
-        # item waits for the next round.
+        # ponytail: the best match per picture only; a second stack waits for
+        # the next look.
         """
-        return self._find_in(self._grab())
-
-    def _find_in(self, frame: np.ndarray) -> tuple[Path, Point] | None:
-        """:meth:`_find` on *frame* (also run on the worker thread)."""
         right = self._game_region[0] + self._game_region[2]
-        side = self._side = np.ascontiguousarray(frame[:, right:])
+        side = np.ascontiguousarray(frame[:, right:])
+        found = []
         for path in drop_pictures(self.pictures_dir):
             at = find_item(side, path)
             if at is None:
                 continue
-            found = (path, (at[0] + right, at[1]))
-            if not any(self._same(found, left) for left in self._left):
-                return found
-        return None
-
-    def _count(self, path: Path) -> int:
-        """Slots holding the item at *path* in the last :meth:`_find` look."""
-        return 0 if self._side is None else count_items(self._side, path)
+            item = (path, (at[0] + right, at[1]))
+            if not any(self._same(item, left) for left in self._left):
+                found.append(item)
+        return found
 
     @staticmethod
     def _same(a: tuple[Path, Point], b: tuple[Path, Point]) -> bool:
