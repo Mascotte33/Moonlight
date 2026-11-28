@@ -351,7 +351,10 @@ class Looting:
                 (rx, ry), (px, py) = self._far_ring.point, slot_ring(
                     self._game_region, PLAYER_SLOT
                 ).point
-                key = WALK_KEYS[((rx > px) - (rx < px), (ry > py) - (ry < py))]
+                # Straight along the longer way: a diagonal walks about 3 times
+                # slower (owner 2026-11-28: so many diagonal moves).
+                sx, sy = (rx > px) - (rx < px), (ry > py) - (ry < py)
+                key = WALK_KEYS[(sx, 0) if abs(rx - px) >= abs(ry - py) else (0, sy)]
                 log.info(
                     "looting: ring at %s %d tiles away: step %s",
                     self._far_ring.point,
