@@ -1021,6 +1021,12 @@ class GameLoop:
                 self._screen_click_tile = None
             elif not outline_shows and now < retry_at:
                 return
+            elif not outline_shows and row != -1:
+                logger.info(
+                    "targeting: no outline on battle-list row %d (selected: %s)",
+                    row,
+                    "none" if selected is None else f"row {selected.battle_list_row}",
+                )
             if outline_shows:
                 self._next_target_presses = 0
             self._select_click = None
@@ -1195,6 +1201,12 @@ class GameLoop:
                 logger.info(
                     "targeting: clicked at %s,%s,%s, %.0f ms after its frame",
                     *(self._screen_click_tile or (0, 0, 0)),
+                    (self._clock() - self._click_frame_at) * 1000.0,
+                )
+            else:
+                logger.info(
+                    "targeting: clicked battle-list row %d, %.0f ms after its frame",
+                    self._select_click[0],
                     (self._clock() - self._click_frame_at) * 1000.0,
                 )
             self._select_click = (self._select_click[0], retry_at)
