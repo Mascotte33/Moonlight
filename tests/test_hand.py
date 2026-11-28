@@ -129,3 +129,12 @@ def test_the_button_waits_for_the_step_to_end() -> None:
     assert hand.calls == ["release"] and sent == []
     d.act(SNAP, lambda a: sent.append(a) or True)
     assert len(sent) == 1
+
+
+def test_a_battle_list_click_holds_the_fight_until_it_answers() -> None:
+    # owner 2026-11-28: the route walked off right after the click; the monster was left.
+    m = DecisionModules(targeting=SimpleNamespace(is_unreachable=lambda s: False))  # type: ignore[arg-type]
+    gl = GameLoop(LoopConfig(), SimpleNamespace(), modules=m)  # type: ignore[arg-type]
+    assert not gl._wants_attack(WorldState())
+    gl._select_click = (2, 1.0)
+    assert gl._wants_attack(WorldState())

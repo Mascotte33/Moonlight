@@ -804,6 +804,9 @@ class GameLoop:
             return (
                 self._target is not None
                 or self._screen_click_tile is not None  # stand still until the click answers
+                # a battle-list click too: the route walked off before its outline
+                # showed and the monster was left (owner 2026-11-28)
+                or self._select_click is not None
                 or (selected is not None and not targeting.is_unreachable(selected))
             )
         # Perception only selects targets that are in range and attackable;
