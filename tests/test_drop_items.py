@@ -209,7 +209,7 @@ def test_an_item_that_moved_before_the_drag_is_not_dragged(tmp_path: Path) -> No
 
 
 def test_one_look_drags_every_item_last_slot_first(tmp_path: Path) -> None:
-    # owner 2026-11-28: one drop per 2-3 s; the next item is dragged without a new look.
+    # owner 2026-11-28: one drop per 2-3 s, then back to back was way too fast.
     picture = boots(tmp_path)
     fish = np.random.default_rng(2).integers(0, 255, (16, 16, 3), dtype=np.uint8)
     cv2.imwrite(str(tmp_path / "fish.png"), fish)
@@ -219,7 +219,12 @@ def test_one_look_drags_every_item_last_slot_first(tmp_path: Path) -> None:
     frames = [both, both, both, frame_with(None)]  # look, check, check, gone
     drop = dropper(tmp_path, frames, clock, inp)
     clock.now = 180.0
-    for _ in range(10):  # 2 drags of 4 commands + 2 checks: no 0.6 s wait between
+    for _ in range(5):  # the first drag
+        drop.step(snap())
+    drop.step(snap())
+    assert len(inp.sent) == 4  # a pause before the next drag
+    clock.now += 1.4  # no new look: the next queued item
+    for _ in range(5):
         drop.step(snap())
     presses = [s for s in inp.sent if s[0] == "down"]
     assert len(presses) == 2
@@ -227,3 +232,19 @@ def test_one_look_drags_every_item_last_slot_first(tmp_path: Path) -> None:
     assert inp.sent[4][1:] == (BOOTS_AT[0] + 8, BOOTS_AT[1] + 8)
     run_round(drop, clock, snap())
     assert not drop.in_round
+
+
+def test_a_fight_starts_a_round_20_s_after_the_last(tmp_path: Path) -> None:
+    # owner 2026-11-28: throw while killing, not only every 1-3 min.
+    from types import SimpleNamespace
+
+    clock = Clock()
+    drop = dropper(tmp_path, [frame_with(None)], clock, Input())
+    drop.hand = SimpleNamespace(moving=False)  # type: ignore[assignment]
+    clock.now = 19.0
+    assert not drop.due(snap(monsters=1))
+    clock.now = 21.0
+    assert drop.due(snap(monsters=1))
+    assert not drop.due(snap())  # no fight
+    drop.hand = SimpleNamespace(moving=True)  # type: ignore[assignment]
+    assert not drop.due(snap(monsters=1))  # walking past monsters
