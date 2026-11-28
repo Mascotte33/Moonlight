@@ -332,6 +332,8 @@ class DropItems:
         walking = hand is not None and hand.walking_on and not self.releasing
         if hand is not None and not walking:
             hand.release_walk_key()
+        if self.releasing and snap.game_view_sliding:
+            return  # still mid-step: the item would stay; let go once the view stands
         send(lambda: self.step(snap))
         if hand is None:
             return

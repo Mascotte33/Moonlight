@@ -117,3 +117,15 @@ def test_the_walk_stops_while_the_button_comes_up() -> None:
     d._sends = [d._release]
     d.act(SNAP, lambda a: True)
     assert hand.calls == ["release"]  # no walk this tick
+
+
+def test_the_button_waits_for_the_step_to_end() -> None:
+    from dataclasses import replace
+
+    hand, sent = FakeHand(walking_on=True), []
+    d = drop(hand, in_round=True)
+    d._sends = [d._release]
+    d.act(replace(SNAP, game_view_sliding=True), lambda a: sent.append(a) or True)
+    assert hand.calls == ["release"] and sent == []
+    d.act(SNAP, lambda a: sent.append(a) or True)
+    assert len(sent) == 1
