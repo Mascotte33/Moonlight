@@ -11,9 +11,10 @@ Then the bot stands ``wait_ms`` and until no ring shows around it for
 ``RING_GONE_SECONDS`` (owner 2026-11-04: the rings go away once looted,
 then the next target). Rings still there ``RING_GONE_TIMEOUT`` after a
 press get one more press; then they are left (a full backpack) until the
-character moves. With no fight on, a ring 2 to ``RING_WALK_TILES`` tiles away is
-walked to, a step at a time (ranged kills leave corpses 3-5 tiles off: one was
-left behind 4 tiles away, 2026-11-28). Below ``min_hp_to_loot`` it holds still and heals instead.
+character moves. A ring farther than the hotkey's reach is looted only when
+the character passes by it (owner 2026-11-28: walking to rings was off by
+``RING_WALK_TILES`` = 1; it walked up to 5 tiles before).
+Below ``min_hp_to_loot`` it holds still and heals instead.
 """
 
 # doc: docs/prs/looting.md#loot-hotkey
@@ -56,8 +57,9 @@ RING_GONE_SECONDS = 0.8
 RING_GONE_TIMEOUT = 1.5
 #: Presses for the same rings before they are left until the character moves.
 RING_PRESSES = 3
-#: Farthest ring walked to (tiles); the hotkey loots up to 1 tile away.
-RING_WALK_TILES = 5
+#: Farthest ring walked to (tiles); the hotkey loots up to 1 tile away, so 1: none
+#: is walked to, rings are looted in passing (owner 2026-11-28).
+RING_WALK_TILES = 1
 #: Seconds between two steps toward a ring 2+ tiles away (one step takes about 0.3 s).
 RING_STEP_SECONDS = 0.5
 #: Steps beyond its distance before a ring is left (a wall or a player in the way):
