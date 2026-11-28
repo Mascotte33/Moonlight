@@ -257,3 +257,14 @@ def test_haste_waits_for_its_mana() -> None:
     e = extras(config, clock)
     assert e.due(walking=True, mana=30) is None  # not enough mana: no press
     assert e.due(walking=True, mana=60) == "F7"
+
+
+def test_a_ring_switched_off_is_taken_off_once() -> None:
+    # owner 2026-11-28: switched off in Extras, the ring stayed on.
+    from moonlight.extras.extras import Extras, ExtrasConfig
+
+    extras = Extras(ExtrasConfig(), grab=None, clock=lambda: 0.0)
+    extras.take_ring_off("F9")
+    assert extras.due(walking=False, only_haste=True) is None  # not between heals
+    assert extras.due(walking=False) == "F9"
+    assert extras.due(walking=False) is None
