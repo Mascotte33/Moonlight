@@ -48,12 +48,18 @@ __all__ = [
 DROP_ITEMS_DIR = "drop_items"
 #: A round starts this many seconds (random in between) after the last one.
 ROUND_EVERY_SECONDS = (60.0, 180.0)
+#: In a fight a round starts this many seconds after the last one ended: the
+#: mouse waits there anyway (owner 2026-11-28: throw while killing).
+FIGHT_ROUND_AFTER_SECONDS = 20.0
 #: Items land at most this many sqm from the character.
 DROP_REACH = 2
 #: Sqm tried for one item before it is left for this round.
 TRIES_PER_ITEM = 3
 #: Seconds after a drag before the backpacks are looked at again.
 LOOK_AGAIN_SECONDS = 0.6
+#: Seconds (random in between) from one drag's end to the next queued drag:
+#: back to back was way too fast (owner 2026-11-28); about twice the old pace.
+DRAG_GAP_SECONDS = (0.9, 1.4)
 #: An item found within this many pixels of where it was dragged from did not move.
 SAME_SPOT_PIXELS = 3
 
@@ -252,6 +258,8 @@ class DropItems:
         self._clock = clock
         self._rng = rng or random.Random()
         self._next_round_at = clock() + self._rng.uniform(*ROUND_EVERY_SECONDS)
+        #: When the last round ended (the start counts as one).
+        self._ended_at = clock()
         self.in_round = False
         #: The drag's wire commands still to send.
         self._sends: list[Callable[[], None]] = []
@@ -273,8 +281,13 @@ class DropItems:
         return bool(self._sends)
 
     def due(self, snap: WorldState) -> bool:
-        """True while a round runs, or when its timer is up."""
-        return self.in_round or self._clock() >= self._next_round_at
+        """True while a round runs, when its timer is up, or in a fight a while
+        after the last round."""
+        now = self._clock()
+        if self.in_round or now >= self._next_round_at:
+            return True
+        fighting = self.hand is not None and not self.hand.moving and bool(snap.monsters)
+        return fighting and now >= self._ended_at + FIGHT_ROUND_AFTER_SECONDS
 
     # doc: docs/prs/drop-items.md#drop-items
     def wants(self, snap: WorldState) -> bool:
@@ -344,12 +357,13 @@ class DropItems:
             self._sends[0]()
             if getattr(self._input, "dropped", 0) == dropped:  # the rate limit kept it
                 self._sends.pop(0)
-            if not self._sends and not self._queue:
-                self._look_again_at = now + LOOK_AGAIN_SECONDS
+            if not self._sends:
+                gap = self._rng.uniform(*DRAG_GAP_SECONDS)
+                self._look_again_at = now + (gap if self._queue else LOOK_AGAIN_SECONDS)
+            return
+        if now < self._look_again_at:
             return
         if not self._queue:
-            if now < self._look_again_at:
-                return
             if self._pool is not None:
                 if self._look is None:
                     self._look = self._pool.submit(self._find_all_in, self._grab())
@@ -425,6 +439,7 @@ class DropItems:
 
     def _end_round(self, now: float, wait: bool = True) -> None:
         self.in_round = False
+        self._ended_at = now
         self._next_round_at = now + (self._rng.uniform(*ROUND_EVERY_SECONDS) if wait else 0.0)
 
     def _find_all_in(self, frame: np.ndarray) -> list[tuple[Path, Point]]:
