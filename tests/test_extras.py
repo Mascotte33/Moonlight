@@ -116,6 +116,8 @@ def test_only_haste_skips_the_other_extras() -> None:
     clock = Clock()
     assert extras(ALL, clock, "hungry").due(walking=True, only_haste=True) == "F2"
     assert extras(ALL, clock, "hungry", "haste").due(walking=True, only_haste=True) is None
+    # the ring goes back on in fights too (owner 2026-11-28)
+    assert extras(ALL, clock, "ring_empty", "haste").due(walking=True, only_haste=True) == "F4"
 
 
 def test_buff_when_its_icon_is_missing() -> None:

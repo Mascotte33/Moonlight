@@ -332,7 +332,8 @@ class Extras:
         )
         now = self._clock()
         for on, key, need in wanted:
-            if only_haste and key != c.haste_hotkey:
+            if only_haste and key not in (c.haste_hotkey, c.ring_hotkey):
+                # the ring goes back on mid-fight too (owner 2026-11-28)
                 continue  # doc: docs/prs/near-targeting.md#haste-in-fight
             if on and need and now >= self._next_press_at.get(key, float("-inf")):
                 if key == c.food_hotkey and self._food_presses >= FOOD_TRIES:
