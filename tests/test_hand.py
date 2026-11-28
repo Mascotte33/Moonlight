@@ -109,3 +109,11 @@ def test_hand_reads_the_modules_of_this_tick() -> None:
     hand.request_refill()
     assert cavebot.refill_now
     assert not Hand(lambda: DecisionModules()).busy
+
+
+def test_the_walk_stops_while_the_button_comes_up() -> None:
+    hand = FakeHand(walking_on=True)
+    d = drop(hand, in_round=True)
+    d._sends = [d._release]
+    d.act(SNAP, lambda a: True)
+    assert hand.calls == ["release"]  # no walk this tick
