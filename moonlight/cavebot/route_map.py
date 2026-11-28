@@ -147,6 +147,50 @@ def waypoint_at(waypoints: list[Waypoint], x: int, y: int, z: int) -> int | None
     return None
 
 
+_LABEL_SCALE = 0.4
+
+Box = tuple[int, int, int, int]
+
+
+def _overlaps(a: Box, b: Box) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def place_labels(
+    labels: list[tuple[tuple[int, int], str]], dots: list[tuple[int, int]], radius: int
+) -> list[tuple[tuple[int, int], str]]:
+    """Each (dot centre, text) with the text's bottom-left px, beside its dot and clear of the
+    other labels and dots: right, left, above or below, farther out each try.
+    A label with no free place goes right of its dot.
+
+    # doc: docs/prs/map.md#map-view
+    """
+    taken: list[Box] = [(x - radius, y - radius, x + radius, y + radius) for x, y in dots]
+    placed = []
+    for (cx, cy), text in labels:
+        (width, height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, _LABEL_SCALE, 3)
+        gap = radius + 1
+        tries = []
+        for push in range(0, 4 * height, height // 2 or 1):
+            tries += [
+                (cx + gap + push, cy + height // 2),  # right
+                (cx - gap - width - push, cy + height // 2),  # left
+                (cx - width // 2, cy - gap - push),  # above
+                (cx - width // 2, cy + gap + height + push),  # below
+            ]
+        at = next(
+            (
+                (x, y)
+                for x, y in tries
+                if not any(_overlaps((x, y - height, x + width, y), box) for box in taken)
+            ),
+            tries[0],
+        )
+        taken.append((at[0], at[1] - height, at[0] + width, at[1]))
+        placed.append((at, text))
+    return placed
+
+
 def draw_route(
     area: np.ndarray,
     origin: tuple[int, int],
@@ -199,6 +243,7 @@ def draw_route(
             tip = -r if b.z < a.z else r
             triangle = np.array([(cx, cy + tip), (cx - r, cy - tip), (cx + r, cy - tip)], np.int32)
             cv2.polylines(image, [triangle], True, KIND_COLOURS["rope"], 2)
+    numbers_by_centre: dict[tuple[int, int], list[str]] = {}
     for i, wp in enumerate(waypoints):
         if not has_tile(wp) or wp.z != z:
             continue
@@ -206,10 +251,13 @@ def draw_route(
         cv2.circle(image, centre, radius, KIND_COLOURS.get(wp.action, _OTHER), -1)
         if i == selected:
             cv2.circle(image, centre, radius + 3, _SELECTED, 2)
-        if scale >= 4:
-            at = (centre[0] + radius + 1, centre[1] - radius)
-            cv2.putText(image, str(i + 1), at, cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 3)
-            cv2.putText(image, str(i + 1), at, cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+        numbers_by_centre.setdefault(centre, []).append(str(i + 1))
+    if scale >= 4:
+        dots = list(numbers_by_centre)
+        labels = [(centre, "/".join(numbers)) for centre, numbers in numbers_by_centre.items()]
+        for at, text in place_labels(labels, dots, radius):
+            cv2.putText(image, text, at, cv2.FONT_HERSHEY_SIMPLEX, _LABEL_SCALE, (0, 0, 0), 3)
+            cv2.putText(image, text, at, cv2.FONT_HERSHEY_SIMPLEX, _LABEL_SCALE, (255, 255, 255), 1)
     if me is not None and me[2] == z:
         cx, cy = px(me[0], me[1])
         r = radius + 2
