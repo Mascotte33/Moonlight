@@ -772,7 +772,9 @@ def build_modules(
     else:
         m.extras = Extras(config.extras, grab=screen_grab, clock=clock or time.monotonic)
         was = prev.extras if prev is not None else None
-        if (
+        if was is not None and was.ring_off_pending:
+            m.extras.take_ring_off(was.ring_off_pending)  # a ring_off still pressing
+        elif (
             was is not None
             and was.config.ring
             and not config.extras.ring

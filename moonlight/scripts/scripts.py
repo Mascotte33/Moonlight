@@ -512,7 +512,7 @@ class ScriptRunner:
             raise RuntimeError("bot.ring needs Extras on and a ring hotkey set")
         extras.config = replace(extras.config, ring=on)
         if not on:
-            _press(self, extras.config.ring_hotkey)
+            extras.take_ring_off(extras.config.ring_hotkey)  # pressed until the slot shows empty
         log.info("script: ring %s", "on" if on else "off (taken off)")
 
     def set_targeting(self, on: bool) -> None:
