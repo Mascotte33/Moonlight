@@ -54,6 +54,7 @@ TAB_RED, PM_TAB_PIXELS = (247, 95, 95), 30
 SCAN_GAP = 1.0  # s between picture scans
 #: Around a picture's first spot: the status row shifts sideways as icons come and go.
 SPOT_PAD_X, SPOT_PAD_Y = 100, 10
+RING_OFF_TRIES = 3  # ring hotkey presses until the empty ring slot shows
 PRESS_GAP = 2.0  # s between two presses of one key: the icon takes a moment to change
 #: Food presses with the hungry icon still shown before food pauses (out of food).
 FOOD_TRIES = 3
@@ -206,12 +207,22 @@ class Extras:
         self.players: dict[str, tuple[float, float]] = {}
         #: True on the tick a player starts staying, with player_refill on.
         self.refill_due = False
-        #: The ring hotkey to press once: the ring was switched off while worn.
+        #: The ring hotkey to press until the empty ring slot shows: the ring was
+        #: switched off while worn (a ring_off script or the Extras switch).
         self._ring_off_key = ""
+        self._ring_off_presses = 0
+
+    @property
+    def ring_off_pending(self) -> str:
+        """The ring hotkey still being pressed to take the ring off, else ""."""
+        return self._ring_off_key
 
     def take_ring_off(self, hotkey: str) -> None:
-        """Press *hotkey* once at the next :meth:`due`: the worn ring comes off."""
-        self._ring_off_key = hotkey
+        """Press *hotkey* until the empty ring slot shows (``RING_OFF_TRIES`` at most).
+
+        One press at the ring_off script left the ring on (owner 2026-11-28).
+        """
+        self._ring_off_key, self._ring_off_presses = hotkey, 0
 
     def observe(self, snap: WorldState) -> None:
         """Scan the pictures (once a second) and time the players."""
@@ -279,7 +290,7 @@ class Extras:
                 (c.haste, ("haste", "pz")),
                 (c.buff, ("buff",)),
                 (c.spell_buff, ("spell_buff",)),
-                (c.ring, ("ring_empty",)),
+                (c.ring or bool(self._ring_off_key), ("ring_empty",)),
                 (c.amulet, ("amulet_empty",)),
             )
             if on
@@ -305,10 +316,17 @@ class Extras:
         player chases. *only_haste*: in a fight, between heals and attacks.
         *mana*: mana points now (0 when unknown, under any haste minimum)."""
         c, icons, seen = self.config, self.icons, self._pictures
-        if self._ring_off_key and not only_haste:
-            key, self._ring_off_key = self._ring_off_key, ""
-            logger.info("extras: ring switched off, taken off (%s)", key)
-            return key
+        if self._ring_off_key:
+            key = self._ring_off_key
+            if "ring_empty" in icons or self._ring_off_presses >= RING_OFF_TRIES:
+                if "ring_empty" not in icons:
+                    logger.warning("extras: ring still on after %d presses", RING_OFF_TRIES)
+                self._ring_off_key = ""
+            elif self._clock() >= self._next_press_at.get(key, float("-inf")):
+                self._ring_off_presses += 1
+                n = self._ring_off_presses
+                logger.info("extras: taking the ring off (%s), press %d", key, n)
+                return key
         if "hungry" not in icons:
             self._food_presses = 0
         wanted = (

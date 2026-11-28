@@ -350,13 +350,19 @@ def test_ring_scripts_toggle_extras_ring(tmp_path: Path) -> None:
     folder = Path(__file__).resolve().parents[1] / "scripts"
     on, off = ((folder / f"ring_{n}.py").read_text() for n in ("on", "off"))
     r, inp = runner(tmp_path, ring_on=on, ring_off=off), FakeInput()
-    attach(r, extras=SimpleNamespace(config=ExtrasConfig(ring=False, ring_hotkey="f9")))
+    taken_off: list[str] = []
+    attach(
+        r,
+        extras=SimpleNamespace(
+            config=ExtrasConfig(ring=False, ring_hotkey="f9"), take_ring_off=taken_off.append
+        ),
+    )
     for name, want in (("ring_on", True), ("ring_off", False)):
         assert r.start(name)
         for _ in range(5):
             r.step(WorldState(), inp)
         assert r.extras.config.ring is want
-    assert "f9" in str(inp.__dict__)
+    assert taken_off == ["f9"]  # Extras presses it until the slot shows empty
 
 
 def test_the_runner_sees_the_modules_the_loop_rebuilt(tmp_path: Path) -> None:
