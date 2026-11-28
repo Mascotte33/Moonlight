@@ -28,12 +28,25 @@ class ExtrasTab(Tab):
         box.pack(fill="x", padx=10, pady=(10, 4))
         self.build_options(box)
 
+    #: The live ring switch at the last poll: a change there (a ring_on/off
+    #: script) shows on the checkbox (owner 2026-11-28).
+    _live_ring: bool | None = None
+
     def on_poll(self, snap: WorldState) -> None:
         # doc: docs/prs/near-targeting.md#food-pause
         extras = self.ctx.live_module("extras")
-        if extras is not None and not extras.config.food and self._readers["extras.food"]():
+        if extras is None:
+            self._live_ring = None
+            return
+        if not extras.config.food and self._readers["extras.food"]():
             self._writers["extras.food"](False)
             self.submit()
+        ring = bool(extras.config.ring)
+        if self._live_ring is not None and ring != self._live_ring:
+            if self._readers["extras.ring"]() != ring:
+                self._writers["extras.ring"](ring)
+                self.submit()
+        self._live_ring = ring
 
 
 class AlarmsTab(Tab):
