@@ -94,6 +94,9 @@ Rect = tuple[int, int, int, int]
 
 #: Seconds an unreachable target (or a skipped on-screen tile) is left alone.
 _IGNORE_SECONDS = 10.0
+#: A skipped creature seen up to this many tiles from its skipped tile is the
+#: same one, walked on (it can step twice between looks, 2026-11-28).
+_FOLLOW_TILES = 2
 #: Seconds a missed on-screen click is remembered: a second miss on the same
 #: tile within them skips the tile (something there never selects).
 _MISS_MEMORY_SECONDS = 3.0
@@ -674,7 +677,7 @@ class TargetingDecision:
             ends = [
                 end
                 for (x, y, z), end in self._skipped_tiles.items()
-                if z == tile[2] and max(abs(x - tile[0]), abs(y - tile[1])) == 1
+                if z == tile[2] and max(abs(x - tile[0]), abs(y - tile[1])) <= _FOLLOW_TILES
             ]
             if ends:
                 self._skipped_tiles[tile] = max(ends)
